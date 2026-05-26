@@ -1,143 +1,211 @@
-import { NextFunction, Request, Response } from "express";
+import { NextFunction, Response } from "express";
+import { JwtPayload } from "jsonwebtoken";
+import { Logger } from "winston";
 import { validationResult } from "express-validator";
 import createHttpError from "http-errors";
-import { AuthService } from "../services/authService";
-import { Config } from "../config";
-import { AuthRequest, LoginBody, RegisterBody } from "../types/authTypes";
-import { UserService } from "../services/userService";
 
-const cookieOptions = {
-    httpOnly: true,
-    sameSite: "lax" as const,
-    secure: Config.NODE_ENV === "prod",
-};
-
-const ACCESS_COOKIE_MAX_AGE = 60 * 60 * 1000;
+import { AuthRequest, RegisterUserRequest } from "../types";
+import { UserService } from "../services/UserService";
+import { TokenService } from "../services/TokenService";
+import { CredentialService } from "../services/CredentialService";
+import { Roles } from "../constants";
 
 export class AuthController {
     constructor(
-        private readonly authService: AuthService,
-        private readonly userService: UserService,
+        private userService: UserService,
+        private logger: Logger,
+        private tokenService: TokenService,
+        private credentialService: CredentialService,
     ) {}
 
-    register = async (req: Request, res: Response, next: NextFunction) => {
+    async register(
+        req: RegisterUserRequest,
+        res: Response,
+        next: NextFunction,
+    ) {
+        const result = validationResult(req);
+        if (!result.isEmpty()) {
+            return res.status(400).json({ errors: result.array() });
+        }
+
+        const { firstName, lastName, email, password } = req.body;
+
+        this.logger.debug("New request to register a user", {
+            firstName,
+            lastName,
+            email,
+            password: "******",
+        });
+
         try {
-            const errors = validationResult(req);
-            if (!errors.isEmpty()) {
-                return res.status(400).json({ errors: errors.array() });
-            }
-
-            const user = await this.authService.register(req.body as RegisterBody);
-
-            res.status(201).json({
-                data: {
-                    id: user.id,
-                    email: user.email,
-                    first_name: user.first_name,
-                    last_name: user.last_name,
-                    role: user.role,
-                },
+            const user = await this.userService.create({
+                firstName,
+                lastName,
+                email,
+                password,
+                role: Roles.MEMBER,
             });
+            this.logger.info("User has been registered", { id: user.id });
+
+            const payload: JwtPayload = {
+                sub: String(user.id),
+                role: user.role,
+            };
+
+            const accessToken = this.tokenService.generateAccessToken(payload);
+            const newRefreshToken =
+                await this.tokenService.persistRefreshToken(user);
+            const refreshToken = this.tokenService.generateRefreshToken({
+                ...payload,
+                id: String(newRefreshToken.id),
+            });
+
+            res.cookie("accessToken", accessToken, {
+                domain: "localhost",
+                sameSite: "strict",
+                maxAge: 1000 * 60 * 60,
+                httpOnly: true,
+            });
+            res.cookie("refreshToken", refreshToken, {
+                domain: "localhost",
+                sameSite: "strict",
+                maxAge: 1000 * 60 * 60 * 24 * 365,
+                httpOnly: true,
+            });
+
+            res.status(201).json({ id: user.id });
         } catch (err) {
             next(err);
         }
-    };
+    }
 
-    login = async (req: Request, res: Response, next: NextFunction) => {
+    async login(req: RegisterUserRequest, res: Response, next: NextFunction) {
+        const result = validationResult(req);
+        if (!result.isEmpty()) {
+            return res.status(400).json({ errors: result.array() });
+        }
+
+        const { email, password } = req.body;
+
+        this.logger.debug("New request to login a user", {
+            email,
+            password: "******",
+        });
+
         try {
-            const errors = validationResult(req);
-            if (!errors.isEmpty()) {
-                return res.status(400).json({ errors: errors.array() });
+            const user = await this.userService.findByEmailWithPassword(email);
+            if (!user) {
+                return next(
+                    createHttpError(400, "Email or password does not match."),
+                );
             }
 
-            const { user, accessToken, refreshToken } = await this.authService.login(
-                req.body as LoginBody,
-                { user_agent: req.get("user-agent") ?? undefined, ip_address: req.ip },
+            const passwordMatch = await this.credentialService.comparePassword(
+                password,
+                user.password,
             );
-
-            res.cookie("accessToken", accessToken, {
-                ...cookieOptions,
-                maxAge: ACCESS_COOKIE_MAX_AGE,
-            });
-            res.cookie("refreshToken", refreshToken, {
-                ...cookieOptions,
-                maxAge: Config.REFRESH_TOKEN_TTL_MS,
-            });
-
-            res.json({
-                data: {
-                    id: user.id,
-                    email: user.email,
-                    first_name: user.first_name,
-                    last_name: user.last_name,
-                    role: user.role,
-                },
-            });
-        } catch (err) {
-            next(err);
-        }
-    };
-
-    refresh = async (req: Request, res: Response, next: NextFunction) => {
-        try {
-            const oldToken = req.cookies?.refreshToken as string | undefined;
-            if (!oldToken) {
-                throw createHttpError(401, "Missing refresh token");
+            if (!passwordMatch) {
+                return next(
+                    createHttpError(400, "Email or password does not match."),
+                );
             }
 
-            const { accessToken, refreshToken } = await this.authService.refresh(oldToken, {
-                user_agent: req.get("user-agent") ?? undefined,
-                ip_address: req.ip,
+            const payload: JwtPayload = {
+                sub: String(user.id),
+                role: user.role,
+            };
+
+            const accessToken = this.tokenService.generateAccessToken(payload);
+            const newRefreshToken =
+                await this.tokenService.persistRefreshToken(user);
+            const refreshToken = this.tokenService.generateRefreshToken({
+                ...payload,
+                id: String(newRefreshToken.id),
             });
 
             res.cookie("accessToken", accessToken, {
-                ...cookieOptions,
-                maxAge: ACCESS_COOKIE_MAX_AGE,
+                domain: "localhost",
+                sameSite: "strict",
+                maxAge: 1000 * 60 * 60,
+                httpOnly: true,
             });
             res.cookie("refreshToken", refreshToken, {
-                ...cookieOptions,
-                maxAge: Config.REFRESH_TOKEN_TTL_MS,
+                domain: "localhost",
+                sameSite: "strict",
+                maxAge: 1000 * 60 * 60 * 24 * 365,
+                httpOnly: true,
             });
 
-            res.json({ data: { success: true } });
+            this.logger.info("User has been logged in", { id: user.id });
+            res.json({ id: user.id });
         } catch (err) {
             next(err);
         }
-    };
+    }
 
-    logout = async (req: Request, res: Response, next: NextFunction) => {
+    async self(req: AuthRequest, res: Response) {
+        const user = await this.userService.findById(Number(req.auth.sub));
+        res.json({ ...user, password: undefined });
+    }
+
+    async refresh(req: AuthRequest, res: Response, next: NextFunction) {
         try {
-            const refreshToken = req.cookies?.refreshToken as string | undefined;
-            await this.authService.logout(refreshToken);
+            const payload: JwtPayload = {
+                sub: req.auth.sub,
+                role: req.auth.role,
+            };
 
-            res.clearCookie("accessToken", cookieOptions);
-            res.clearCookie("refreshToken", cookieOptions);
-            res.json({ data: { success: true } });
-        } catch (err) {
-            next(err);
-        }
-    };
+            const accessToken = this.tokenService.generateAccessToken(payload);
 
-    me = async (req: AuthRequest, res: Response, next: NextFunction) => {
-        try {
-            const userId = Number(req.auth?.sub);
-            const user = await this.userService.findById(userId);
-            if (!user) throw createHttpError(404, "User not found");
+            const user = await this.userService.findById(Number(req.auth.sub));
+            if (!user) {
+                return next(
+                    createHttpError(400, "User with the token could not find"),
+                );
+            }
 
-            res.json({
-                data: {
-                    id: user.id,
-                    email: user.email,
-                    first_name: user.first_name,
-                    last_name: user.last_name,
-                    avatar_url: user.avatar_url,
-                    role: user.role,
-                    is_active: user.is_active,
-                    last_login_at: user.last_login_at,
-                },
+            const newRefreshToken =
+                await this.tokenService.persistRefreshToken(user);
+            await this.tokenService.deleteRefreshToken(Number(req.auth.id));
+
+            const refreshToken = this.tokenService.generateRefreshToken({
+                ...payload,
+                id: String(newRefreshToken.id),
             });
+
+            res.cookie("accessToken", accessToken, {
+                domain: "localhost",
+                sameSite: "strict",
+                maxAge: 1000 * 60 * 60,
+                httpOnly: true,
+            });
+            res.cookie("refreshToken", refreshToken, {
+                domain: "localhost",
+                sameSite: "strict",
+                maxAge: 1000 * 60 * 60 * 24 * 365,
+                httpOnly: true,
+            });
+
+            this.logger.info("User refreshed token", { id: user.id });
+            res.json({ id: user.id });
         } catch (err) {
             next(err);
         }
-    };
+    }
+
+    async logout(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            await this.tokenService.deleteRefreshToken(Number(req.auth.id));
+            this.logger.info("Refresh token has been deleted", {
+                id: req.auth.id,
+            });
+            this.logger.info("User has been logged out", { id: req.auth.sub });
+
+            res.clearCookie("accessToken");
+            res.clearCookie("refreshToken");
+            res.json({});
+        } catch (err) {
+            next(err);
+        }
+    }
 }

@@ -1,20 +1,23 @@
 import { expressjwt } from "express-jwt";
 import { Request } from "express";
 import { Config } from "../config";
+import { AuthCookie } from "../types";
 
-const getTokenFromCookie = (req: Request): string | undefined => {
-    return req.cookies?.accessToken;
-};
-
-export const authenticate = expressjwt({
-    secret: Config.SECRET_KEY,
+export default expressjwt({
+    secret: Config.ACCESS_TOKEN_SECRET!,
     algorithms: ["HS256"],
-    getToken: getTokenFromCookie,
-});
+    getToken(req: Request) {
+        const authHeader = req.headers.authorization;
 
-export const optionalAuthenticate = expressjwt({
-    secret: Config.SECRET_KEY,
-    algorithms: ["HS256"],
-    getToken: getTokenFromCookie,
-    credentialsRequired: false,
+        // Bearer <token>
+        if (authHeader && authHeader.split(" ")[1] !== "undefined") {
+            const token = authHeader.split(" ")[1];
+            if (token) {
+                return token;
+            }
+        }
+
+        const { accessToken } = req.cookies as AuthCookie;
+        return accessToken;
+    },
 });

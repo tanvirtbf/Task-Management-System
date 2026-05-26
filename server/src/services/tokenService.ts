@@ -1,78 +1,58 @@
-import crypto from "crypto";
-import jwt, { JwtPayload, SignOptions } from "jsonwebtoken";
-import { and, eq } from "drizzle-orm";
-import { db, refresh_tokens } from "../db";
+import { JwtPayload, sign } from "jsonwebtoken";
+import createHttpError from "http-errors";
+import { eq } from "drizzle-orm";
+import { MySql2Database } from "drizzle-orm/mysql2";
 import { Config } from "../config";
-import { AuthPayload } from "../types/authTypes";
+import * as schema from "../db/schema";
+import { refreshTokens, User } from "../db/schema";
 
 export class TokenService {
-    generateAccessToken(payload: AuthPayload): string {
-        return jwt.sign(payload, Config.SECRET_KEY, {
+    constructor(private db: MySql2Database<typeof schema>) {}
+
+    generateAccessToken(payload: JwtPayload) {
+        if (!Config.ACCESS_TOKEN_SECRET) {
+            throw createHttpError(500, "Access token secret not configured");
+        }
+        return sign(payload, Config.ACCESS_TOKEN_SECRET, {
             algorithm: "HS256",
-            expiresIn: Config.ACCESS_TOKEN_TTL,
-        } as SignOptions);
-    }
-
-    generateRefreshToken(payload: AuthPayload): string {
-        return jwt.sign(payload, Config.SECRET_KEY, {
-            algorithm: "HS256",
-            expiresIn: Config.REFRESH_TOKEN_TTL,
-        } as SignOptions);
-    }
-
-    verifyToken(token: string): AuthPayload & JwtPayload {
-        return jwt.verify(token, Config.SECRET_KEY) as AuthPayload & JwtPayload;
-    }
-
-    hashToken(token: string): string {
-        return crypto.createHash("sha256").update(token).digest("hex");
-    }
-
-    async persistRefreshToken(
-        userId: number,
-        token: string,
-        metadata: { user_agent?: string; ip_address?: string } = {},
-    ): Promise<void> {
-        const token_hash = this.hashToken(token);
-        const expires_at = new Date(Date.now() + Config.REFRESH_TOKEN_TTL_MS);
-
-        await db.insert(refresh_tokens).values({
-            user_id: userId,
-            token_hash,
-            expires_at,
-            user_agent: metadata.user_agent ?? null,
-            ip_address: metadata.ip_address ?? null,
+            expiresIn: "1h",
+            issuer: "task-management-server",
         });
     }
 
-    async revokeRefreshToken(token: string): Promise<void> {
-        const token_hash = this.hashToken(token);
-        await db
-            .update(refresh_tokens)
-            .set({ is_revoked: true, revoked_at: new Date() })
-            .where(eq(refresh_tokens.token_hash, token_hash));
+    generateRefreshToken(payload: JwtPayload) {
+        if (!Config.REFRESH_TOKEN_SECRET) {
+            throw createHttpError(500, "Refresh token secret not configured");
+        }
+        return sign(payload, Config.REFRESH_TOKEN_SECRET, {
+            algorithm: "HS256",
+            expiresIn: "365d",
+            issuer: "task-management-server",
+            jwtid: String(payload.id),
+        });
     }
 
-    async revokeAllForUser(userId: number): Promise<void> {
-        await db
-            .update(refresh_tokens)
-            .set({ is_revoked: true, revoked_at: new Date() })
-            .where(
-                and(eq(refresh_tokens.user_id, userId), eq(refresh_tokens.is_revoked, false)),
-            );
-    }
+    async persistRefreshToken(user: Pick<User, "id">) {
+        const MS_IN_YEAR = 1000 * 60 * 60 * 24 * 365;
 
-    async isRefreshTokenValid(token: string): Promise<boolean> {
-        const token_hash = this.hashToken(token);
-        const [row] = await db
+        const result = await this.db.insert(refreshTokens).values({
+            userId: user.id,
+            expiresAt: new Date(Date.now() + MS_IN_YEAR),
+        });
+        const insertId = (result as unknown as { insertId: number }[])[0]
+            ?.insertId;
+
+        const [token] = await this.db
             .select()
-            .from(refresh_tokens)
-            .where(eq(refresh_tokens.token_hash, token_hash))
+            .from(refreshTokens)
+            .where(eq(refreshTokens.id, insertId))
             .limit(1);
+        return token;
+    }
 
-        if (!row) return false;
-        if (row.is_revoked) return false;
-        if (row.expires_at.getTime() < Date.now()) return false;
-        return true;
+    async deleteRefreshToken(tokenId: number) {
+        return await this.db
+            .delete(refreshTokens)
+            .where(eq(refreshTokens.id, tokenId));
     }
 }
