@@ -10,6 +10,7 @@ import {
     SettingsSection,
 } from "../../components/settings/SettingsHeader";
 import type { NotificationPreferences } from "../../types/settings";
+import { LoadingState } from "../../components/shared/LoadingState";
 import { tokens } from "../../theme";
 
 const EVENTS: Array<{
@@ -89,7 +90,7 @@ const NotificationsSettings = () => {
         },
     });
 
-    if (!user || !draft) return <div>Loading...</div>;
+    if (!user || !draft) return <LoadingState />;
 
     const setChannel = (
         ch: keyof NotificationPreferences["channels"],

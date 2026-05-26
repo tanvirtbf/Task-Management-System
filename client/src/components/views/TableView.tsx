@@ -16,7 +16,10 @@ import {
     EyeOff,
     Download,
     Table2,
+    Group as GroupIcon,
+    ChevronRight,
 } from "lucide-react";
+import { Dropdown } from "antd";
 import { mockApi } from "../../lib/mock-api";
 import { useAuthStore } from "../../stores/auth";
 import { useUpdateTask } from "../../hooks/useTaskMutations";
@@ -30,6 +33,7 @@ import { InlineAssigneeEdit } from "../task/InlineAssigneeEdit";
 import { InlineDateEdit } from "../task/InlineDateEdit";
 import { TagChip } from "../ui/TagChip";
 import { EmptyState } from "../ui/EmptyState";
+import { LoadingState } from "../shared/LoadingState";
 import { tokens } from "../../theme";
 import type { Task } from "../../types";
 
@@ -39,6 +43,8 @@ interface TableViewProps {
 
 const COL_NAME_WIDTH = 320;
 
+type GroupBy = "none" | "status" | "priority" | "assignee";
+
 export const TableView = ({ listId }: TableViewProps) => {
     const user = useAuthStore((s) => s.user);
     const [, setSearchParams] = useSearchParams();
@@ -46,7 +52,20 @@ export const TableView = ({ listId }: TableViewProps) => {
     const [meMode, setMeMode] = useState(false);
     const [showClosedTasks, setShowClosedTasks] = useState(false);
     const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
+    const [groupBy, setGroupBy] = useState<GroupBy>("none");
+    const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
+        new Set(),
+    );
     const { message } = AntApp.useApp();
+
+    const toggleGroup = (key: string) => {
+        setCollapsedGroups((prev) => {
+            const next = new Set(prev);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
+            return next;
+        });
+    };
 
     const update = useUpdateTask(listId);
 
@@ -340,6 +359,36 @@ export const TableView = ({ listId }: TableViewProps) => {
                     flexWrap: "wrap",
                 }}
             >
+                <Dropdown
+                    trigger={["click"]}
+                    menu={{
+                        items: [
+                            { key: "none", label: "No grouping" },
+                            { type: "divider" as const },
+                            { key: "status", label: "Status" },
+                            { key: "priority", label: "Priority" },
+                            { key: "assignee", label: "Assignee" },
+                        ],
+                        selectable: true,
+                        selectedKeys: [groupBy],
+                        onClick: (e) => setGroupBy(e.key as GroupBy),
+                    }}
+                >
+                    <Button
+                        type={groupBy !== "none" ? "primary" : "text"}
+                        size="small"
+                        icon={<GroupIcon size={13} strokeWidth={1.75} />}
+                    >
+                        Group:{" "}
+                        <span style={{ marginLeft: 2, fontWeight: 500 }}>
+                            {groupBy === "none"
+                                ? "None"
+                                : groupBy.charAt(0).toUpperCase() +
+                                  groupBy.slice(1)}
+                        </span>
+                    </Button>
+                </Dropdown>
+
                 <Button
                     type="text"
                     size="small"
@@ -392,9 +441,7 @@ export const TableView = ({ listId }: TableViewProps) => {
             </div>
 
             {isLoading ? (
-                <div style={{ padding: tokens.spacing[8], textAlign: "center" }}>
-                    Loading...
-                </div>
+                <LoadingState />
             ) : filtered.length === 0 ? (
                 <EmptyState
                     icon={Table2}
@@ -490,76 +537,19 @@ export const TableView = ({ listId }: TableViewProps) => {
                             ))}
                         </thead>
                         <tbody>
-                            {table.getRowModel().rows.map((row, rowIdx) => (
-                                <tr
-                                    key={row.id}
-                                    onClick={() =>
-                                        setSearchParams((prev) => {
-                                            const next = new URLSearchParams(
-                                                prev,
-                                            );
-                                            next.set("task", row.original.id);
-                                            return next;
-                                        })
-                                    }
-                                    style={{
-                                        background:
-                                            rowIdx % 2 === 0
-                                                ? tokens.colors.bgSurface
-                                                : tokens.colors.bgPage,
-                                        cursor: "pointer",
-                                    }}
-                                    onMouseEnter={(e) =>
-                                        (e.currentTarget.style.background =
-                                            tokens.colors.bgHover)
-                                    }
-                                    onMouseLeave={(e) =>
-                                        (e.currentTarget.style.background =
-                                            rowIdx % 2 === 0
-                                                ? tokens.colors.bgSurface
-                                                : tokens.colors.bgPage)
-                                    }
-                                >
-                                    {row.getVisibleCells().map((cell) => {
-                                        const isNameCol = cell.column.id === "name";
-                                        return (
-                                            <td
-                                                key={cell.id}
-                                                onClick={(e) => e.stopPropagation()}
-                                                style={{
-                                                    width: cell.column.getSize(),
-                                                    padding: "6px 12px",
-                                                    fontSize:
-                                                        tokens.typography.fontSize
-                                                            .sm,
-                                                    color: tokens.colors.textPrimary,
-                                                    borderRight: `1px solid ${tokens.colors.borderSubtle}`,
-                                                    borderBottom: `1px solid ${tokens.colors.borderSubtle}`,
-                                                    overflow: "hidden",
-                                                    whiteSpace: "nowrap",
-                                                    textOverflow: "ellipsis",
-                                                    ...(isNameCol
-                                                        ? {
-                                                              position: "sticky",
-                                                              left: 0,
-                                                              background:
-                                                                  rowIdx % 2 === 0
-                                                                      ? tokens.colors.bgSurface
-                                                                      : tokens.colors.bgPage,
-                                                              zIndex: 2,
-                                                          }
-                                                        : {}),
-                                                }}
-                                            >
-                                                {flexRender(
-                                                    cell.column.columnDef.cell,
-                                                    cell.getContext(),
-                                                )}
-                                            </td>
-                                        );
-                                    })}
-                                </tr>
-                            ))}
+                            {renderGroupedRows({
+                                rows: table.getRowModel().rows,
+                                groupBy,
+                                collapsedGroups,
+                                toggleGroup,
+                                totalColumns: table.getAllColumns().length,
+                                onSelect: (taskId) =>
+                                    setSearchParams((prev) => {
+                                        const next = new URLSearchParams(prev);
+                                        next.set("task", taskId);
+                                        return next;
+                                    }),
+                            })}
                         </tbody>
                         <tfoot
                             style={{
@@ -632,3 +622,259 @@ const csvEscape = (val: string): string => {
     }
     return s;
 };
+
+interface RowLike {
+    id: string;
+    original: Task;
+    getVisibleCells: () => Array<{
+        id: string;
+        column: {
+            id: string;
+            columnDef: { cell?: unknown };
+            getSize: () => number;
+        };
+        getContext: () => unknown;
+    }>;
+}
+
+/**
+ * Render either a flat list of rows or rows grouped under collapsible headers.
+ * Returns React elements directly (tr-level) — caller wraps in tbody.
+ */
+const renderGroupedRows = ({
+    rows,
+    groupBy,
+    collapsedGroups,
+    toggleGroup,
+    totalColumns,
+    onSelect,
+}: {
+    rows: RowLike[];
+    groupBy: GroupBy;
+    collapsedGroups: Set<string>;
+    toggleGroup: (key: string) => void;
+    totalColumns: number;
+    onSelect: (taskId: string) => void;
+}): React.ReactNode => {
+    if (groupBy === "none") {
+        return rows.map((row, idx) => (
+            <DataRow
+                key={row.id}
+                row={row}
+                rowIdx={idx}
+                onSelect={onSelect}
+            />
+        ));
+    }
+
+    const groups = new Map<
+        string,
+        { label: string; color: string; tasks: RowLike[] }
+    >();
+
+    rows.forEach((row) => {
+        const { key, label, color } = groupOf(row.original, groupBy);
+        const g = groups.get(key);
+        if (g) g.tasks.push(row);
+        else groups.set(key, { label, color, tasks: [row] });
+    });
+
+    const sorted = Array.from(groups.entries()).sort(([a], [b]) =>
+        a.localeCompare(b),
+    );
+
+    const out: React.ReactNode[] = [];
+    sorted.forEach(([key, { label, color, tasks: groupRows }]) => {
+        const isCollapsed = collapsedGroups.has(key);
+        out.push(
+            <tr
+                key={`group-${key}`}
+                onClick={() => toggleGroup(key)}
+                style={{
+                    cursor: "pointer",
+                    background: tokens.colors.bgMuted,
+                    borderBottom: `1px solid ${tokens.colors.border}`,
+                }}
+            >
+                <td
+                    colSpan={totalColumns}
+                    style={{
+                        padding: "6px 12px",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: tokens.colors.textPrimary,
+                        position: "sticky",
+                        left: 0,
+                    }}
+                >
+                    <span
+                        style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 6,
+                        }}
+                    >
+                        <ChevronRight
+                            size={12}
+                            strokeWidth={2}
+                            style={{
+                                transition:
+                                    "transform var(--transition-base)",
+                                transform: isCollapsed
+                                    ? "rotate(0deg)"
+                                    : "rotate(90deg)",
+                                color: tokens.colors.textMuted,
+                            }}
+                        />
+                        <span
+                            style={{
+                                width: 8,
+                                height: 8,
+                                borderRadius: "50%",
+                                background: color,
+                            }}
+                        />
+                        <span>{label}</span>
+                        <span
+                            style={{
+                                fontSize: 11,
+                                color: tokens.colors.textMuted,
+                                fontFamily:
+                                    tokens.typography.fontFamilyMono,
+                                fontWeight: 500,
+                            }}
+                        >
+                            {groupRows.length}
+                        </span>
+                    </span>
+                </td>
+            </tr>,
+        );
+        if (!isCollapsed) {
+            groupRows.forEach((row, idx) => {
+                out.push(
+                    <DataRow
+                        key={row.id}
+                        row={row}
+                        rowIdx={idx}
+                        onSelect={onSelect}
+                    />,
+                );
+            });
+        }
+    });
+    return out;
+};
+
+const groupOf = (
+    task: Task,
+    groupBy: GroupBy,
+): { key: string; label: string; color: string } => {
+    if (groupBy === "status") {
+        const s = statusesById.get(task.statusId);
+        return {
+            key: s?.id ?? "unknown",
+            label: s?.name ?? "Unknown status",
+            color: s?.color ?? "#94A3B8",
+        };
+    }
+    if (groupBy === "priority") {
+        const colors: Record<number, string> = {
+            0: "#94A3B8",
+            1: "#E11D48",
+            2: "#F59E0B",
+            3: "#3B82F6",
+            4: "#10B981",
+        };
+        const labels: Record<number, string> = {
+            0: "No priority",
+            1: "Urgent",
+            2: "High",
+            3: "Normal",
+            4: "Low",
+        };
+        return {
+            key: String(task.priority),
+            label: labels[task.priority] ?? "Unknown",
+            color: colors[task.priority] ?? "#94A3B8",
+        };
+    }
+    // assignee
+    const first = task.assignees[0];
+    if (!first) {
+        return { key: "_unassigned", label: "Unassigned", color: "#94A3B8" };
+    }
+    const u = usersById.get(first);
+    return {
+        key: first,
+        label: u ? `${u.firstName} ${u.lastName}` : first,
+        color: "#4F46E5",
+    };
+};
+
+const DataRow = ({
+    row,
+    rowIdx,
+    onSelect,
+}: {
+    row: RowLike;
+    rowIdx: number;
+    onSelect: (id: string) => void;
+}) => (
+    <tr
+        onClick={() => onSelect(row.original.id)}
+        style={{
+            background:
+                rowIdx % 2 === 0
+                    ? tokens.colors.bgSurface
+                    : tokens.colors.bgPage,
+            cursor: "pointer",
+        }}
+        onMouseEnter={(e) =>
+            (e.currentTarget.style.background = tokens.colors.bgHover)
+        }
+        onMouseLeave={(e) =>
+            (e.currentTarget.style.background =
+                rowIdx % 2 === 0
+                    ? tokens.colors.bgSurface
+                    : tokens.colors.bgPage)
+        }
+    >
+        {row.getVisibleCells().map((cell) => {
+            const isNameCol = cell.column.id === "name";
+            return (
+                <td
+                    key={cell.id}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                        width: cell.column.getSize(),
+                        padding: "6px 12px",
+                        fontSize: tokens.typography.fontSize.sm,
+                        color: tokens.colors.textPrimary,
+                        borderRight: `1px solid ${tokens.colors.borderSubtle}`,
+                        borderBottom: `1px solid ${tokens.colors.borderSubtle}`,
+                        overflow: "hidden",
+                        whiteSpace: "nowrap",
+                        textOverflow: "ellipsis",
+                        ...(isNameCol
+                            ? {
+                                  position: "sticky",
+                                  left: 0,
+                                  background:
+                                      rowIdx % 2 === 0
+                                          ? tokens.colors.bgSurface
+                                          : tokens.colors.bgPage,
+                                  zIndex: 2,
+                              }
+                            : {}),
+                    }}
+                >
+                    {flexRender(
+                        cell.column.columnDef.cell as never,
+                        cell.getContext() as never,
+                    )}
+                </td>
+            );
+        })}
+    </tr>
+);

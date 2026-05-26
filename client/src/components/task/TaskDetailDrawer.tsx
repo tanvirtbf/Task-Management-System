@@ -1,5 +1,5 @@
-import { Drawer, Dropdown } from "antd";
-import { useQuery } from "@tanstack/react-query";
+import { Drawer, Dropdown, App as AntApp } from "antd";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     X,
     Copy,
@@ -14,12 +14,15 @@ import { mockApi } from "../../lib/mock-api";
 import { taskTypesById } from "../../mocks/task-types";
 import { usersById } from "../../mocks/users";
 import { DynamicIcon } from "../shared/DynamicIcon";
+import { LoadingState } from "../shared/LoadingState";
 import { InlineNameEdit } from "./InlineNameEdit";
 import { TaskPropertiesPanel } from "./TaskPropertiesPanel";
 import { TaskDescription } from "./TaskDescription";
 import { SubtasksSection } from "./SubtasksSection";
 import { ChecklistsSection } from "./ChecklistsSection";
 import { CommentsSection } from "./CommentsSection";
+import { AttachmentsSection } from "./AttachmentsSection";
+import { DependenciesSection } from "./DependenciesSection";
 import { CustomFieldsList } from "../custom-field/CustomFieldsList";
 import { useUpdateTask } from "../../hooks/useTaskMutations";
 import { tokens } from "../../theme";
@@ -36,6 +39,8 @@ export const TaskDetailDrawer = ({
     onClose,
 }: TaskDetailDrawerProps) => {
     const navigate = useNavigate();
+    const qc = useQueryClient();
+    const { message } = AntApp.useApp();
     const update = useUpdateTask(listId);
 
     const { data: task, isLoading } = useQuery({
@@ -47,6 +52,29 @@ export const TaskDetailDrawer = ({
 
     const taskType = task ? taskTypesById.get(task.taskTypeId) : null;
     const creator = task ? usersById.get(task.createdBy) : null;
+
+    const duplicate = useMutation({
+        mutationFn: () => {
+            if (!task) return Promise.reject(new Error("No task"));
+            return mockApi.tasks.create({
+                primaryListId: task.primaryListId,
+                name: `${task.name} (copy)`,
+                statusId: task.statusId,
+                priority: task.priority,
+                taskTypeId: task.taskTypeId,
+                assignees: [...task.assignees],
+                tags: [...task.tags],
+                startDate: task.startDate,
+                dueDate: task.dueDate,
+            });
+        },
+        onSuccess: (created) => {
+            qc.invalidateQueries({
+                queryKey: ["tasks-by-list", created.primaryListId],
+            });
+            message.success(`Duplicated as "${created.name}"`);
+        },
+    });
 
     const menuItems = [
         {
@@ -63,9 +91,12 @@ export const TaskDetailDrawer = ({
             icon: <Link2 size={13} strokeWidth={1.75} />,
             onClick: () => {
                 if (task) {
-                    navigator.clipboard.writeText(
-                        `${window.location.origin}/t/${task.customId ?? task.id}`,
-                    );
+                    navigator.clipboard
+                        .writeText(
+                            `${window.location.origin}/t/${task.customId ?? task.id}`,
+                        )
+                        .then(() => message.success("Link copied"))
+                        .catch(() => message.error("Could not copy"));
                 }
             },
         },
@@ -73,13 +104,21 @@ export const TaskDetailDrawer = ({
             key: "duplicate",
             label: "Duplicate",
             icon: <Copy size={13} strokeWidth={1.75} />,
+            onClick: () => duplicate.mutate(),
         },
         {
             key: "archive",
             label: "Archive",
             icon: <Archive size={13} strokeWidth={1.75} />,
             onClick: () => {
-                if (task) mockApi.tasks.archive(task.id).then(onClose);
+                if (task)
+                    mockApi.tasks.archive(task.id).then(() => {
+                        message.success("Task archived");
+                        qc.invalidateQueries({
+                            queryKey: ["tasks-by-list", listId],
+                        });
+                        onClose();
+                    });
             },
         },
         { type: "divider" as const },
@@ -89,7 +128,14 @@ export const TaskDetailDrawer = ({
             icon: <Trash2 size={13} strokeWidth={1.75} />,
             danger: true,
             onClick: () => {
-                if (task) mockApi.tasks.delete(task.id).then(onClose);
+                if (task)
+                    mockApi.tasks.delete(task.id).then(() => {
+                        message.success("Task deleted");
+                        qc.invalidateQueries({
+                            queryKey: ["tasks-by-list", listId],
+                        });
+                        onClose();
+                    });
             },
         },
     ];
@@ -108,9 +154,7 @@ export const TaskDetailDrawer = ({
             destroyOnHidden
         >
             {isLoading || !task ? (
-                <div style={{ padding: tokens.spacing[8] }}>
-                    Loading task...
-                </div>
+                <LoadingState label="Loading task…" />
             ) : (
                 <div
                     style={{
@@ -236,6 +280,11 @@ export const TaskDetailDrawer = ({
                         />
                         <SubtasksSection task={task} />
                         <ChecklistsSection taskId={task.id} />
+                        <DependenciesSection
+                            taskId={task.id}
+                            listId={task.primaryListId}
+                        />
+                        <AttachmentsSection taskId={task.id} />
                         <CommentsSection taskId={task.id} />
                     </div>
 

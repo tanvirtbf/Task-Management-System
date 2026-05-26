@@ -4,6 +4,7 @@ import { Button, Tag, Empty } from "antd";
 import { ArrowLeft, CheckCircle2, XCircle, History, Clock } from "lucide-react";
 import { mockApi } from "../../lib/mock-api";
 import { tokens } from "../../theme";
+import { LoadingState } from "../../components/shared/LoadingState";
 import type { AutomationRun } from "../../types/automation";
 
 const formatTime = (iso: string): string => {
@@ -86,7 +87,7 @@ const AutomationRunsPage = () => {
             </div>
 
             {isLoading ? (
-                <div>Loading...</div>
+                <LoadingState />
             ) : runs.length === 0 ? (
                 <Empty
                     description="No runs yet. Trigger the automation manually or wait for an event."
@@ -182,7 +183,7 @@ const RunCard = ({ run }: { run: AutomationRun }) => {
                 <div
                     style={{
                         padding: 8,
-                        background: "#FEF2F2",
+                        background: tokens.colors.dangerSubtle,
                         borderRadius: tokens.radius.sm,
                         fontSize: 12,
                         color: tokens.colors.danger,

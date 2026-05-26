@@ -5,7 +5,6 @@ import {
     Settings,
     ShieldCheck,
     User as UserIcon,
-    Sun,
 } from "lucide-react";
 import { Avatar } from "../ui/Avatar";
 import { useAuthStore } from "../../stores/auth";
@@ -102,12 +101,6 @@ export const UserMenu = () => {
                             label="Workspace settings"
                             onClick={() => navigate("/settings")}
                         />
-                        <MenuRow
-                            icon={<Sun size={14} strokeWidth={1.75} />}
-                            label="Toggle theme (V12)"
-                            onClick={() => {}}
-                            disabled
-                        />
                     </div>
 
                     <div
@@ -185,7 +178,7 @@ const MenuRow = ({ icon, label, onClick, danger, disabled }: MenuRowProps) => (
         onMouseEnter={(e) => {
             if (!disabled)
                 e.currentTarget.style.background = danger
-                    ? "#FEF2F2"
+                    ? tokens.colors.dangerSubtle
                     : tokens.colors.bgHover;
         }}
         onMouseLeave={(e) =>

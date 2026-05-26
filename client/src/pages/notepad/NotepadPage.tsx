@@ -23,6 +23,7 @@ import {
 import { mockApi } from "../../lib/mock-api";
 import { useAuthStore } from "../../stores/auth";
 import { MarkdownRenderer } from "../../components/notepad/MarkdownRenderer";
+import { LoadingState } from "../../components/shared/LoadingState";
 import { tokens } from "../../theme";
 import type { Note } from "../../types/note";
 
@@ -191,7 +192,7 @@ const NotepadPage = () => {
                     }}
                 >
                     {isLoading ? (
-                        <div style={{ padding: 16 }}>Loading...</div>
+                        <LoadingState minHeight={120} />
                     ) : filtered.length === 0 ? (
                         <Empty
                             image={

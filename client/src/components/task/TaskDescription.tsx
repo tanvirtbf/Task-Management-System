@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Input } from "antd";
 import { FileText } from "lucide-react";
+import { MentionRenderer } from "./MentionRenderer";
 import { tokens } from "../../theme";
 
 interface TaskDescriptionProps {
@@ -94,8 +95,11 @@ export const TaskDescription = ({
                             tokens.colors.border)
                     }
                 >
-                    {description ||
-                        "Click to add a description. Rich-text editor lands in Phase 7."}
+                    {description ? (
+                        <MentionRenderer text={description} />
+                    ) : (
+                        "Click to add a description. Use @name to mention a teammate."
+                    )}
                 </div>
             )}
         </div>

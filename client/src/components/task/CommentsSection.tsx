@@ -1,12 +1,21 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Skeleton, Button, Input, Tooltip } from "antd";
-import { MessageSquare, Send, Smile, Trash2 } from "lucide-react";
+import {
+    MessageSquare,
+    Send,
+    Smile,
+    Trash2,
+    Pencil,
+    Check,
+    X,
+} from "lucide-react";
 import { mockApi } from "../../lib/mock-api";
 import { useAuthStore } from "../../stores/auth";
 import { usersById } from "../../mocks/users";
 import { Avatar } from "../ui/Avatar";
 import { EmptyState } from "../ui/EmptyState";
+import { MentionRenderer } from "./MentionRenderer";
 import { tokens } from "../../theme";
 
 const timeAgo = (iso: string) => {
@@ -24,6 +33,8 @@ const REACTIONS = ["👍", "✅", "🔥", "❤️", "👀", "🎉"];
 export const CommentsSection = ({ taskId }: { taskId: string }) => {
     const user = useAuthStore((s) => s.user);
     const [body, setBody] = useState("");
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [editBody, setEditBody] = useState("");
     const qc = useQueryClient();
 
     const { data: comments = [], isLoading } = useQuery({
@@ -53,6 +64,31 @@ export const CommentsSection = ({ taskId }: { taskId: string }) => {
         onSuccess: () =>
             qc.invalidateQueries({ queryKey: ["comments", taskId] }),
     });
+
+    const editMutation = useMutation({
+        mutationFn: ({ id, body }: { id: string; body: string }) =>
+            mockApi.comments.update(id, { body }),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ["comments", taskId] });
+            setEditingId(null);
+            setEditBody("");
+        },
+    });
+
+    const startEdit = (id: string, currentBody: string) => {
+        setEditingId(id);
+        setEditBody(currentBody);
+    };
+    const cancelEdit = () => {
+        setEditingId(null);
+        setEditBody("");
+    };
+    const commitEdit = () => {
+        if (!editingId) return;
+        const trimmed = editBody.trim();
+        if (!trimmed) return;
+        editMutation.mutate({ id: editingId, body: trimmed });
+    };
 
     return (
         <div
@@ -154,42 +190,158 @@ export const CommentsSection = ({ taskId }: { taskId: string }) => {
                                             }}
                                         >
                                             {timeAgo(c.createdAt)}
+                                            {c.editedAt && (
+                                                <span
+                                                    style={{
+                                                        marginLeft: 4,
+                                                        fontStyle: "italic",
+                                                    }}
+                                                >
+                                                    (edited)
+                                                </span>
+                                            )}
                                         </span>
-                                        {c.authorId === user?.id && (
-                                            <button
-                                                onClick={() =>
-                                                    deleteMutation.mutate(c.id)
+                                        {c.authorId === user?.id &&
+                                            editingId !== c.id && (
+                                                <span
+                                                    style={{
+                                                        marginLeft: "auto",
+                                                        display:
+                                                            "inline-flex",
+                                                        gap: 2,
+                                                    }}
+                                                >
+                                                    <button
+                                                        onClick={() =>
+                                                            startEdit(
+                                                                c.id,
+                                                                c.body,
+                                                            )
+                                                        }
+                                                        style={
+                                                            commentIconBtn
+                                                        }
+                                                        title="Edit comment"
+                                                        aria-label="Edit comment"
+                                                    >
+                                                        <Pencil
+                                                            size={12}
+                                                            strokeWidth={1.5}
+                                                        />
+                                                    </button>
+                                                    <button
+                                                        onClick={() =>
+                                                            deleteMutation.mutate(
+                                                                c.id,
+                                                            )
+                                                        }
+                                                        style={
+                                                            commentIconBtn
+                                                        }
+                                                        title="Delete comment"
+                                                        aria-label="Delete comment"
+                                                    >
+                                                        <Trash2
+                                                            size={12}
+                                                            strokeWidth={1.5}
+                                                        />
+                                                    </button>
+                                                </span>
+                                            )}
+                                    </div>
+                                    {editingId === c.id ? (
+                                        <div
+                                            style={{
+                                                display: "flex",
+                                                flexDirection: "column",
+                                                gap: 6,
+                                                marginTop: 4,
+                                            }}
+                                        >
+                                            <Input.TextArea
+                                                value={editBody}
+                                                onChange={(e) =>
+                                                    setEditBody(
+                                                        e.target.value,
+                                                    )
                                                 }
-                                                style={{
-                                                    background: "none",
-                                                    border: 0,
-                                                    padding: 2,
-                                                    cursor: "pointer",
-                                                    color: tokens.colors.textMuted,
-                                                    marginLeft: "auto",
-                                                    opacity: 0.5,
-                                                    display: "flex",
+                                                autoFocus
+                                                autoSize={{
+                                                    minRows: 2,
+                                                    maxRows: 6,
                                                 }}
-                                                title="Delete comment"
+                                                onKeyDown={(e) => {
+                                                    if (
+                                                        e.key === "Enter" &&
+                                                        (e.metaKey ||
+                                                            e.ctrlKey)
+                                                    ) {
+                                                        e.preventDefault();
+                                                        commitEdit();
+                                                    } else if (
+                                                        e.key === "Escape"
+                                                    ) {
+                                                        e.preventDefault();
+                                                        cancelEdit();
+                                                    }
+                                                }}
+                                            />
+                                            <div
+                                                style={{
+                                                    display: "flex",
+                                                    justifyContent:
+                                                        "flex-end",
+                                                    gap: 6,
+                                                }}
                                             >
-                                                <Trash2
-                                                    size={12}
-                                                    strokeWidth={1.5}
-                                                />
-                                            </button>
-                                        )}
-                                    </div>
-                                    <div
-                                        style={{
-                                            fontSize:
-                                                tokens.typography.fontSize.sm,
-                                            color: tokens.colors.textPrimary,
-                                            whiteSpace: "pre-wrap",
-                                            lineHeight: 1.5,
-                                        }}
-                                    >
-                                        {c.body}
-                                    </div>
+                                                <Button
+                                                    size="small"
+                                                    onClick={cancelEdit}
+                                                    icon={
+                                                        <X
+                                                            size={12}
+                                                            strokeWidth={1.75}
+                                                        />
+                                                    }
+                                                >
+                                                    Cancel
+                                                </Button>
+                                                <Button
+                                                    type="primary"
+                                                    size="small"
+                                                    onClick={commitEdit}
+                                                    disabled={
+                                                        !editBody.trim()
+                                                    }
+                                                    loading={
+                                                        editMutation.isPending
+                                                    }
+                                                    icon={
+                                                        <Check
+                                                            size={12}
+                                                            strokeWidth={1.75}
+                                                        />
+                                                    }
+                                                >
+                                                    Save
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div
+                                            style={{
+                                                fontSize:
+                                                    tokens.typography
+                                                        .fontSize.sm,
+                                                color: tokens.colors
+                                                    .textPrimary,
+                                                whiteSpace: "pre-wrap",
+                                                lineHeight: 1.5,
+                                            }}
+                                        >
+                                            <MentionRenderer text={c.body} />
+                                        </div>
+                                    )}
                                     <CommentReactions
                                         comment={c}
                                         currentUserId={user?.id ?? ""}
@@ -260,6 +412,16 @@ export const CommentsSection = ({ taskId }: { taskId: string }) => {
             )}
         </div>
     );
+};
+
+const commentIconBtn: React.CSSProperties = {
+    background: "none",
+    border: 0,
+    padding: 2,
+    cursor: "pointer",
+    color: tokens.colors.textMuted,
+    opacity: 0.5,
+    display: "inline-flex",
 };
 
 const CommentReactions = ({

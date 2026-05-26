@@ -1,4 +1,4 @@
-import { Button, Input, Dropdown } from "antd";
+import { Button, Input, Dropdown, Popover, Select } from "antd";
 import {
     ListFilter,
     ArrowUpDown,
@@ -10,9 +10,24 @@ import {
     EyeOff,
 } from "lucide-react";
 import { useAuthStore } from "../../stores/auth";
+import { users as allUsers } from "../../mocks/users";
 import { tokens } from "../../theme";
+import { PRIORITY_LABELS, type Priority } from "../../types";
 
 export type GroupBy = "status" | "assignee" | "priority" | "task_type" | "none";
+
+export type SortKey =
+    | "default"
+    | "name"
+    | "priority"
+    | "due_date"
+    | "created_at"
+    | "updated_at";
+
+export interface FilterState {
+    priorities: Priority[];
+    assigneeIds: string[];
+}
 
 interface ListViewToolbarProps {
     groupBy: GroupBy;
@@ -23,8 +38,22 @@ interface ListViewToolbarProps {
     onMeModeChange: (v: boolean) => void;
     showClosedTasks: boolean;
     onShowClosedChange: (v: boolean) => void;
-    activeFilterCount: number;
+    sortBy: SortKey;
+    onSortByChange: (s: SortKey) => void;
+    sortDir: "asc" | "desc";
+    onSortDirChange: (d: "asc" | "desc") => void;
+    filters: FilterState;
+    onFiltersChange: (f: FilterState) => void;
 }
+
+const SORT_LABELS: Record<SortKey, string> = {
+    default: "Default order",
+    name: "Name",
+    priority: "Priority",
+    due_date: "Due date",
+    created_at: "Created",
+    updated_at: "Updated",
+};
 
 export const ListViewToolbar = ({
     groupBy,
@@ -35,7 +64,12 @@ export const ListViewToolbar = ({
     onMeModeChange,
     showClosedTasks,
     onShowClosedChange,
-    activeFilterCount,
+    sortBy,
+    onSortByChange,
+    sortDir,
+    onSortDirChange,
+    filters,
+    onFiltersChange,
 }: ListViewToolbarProps) => {
     const user = useAuthStore((s) => s.user);
 
@@ -47,6 +81,84 @@ export const ListViewToolbar = ({
         { type: "divider" as const },
         { key: "none", label: "None (flat list)" },
     ];
+
+    const sortItems = [
+        { key: "default", label: SORT_LABELS.default },
+        { type: "divider" as const },
+        { key: "name", label: SORT_LABELS.name },
+        { key: "priority", label: SORT_LABELS.priority },
+        { key: "due_date", label: SORT_LABELS.due_date },
+        { key: "created_at", label: SORT_LABELS.created_at },
+        { key: "updated_at", label: SORT_LABELS.updated_at },
+    ];
+
+    const activeFilterCount =
+        (meMode ? 1 : 0) +
+        (filters.priorities.length > 0 ? 1 : 0) +
+        (filters.assigneeIds.length > 0 ? 1 : 0);
+
+    const filterContent = (
+        <div
+            style={{
+                width: 260,
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+            }}
+        >
+            <div>
+                <Label>Priority</Label>
+                <Select
+                    mode="multiple"
+                    value={filters.priorities}
+                    onChange={(v) =>
+                        onFiltersChange({ ...filters, priorities: v })
+                    }
+                    placeholder="Any priority"
+                    style={{ width: "100%" }}
+                    size="small"
+                    options={([1, 2, 3, 4, 0] as Priority[]).map((p) => ({
+                        value: p,
+                        label: PRIORITY_LABELS[p],
+                    }))}
+                />
+            </div>
+            <div>
+                <Label>Assignee</Label>
+                <Select
+                    mode="multiple"
+                    value={filters.assigneeIds}
+                    onChange={(v) =>
+                        onFiltersChange({ ...filters, assigneeIds: v })
+                    }
+                    placeholder="Anyone"
+                    style={{ width: "100%" }}
+                    size="small"
+                    showSearch
+                    optionFilterProp="label"
+                    options={allUsers
+                        .filter((u) => u.status === "active")
+                        .map((u) => ({
+                            value: u.id,
+                            label: `${u.firstName} ${u.lastName}`,
+                        }))}
+                />
+            </div>
+            {activeFilterCount > 0 && (
+                <Button
+                    size="small"
+                    type="link"
+                    style={{ alignSelf: "flex-start", padding: 0 }}
+                    onClick={() => {
+                        onFiltersChange({ priorities: [], assigneeIds: [] });
+                        onMeModeChange(false);
+                    }}
+                >
+                    Clear all filters
+                </Button>
+            )}
+        </div>
+    );
 
     return (
         <div
@@ -60,7 +172,6 @@ export const ListViewToolbar = ({
                 flexWrap: "wrap",
             }}
         >
-            {/* Left controls */}
             <Dropdown
                 menu={{
                     items: groupItems,
@@ -77,44 +188,82 @@ export const ListViewToolbar = ({
                 >
                     Group:{" "}
                     <span style={{ fontWeight: 500, marginLeft: 2 }}>
-                        {groupBy === "none" ? "None" : groupItems.find(
-                            (i) => "key" in i && i.key === groupBy,
-                        )?.label ?? "Status"}
+                        {groupBy === "none"
+                            ? "None"
+                            : groupItems.find(
+                                  (i) => "key" in i && i.key === groupBy,
+                              )?.label ?? "Status"}
                     </span>
                 </Button>
             </Dropdown>
 
-            <Button
-                type="text"
-                size="small"
-                icon={<ListFilter size={13} strokeWidth={1.75} />}
+            <Popover
+                content={filterContent}
+                trigger="click"
+                placement="bottomLeft"
+                title="Filters"
             >
-                Filter
-                {activeFilterCount > 0 && (
-                    <span
-                        style={{
-                            background: tokens.colors.primary,
-                            color: "#fff",
-                            fontSize: 10,
-                            fontWeight: 600,
-                            padding: "1px 5px",
-                            borderRadius: 9,
-                            marginLeft: 4,
-                            fontFamily: tokens.typography.fontFamilyMono,
-                        }}
-                    >
-                        {activeFilterCount}
-                    </span>
-                )}
-            </Button>
+                <Button
+                    type={activeFilterCount > 0 ? "primary" : "text"}
+                    size="small"
+                    icon={<ListFilter size={13} strokeWidth={1.75} />}
+                >
+                    Filter
+                    {activeFilterCount > 0 && (
+                        <span
+                            style={{
+                                background:
+                                    activeFilterCount > 0
+                                        ? "rgba(255,255,255,0.25)"
+                                        : tokens.colors.primary,
+                                color: "#fff",
+                                fontSize: 10,
+                                fontWeight: 600,
+                                padding: "1px 5px",
+                                borderRadius: 9,
+                                marginLeft: 4,
+                                fontFamily: tokens.typography.fontFamilyMono,
+                            }}
+                        >
+                            {activeFilterCount}
+                        </span>
+                    )}
+                </Button>
+            </Popover>
 
-            <Button
-                type="text"
-                size="small"
-                icon={<ArrowUpDown size={13} strokeWidth={1.75} />}
+            <Dropdown
+                menu={{
+                    items: sortItems,
+                    onClick: (e) => onSortByChange(e.key as SortKey),
+                    selectable: true,
+                    selectedKeys: [sortBy],
+                }}
+                trigger={["click"]}
             >
-                Sort
-            </Button>
+                <Button
+                    type={sortBy !== "default" ? "primary" : "text"}
+                    size="small"
+                    icon={<ArrowUpDown size={13} strokeWidth={1.75} />}
+                >
+                    Sort:{" "}
+                    <span style={{ fontWeight: 500, marginLeft: 2 }}>
+                        {SORT_LABELS[sortBy]}
+                    </span>
+                </Button>
+            </Dropdown>
+            {sortBy !== "default" && (
+                <Button
+                    type="text"
+                    size="small"
+                    onClick={() =>
+                        onSortDirChange(sortDir === "asc" ? "desc" : "asc")
+                    }
+                    title={sortDir === "asc" ? "Ascending" : "Descending"}
+                    style={{ fontFamily: tokens.typography.fontFamilyMono }}
+                >
+                    {sortDir === "asc" ? "↑" : "↓"}
+                </Button>
+            )}
 
             <Button
                 type="text"
@@ -131,7 +280,6 @@ export const ListViewToolbar = ({
                 {showClosedTasks ? "Hide closed" : "Show closed"}
             </Button>
 
-            {/* Right controls */}
             <div
                 style={{
                     marginLeft: "auto",
@@ -171,8 +319,25 @@ export const ListViewToolbar = ({
                     size="small"
                     icon={<Settings2 size={13} strokeWidth={1.75} />}
                     title="View settings"
+                    aria-label="View settings"
                 />
             </div>
         </div>
     );
 };
+
+const Label = ({ children }: { children: React.ReactNode }) => (
+    <label
+        style={{
+            display: "block",
+            fontSize: 10,
+            fontWeight: 700,
+            color: tokens.colors.textMuted,
+            textTransform: "uppercase",
+            letterSpacing: "0.05em",
+            marginBottom: 4,
+        }}
+    >
+        {children}
+    </label>
+);

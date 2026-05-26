@@ -23,3 +23,5 @@ export * from "./templates";
 export * from "./dashboards";
 export * from "./settings";
 export * from "./notes";
+export * from "./attachments";
+export * from "./task-dependencies";

@@ -12,6 +12,7 @@ import {
 import { mockApi } from "../../lib/mock-api";
 import { listsById } from "../../mocks";
 import { EmptyState } from "../../components/ui/EmptyState";
+import { LoadingState } from "../../components/shared/LoadingState";
 import { tokens } from "../../theme";
 
 const FormsListPage = () => {
@@ -74,7 +75,7 @@ const FormsListPage = () => {
             </div>
 
             {isLoading ? (
-                <div>Loading...</div>
+                <LoadingState />
             ) : forms.length === 0 ? (
                 <EmptyState
                     icon={FileText}

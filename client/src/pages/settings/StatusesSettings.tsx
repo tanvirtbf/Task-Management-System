@@ -9,6 +9,7 @@ import {
 import { lists } from "../../mocks/lists";
 import { spacesById } from "../../mocks/spaces";
 import { statuses as allStatuses } from "../../mocks/statuses";
+import { LoadingState } from "../../components/shared/LoadingState";
 import { tokens } from "../../theme";
 
 const GROUP_LABELS = {
@@ -57,7 +58,7 @@ const StatusesSettings = () => {
             );
     }, []);
 
-    if (!workspace) return <div>Loading...</div>;
+    if (!workspace) return <LoadingState />;
 
     return (
         <div>

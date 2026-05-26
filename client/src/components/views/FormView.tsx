@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { mockApi } from "../../lib/mock-api";
+import { LoadingState } from "../shared/LoadingState";
 import { tokens } from "../../theme";
 
 interface FormViewProps {
@@ -112,7 +113,7 @@ export const FormView = ({ listId }: FormViewProps) => {
                 </div>
 
                 {isLoading ? (
-                    <div>Loading...</div>
+                    <LoadingState />
                 ) : forms.length === 0 ? (
                     <Empty
                         image={

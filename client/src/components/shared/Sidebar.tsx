@@ -1,8 +1,11 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronsLeft, ChevronsRight, Star } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import {
+    ChevronsLeft,
+    ChevronsRight,
+    Star,
     BarChart3,
-    Bell,
     Home,
     Inbox,
     Search,
@@ -12,7 +15,12 @@ import {
     ChevronDown,
     Zap,
     Library,
+    Users,
+    LogOut,
+    Plus,
+    X,
 } from "lucide-react";
+import { Dropdown, Input, App as AntApp } from "antd";
 import { mockApi } from "../../lib/mock-api";
 import { useUiStore } from "../../stores/ui";
 import { useAuthStore } from "../../stores/auth";
@@ -20,10 +28,17 @@ import { tokens } from "../../theme";
 import { Logo } from "../ui/Logo";
 import { SidebarNavItem } from "./SidebarNavItem";
 import { SidebarSpaceTree } from "./SidebarSpaceTree";
+import { SidebarFavorites } from "./SidebarFavorites";
+import { CreateSpaceModal } from "./CreateSpaceModal";
 
 export const Sidebar = () => {
+    const navigate = useNavigate();
+    const { message } = AntApp.useApp();
     const { sidebarCollapsed, toggleSidebar } = useUiStore();
     const user = useAuthStore((s) => s.user);
+    const logout = useAuthStore((s) => s.logout);
+    const [treeSearch, setTreeSearch] = useState("");
+    const [createSpaceOpen, setCreateSpaceOpen] = useState(false);
     const { data: workspace } = useQuery({
         queryKey: ["workspace"],
         queryFn: () => mockApi.workspace.get(),
@@ -33,6 +48,49 @@ export const Sidebar = () => {
         queryFn: () => (user ? mockApi.notifications.unreadCount(user.id) : 0),
         enabled: !!user,
     });
+
+    const workspaceMenuItems = [
+        {
+            key: "settings",
+            icon: <Settings size={13} strokeWidth={1.75} />,
+            label: "Workspace settings",
+            onClick: () => navigate("/settings/workspace"),
+        },
+        {
+            key: "members",
+            icon: <Users size={13} strokeWidth={1.75} />,
+            label: "Members",
+            onClick: () => navigate("/settings/members"),
+        },
+        {
+            key: "newSpace",
+            icon: <Plus size={13} strokeWidth={1.75} />,
+            label: "New space",
+            onClick: () => setCreateSpaceOpen(true),
+        },
+        { type: "divider" as const },
+        {
+            key: "copyLink",
+            label: "Copy workspace link",
+            onClick: () => {
+                navigator.clipboard
+                    .writeText(window.location.origin)
+                    .then(() => message.success("Workspace link copied"))
+                    .catch(() => message.error("Could not copy"));
+            },
+        },
+        { type: "divider" as const },
+        {
+            key: "logout",
+            icon: <LogOut size={13} strokeWidth={1.75} />,
+            label: "Sign out",
+            danger: true,
+            onClick: () => {
+                logout();
+                navigate("/login");
+            },
+        },
+    ];
 
     const width = sidebarCollapsed
         ? tokens.layout.sidebarCollapsedWidth
@@ -72,49 +130,56 @@ export const Sidebar = () => {
                     <Logo size={26} showWordmark={false} />
                 ) : (
                     <>
-                        <button
-                            style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 8,
-                                background: "none",
-                                border: 0,
-                                padding: 4,
-                                borderRadius: tokens.radius.md,
-                                cursor: "pointer",
-                                color: tokens.colors.textPrimary,
-                                fontSize: tokens.typography.fontSize.sm,
-                                fontWeight: 600,
-                                flex: 1,
-                                minWidth: 0,
-                            }}
-                            onMouseEnter={(e) =>
-                                (e.currentTarget.style.background =
-                                    tokens.colors.bgHover)
-                            }
-                            onMouseLeave={(e) =>
-                                (e.currentTarget.style.background =
-                                    "transparent")
-                            }
+                        <Dropdown
+                            menu={{ items: workspaceMenuItems }}
+                            trigger={["click"]}
+                            placement="bottomLeft"
                         >
-                            <Logo size={22} showWordmark={false} />
-                            <span
+                            <button
+                                aria-label="Workspace menu"
                                 style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 8,
+                                    background: "none",
+                                    border: 0,
+                                    padding: 4,
+                                    borderRadius: tokens.radius.md,
+                                    cursor: "pointer",
+                                    color: tokens.colors.textPrimary,
+                                    fontSize: tokens.typography.fontSize.sm,
+                                    fontWeight: 600,
                                     flex: 1,
-                                    textAlign: "left",
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                    whiteSpace: "nowrap",
+                                    minWidth: 0,
                                 }}
+                                onMouseEnter={(e) =>
+                                    (e.currentTarget.style.background =
+                                        tokens.colors.bgHover)
+                                }
+                                onMouseLeave={(e) =>
+                                    (e.currentTarget.style.background =
+                                        "transparent")
+                                }
                             >
-                                {workspace?.name ?? "Workspace"}
-                            </span>
-                            <ChevronDown
-                                size={14}
-                                strokeWidth={2}
-                                color={tokens.colors.textMuted}
-                            />
-                        </button>
+                                <Logo size={22} showWordmark={false} />
+                                <span
+                                    style={{
+                                        flex: 1,
+                                        textAlign: "left",
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        whiteSpace: "nowrap",
+                                    }}
+                                >
+                                    {workspace?.name ?? "Workspace"}
+                                </span>
+                                <ChevronDown
+                                    size={14}
+                                    strokeWidth={2}
+                                    color={tokens.colors.textMuted}
+                                />
+                            </button>
+                        </Dropdown>
                         <button
                             onClick={toggleSidebar}
                             style={{
@@ -127,6 +192,7 @@ export const Sidebar = () => {
                                 display: "flex",
                             }}
                             title="Collapse sidebar"
+                            aria-label="Collapse sidebar"
                         >
                             <ChevronsLeft size={16} strokeWidth={1.75} />
                         </button>
@@ -190,18 +256,55 @@ export const Sidebar = () => {
 
                         {/* Favorites section */}
                         <SectionHeader title="Favorites" icon={<Star size={11} />} />
+                        <SidebarFavorites />
+
+                        {/* Tree search */}
                         <div
                             style={{
-                                padding: "4px 10px 8px",
-                                fontSize: tokens.typography.fontSize.xs,
-                                color: tokens.colors.textMuted,
+                                padding: "8px 4px 4px",
                             }}
                         >
-                            Star a list, doc, or dashboard to pin it here.
+                            <Input
+                                size="small"
+                                placeholder="Filter spaces & lists..."
+                                value={treeSearch}
+                                onChange={(e) => setTreeSearch(e.target.value)}
+                                prefix={
+                                    <Search
+                                        size={12}
+                                        strokeWidth={1.75}
+                                        color={tokens.colors.textMuted}
+                                    />
+                                }
+                                suffix={
+                                    treeSearch ? (
+                                        <button
+                                            onClick={() => setTreeSearch("")}
+                                            aria-label="Clear filter"
+                                            style={{
+                                                background: "transparent",
+                                                border: 0,
+                                                cursor: "pointer",
+                                                padding: 0,
+                                                display: "inline-flex",
+                                                color: tokens.colors.textMuted,
+                                            }}
+                                        >
+                                            <X size={11} strokeWidth={1.75} />
+                                        </button>
+                                    ) : null
+                                }
+                                style={{
+                                    background: tokens.colors.bgSurface,
+                                }}
+                            />
                         </div>
 
                         {/* Spaces tree */}
-                        <SidebarSpaceTree collapsed={false} />
+                        <SidebarSpaceTree
+                            collapsed={false}
+                            searchQuery={treeSearch}
+                        />
                     </>
                 )}
             </div>
@@ -279,6 +382,9 @@ export const Sidebar = () => {
                     </>
                 )}
             </div>
+            {createSpaceOpen && (
+                <CreateSpaceModal onClose={() => setCreateSpaceOpen(false)} />
+            )}
         </aside>
     );
 };

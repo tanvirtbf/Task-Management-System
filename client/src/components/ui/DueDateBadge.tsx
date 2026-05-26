@@ -62,10 +62,10 @@ export const DueDateBadge = ({
     let bg: string;
     if (isOverdue) {
         color = tokens.colors.danger;
-        bg = "#FEF2F2";
+        bg = tokens.colors.dangerSubtle;
     } else if (isToday) {
         color = tokens.colors.warning;
-        bg = "#FFFBEB";
+        bg = tokens.colors.warningSubtle;
     } else {
         color = tokens.colors.textSecondary;
         bg = "transparent";

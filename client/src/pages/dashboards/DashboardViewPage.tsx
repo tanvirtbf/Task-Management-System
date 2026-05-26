@@ -40,6 +40,7 @@ import { WidgetCard } from "../../components/widgets/WidgetCard";
 import { WidgetRenderer } from "../../components/widgets/WidgetRenderer";
 import { WidgetPicker } from "../../components/widgets/WidgetPicker";
 import { WidgetEditor } from "../../components/widgets/WidgetEditor";
+import { LoadingState } from "../../components/shared/LoadingState";
 import { tokens } from "../../theme";
 import type { Dashboard, DashboardWidget } from "../../types/dashboard";
 
@@ -119,7 +120,7 @@ const DashboardViewPage = () => {
     });
 
     if (isLoading) {
-        return <div style={{ padding: 24 }}>Loading...</div>;
+        return <LoadingState />;
     }
     if (!dashboard) {
         return (

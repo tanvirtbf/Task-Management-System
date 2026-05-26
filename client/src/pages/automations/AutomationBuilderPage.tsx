@@ -35,6 +35,7 @@ import type {
 import type { Priority } from "../../types";
 import { PRIORITY_LABELS } from "../../types";
 import { AutomationPreview } from "../../components/automation/AutomationPreview";
+import { LoadingState } from "../../components/shared/LoadingState";
 import { tokens } from "../../theme";
 
 const TRIGGER_LABELS: Record<TriggerType, string> = {
@@ -140,7 +141,7 @@ const AutomationBuilderPage = () => {
     });
 
     if (!isNew && isLoading) {
-        return <div style={{ padding: 24 }}>Loading...</div>;
+        return <LoadingState />;
     }
 
     const list = listsById.get(draft.scopeId);

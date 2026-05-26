@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { mockApi } from "../../lib/mock-api";
 import { DynamicIcon } from "../../components/shared/DynamicIcon";
+import { LoadingState } from "../../components/shared/LoadingState";
 import { tokens } from "../../theme";
 import type { Dashboard } from "../../types/dashboard";
 
@@ -143,7 +144,7 @@ const DashboardsListPage = () => {
             </div>
 
             {isLoading ? (
-                <div>Loading...</div>
+                <LoadingState />
             ) : filtered.length === 0 ? (
                 <Empty
                     image={

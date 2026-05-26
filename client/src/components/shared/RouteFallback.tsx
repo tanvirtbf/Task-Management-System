@@ -1,24 +1,6 @@
-import { Spin } from "antd";
-import { tokens } from "../../theme";
+import { LoadingState } from "./LoadingState";
 
 /**
- * Suspense fallback for lazy-loaded routes. Subtle, full-area, theme-aware.
+ * Suspense fallback for lazy-loaded routes. Theme-aware, full-area.
  */
-export const RouteFallback = () => (
-    <div
-        style={{
-            minHeight: "60vh",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: tokens.colors.textMuted,
-            gap: 12,
-            flexDirection: "column",
-        }}
-    >
-        <Spin size="large" />
-        <span style={{ fontSize: tokens.typography.fontSize.sm }}>
-            Loading...
-        </span>
-    </div>
-);
+export const RouteFallback = () => <LoadingState minHeight="60vh" />;

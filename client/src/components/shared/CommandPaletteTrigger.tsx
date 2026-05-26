@@ -11,6 +11,8 @@ export const CommandPaletteTrigger = () => {
     return (
         <button
             onClick={() => setOpen(true)}
+            aria-label="Open command palette (Cmd K)"
+            title="Search or jump to (Cmd K)"
             style={{
                 display: "flex",
                 alignItems: "center",

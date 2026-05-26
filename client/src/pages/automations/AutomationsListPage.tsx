@@ -21,6 +21,7 @@ import {
 import { mockApi } from "../../lib/mock-api";
 import { listsById } from "../../mocks/lists";
 import { AutomationPreview } from "../../components/automation/AutomationPreview";
+import { LoadingState } from "../../components/shared/LoadingState";
 import { tokens } from "../../theme";
 
 const formatLastRun = (iso: string | null): string => {
@@ -145,7 +146,7 @@ const AutomationsListPage = () => {
             </div>
 
             {isLoading ? (
-                <div>Loading...</div>
+                <LoadingState />
             ) : automations.length === 0 ? (
                 <Empty
                     image={

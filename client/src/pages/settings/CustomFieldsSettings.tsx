@@ -42,6 +42,7 @@ import type {
     CustomFieldType,
 } from "../../types/custom-fields";
 import { tokens } from "../../theme";
+import { LoadingState } from "../../components/shared/LoadingState";
 
 const TYPE_ICONS: Record<CustomFieldType, React.ReactNode> = {
     text: <Type size={14} strokeWidth={1.75} />,
@@ -198,7 +199,7 @@ const CustomFieldsSettings = () => {
             </div>
 
             {isLoading ? (
-                <div>Loading...</div>
+                <LoadingState />
             ) : (
                 <div
                     style={{

@@ -1,5 +1,7 @@
-import { Dropdown, Popconfirm } from "antd";
+import { useState } from "react";
+import { Dropdown, Popconfirm, DatePicker, Popover } from "antd";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import dayjs from "dayjs";
 import {
     ChevronDown,
     Flag,
@@ -30,9 +32,27 @@ export const BulkActionToolbar = ({
 }: BulkActionToolbarProps) => {
     const bulkUpdate = useBulkUpdateTasks(listId);
     const qc = useQueryClient();
+    const [datePickerOpen, setDatePickerOpen] = useState(false);
+
     const { data: statuses = [] } = useQuery({
         queryKey: ["statuses", listId],
         queryFn: () => mockApi.statuses.byList(listId),
+    });
+    const { data: list } = useQuery({
+        queryKey: ["list", listId],
+        queryFn: () => mockApi.lists.getById(listId),
+    });
+    const { data: users = [] } = useQuery({
+        queryKey: ["users"],
+        queryFn: () => mockApi.users.list(),
+    });
+    const { data: spaceTags = [] } = useQuery({
+        queryKey: ["tags", list?.spaceId],
+        queryFn: () =>
+            list?.spaceId
+                ? mockApi.tags.bySpace(list.spaceId)
+                : Promise.resolve([]),
+        enabled: !!list?.spaceId,
     });
 
     const handleBulkStatus = (statusId: string) => {
@@ -41,6 +61,21 @@ export const BulkActionToolbar = ({
     };
     const handleBulkPriority = (priority: Priority) => {
         bulkUpdate.mutate({ ids: selectedIds, patch: { priority } });
+        onClear();
+    };
+    const handleBulkAssignee = (userId: string) => {
+        bulkUpdate.mutate({
+            ids: selectedIds,
+            patch: { assignees: [userId] },
+        });
+        onClear();
+    };
+    const handleBulkTag = (tagId: string) => {
+        bulkUpdate.mutate({ ids: selectedIds, patch: { tags: [tagId] } });
+        onClear();
+    };
+    const handleBulkDueDate = (iso: string | null) => {
+        bulkUpdate.mutate({ ids: selectedIds, patch: { dueDate: iso } });
         onClear();
     };
 
@@ -56,13 +91,67 @@ export const BulkActionToolbar = ({
         items: ([1, 2, 3, 4, 0] as Priority[]).map((p) => ({
             key: String(p),
             label: (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <span
+                    style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                    }}
+                >
                     <PriorityFlag priority={p} size={12} />
                     {PRIORITY_LABELS[p]}
                 </span>
             ),
             onClick: () => handleBulkPriority(p),
         })),
+    };
+
+    const assigneeMenu = {
+        items:
+            users.length > 0
+                ? users
+                      .filter((u) => u.status === "active")
+                      .map((u) => ({
+                          key: u.id,
+                          label: `${u.firstName} ${u.lastName}`,
+                          onClick: () => handleBulkAssignee(u.id),
+                      }))
+                : [{ key: "none", label: "No active users", disabled: true }],
+    };
+
+    const tagMenu = {
+        items:
+            spaceTags.length > 0
+                ? spaceTags.map((t) => ({
+                      key: t.id,
+                      label: (
+                          <span
+                              style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 6,
+                              }}
+                          >
+                              <span
+                                  style={{
+                                      width: 8,
+                                      height: 8,
+                                      borderRadius: "50%",
+                                      background: t.color,
+                                  }}
+                              />
+                              {t.name}
+                          </span>
+                      ),
+                      onClick: () => handleBulkTag(t.id),
+                  }))
+                : [
+                      {
+                          key: "none",
+                          label: "No tags in this space",
+                          disabled: true,
+                      },
+                  ],
     };
 
     return (
@@ -96,61 +185,104 @@ export const BulkActionToolbar = ({
                 {selectedIds.length} selected
             </span>
 
-            <div
-                style={{
-                    width: 1,
-                    height: 20,
-                    background: "rgba(255,255,255,0.2)",
-                }}
-            />
+            <Divider />
 
             <Dropdown menu={statusMenu} trigger={["click"]} placement="top">
-                <button
-                    style={btnStyle}
-                    onMouseEnter={(e) =>
-                        (e.currentTarget.style.background = "rgba(255,255,255,0.1)")
-                    }
-                    onMouseLeave={(e) =>
-                        (e.currentTarget.style.background = "transparent")
-                    }
-                >
+                <button style={btnStyle} onMouseEnter={hover} onMouseLeave={unhover}>
                     Status
                     <ChevronDown size={12} strokeWidth={2} />
                 </button>
             </Dropdown>
 
             <Dropdown menu={priorityMenu} trigger={["click"]} placement="top">
-                <button
-                    style={btnStyle}
-                    onMouseEnter={(e) =>
-                        (e.currentTarget.style.background = "rgba(255,255,255,0.1)")
-                    }
-                    onMouseLeave={(e) =>
-                        (e.currentTarget.style.background = "transparent")
-                    }
-                >
+                <button style={btnStyle} onMouseEnter={hover} onMouseLeave={unhover}>
                     <Flag size={12} strokeWidth={1.75} /> Priority
                     <ChevronDown size={12} strokeWidth={2} />
                 </button>
             </Dropdown>
 
-            <button style={btnStyle} disabled title="Coming in Phase 7">
-                <UserCircle size={12} strokeWidth={1.75} /> Assign
-            </button>
-            <button style={btnStyle} disabled title="Coming in Phase 7">
-                <TagIcon size={12} strokeWidth={1.75} /> Tag
-            </button>
-            <button style={btnStyle} disabled title="Coming in Phase 7">
-                <Calendar size={12} strokeWidth={1.75} /> Date
-            </button>
+            <Dropdown menu={assigneeMenu} trigger={["click"]} placement="top">
+                <button style={btnStyle} onMouseEnter={hover} onMouseLeave={unhover}>
+                    <UserCircle size={12} strokeWidth={1.75} /> Assign
+                    <ChevronDown size={12} strokeWidth={2} />
+                </button>
+            </Dropdown>
 
-            <div
-                style={{
-                    width: 1,
-                    height: 20,
-                    background: "rgba(255,255,255,0.2)",
-                }}
-            />
+            <Dropdown menu={tagMenu} trigger={["click"]} placement="top">
+                <button style={btnStyle} onMouseEnter={hover} onMouseLeave={unhover}>
+                    <TagIcon size={12} strokeWidth={1.75} /> Tag
+                    <ChevronDown size={12} strokeWidth={2} />
+                </button>
+            </Dropdown>
+
+            <Popover
+                open={datePickerOpen}
+                onOpenChange={setDatePickerOpen}
+                trigger="click"
+                placement="top"
+                content={
+                    <div
+                        style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 8,
+                            width: 240,
+                        }}
+                    >
+                        <DatePicker
+                            open
+                            value={null}
+                            onChange={(d) => {
+                                handleBulkDueDate(d ? d.toISOString() : null);
+                                setDatePickerOpen(false);
+                            }}
+                            popupStyle={{ position: "static" }}
+                            style={{ width: "100%" }}
+                        />
+                        <button
+                            onClick={() => {
+                                handleBulkDueDate(null);
+                                setDatePickerOpen(false);
+                            }}
+                            style={{
+                                background: "transparent",
+                                border: `1px solid ${tokens.colors.border}`,
+                                padding: "4px 10px",
+                                borderRadius: tokens.radius.sm,
+                                fontSize: 12,
+                                cursor: "pointer",
+                                color: tokens.colors.textSecondary,
+                            }}
+                        >
+                            Clear due date
+                        </button>
+                        <button
+                            onClick={() => {
+                                handleBulkDueDate(dayjs().toISOString());
+                                setDatePickerOpen(false);
+                            }}
+                            style={{
+                                background: "transparent",
+                                border: `1px solid ${tokens.colors.border}`,
+                                padding: "4px 10px",
+                                borderRadius: tokens.radius.sm,
+                                fontSize: 12,
+                                cursor: "pointer",
+                                color: tokens.colors.textSecondary,
+                            }}
+                        >
+                            Set to today
+                        </button>
+                    </div>
+                }
+            >
+                <button style={btnStyle} onMouseEnter={hover} onMouseLeave={unhover}>
+                    <Calendar size={12} strokeWidth={1.75} /> Date
+                    <ChevronDown size={12} strokeWidth={2} />
+                </button>
+            </Popover>
+
+            <Divider />
 
             <Popconfirm
                 title="Archive selected tasks?"
@@ -164,15 +296,7 @@ export const BulkActionToolbar = ({
                     onClear();
                 }}
             >
-                <button
-                    style={btnStyle}
-                    onMouseEnter={(e) =>
-                        (e.currentTarget.style.background = "rgba(255,255,255,0.1)")
-                    }
-                    onMouseLeave={(e) =>
-                        (e.currentTarget.style.background = "transparent")
-                    }
-                >
+                <button style={btnStyle} onMouseEnter={hover} onMouseLeave={unhover}>
                     <Archive size={12} strokeWidth={1.75} /> Archive
                 </button>
             </Popconfirm>
@@ -193,7 +317,8 @@ export const BulkActionToolbar = ({
                 <button
                     style={{ ...btnStyle, color: "#FCA5A5" }}
                     onMouseEnter={(e) =>
-                        (e.currentTarget.style.background = "rgba(239,68,68,0.15)")
+                        (e.currentTarget.style.background =
+                            "rgba(239,68,68,0.15)")
                     }
                     onMouseLeave={(e) =>
                         (e.currentTarget.style.background = "transparent")
@@ -203,30 +328,38 @@ export const BulkActionToolbar = ({
                 </button>
             </Popconfirm>
 
-            <div
-                style={{
-                    width: 1,
-                    height: 20,
-                    background: "rgba(255,255,255,0.2)",
-                }}
-            />
+            <Divider />
 
             <button
                 onClick={onClear}
                 style={{ ...btnStyle, opacity: 0.7 }}
                 title="Clear selection (Esc)"
-                onMouseEnter={(e) =>
-                    (e.currentTarget.style.opacity = "1")
-                }
-                onMouseLeave={(e) =>
-                    (e.currentTarget.style.opacity = "0.7")
-                }
+                aria-label="Clear selection"
+                onMouseEnter={(e) => (e.currentTarget.style.opacity = "1")}
+                onMouseLeave={(e) => (e.currentTarget.style.opacity = "0.7")}
             >
                 <X size={14} strokeWidth={1.75} />
             </button>
         </div>
     );
 };
+
+const hover = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.currentTarget.style.background = "rgba(255,255,255,0.1)";
+};
+const unhover = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.currentTarget.style.background = "transparent";
+};
+
+const Divider = () => (
+    <div
+        style={{
+            width: 1,
+            height: 20,
+            background: "rgba(255,255,255,0.2)",
+        }}
+    />
+);
 
 const btnStyle: React.CSSProperties = {
     display: "inline-flex",

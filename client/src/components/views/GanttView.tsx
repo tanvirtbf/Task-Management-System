@@ -63,6 +63,11 @@ export const GanttView = ({ listId }: GanttViewProps) => {
         queryFn: () => mockApi.tasks.listByList(listId),
     });
 
+    const { data: dependencies = [] } = useQuery({
+        queryKey: ["task-deps-by-list", listId],
+        queryFn: () => mockApi.taskDependencies.byList(listId),
+    });
+
     // Filter
     const filtered = useMemo(() => {
         let r = tasks;
@@ -100,6 +105,72 @@ export const GanttView = ({ listId }: GanttViewProps) => {
             return new Date(aDate).getTime() - new Date(bDate).getTime();
         });
     }, [dated]);
+
+    // Compute the actual critical path through the dependency DAG.
+    // Edges considered: "blocks" + "blocked_by" (both contribute to scheduling).
+    const criticalPathIds = useMemo(() => {
+        if (!showCriticalPath) return new Set<string>();
+        const taskMap = new Map(sortedTasks.map((t) => [t.id, t]));
+        const blocksAdj = new Map<string, string[]>();
+        dependencies.forEach((d) => {
+            if (d.type === "blocks") {
+                const arr = blocksAdj.get(d.taskId) ?? [];
+                arr.push(d.relatedTaskId);
+                blocksAdj.set(d.taskId, arr);
+            } else if (d.type === "blocked_by") {
+                const arr = blocksAdj.get(d.relatedTaskId) ?? [];
+                arr.push(d.taskId);
+                blocksAdj.set(d.relatedTaskId, arr);
+            }
+        });
+        const duration = (id: string): number => {
+            const t = taskMap.get(id);
+            if (!t || !t.startDate || !t.dueDate) return 1;
+            return Math.max(
+                1,
+                daysBetween(
+                    new Date(t.startDate),
+                    new Date(t.dueDate),
+                ),
+            );
+        };
+        // Memoized longest path from each node
+        const memo = new Map<string, { length: number; next: string | null }>();
+        const longest = (id: string): { length: number; next: string | null } => {
+            if (memo.has(id)) return memo.get(id)!;
+            const children = blocksAdj.get(id) ?? [];
+            let best: { length: number; next: string | null } = {
+                length: duration(id),
+                next: null,
+            };
+            for (const c of children) {
+                if (!taskMap.has(c)) continue;
+                const childPath = longest(c);
+                const total = duration(id) + childPath.length;
+                if (total > best.length) {
+                    best = { length: total, next: c };
+                }
+            }
+            memo.set(id, best);
+            return best;
+        };
+        let startId: string | null = null;
+        let max = 0;
+        sortedTasks.forEach((t) => {
+            const l = longest(t.id);
+            if (l.length > max) {
+                max = l.length;
+                startId = t.id;
+            }
+        });
+        const path = new Set<string>();
+        let cur: string | null = startId;
+        while (cur) {
+            path.add(cur);
+            cur = memo.get(cur)?.next ?? null;
+        }
+        return path;
+    }, [showCriticalPath, sortedTasks, dependencies]);
 
     // Auto-compute range
     const range = useMemo(() => {
@@ -297,6 +368,17 @@ export const GanttView = ({ listId }: GanttViewProps) => {
                                 height={sortedTasks.length * ROW_HEIGHT}
                             />
 
+                            {/* Dependency arrows overlay */}
+                            <DependencyArrows
+                                tasks={sortedTasks}
+                                dependencies={dependencies}
+                                rangeStart={range.start}
+                                pxPerDay={pxPerDay}
+                                rowHeight={ROW_HEIGHT}
+                                timelineWidth={timelineWidth}
+                                criticalPathIds={criticalPathIds}
+                            />
+
                             {/* Bars */}
                             {sortedTasks.map((task, idx) => (
                                 <GanttRow
@@ -309,7 +391,7 @@ export const GanttView = ({ listId }: GanttViewProps) => {
                                     status={statusesById.get(task.statusId)}
                                     isCritical={
                                         showCriticalPath &&
-                                        task.priority === 1
+                                        criticalPathIds.has(task.id)
                                     }
                                     showMilestone={showMilestones}
                                 />
@@ -514,16 +596,18 @@ const GanttRowLabel = ({
                 gap: 6,
                 borderBottom: `1px solid ${tokens.colors.borderSubtle}`,
                 cursor: "pointer",
-                background: isCritical ? "#FEF2F2" : "transparent",
+                background: isCritical
+                    ? tokens.colors.dangerSubtle
+                    : "transparent",
             }}
             onMouseEnter={(e) =>
                 (e.currentTarget.style.background = isCritical
-                    ? "#FEE2E2"
+                    ? tokens.colors.dangerSubtle
                     : tokens.colors.bgHover)
             }
             onMouseLeave={(e) =>
                 (e.currentTarget.style.background = isCritical
-                    ? "#FEF2F2"
+                    ? tokens.colors.dangerSubtle
                     : "transparent")
             }
         >
@@ -759,5 +843,161 @@ const MilestoneMarker = ({
         >
             <Diamond size={16} strokeWidth={2} fill={tokens.colors.warning} />
         </div>
+    );
+};
+
+// ─────────────────────────────────────────────────────────
+// Dependency arrows overlay
+// ─────────────────────────────────────────────────────────
+const DependencyArrows = ({
+    tasks,
+    dependencies,
+    rangeStart,
+    pxPerDay,
+    rowHeight,
+    timelineWidth,
+    criticalPathIds,
+}: {
+    tasks: Task[];
+    dependencies: Array<{
+        id: string;
+        taskId: string;
+        relatedTaskId: string;
+        type: string;
+    }>;
+    rangeStart: Date;
+    pxPerDay: number;
+    rowHeight: number;
+    timelineWidth: number;
+    criticalPathIds: Set<string>;
+}) => {
+    const idxById = useMemo(() => {
+        const m = new Map<string, number>();
+        tasks.forEach((t, i) => m.set(t.id, i));
+        return m;
+    }, [tasks]);
+
+    const taskById = useMemo(() => {
+        const m = new Map(tasks.map((t) => [t.id, t]));
+        return m;
+    }, [tasks]);
+
+    /** Get x-coordinate (left edge in px) of bar start. */
+    const barStartX = (task: Task) => {
+        const d = task.startDate
+            ? new Date(task.startDate)
+            : new Date(task.dueDate!);
+        return daysBetween(rangeStart, d) * pxPerDay;
+    };
+    const barEndX = (task: Task) => {
+        const start = task.startDate
+            ? new Date(task.startDate)
+            : new Date(task.dueDate!);
+        const end = task.dueDate
+            ? new Date(task.dueDate)
+            : addDays(start, 1);
+        const duration = Math.max(1, daysBetween(start, end) + 1);
+        return barStartX(task) + duration * pxPerDay;
+    };
+
+    /** Normalize each dep to predecessor → successor (predecessor must finish before successor starts). */
+    const edges = useMemo(() => {
+        const out: Array<{
+            from: string;
+            to: string;
+            isCritical: boolean;
+        }> = [];
+        dependencies.forEach((d) => {
+            let from = "";
+            let to = "";
+            if (d.type === "blocks") {
+                from = d.taskId;
+                to = d.relatedTaskId;
+            } else if (d.type === "blocked_by") {
+                from = d.relatedTaskId;
+                to = d.taskId;
+            } else {
+                // skip linked/waiting_on — only "blocks" semantics drive arrows
+                return;
+            }
+            if (!taskById.has(from) || !taskById.has(to)) return;
+            out.push({
+                from,
+                to,
+                isCritical:
+                    criticalPathIds.has(from) && criticalPathIds.has(to),
+            });
+        });
+        return out;
+    }, [dependencies, taskById, criticalPathIds]);
+
+    if (edges.length === 0) return null;
+
+    const totalHeight = tasks.length * rowHeight;
+
+    return (
+        <svg
+            width={timelineWidth}
+            height={totalHeight}
+            style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                pointerEvents: "none",
+                zIndex: 2,
+            }}
+        >
+            <defs>
+                <marker
+                    id="gantt-arrow"
+                    viewBox="0 0 10 10"
+                    refX="9"
+                    refY="5"
+                    markerWidth="6"
+                    markerHeight="6"
+                    orient="auto-start-reverse"
+                >
+                    <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748B" />
+                </marker>
+                <marker
+                    id="gantt-arrow-critical"
+                    viewBox="0 0 10 10"
+                    refX="9"
+                    refY="5"
+                    markerWidth="6"
+                    markerHeight="6"
+                    orient="auto-start-reverse"
+                >
+                    <path d="M 0 0 L 10 5 L 0 10 z" fill="#E11D48" />
+                </marker>
+            </defs>
+            {edges.map(({ from, to, isCritical }) => {
+                const fromTask = taskById.get(from)!;
+                const toTask = taskById.get(to)!;
+                const fromIdx = idxById.get(from)!;
+                const toIdx = idxById.get(to)!;
+
+                const x1 = barEndX(fromTask);
+                const y1 = fromIdx * rowHeight + rowHeight / 2;
+                const x2 = barStartX(toTask);
+                const y2 = toIdx * rowHeight + rowHeight / 2;
+
+                // Right-angle elbow: from x1,y1 → right-step → down to y2 → into x2
+                const elbow = Math.max(x1 + 8, x2 - 8);
+                const path = `M ${x1} ${y1} L ${elbow} ${y1} L ${elbow} ${y2} L ${x2 - 4} ${y2}`;
+
+                return (
+                    <path
+                        key={`${from}-${to}`}
+                        d={path}
+                        fill="none"
+                        stroke={isCritical ? "#E11D48" : "#64748B"}
+                        strokeWidth={isCritical ? 2 : 1.5}
+                        opacity={0.85}
+                        markerEnd={`url(#${isCritical ? "gantt-arrow-critical" : "gantt-arrow"})`}
+                    />
+                );
+            })}
+        </svg>
     );
 };

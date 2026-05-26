@@ -45,13 +45,28 @@ interface TimelineViewProps {
 
 const LEFT_WIDTH = 240;
 const ROW_HEIGHT = 36;
-const PX_PER_DAY = 18; // fixed for Timeline (week-level zoom)
+
+type ZoomLevel = "day" | "week" | "month";
+const ZOOM_PX_PER_DAY: Record<ZoomLevel, number> = {
+    day: 40,
+    week: 18,
+    month: 6,
+};
+/** How many days each grid column should span at a given zoom level. */
+const ZOOM_COL_DAYS: Record<ZoomLevel, number> = {
+    day: 1,
+    week: 7,
+    month: 30,
+};
 
 export const TimelineView = ({ listId }: TimelineViewProps) => {
     const user = useAuthStore((s) => s.user);
     const [subgroupBy, setSubgroupBy] = useState<SubgroupBy>("assignee");
     const [search, setSearch] = useState("");
     const [meMode, setMeMode] = useState(false);
+    const [zoom, setZoom] = useState<ZoomLevel>("week");
+    const pxPerDay = ZOOM_PX_PER_DAY[zoom];
+    const colDays = ZOOM_COL_DAYS[zoom];
     const [viewStartDate, setViewStartDate] = useState(() =>
         startOfMonth(new Date()),
     );
@@ -117,7 +132,7 @@ export const TimelineView = ({ listId }: TimelineViewProps) => {
         const days = 90;
         return { start, end: addDays(start, days), days };
     }, [viewStartDate]);
-    const timelineWidth = range.days * PX_PER_DAY;
+    const timelineWidth = range.days * pxPerDay;
 
     const sensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -135,7 +150,7 @@ export const TimelineView = ({ listId }: TimelineViewProps) => {
             const taskId = activeId.replace(/^tl-bar:/, "");
             const task = tasks.find((t) => t.id === taskId);
             if (!task) return;
-            const dayShift = Math.round(event.delta.x / PX_PER_DAY);
+            const dayShift = Math.round(event.delta.x / pxPerDay);
             if (dayShift === 0) return;
             const patch: Partial<Task> = {};
             if (task.startDate)
@@ -261,6 +276,49 @@ export const TimelineView = ({ listId }: TimelineViewProps) => {
                     </Button>
                 </Dropdown>
 
+                {/* Zoom toggle */}
+                <div
+                    style={{
+                        display: "inline-flex",
+                        background: tokens.colors.bgMuted,
+                        borderRadius: tokens.radius.sm,
+                        padding: 2,
+                        gap: 2,
+                    }}
+                    role="group"
+                    aria-label="Zoom"
+                >
+                    {(["day", "week", "month"] as ZoomLevel[]).map((z) => (
+                        <button
+                            key={z}
+                            onClick={() => setZoom(z)}
+                            style={{
+                                padding: "3px 10px",
+                                fontSize: 11,
+                                fontWeight: zoom === z ? 700 : 500,
+                                background:
+                                    zoom === z
+                                        ? tokens.colors.bgSurface
+                                        : "transparent",
+                                color:
+                                    zoom === z
+                                        ? tokens.colors.textPrimary
+                                        : tokens.colors.textMuted,
+                                border: 0,
+                                borderRadius: tokens.radius.sm,
+                                cursor: "pointer",
+                                textTransform: "capitalize",
+                                fontFamily: tokens.typography.fontFamilyMono,
+                                boxShadow:
+                                    zoom === z ? tokens.shadows.sm : "none",
+                            }}
+                            aria-pressed={zoom === z}
+                        >
+                            {z}
+                        </button>
+                    ))}
+                </div>
+
                 <div
                     style={{
                         marginLeft: "auto",
@@ -373,16 +431,16 @@ export const TimelineView = ({ listId }: TimelineViewProps) => {
                             }}
                         >
                             {Array.from({
-                                length: Math.ceil(range.days / 7),
+                                length: Math.ceil(range.days / colDays),
                             }).map((_, idx) => {
-                                const day = addDays(range.start, idx * 7);
+                                const day = addDays(range.start, idx * colDays);
                                 return (
                                     <div
                                         key={idx}
                                         style={{
                                             position: "absolute",
-                                            left: idx * 7 * PX_PER_DAY,
-                                            width: 7 * PX_PER_DAY,
+                                            left: idx * colDays * pxPerDay,
+                                            width: colDays * pxPerDay,
                                             height: 36,
                                             display: "flex",
                                             alignItems: "center",
@@ -395,7 +453,10 @@ export const TimelineView = ({ listId }: TimelineViewProps) => {
                                     >
                                         {day.toLocaleDateString("en-US", {
                                             month: "short",
-                                            day: "numeric",
+                                            day:
+                                                zoom === "month"
+                                                    ? undefined
+                                                    : "numeric",
                                         })}
                                     </div>
                                 );
@@ -408,6 +469,7 @@ export const TimelineView = ({ listId }: TimelineViewProps) => {
                             height={
                                 Array.from(swimlanes.keys()).length * ROW_HEIGHT
                             }
+                            pxPerDay={pxPerDay}
                         />
 
                         {/* Swimlane rows */}
@@ -420,6 +482,7 @@ export const TimelineView = ({ listId }: TimelineViewProps) => {
                                         tasks={laneTasks}
                                         rangeStart={range.start}
                                         timelineWidth={timelineWidth}
+                                        pxPerDay={pxPerDay}
                                     />
                                 ),
                             )}
@@ -530,11 +593,13 @@ const SwimlaneRow = ({
     tasks,
     rangeStart,
     timelineWidth,
+    pxPerDay,
 }: {
     laneKey: string;
     tasks: Task[];
     rangeStart: Date;
     timelineWidth: number;
+    pxPerDay: number;
 }) => {
     const { setNodeRef, isOver } = useDroppable({
         id: `lane:${laneKey}`,
@@ -559,6 +624,7 @@ const SwimlaneRow = ({
                     key={task.id}
                     task={task}
                     rangeStart={rangeStart}
+                    pxPerDay={pxPerDay}
                 />
             ))}
         </div>
@@ -569,9 +635,11 @@ const SwimlaneRow = ({
 const TimelineBar = ({
     task,
     rangeStart,
+    pxPerDay,
 }: {
     task: Task;
     rangeStart: Date;
+    pxPerDay: number;
 }) => {
     const [, setSearchParams] = useSearchParams();
     const status = statusesById.get(task.statusId);
@@ -584,9 +652,9 @@ const TimelineBar = ({
     const end = task.dueDate
         ? new Date(task.dueDate)
         : addDays(start, 1);
-    const left = daysBetween(rangeStart, start) * PX_PER_DAY;
+    const left = daysBetween(rangeStart, start) * pxPerDay;
     const duration = Math.max(1, daysBetween(start, end) + 1);
-    const width = Math.max(20, duration * PX_PER_DAY - 2);
+    const width = Math.max(20, duration * pxPerDay - 2);
 
     const color = status?.color ?? tokens.colors.textMuted;
 
@@ -646,12 +714,14 @@ const TimelineBar = ({
 const TodayLine = ({
     rangeStart,
     height,
+    pxPerDay,
 }: {
     rangeStart: Date;
     height: number;
+    pxPerDay: number;
 }) => {
     const today = startOfDay(new Date());
-    const left = daysBetween(rangeStart, today) * PX_PER_DAY;
+    const left = daysBetween(rangeStart, today) * pxPerDay;
     if (left < 0) return null;
     return (
         <div

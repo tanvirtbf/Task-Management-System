@@ -16,7 +16,7 @@ export const ProductPreview = () => (
         {/* Faux app window */}
         <div
             style={{
-                background: "#FFFFFF",
+                background: tokens.colors.bgSurface,
                 borderRadius: tokens.radius.lg,
                 boxShadow:
                     "0 24px 48px -12px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.10)",

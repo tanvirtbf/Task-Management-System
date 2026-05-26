@@ -16,6 +16,7 @@ import {
     SettingsSection,
     SettingsFieldRow,
 } from "../../components/settings/SettingsHeader";
+import { LoadingState } from "../../components/shared/LoadingState";
 import { tokens } from "../../theme";
 import type { Workspace } from "../../types";
 
@@ -68,7 +69,7 @@ const WorkspaceSettings = () => {
         },
     });
 
-    if (!draft || !ws) return <div>Loading...</div>;
+    if (!draft || !ws) return <LoadingState />;
 
     const isDirty = JSON.stringify(draft) !== JSON.stringify(ws);
 

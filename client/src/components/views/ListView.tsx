@@ -21,12 +21,18 @@ import {
     useUpdateTask,
 } from "../../hooks/useTaskMutations";
 import { EmptyState } from "../ui/EmptyState";
-import { ListViewToolbar, type GroupBy } from "./ListViewToolbar";
+import {
+    ListViewToolbar,
+    type GroupBy,
+    type SortKey,
+    type FilterState,
+} from "./ListViewToolbar";
 import { ListViewGroup } from "./ListViewGroup";
 import { ListViewRow } from "./ListViewRow";
 import { BulkActionToolbar } from "../task/BulkActionToolbar";
+import { LoadingState } from "../shared/LoadingState";
 import { tokens } from "../../theme";
-import type { Task } from "../../types";
+import type { Priority, Task } from "../../types";
 
 interface ListViewProps {
     listId: string;
@@ -38,6 +44,12 @@ export const ListView = ({ listId }: ListViewProps) => {
     const [search, setSearch] = useState("");
     const [meMode, setMeMode] = useState(false);
     const [showClosedTasks, setShowClosedTasks] = useState(false);
+    const [sortBy, setSortBy] = useState<SortKey>("default");
+    const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+    const [filters, setFilters] = useState<FilterState>({
+        priorities: [],
+        assigneeIds: [],
+    });
     const [activeDragTask, setActiveDragTask] = useState<Task | null>(null);
 
     const { data: tasks = [], isLoading } = useQuery({
@@ -50,7 +62,7 @@ export const ListView = ({ listId }: ListViewProps) => {
     const archive = useArchiveTask(listId);
     const del = useDeleteTask(listId);
 
-    // Apply filters: search, me-mode, closed
+    // Apply filters: search, me-mode, closed, priorities, assignees + sort
     const filteredTasks = useMemo(() => {
         let result = tasks;
         if (!showClosedTasks) {
@@ -62,6 +74,16 @@ export const ListView = ({ listId }: ListViewProps) => {
         if (meMode && user) {
             result = result.filter((t) => t.assignees.includes(user.id));
         }
+        if (filters.priorities.length > 0) {
+            result = result.filter((t) =>
+                filters.priorities.includes(t.priority),
+            );
+        }
+        if (filters.assigneeIds.length > 0) {
+            result = result.filter((t) =>
+                t.assignees.some((id) => filters.assigneeIds.includes(id)),
+            );
+        }
         if (search.trim()) {
             const q = search.toLowerCase();
             result = result.filter(
@@ -70,8 +92,39 @@ export const ListView = ({ listId }: ListViewProps) => {
                     t.customId?.toLowerCase().includes(q),
             );
         }
+        if (sortBy !== "default") {
+            const dir = sortDir === "asc" ? 1 : -1;
+            const priorityRank = (p: Priority) => (p === 0 ? 5 : p);
+            result = [...result].sort((a, b) => {
+                let cmp = 0;
+                if (sortBy === "name") cmp = a.name.localeCompare(b.name);
+                else if (sortBy === "priority")
+                    cmp = priorityRank(a.priority) - priorityRank(b.priority);
+                else if (sortBy === "due_date") {
+                    if (!a.dueDate && !b.dueDate) cmp = 0;
+                    else if (!a.dueDate) cmp = 1;
+                    else if (!b.dueDate) cmp = -1;
+                    else cmp = a.dueDate.localeCompare(b.dueDate);
+                } else if (sortBy === "created_at")
+                    cmp = a.createdAt.localeCompare(b.createdAt);
+                else if (sortBy === "updated_at")
+                    cmp = a.updatedAt.localeCompare(b.updatedAt);
+                return cmp * dir;
+            });
+        }
         return result;
-    }, [tasks, statuses, showClosedTasks, meMode, search, user]);
+    }, [
+        tasks,
+        statuses,
+        showClosedTasks,
+        meMode,
+        search,
+        user,
+        filters.priorities,
+        filters.assigneeIds,
+        sortBy,
+        sortDir,
+    ]);
 
     // Group tasks
     const grouped = useMemo(() => {
@@ -138,11 +191,7 @@ export const ListView = ({ listId }: ListViewProps) => {
     };
 
     if (isLoading) {
-        return (
-            <div style={{ padding: tokens.spacing[8], textAlign: "center" }}>
-                Loading tasks...
-            </div>
-        );
+        return <LoadingState label="Loading tasks…" />;
     }
 
     const hasAnyTasks = tasks.length > 0;
@@ -159,7 +208,12 @@ export const ListView = ({ listId }: ListViewProps) => {
                 onMeModeChange={setMeMode}
                 showClosedTasks={showClosedTasks}
                 onShowClosedChange={setShowClosedTasks}
-                activeFilterCount={meMode ? 1 : 0}
+                sortBy={sortBy}
+                onSortByChange={setSortBy}
+                sortDir={sortDir}
+                onSortDirChange={setSortDir}
+                filters={filters}
+                onFiltersChange={setFilters}
             />
 
             <div

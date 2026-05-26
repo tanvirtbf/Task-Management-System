@@ -41,3 +41,40 @@ export interface ChecklistItem {
     assigneeId: string | null;
     position: number;
 }
+
+/**
+ * Attachments on a task.
+ */
+export interface Attachment {
+    id: string;
+    taskId: string;
+    name: string;
+    type: string;
+    size: number;
+    url: string;
+    thumbnailUrl?: string;
+    uploadedBy: string;
+    uploadedAt: string;
+}
+
+/**
+ * Task dependency edges.
+ *  - "blocks"        — this task blocks the related one
+ *  - "blocked_by"    — this task is blocked by the related one
+ *  - "waiting_on"    — soft dependency
+ *  - "linked"        — informational link (no scheduling impact)
+ */
+export type DependencyType =
+    | "blocks"
+    | "blocked_by"
+    | "waiting_on"
+    | "linked";
+
+export interface TaskDependency {
+    id: string;
+    taskId: string;
+    relatedTaskId: string;
+    type: DependencyType;
+    createdAt: string;
+    createdBy: string;
+}

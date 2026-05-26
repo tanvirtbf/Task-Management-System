@@ -35,7 +35,7 @@ export const BoardWipLimitBadge = ({
     let bg = tokens.colors.successSubtle;
     if (current > limit) {
         color = tokens.colors.danger;
-        bg = "#FEF2F2";
+        bg = tokens.colors.dangerSubtle;
     } else if (current === limit) {
         color = tokens.colors.warning;
         bg = tokens.colors.warningSubtle;

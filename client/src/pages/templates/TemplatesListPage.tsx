@@ -8,6 +8,7 @@ import {
 } from "antd";
 import { Search, Library, Eye, ArrowDownToLine } from "lucide-react";
 import { mockApi } from "../../lib/mock-api";
+import { LoadingState } from "../../components/shared/LoadingState";
 import type { Template, TemplateType } from "../../types/template";
 import { DynamicIcon } from "../../components/shared/DynamicIcon";
 import { TemplateApplyModal } from "./TemplateApplyModal";
@@ -157,7 +158,7 @@ const TemplatesListPage = () => {
 
             {/* Grid */}
             {isLoading ? (
-                <div>Loading...</div>
+                <LoadingState />
             ) : filtered.length === 0 ? (
                 <Empty description="No templates match your filters." />
             ) : (

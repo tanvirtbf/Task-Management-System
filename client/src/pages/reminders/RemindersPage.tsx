@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
     Button,
     Modal,
@@ -25,6 +25,7 @@ import {
 import { mockApi } from "../../lib/mock-api";
 import { useAuthStore } from "../../stores/auth";
 import { users as allUsers } from "../../mocks/users";
+import { LoadingState } from "../../components/shared/LoadingState";
 import { tokens } from "../../theme";
 import type { Reminder } from "../../types";
 
@@ -68,6 +69,17 @@ const RemindersPage = () => {
     const { message } = AntApp.useApp();
     const [createOpen, setCreateOpen] = useState(false);
     const [showCompleted, setShowCompleted] = useState(false);
+    const [params, setParams] = useSearchParams();
+
+    // Open the create modal on first mount if ?new=1 is set; strip the param.
+    useEffect(() => {
+        if (params.get("new") === "1") {
+            setCreateOpen(true);
+            params.delete("new");
+            setParams(params, { replace: true });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const { data: reminders = [], isLoading } = useQuery({
         queryKey: ["reminders", user?.id],
@@ -216,7 +228,7 @@ const RemindersPage = () => {
             </div>
 
             {isLoading ? (
-                <div>Loading...</div>
+                <LoadingState />
             ) : reminders.length === 0 ? (
                 <Empty
                     image={

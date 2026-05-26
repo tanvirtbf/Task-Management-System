@@ -5,6 +5,7 @@ import { Topbar } from "../components/shared/Topbar";
 import { CommandPalette } from "../components/search/CommandPalette";
 import { ShortcutsModal } from "../components/shared/ShortcutsModal";
 import { OfflineIndicator } from "../components/shared/OfflineIndicator";
+import { useUiStore } from "../stores/ui";
 import { tokens } from "../theme";
 
 const NAV_BY_KEY: Record<string, string> = {
@@ -29,7 +30,8 @@ const isEditableTarget = (el: EventTarget | null): boolean => {
 };
 
 const AppShell = () => {
-    const [paletteOpen, setPaletteOpen] = useState(false);
+    const paletteOpen = useUiStore((s) => s.commandPaletteOpen);
+    const setPaletteOpen = useUiStore((s) => s.setCommandPaletteOpen);
     const [shortcutsOpen, setShortcutsOpen] = useState(false);
     const navigate = useNavigate();
     /** Tracks "g" prefix state for vim-style navigation. */
@@ -49,7 +51,7 @@ const AppShell = () => {
             // ⌘K — command palette (works even in inputs)
             if (mod && e.key.toLowerCase() === "k") {
                 e.preventDefault();
-                setPaletteOpen((o) => !o);
+                setPaletteOpen(!paletteOpen);
                 return;
             }
 
@@ -83,7 +85,7 @@ const AppShell = () => {
             window.removeEventListener("keydown", onKey);
             clearG();
         };
-    }, [navigate]);
+    }, [navigate, paletteOpen, setPaletteOpen]);
 
     return (
         <div

@@ -567,7 +567,7 @@ const WorkloadCell = ({
             bg = tokens.colors.warningSubtle;
             textColor = tokens.colors.warning;
         } else {
-            bg = "#FEF2F2";
+            bg = tokens.colors.dangerSubtle;
             textColor = tokens.colors.danger;
         }
     }

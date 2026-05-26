@@ -71,13 +71,21 @@ export const SidebarNavItem = ({
         );
         if (to) {
             return (
-                <NavLink to={to} style={{ textDecoration: "none" }}>
+                <NavLink
+                    to={to}
+                    style={{ textDecoration: "none" }}
+                    aria-label={label}
+                >
                     {content}
                 </NavLink>
             );
         }
         return (
-            <button onClick={onClick} style={{ background: "none", border: 0, padding: 0 }}>
+            <button
+                onClick={onClick}
+                aria-label={label}
+                style={{ background: "none", border: 0, padding: 0 }}
+            >
                 {content}
             </button>
         );

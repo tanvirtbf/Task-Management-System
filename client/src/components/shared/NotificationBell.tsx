@@ -38,6 +38,7 @@ export const NotificationBell = () => {
                 (e.currentTarget.style.background = "transparent")
             }
             title={count > 0 ? `${count} unread` : "Inbox"}
+            aria-label={count > 0 ? `Inbox — ${count} unread notifications` : "Inbox"}
         >
             <Bell size={16} strokeWidth={1.75} />
             {count > 0 && (

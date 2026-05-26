@@ -11,7 +11,6 @@ import {
     Map,
     FileText,
     Activity,
-    Plus,
     MoreHorizontal,
     UserPlus,
 } from "lucide-react";
@@ -264,23 +263,6 @@ const ListPage = () => {
                             </NavLink>
                         );
                     })}
-                    <button
-                        style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 4,
-                            padding: "6px 10px",
-                            borderRadius: tokens.radius.md,
-                            background: "transparent",
-                            border: 0,
-                            color: tokens.colors.textMuted,
-                            fontSize: tokens.typography.fontSize.sm,
-                            cursor: "pointer",
-                        }}
-                    >
-                        <Plus size={13} strokeWidth={1.75} />
-                        Add View
-                    </button>
                 </div>
             </div>
 

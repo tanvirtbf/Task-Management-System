@@ -75,6 +75,11 @@ import {
     activeSessions,
 } from "../mocks/settings";
 import { notes, notesById, notesByUser } from "../mocks/notes";
+import { attachments, attachmentsByTask } from "../mocks/attachments";
+import {
+    taskDependencies,
+    dependenciesForTask,
+} from "../mocks/task-dependencies";
 import type {
     Checklist,
     ChecklistItem,
@@ -105,6 +110,11 @@ import type {
     ActiveSession,
 } from "../types/settings";
 import type { Note } from "../types/note";
+import type {
+    Attachment,
+    DependencyType,
+    TaskDependency,
+} from "../types/extras";
 
 /** Helper: wrap a raw value into our custom-field value envelope. */
 const wrapCustomFieldValue = (fieldId: string, value: unknown): unknown => {
@@ -664,6 +674,55 @@ export const mockApi = {
             await delay(50, 150);
             return spaces.find((s) => s.id === id) ?? null;
         },
+        async create(input: {
+            name: string;
+            icon: string;
+            color: string;
+            description?: string;
+            isPrivate?: boolean;
+        }): Promise<Space> {
+            await delay();
+            const space: Space = {
+                id: `sp-${fakeId().slice(0, 8)}`,
+                workspaceId: workspace.id,
+                name: input.name,
+                description: input.description,
+                icon: input.icon,
+                color: input.color,
+                isPrivate: input.isPrivate ?? false,
+                position: spaces.length + 1,
+                archivedAt: null,
+                createdBy: currentUser?.id ?? "u-001",
+            };
+            spaces.push(space);
+            log("POST /spaces", space);
+            return space;
+        },
+        async update(
+            id: string,
+            patch: Partial<Pick<Space, "name" | "description" | "icon" | "color" | "isPrivate">>,
+        ): Promise<Space> {
+            await delay();
+            const s = spaces.find((x) => x.id === id);
+            if (!s) throw new Error("Space not found");
+            Object.assign(s, patch);
+            log("PATCH /spaces/:id", { id, patch });
+            return s;
+        },
+        async archive(id: string): Promise<Space> {
+            await delay();
+            const s = spaces.find((x) => x.id === id);
+            if (!s) throw new Error("Space not found");
+            s.archivedAt = new Date().toISOString();
+            log("POST /spaces/:id/archive", { id });
+            return s;
+        },
+        async delete(id: string): Promise<void> {
+            await delay();
+            const idx = spaces.findIndex((x) => x.id === id);
+            if (idx >= 0) spaces.splice(idx, 1);
+            log("DELETE /spaces/:id", { id });
+        },
     },
 
     folders: {
@@ -694,6 +753,56 @@ export const mockApi = {
         async getById(id: string): Promise<List | null> {
             await delay(50, 150);
             return lists.find((l) => l.id === id) ?? null;
+        },
+        async create(input: {
+            spaceId: string;
+            folderId?: string | null;
+            name: string;
+            icon?: string;
+            color?: string;
+        }): Promise<List> {
+            await delay();
+            const list: List = {
+                id: `l-${fakeId().slice(0, 8)}`,
+                spaceId: input.spaceId,
+                folderId: input.folderId ?? null,
+                name: input.name,
+                icon: input.icon ?? "ListChecks",
+                color: input.color ?? "#4F46E5",
+                position:
+                    lists.filter((l) => l.spaceId === input.spaceId).length + 1,
+                isPrivate: false,
+                archivedAt: null,
+                createdBy: currentUser?.id ?? "u-001",
+            };
+            lists.push(list);
+            log("POST /lists", list);
+            return list;
+        },
+        async update(
+            id: string,
+            patch: Partial<Pick<List, "name" | "icon" | "color" | "folderId">>,
+        ): Promise<List> {
+            await delay();
+            const l = lists.find((x) => x.id === id);
+            if (!l) throw new Error("List not found");
+            Object.assign(l, patch);
+            log("PATCH /lists/:id", { id, patch });
+            return l;
+        },
+        async archive(id: string): Promise<List> {
+            await delay();
+            const l = lists.find((x) => x.id === id);
+            if (!l) throw new Error("List not found");
+            l.archivedAt = new Date().toISOString();
+            log("POST /lists/:id/archive", { id });
+            return l;
+        },
+        async delete(id: string): Promise<void> {
+            await delay();
+            const idx = lists.findIndex((x) => x.id === id);
+            if (idx >= 0) lists.splice(idx, 1);
+            log("DELETE /lists/:id", { id });
         },
     },
 
@@ -967,10 +1076,116 @@ export const mockApi = {
             }
             return c;
         },
+        async update(
+            commentId: string,
+            patch: { body: string },
+        ): Promise<Comment> {
+            await delay(40, 120);
+            const c = comments.find((x) => x.id === commentId);
+            if (!c) throw new Error("Comment not found");
+            c.body = patch.body;
+            c.editedAt = new Date().toISOString();
+            log("PATCH /comments/:id", { commentId });
+            return c;
+        },
         async delete(commentId: string): Promise<void> {
             await delay(50, 150);
             const c = comments.find((x) => x.id === commentId);
             if (c) c.deletedAt = new Date().toISOString();
+        },
+    },
+
+    attachments: {
+        async byTask(taskId: string): Promise<Attachment[]> {
+            await delay(50, 150);
+            return attachmentsByTask(taskId);
+        },
+        async upload(input: {
+            taskId: string;
+            name: string;
+            type: string;
+            size: number;
+            url?: string;
+            thumbnailUrl?: string;
+        }): Promise<Attachment> {
+            await delay(150, 400);
+            const att: Attachment = {
+                id: `att-${fakeId().slice(0, 8)}`,
+                taskId: input.taskId,
+                name: input.name,
+                type: input.type,
+                size: input.size,
+                url: input.url ?? `/mock-files/${input.name}`,
+                thumbnailUrl: input.thumbnailUrl,
+                uploadedBy: currentUser?.id ?? "u-001",
+                uploadedAt: new Date().toISOString(),
+            };
+            attachments.push(att);
+            // Bump count on task
+            const task = tasks.find((t) => t.id === input.taskId);
+            if (task) task.attachmentsCount = (task.attachmentsCount ?? 0) + 1;
+            log("POST /tasks/:id/attachments", att);
+            return att;
+        },
+        async delete(id: string): Promise<void> {
+            await delay();
+            const idx = attachments.findIndex((a) => a.id === id);
+            if (idx >= 0) {
+                const removed = attachments[idx];
+                attachments.splice(idx, 1);
+                const task = tasks.find((t) => t.id === removed.taskId);
+                if (task && task.attachmentsCount > 0)
+                    task.attachmentsCount -= 1;
+            }
+            log("DELETE /attachments/:id", { id });
+        },
+    },
+
+    taskDependencies: {
+        async byTask(
+            taskId: string,
+        ): Promise<Array<TaskDependency & { otherTaskId: string }>> {
+            await delay(50, 150);
+            return dependenciesForTask(taskId);
+        },
+        async byList(listId: string): Promise<TaskDependency[]> {
+            await delay(50, 150);
+            const taskIds = new Set(
+                tasks
+                    .filter((t) => t.primaryListId === listId)
+                    .map((t) => t.id),
+            );
+            return taskDependencies.filter(
+                (d) =>
+                    taskIds.has(d.taskId) || taskIds.has(d.relatedTaskId),
+            );
+        },
+        async create(input: {
+            taskId: string;
+            relatedTaskId: string;
+            type: DependencyType;
+        }): Promise<TaskDependency> {
+            await delay();
+            if (input.taskId === input.relatedTaskId) {
+                throw new Error("A task cannot depend on itself");
+            }
+            const dep: TaskDependency = {
+                id: `dep-${fakeId().slice(0, 8)}`,
+                taskId: input.taskId,
+                relatedTaskId: input.relatedTaskId,
+                type: input.type,
+                createdAt: new Date().toISOString(),
+                createdBy: currentUser?.id ?? "u-001",
+            };
+            taskDependencies.push(dep);
+            log("POST /task-dependencies", dep);
+            return dep;
+        },
+        async delete(id: string): Promise<void> {
+            await delay();
+            const idx = taskDependencies.findIndex((d) => d.id === id);
+            if (idx >= 0) taskDependencies.splice(idx, 1);
+            log("DELETE /task-dependencies/:id", { id });
         },
     },
 

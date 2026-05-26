@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { mockApi } from "../../lib/mock-api";
 import { useAuthStore } from "../../stores/auth";
+import { LoadingState } from "../../components/shared/LoadingState";
 import { usersById } from "../../mocks/users";
 import { tokens } from "../../theme";
 import type { Notification, NotificationType } from "../../types";
@@ -313,7 +314,7 @@ const InboxPage = () => {
             </div>
 
             {isLoading ? (
-                <div>Loading...</div>
+                <LoadingState />
             ) : groups.length === 0 ? (
                 <Empty
                     image={
