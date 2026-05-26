@@ -31,6 +31,7 @@ import { ListViewGroup } from "./ListViewGroup";
 import { ListViewRow } from "./ListViewRow";
 import { BulkActionToolbar } from "../task/BulkActionToolbar";
 import { LoadingState } from "../shared/LoadingState";
+import { SavedViewsBar } from "./SavedViewsBar";
 import { tokens } from "../../theme";
 import type { Priority, Task } from "../../types";
 
@@ -47,9 +48,11 @@ export const ListView = ({ listId }: ListViewProps) => {
     const [sortBy, setSortBy] = useState<SortKey>("default");
     const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
     const [filters, setFilters] = useState<FilterState>({
+        match: "all",
         priorities: [],
         assigneeIds: [],
     });
+    const [activeViewId, setActiveViewId] = useState<string | null>(null);
     const [activeDragTask, setActiveDragTask] = useState<Task | null>(null);
 
     const { data: tasks = [], isLoading } = useQuery({
@@ -74,15 +77,27 @@ export const ListView = ({ listId }: ListViewProps) => {
         if (meMode && user) {
             result = result.filter((t) => t.assignees.includes(user.id));
         }
-        if (filters.priorities.length > 0) {
-            result = result.filter((t) =>
-                filters.priorities.includes(t.priority),
-            );
-        }
-        if (filters.assigneeIds.length > 0) {
-            result = result.filter((t) =>
-                t.assignees.some((id) => filters.assigneeIds.includes(id)),
-            );
+        const hasPriorityFilter = filters.priorities.length > 0;
+        const hasAssigneeFilter = filters.assigneeIds.length > 0;
+        if (hasPriorityFilter || hasAssigneeFilter) {
+            result = result.filter((t) => {
+                const matchesPriority = hasPriorityFilter
+                    ? filters.priorities.includes(t.priority)
+                    : filters.match === "any"
+                      ? false
+                      : true;
+                const matchesAssignee = hasAssigneeFilter
+                    ? t.assignees.some((id) =>
+                          filters.assigneeIds.includes(id),
+                      )
+                    : filters.match === "any"
+                      ? false
+                      : true;
+                if (filters.match === "any") {
+                    return matchesPriority || matchesAssignee;
+                }
+                return matchesPriority && matchesAssignee;
+            });
         }
         if (search.trim()) {
             const q = search.toLowerCase();
@@ -199,6 +214,27 @@ export const ListView = ({ listId }: ListViewProps) => {
 
     return (
         <>
+            <SavedViewsBar
+                listId={listId}
+                currentState={{
+                    groupBy,
+                    sortBy,
+                    sortDir,
+                    meMode,
+                    showClosedTasks,
+                    filters,
+                }}
+                activeViewId={activeViewId}
+                onActiveViewChange={setActiveViewId}
+                onApply={(state) => {
+                    setGroupBy(state.groupBy);
+                    setSortBy(state.sortBy);
+                    setSortDir(state.sortDir);
+                    setMeMode(state.meMode);
+                    setShowClosedTasks(state.showClosedTasks);
+                    setFilters(state.filters);
+                }}
+            />
             <ListViewToolbar
                 groupBy={groupBy}
                 onGroupByChange={setGroupBy}

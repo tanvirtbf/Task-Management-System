@@ -80,6 +80,11 @@ import {
     taskDependencies,
     dependenciesForTask,
 } from "../mocks/task-dependencies";
+import {
+    timeLogs,
+    timeLogsByTask,
+    timeLogsByUser,
+} from "../mocks/time-logs";
 import type {
     Checklist,
     ChecklistItem,
@@ -115,6 +120,7 @@ import type {
     DependencyType,
     TaskDependency,
 } from "../types/extras";
+import type { TimeLog } from "../types/time-tracking";
 
 /** Helper: wrap a raw value into our custom-field value envelope. */
 const wrapCustomFieldValue = (fieldId: string, value: unknown): unknown => {
@@ -1088,6 +1094,37 @@ export const mockApi = {
             log("PATCH /comments/:id", { commentId });
             return c;
         },
+        async assign(
+            commentId: string,
+            assignedTo: string | null,
+        ): Promise<Comment> {
+            await delay(40, 120);
+            const c = comments.find((x) => x.id === commentId);
+            if (!c) throw new Error("Comment not found");
+            c.assignedTo = assignedTo;
+            log("PATCH /comments/:id/assign", { commentId, assignedTo });
+            return c;
+        },
+        async toggleResolve(
+            commentId: string,
+            userId: string,
+        ): Promise<Comment> {
+            await delay(40, 120);
+            const c = comments.find((x) => x.id === commentId);
+            if (!c) throw new Error("Comment not found");
+            if (c.resolvedAt) {
+                c.resolvedAt = null;
+                c.resolvedBy = null;
+            } else {
+                c.resolvedAt = new Date().toISOString();
+                c.resolvedBy = userId;
+            }
+            log("POST /comments/:id/resolve", {
+                commentId,
+                resolved: !!c.resolvedAt,
+            });
+            return c;
+        },
         async delete(commentId: string): Promise<void> {
             await delay(50, 150);
             const c = comments.find((x) => x.id === commentId);
@@ -1138,6 +1175,64 @@ export const mockApi = {
                     task.attachmentsCount -= 1;
             }
             log("DELETE /attachments/:id", { id });
+        },
+    },
+
+    timeTracking: {
+        async byTask(taskId: string): Promise<TimeLog[]> {
+            await delay(50, 150);
+            return timeLogsByTask(taskId);
+        },
+        async byUser(userId: string): Promise<TimeLog[]> {
+            await delay(50, 150);
+            return timeLogsByUser(userId);
+        },
+        async log(input: {
+            taskId: string;
+            userId: string;
+            durationSeconds: number;
+            note?: string;
+            startedAt?: string;
+            endedAt?: string;
+        }): Promise<TimeLog> {
+            await delay();
+            const startedAt = input.startedAt ?? new Date().toISOString();
+            const endedAt =
+                input.endedAt ??
+                new Date(
+                    new Date(startedAt).getTime() +
+                        input.durationSeconds * 1000,
+                ).toISOString();
+            const log_: TimeLog = {
+                id: `tl-${fakeId().slice(0, 8)}`,
+                taskId: input.taskId,
+                userId: input.userId,
+                durationSeconds: input.durationSeconds,
+                note: input.note,
+                startedAt,
+                endedAt,
+                createdAt: new Date().toISOString(),
+            };
+            timeLogs.push(log_);
+            const task = tasks.find((t) => t.id === input.taskId);
+            if (task) task.timeTrackedSeconds += input.durationSeconds;
+            log("POST /time-logs", log_);
+            return log_;
+        },
+        async delete(id: string): Promise<void> {
+            await delay();
+            const idx = timeLogs.findIndex((l) => l.id === id);
+            if (idx >= 0) {
+                const removed = timeLogs[idx];
+                timeLogs.splice(idx, 1);
+                const task = tasks.find((t) => t.id === removed.taskId);
+                if (task && task.timeTrackedSeconds > 0)
+                    task.timeTrackedSeconds = Math.max(
+                        0,
+                        task.timeTrackedSeconds - removed.durationSeconds,
+                    );
+            }
+            log("DELETE /time-logs/:id", { id });
         },
     },
 
@@ -1928,6 +2023,8 @@ export const mockApi = {
                 taskName?: string;
                 listId?: string;
                 spaceId?: string;
+                /** ISO date — earliest template date will line up with this. */
+                anchorDate?: string;
             },
         ): Promise<{
             entityId: string;
@@ -1994,6 +2091,14 @@ export const mockApi = {
         async recent(limit = 10): Promise<ActivityLogEntry[]> {
             await delay(50, 150);
             return recentActivity(limit);
+        },
+        async byTask(taskId: string): Promise<ActivityLogEntry[]> {
+            await delay(50, 150);
+            return activityLog
+                .filter(
+                    (a) => a.entityType === "task" && a.entityId === taskId,
+                )
+                .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
         },
         async filtered(filters: {
             listId?: string;

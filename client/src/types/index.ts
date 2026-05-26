@@ -175,6 +175,26 @@ export interface Task {
     completedAt: string | null;
     archivedAt: string | null;
     nestingDepth: number;
+    /** Optional recurrence config — when set, completing the task spawns the next instance. */
+    recurrence?: TaskRecurrence | null;
+}
+
+export type RecurrencePattern = "daily" | "weekly" | "monthly" | "custom";
+
+export interface TaskRecurrence {
+    pattern: RecurrencePattern;
+    /** Every N units (e.g. every 2 weeks). 1 by default. */
+    interval: number;
+    /** For weekly: which weekdays (0=Sun..6=Sat). */
+    daysOfWeek?: number[];
+    /** For monthly: which day of the month (1..31, or -1 for last). */
+    dayOfMonth?: number;
+    /** For custom: cron expression. */
+    cron?: string;
+    /** Optional end date — recurrence stops after this. */
+    endsAt?: string | null;
+    /** When true, the next instance is created automatically when the current completes. */
+    spawnOnComplete: boolean;
 }
 
 // ============================================================

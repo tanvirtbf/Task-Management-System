@@ -832,32 +832,266 @@ const FormFieldProperties = ({
                     />
                 </div>
 
-                <div
+                <ConditionalLogicBuilder
+                    field={field}
+                    allFields={allFields}
+                    onUpdate={onUpdate}
+                />
+            </div>
+        </aside>
+    );
+};
+
+// ─── Conditional logic builder ───────────────────────────
+const ConditionalLogicBuilder = ({
+    field,
+    allFields,
+    onUpdate,
+}: {
+    field: FormFieldDef;
+    allFields: FormFieldDef[];
+    onUpdate: (patch: Partial<FormFieldDef>) => void;
+}) => {
+    const cl = field.conditionalLogic;
+    const triggerCandidates = allFields.filter(
+        (f) => f.id !== field.id && f.position < field.position,
+    );
+
+    const enable = () =>
+        onUpdate({
+            conditionalLogic: {
+                action: "show",
+                logic: "AND",
+                rules: [
+                    {
+                        triggerFieldId:
+                            triggerCandidates[0]?.id ?? "",
+                        operator: "eq",
+                        value: "",
+                    },
+                ],
+            },
+        });
+
+    const update = (next: typeof field.conditionalLogic) =>
+        onUpdate({ conditionalLogic: next });
+
+    return (
+        <div
+            style={{
+                marginTop: tokens.spacing[3],
+                padding: tokens.spacing[3],
+                background: tokens.colors.bgPage,
+                borderRadius: tokens.radius.md,
+                border: `1px solid ${tokens.colors.borderSubtle}`,
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+            }}
+        >
+            <div
+                style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                }}
+            >
+                <strong
                     style={{
-                        marginTop: tokens.spacing[3],
-                        padding: tokens.spacing[3],
-                        background: tokens.colors.bgPage,
-                        borderRadius: tokens.radius.md,
+                        fontSize: tokens.typography.fontSize.sm,
+                        color: tokens.colors.textPrimary,
+                    }}
+                >
+                    Conditional logic
+                </strong>
+                <Switch
+                    size="small"
+                    checked={!!cl}
+                    onChange={(v) => (v ? enable() : update(undefined))}
+                    disabled={triggerCandidates.length === 0}
+                />
+            </div>
+            {triggerCandidates.length === 0 && !cl && (
+                <p
+                    style={{
+                        margin: 0,
                         fontSize: 11,
                         color: tokens.colors.textMuted,
                     }}
                 >
-                    <strong>Conditional logic</strong> — show/hide this field
-                    based on other answers. Full builder in Phase 12 polish.
-                    {field.conditionalLogic && (
-                        <div
+                    Add at least one earlier field to use conditional rules.
+                </p>
+            )}
+            {cl && (
+                <>
+                    <div
+                        style={{
+                            display: "flex",
+                            gap: 4,
+                            alignItems: "center",
+                        }}
+                    >
+                        <Select
+                            size="small"
+                            value={cl.action}
+                            onChange={(v) =>
+                                update({
+                                    ...cl,
+                                    action: v as "show" | "hide",
+                                })
+                            }
+                            style={{ width: 78 }}
+                            options={[
+                                { value: "show", label: "Show" },
+                                { value: "hide", label: "Hide" },
+                            ]}
+                        />
+                        <span
                             style={{
-                                marginTop: 8,
-                                color: tokens.colors.textSecondary,
+                                fontSize: 11,
+                                color: tokens.colors.textMuted,
                             }}
                         >
-                            ✓ This field has a conditional rule (see
-                            preview).
+                            this field if
+                        </span>
+                        {cl.rules.length > 1 && (
+                            <Select
+                                size="small"
+                                value={cl.logic}
+                                onChange={(v) =>
+                                    update({
+                                        ...cl,
+                                        logic: v as "AND" | "OR",
+                                    })
+                                }
+                                style={{ width: 64 }}
+                                options={[
+                                    { value: "AND", label: "ALL" },
+                                    { value: "OR", label: "ANY" },
+                                ]}
+                            />
+                        )}
+                    </div>
+                    {cl.rules.map((rule, idx) => (
+                        <div
+                            key={idx}
+                            style={{
+                                display: "flex",
+                                gap: 4,
+                                alignItems: "center",
+                                background: tokens.colors.bgSurface,
+                                padding: 6,
+                                borderRadius: tokens.radius.sm,
+                            }}
+                        >
+                            <Select
+                                size="small"
+                                value={rule.triggerFieldId}
+                                onChange={(v) => {
+                                    const next = [...cl.rules];
+                                    next[idx] = {
+                                        ...next[idx],
+                                        triggerFieldId: v,
+                                    };
+                                    update({ ...cl, rules: next });
+                                }}
+                                style={{ flex: 1, minWidth: 0 }}
+                                placeholder="Field"
+                                options={triggerCandidates.map((f) => ({
+                                    value: f.id,
+                                    label: f.label,
+                                }))}
+                            />
+                            <Select
+                                size="small"
+                                value={rule.operator}
+                                onChange={(v) => {
+                                    const next = [...cl.rules];
+                                    next[idx] = {
+                                        ...next[idx],
+                                        operator: v,
+                                    };
+                                    update({ ...cl, rules: next });
+                                }}
+                                style={{ width: 80 }}
+                                options={[
+                                    { value: "eq", label: "is" },
+                                    { value: "neq", label: "is not" },
+                                    {
+                                        value: "contains",
+                                        label: "contains",
+                                    },
+                                    {
+                                        value: "is_empty",
+                                        label: "empty",
+                                    },
+                                    {
+                                        value: "is_not_empty",
+                                        label: "filled",
+                                    },
+                                ]}
+                            />
+                            {rule.operator !== "is_empty" &&
+                                rule.operator !== "is_not_empty" && (
+                                    <Input
+                                        size="small"
+                                        value={String(rule.value ?? "")}
+                                        placeholder="Value"
+                                        onChange={(e) => {
+                                            const next = [...cl.rules];
+                                            next[idx] = {
+                                                ...next[idx],
+                                                value: e.target.value,
+                                            };
+                                            update({ ...cl, rules: next });
+                                        }}
+                                        style={{ flex: 1, minWidth: 0 }}
+                                    />
+                                )}
+                            <Button
+                                size="small"
+                                type="text"
+                                onClick={() => {
+                                    const next = cl.rules.filter(
+                                        (_, i) => i !== idx,
+                                    );
+                                    if (next.length === 0) update(undefined);
+                                    else update({ ...cl, rules: next });
+                                }}
+                                style={{
+                                    color: tokens.colors.textMuted,
+                                    padding: "0 4px",
+                                }}
+                                aria-label="Remove rule"
+                            >
+                                ×
+                            </Button>
                         </div>
-                    )}
-                </div>
-            </div>
-        </aside>
+                    ))}
+                    <Button
+                        size="small"
+                        type="text"
+                        onClick={() =>
+                            update({
+                                ...cl,
+                                rules: [
+                                    ...cl.rules,
+                                    {
+                                        triggerFieldId:
+                                            triggerCandidates[0]?.id ?? "",
+                                        operator: "eq",
+                                        value: "",
+                                    },
+                                ],
+                            })
+                        }
+                        style={{ alignSelf: "flex-start" }}
+                    >
+                        + Add rule
+                    </Button>
+                </>
+            )}
+        </div>
     );
 };
 

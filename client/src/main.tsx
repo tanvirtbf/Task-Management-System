@@ -9,6 +9,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { buildAntdTheme, setActiveTheme } from "./theme";
 import { useUiStore } from "./stores/ui";
 import { ErrorBoundary } from "./components/shared/ErrorBoundary";
+import { registerServiceWorker } from "./lib/push";
 
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -56,6 +57,11 @@ const initial = (() => {
     return "light" as const;
 })();
 setActiveTheme(initial);
+
+// Register the service worker so we can show push notifications (best-effort).
+if (typeof window !== "undefined") {
+    void registerServiceWorker();
+}
 
 createRoot(document.getElementById("root")!).render(
     <StrictMode>

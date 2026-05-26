@@ -1,13 +1,16 @@
-import { Tooltip } from "antd";
-import { Clock, Timer, Eye, Calendar as CalIcon, Flag } from "lucide-react";
+import { Modal } from "antd";
+import { AlertTriangle, Clock, Timer, Eye, Calendar as CalIcon, Flag, Repeat } from "lucide-react";
 import { useUpdateTask } from "../../hooks/useTaskMutations";
 import { InlineAssigneeEdit } from "./InlineAssigneeEdit";
 import { InlineDateEdit } from "./InlineDateEdit";
 import { InlinePriorityEdit } from "./InlinePriorityEdit";
 import { InlineTagEdit } from "./InlineTagEdit";
 import { InlineStatusEdit } from "./InlineStatusEdit";
+import { RecurrenceConfig } from "./RecurrenceConfig";
+import { TimeTrackingControl } from "./TimeTrackingControl";
 import type { Task } from "../../types";
 import { listsById } from "../../mocks/lists";
+import { getBlockingTasksForCompletion } from "../../lib/dependency-guard";
 import { tokens } from "../../theme";
 
 const formatSeconds = (s: number) => {
@@ -21,6 +24,68 @@ const formatSeconds = (s: number) => {
 export const TaskPropertiesPanel = ({ task }: { task: Task }) => {
     const list = listsById.get(task.primaryListId);
     const update = useUpdateTask(task.primaryListId);
+
+    const handleStatusChange = async (statusId: string) => {
+        const blockers = await getBlockingTasksForCompletion(
+            task.id,
+            statusId,
+        );
+        if (blockers.length === 0) {
+            update.mutate({ id: task.id, patch: { statusId } });
+            return;
+        }
+        Modal.confirm({
+            title: "Open blockers",
+            icon: (
+                <AlertTriangle
+                    size={20}
+                    strokeWidth={1.75}
+                    color={tokens.colors.warning}
+                />
+            ),
+            content: (
+                <div>
+                    <p style={{ marginTop: 0 }}>
+                        This task is still blocked by{" "}
+                        {blockers.length} open task
+                        {blockers.length > 1 ? "s" : ""}:
+                    </p>
+                    <ul
+                        style={{
+                            margin: 0,
+                            paddingLeft: 20,
+                            color: tokens.colors.textSecondary,
+                            fontSize: 13,
+                        }}
+                    >
+                        {blockers.map((b) => (
+                            <li key={b.id}>
+                                <code
+                                    style={{
+                                        fontSize: 11,
+                                        fontFamily:
+                                            tokens.typography.fontFamilyMono,
+                                        color: tokens.colors.textMuted,
+                                        marginRight: 4,
+                                    }}
+                                >
+                                    {b.customId ?? b.id.slice(0, 8)}
+                                </code>
+                                {b.name}
+                            </li>
+                        ))}
+                    </ul>
+                    <p style={{ marginBottom: 0, marginTop: 8 }}>
+                        Mark this task complete anyway?
+                    </p>
+                </div>
+            ),
+            okText: "Yes, complete it",
+            okType: "danger",
+            cancelText: "Cancel",
+            onOk: () => update.mutate({ id: task.id, patch: { statusId } }),
+        });
+    };
 
     return (
         <div
@@ -39,9 +104,7 @@ export const TaskPropertiesPanel = ({ task }: { task: Task }) => {
                 <InlineStatusEdit
                     listId={task.primaryListId}
                     statusId={task.statusId}
-                    onChange={(statusId) =>
-                        update.mutate({ id: task.id, patch: { statusId } })
-                    }
+                    onChange={handleStatusChange}
                     size="md"
                 />
             </PropValue>
@@ -92,8 +155,23 @@ export const TaskPropertiesPanel = ({ task }: { task: Task }) => {
                 />
             </PropValue>
 
+            <PropLabel icon={<Repeat size={11} strokeWidth={1.75} />}>
+                Recurrence
+            </PropLabel>
+            <PropValue>
+                <RecurrenceConfig
+                    value={task.recurrence}
+                    onChange={(recurrence) =>
+                        update.mutate({
+                            id: task.id,
+                            patch: { recurrence },
+                        })
+                    }
+                />
+            </PropValue>
+
             <PropLabel icon={<Timer size={11} strokeWidth={1.75} />}>
-                Time estimate
+                Estimate
             </PropLabel>
             <PropValue>
                 <span style={{ color: tokens.colors.textSecondary }}>
@@ -105,14 +183,7 @@ export const TaskPropertiesPanel = ({ task }: { task: Task }) => {
                 Time tracked
             </PropLabel>
             <PropValue>
-                <span
-                    style={{
-                        color: tokens.colors.textSecondary,
-                        fontFamily: tokens.typography.fontFamilyMono,
-                    }}
-                >
-                    {formatSeconds(task.timeTrackedSeconds)}
-                </span>
+                <TimeTrackingControl task={task} />
             </PropValue>
 
             <PropLabel>Tags</PropLabel>
@@ -132,13 +203,12 @@ export const TaskPropertiesPanel = ({ task }: { task: Task }) => {
                 Watchers
             </PropLabel>
             <PropValue>
-                <Tooltip
-                    title={`${task.watchers.length} watching this task`}
-                >
-                    <span style={{ color: tokens.colors.textSecondary }}>
-                        {task.watchers.length}
-                    </span>
-                </Tooltip>
+                <InlineAssigneeEdit
+                    assigneeIds={task.watchers}
+                    onChange={(watchers) =>
+                        update.mutate({ id: task.id, patch: { watchers } })
+                    }
+                />
             </PropValue>
         </div>
     );

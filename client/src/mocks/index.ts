@@ -25,3 +25,4 @@ export * from "./settings";
 export * from "./notes";
 export * from "./attachments";
 export * from "./task-dependencies";
+export * from "./time-logs";

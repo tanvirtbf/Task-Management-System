@@ -4,9 +4,11 @@ import {
     Modal,
     Select,
     Input,
+    DatePicker,
     App as AntApp,
     Alert,
 } from "antd";
+import dayjs from "dayjs";
 import { mockApi } from "../../lib/mock-api";
 import { lists as allLists } from "../../mocks/lists";
 import { spaces as allSpaces, spacesById } from "../../mocks/spaces";
@@ -25,9 +27,14 @@ export const TemplateApplyModal = ({ template, onClose }: Props) => {
     const [targetListId, setTargetListId] = useState<string | undefined>();
     const [targetSpaceId, setTargetSpaceId] = useState<string | undefined>();
     const [taskName, setTaskName] = useState("");
+    const [anchorDate, setAnchorDate] = useState<dayjs.Dayjs | null>(
+        dayjs(),
+    );
 
     const requiresList = template.type === "task" || template.type === "form";
     const requiresSpace = template.type === "list" || template.type === "folder";
+    const supportsDateRemap =
+        template.type === "task" || template.type === "list";
 
     const apply = useMutation({
         mutationFn: () =>
@@ -35,6 +42,7 @@ export const TemplateApplyModal = ({ template, onClose }: Props) => {
                 listId: targetListId,
                 spaceId: targetSpaceId,
                 taskName: taskName || undefined,
+                anchorDate: anchorDate ? anchorDate.toISOString() : undefined,
             }),
         onSuccess: (result) => {
             qc.invalidateQueries({ queryKey: ["templates"] });
@@ -165,6 +173,29 @@ export const TemplateApplyModal = ({ template, onClose }: Props) => {
                             onChange={(e) => setTaskName(e.target.value)}
                             placeholder={template.name}
                         />
+                    </Field>
+                )}
+
+                {supportsDateRemap && (
+                    <Field label="Anchor date (date remap)">
+                        <DatePicker
+                            value={anchorDate}
+                            onChange={setAnchorDate}
+                            format="MMM D, YYYY"
+                            style={{ width: "100%" }}
+                            allowClear
+                        />
+                        <p
+                            style={{
+                                margin: "4px 0 0",
+                                fontSize: 11,
+                                color: tokens.colors.textMuted,
+                                lineHeight: 1.4,
+                            }}
+                        >
+                            All dates in the template will be shifted so the
+                            template's earliest date lines up with this anchor.
+                        </p>
                     </Field>
                 )}
 

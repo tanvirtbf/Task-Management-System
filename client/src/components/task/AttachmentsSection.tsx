@@ -14,6 +14,7 @@ import {
 import dayjs from "dayjs";
 import { mockApi } from "../../lib/mock-api";
 import { usersById } from "../../mocks/users";
+import { AttachmentLightbox } from "./AttachmentLightbox";
 import { tokens } from "../../theme";
 import type { Attachment } from "../../types/extras";
 
@@ -47,6 +48,7 @@ export const AttachmentsSection = ({ taskId }: Props) => {
     const { message } = AntApp.useApp();
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [dragOver, setDragOver] = useState(false);
+    const [viewing, setViewing] = useState<Attachment | null>(null);
 
     const { data: attachments = [] } = useQuery({
         queryKey: ["attachments", taskId],
@@ -191,10 +193,17 @@ export const AttachmentsSection = ({ taskId }: Props) => {
                         <AttachmentCard
                             key={a.id}
                             attachment={a}
+                            onView={() => setViewing(a)}
                             onDelete={() => remove.mutate(a.id)}
                         />
                     ))}
                 </div>
+            )}
+            {viewing && (
+                <AttachmentLightbox
+                    attachment={viewing}
+                    onClose={() => setViewing(null)}
+                />
             )}
         </div>
     );
@@ -202,9 +211,11 @@ export const AttachmentsSection = ({ taskId }: Props) => {
 
 const AttachmentCard = ({
     attachment: a,
+    onView,
     onDelete,
 }: {
     attachment: Attachment;
+    onView: () => void;
     onDelete: () => void;
 }) => {
     const Icon = ICON_BY_TYPE(a.type);
@@ -213,11 +224,13 @@ const AttachmentCard = ({
 
     return (
         <div
+            onClick={onView}
             style={{
                 position: "relative",
                 background: tokens.colors.bgSurface,
                 border: `1px solid ${tokens.colors.border}`,
                 borderRadius: tokens.radius.md,
+                cursor: "pointer",
                 overflow: "hidden",
                 display: "flex",
                 flexDirection: "column",

@@ -9,6 +9,8 @@ import {
     Pencil,
     Check,
     X,
+    CheckCircle2,
+    RotateCcw,
 } from "lucide-react";
 import { mockApi } from "../../lib/mock-api";
 import { useAuthStore } from "../../stores/auth";
@@ -35,6 +37,7 @@ export const CommentsSection = ({ taskId }: { taskId: string }) => {
     const [body, setBody] = useState("");
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editBody, setEditBody] = useState("");
+    const [showResolved, setShowResolved] = useState(false);
     const qc = useQueryClient();
 
     const { data: comments = [], isLoading } = useQuery({
@@ -73,6 +76,13 @@ export const CommentsSection = ({ taskId }: { taskId: string }) => {
             setEditingId(null);
             setEditBody("");
         },
+    });
+
+    const resolveMutation = useMutation({
+        mutationFn: (commentId: string) =>
+            mockApi.comments.toggleResolve(commentId, user?.id ?? "u-001"),
+        onSuccess: () =>
+            qc.invalidateQueries({ queryKey: ["comments", taskId] }),
     });
 
     const startEdit = (id: string, currentBody: string) => {
@@ -118,8 +128,30 @@ export const CommentsSection = ({ taskId }: { taskId: string }) => {
                         fontFamily: tokens.typography.fontFamilyMono,
                     }}
                 >
-                    {comments.length}
+                    {comments.filter((c) => !c.resolvedAt).length}
+                    {comments.some((c) => c.resolvedAt) &&
+                        ` · ${comments.filter((c) => c.resolvedAt).length} resolved`}
                 </span>
+                {comments.some((c) => c.resolvedAt) && (
+                    <button
+                        onClick={() => setShowResolved((s) => !s)}
+                        style={{
+                            marginLeft: "auto",
+                            background: "none",
+                            border: 0,
+                            cursor: "pointer",
+                            fontSize: 11,
+                            color: tokens.colors.textMuted,
+                            textTransform: "none",
+                            letterSpacing: "normal",
+                            fontWeight: 500,
+                        }}
+                    >
+                        {showResolved
+                            ? "Hide resolved"
+                            : "Show resolved"}
+                    </button>
+                )}
             </div>
 
             <div
@@ -140,7 +172,9 @@ export const CommentsSection = ({ taskId }: { taskId: string }) => {
                         compact
                     />
                 ) : (
-                    comments.map((c) => {
+                    comments
+                        .filter((c) => showResolved || !c.resolvedAt)
+                        .map((c) => {
                         const author = usersById.get(c.authorId);
                         const fullName = author
                             ? `${author.firstName} ${author.lastName}`
@@ -152,6 +186,15 @@ export const CommentsSection = ({ taskId }: { taskId: string }) => {
                                     display: "flex",
                                     gap: tokens.spacing[2],
                                     alignItems: "flex-start",
+                                    opacity: c.resolvedAt ? 0.55 : 1,
+                                    padding: c.resolvedAt ? 6 : 0,
+                                    background: c.resolvedAt
+                                        ? tokens.colors.successSubtle
+                                        : "transparent",
+                                    borderRadius: tokens.radius.md,
+                                    borderLeft: c.resolvedAt
+                                        ? `3px solid ${tokens.colors.success}`
+                                        : "3px solid transparent",
                                 }}
                             >
                                 <Avatar
@@ -201,53 +244,92 @@ export const CommentsSection = ({ taskId }: { taskId: string }) => {
                                                 </span>
                                             )}
                                         </span>
-                                        {c.authorId === user?.id &&
-                                            editingId !== c.id && (
-                                                <span
+                                        {editingId !== c.id && (
+                                            <span
+                                                style={{
+                                                    marginLeft: "auto",
+                                                    display: "inline-flex",
+                                                    gap: 2,
+                                                }}
+                                            >
+                                                <button
+                                                    onClick={() =>
+                                                        resolveMutation.mutate(
+                                                            c.id,
+                                                        )
+                                                    }
                                                     style={{
-                                                        marginLeft: "auto",
-                                                        display:
-                                                            "inline-flex",
-                                                        gap: 2,
+                                                        ...commentIconBtn,
+                                                        color: c.resolvedAt
+                                                            ? tokens.colors
+                                                                  .success
+                                                            : tokens.colors
+                                                                  .textMuted,
                                                     }}
+                                                    title={
+                                                        c.resolvedAt
+                                                            ? "Reopen"
+                                                            : "Mark resolved"
+                                                    }
+                                                    aria-label={
+                                                        c.resolvedAt
+                                                            ? "Reopen comment"
+                                                            : "Mark resolved"
+                                                    }
                                                 >
-                                                    <button
-                                                        onClick={() =>
-                                                            startEdit(
-                                                                c.id,
-                                                                c.body,
-                                                            )
-                                                        }
-                                                        style={
-                                                            commentIconBtn
-                                                        }
-                                                        title="Edit comment"
-                                                        aria-label="Edit comment"
-                                                    >
-                                                        <Pencil
+                                                    {c.resolvedAt ? (
+                                                        <RotateCcw
                                                             size={12}
                                                             strokeWidth={1.5}
                                                         />
-                                                    </button>
-                                                    <button
-                                                        onClick={() =>
-                                                            deleteMutation.mutate(
-                                                                c.id,
-                                                            )
-                                                        }
-                                                        style={
-                                                            commentIconBtn
-                                                        }
-                                                        title="Delete comment"
-                                                        aria-label="Delete comment"
-                                                    >
-                                                        <Trash2
+                                                    ) : (
+                                                        <CheckCircle2
                                                             size={12}
                                                             strokeWidth={1.5}
                                                         />
-                                                    </button>
-                                                </span>
-                                            )}
+                                                    )}
+                                                </button>
+                                                {c.authorId === user?.id && (
+                                                    <>
+                                                        <button
+                                                            onClick={() =>
+                                                                startEdit(
+                                                                    c.id,
+                                                                    c.body,
+                                                                )
+                                                            }
+                                                            style={
+                                                                commentIconBtn
+                                                            }
+                                                            title="Edit comment"
+                                                            aria-label="Edit comment"
+                                                        >
+                                                            <Pencil
+                                                                size={12}
+                                                                strokeWidth={1.5}
+                                                            />
+                                                        </button>
+                                                        <button
+                                                            onClick={() =>
+                                                                deleteMutation.mutate(
+                                                                    c.id,
+                                                                )
+                                                            }
+                                                            style={
+                                                                commentIconBtn
+                                                            }
+                                                            title="Delete comment"
+                                                            aria-label="Delete comment"
+                                                        >
+                                                            <Trash2
+                                                                size={12}
+                                                                strokeWidth={1.5}
+                                                            />
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </span>
+                                        )}
                                     </div>
                                     {editingId === c.id ? (
                                         <div

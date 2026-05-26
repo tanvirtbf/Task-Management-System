@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Modal, Input, App as AntApp } from "antd";
+import { Modal, Input, Switch, App as AntApp } from "antd";
+import { Lock } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { mockApi } from "../../lib/mock-api";
 import { DynamicIcon } from "./DynamicIcon";
@@ -44,6 +45,7 @@ export const CreateSpaceModal = ({ onClose, onCreated }: Props) => {
     const [description, setDescription] = useState("");
     const [icon, setIcon] = useState("Folder");
     const [color, setColor] = useState(COLORS[0]);
+    const [isPrivate, setIsPrivate] = useState(false);
 
     const create = useMutation({
         mutationFn: () =>
@@ -52,6 +54,7 @@ export const CreateSpaceModal = ({ onClose, onCreated }: Props) => {
                 description: description.trim() || undefined,
                 icon,
                 color,
+                isPrivate,
             }),
         onSuccess: (s) => {
             qc.invalidateQueries({ queryKey: ["spaces"] });
@@ -163,6 +166,46 @@ export const CreateSpaceModal = ({ onClose, onCreated }: Props) => {
                             />
                         ))}
                     </div>
+                </div>
+                <div
+                    style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: 10,
+                        background: tokens.colors.bgMuted,
+                        borderRadius: tokens.radius.md,
+                    }}
+                >
+                    <Lock
+                        size={16}
+                        strokeWidth={1.75}
+                        color={
+                            isPrivate
+                                ? tokens.colors.primary
+                                : tokens.colors.textMuted
+                        }
+                    />
+                    <div style={{ flex: 1 }}>
+                        <div
+                            style={{
+                                fontSize: tokens.typography.fontSize.sm,
+                                fontWeight: 600,
+                            }}
+                        >
+                            Make private
+                        </div>
+                        <div
+                            style={{
+                                fontSize: 11,
+                                color: tokens.colors.textMuted,
+                            }}
+                        >
+                            Only Owners and Admins (and explicitly invited
+                            members) will see this space.
+                        </div>
+                    </div>
+                    <Switch checked={isPrivate} onChange={setIsPrivate} />
                 </div>
             </div>
         </Modal>

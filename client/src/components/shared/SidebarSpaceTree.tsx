@@ -4,6 +4,7 @@ import { ChevronRight, Plus, Star, MoreHorizontal } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Tooltip, Dropdown, Modal, App as AntApp } from "antd";
 import { mockApi } from "../../lib/mock-api";
+import { useAuthStore } from "../../stores/auth";
 import { useUiStore } from "../../stores/ui";
 import { tokens } from "../../theme";
 import { DynamicIcon } from "./DynamicIcon";
@@ -34,9 +35,18 @@ export const SidebarSpaceTree = ({ collapsed, searchQuery = "" }: Props) => {
     const [renamingSpace, setRenamingSpace] = useState<string | null>(null);
     const [renamingList, setRenamingList] = useState<string | null>(null);
 
-    const { data: spaces = [] } = useQuery({
+    const currentUser = useAuthStore((s) => s.user);
+    const { data: allSpaces = [] } = useQuery({
         queryKey: ["spaces"],
         queryFn: () => mockApi.spaces.list(),
+    });
+    /** Members and guests only see public spaces. */
+    const spaces = allSpaces.filter((s) => {
+        if (!s.isPrivate) return true;
+        if (!currentUser) return false;
+        return (
+            currentUser.role === "owner" || currentUser.role === "admin"
+        );
     });
     const { data: folders = [] } = useQuery({
         queryKey: ["folders"],

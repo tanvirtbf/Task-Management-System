@@ -77,6 +77,9 @@ const ImportExportSettings = lazy(
 const BillingSettings = lazy(() => import("./pages/settings/BillingSettings"));
 const InboxPage = lazy(() => import("./pages/inbox/InboxPage"));
 const SearchPage = lazy(() => import("./pages/search/SearchPage"));
+const TimeReportPage = lazy(
+    () => import("./pages/time-report/TimeReportPage"),
+);
 const NotepadPage = lazy(() => import("./pages/notepad/NotepadPage"));
 const RemindersPage = lazy(() => import("./pages/reminders/RemindersPage"));
 
@@ -157,6 +160,10 @@ export const router = createBrowserRouter([
                             {
                                 path: "reminders",
                                 element: lazyRoute(<RemindersPage />),
+                            },
+                            {
+                                path: "time-report",
+                                element: lazyRoute(<TimeReportPage />),
                             },
                             {
                                 path: "settings",

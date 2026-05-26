@@ -23,6 +23,8 @@ import { ChecklistsSection } from "./ChecklistsSection";
 import { CommentsSection } from "./CommentsSection";
 import { AttachmentsSection } from "./AttachmentsSection";
 import { DependenciesSection } from "./DependenciesSection";
+import { TimeLogsSection } from "./TimeLogsSection";
+import { TaskActivitySection } from "./TaskActivitySection";
 import { CustomFieldsList } from "../custom-field/CustomFieldsList";
 import { useUpdateTask } from "../../hooks/useTaskMutations";
 import { tokens } from "../../theme";
@@ -285,7 +287,9 @@ export const TaskDetailDrawer = ({
                             listId={task.primaryListId}
                         />
                         <AttachmentsSection taskId={task.id} />
+                        <TimeLogsSection taskId={task.id} />
                         <CommentsSection taskId={task.id} />
+                        <TaskActivitySection taskId={task.id} />
                     </div>
 
                     {/* Footer */}

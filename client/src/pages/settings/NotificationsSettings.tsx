@@ -11,6 +11,13 @@ import {
 } from "../../components/settings/SettingsHeader";
 import type { NotificationPreferences } from "../../types/settings";
 import { LoadingState } from "../../components/shared/LoadingState";
+import {
+    enablePush,
+    disablePush,
+    isPushSupported,
+    currentPermission,
+    showTestNotification,
+} from "../../lib/push";
 import { tokens } from "../../theme";
 
 const EVENTS: Array<{
@@ -146,11 +153,6 @@ const NotificationsSettings = () => {
                         [
                             ["inApp", "In-app", "Bell icon in the top bar"],
                             ["email", "Email", "To your account email"],
-                            [
-                                "push",
-                                "Push (mobile)",
-                                "Requires mobile app — coming soon",
-                            ],
                         ] as const
                     ).map(([key, label, hint]) => (
                         <div
@@ -188,6 +190,12 @@ const NotificationsSettings = () => {
                             />
                         </div>
                     ))}
+
+                    {/* Browser push (real implementation via service worker) */}
+                    <PushChannelRow
+                        enabled={draft.channels.push}
+                        onChange={(v) => setChannel("push", v)}
+                    />
                 </div>
             </SettingsSection>
 
@@ -354,6 +362,122 @@ const NotificationsSettings = () => {
                     </div>
                 )}
             </SettingsSection>
+        </div>
+    );
+};
+
+const PushChannelRow = ({
+    enabled,
+    onChange,
+}: {
+    enabled: boolean;
+    onChange: (v: boolean) => void;
+}) => {
+    const { message } = AntApp.useApp();
+    const [permission, setPermission] = useState(currentPermission());
+    const [busy, setBusy] = useState(false);
+
+    const handleToggle = async (v: boolean) => {
+        if (v) {
+            if (!isPushSupported()) {
+                message.error("Push isn't supported in this browser.");
+                return;
+            }
+            setBusy(true);
+            const result = await enablePush();
+            setBusy(false);
+            setPermission(currentPermission());
+            if (result.ok) {
+                onChange(true);
+                message.success("Browser push enabled");
+            } else if (result.reason === "denied") {
+                message.error(
+                    "Notification permission was denied. Update your browser settings to re-enable.",
+                );
+            } else {
+                message.error("Could not enable push notifications");
+            }
+        } else {
+            setBusy(true);
+            await disablePush();
+            setBusy(false);
+            onChange(false);
+            message.info("Browser push disabled");
+        }
+    };
+
+    const supported = isPushSupported();
+
+    return (
+        <div
+            style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "8px 0",
+                borderBottom: `1px solid ${tokens.colors.borderSubtle}`,
+            }}
+        >
+            <div>
+                <div
+                    style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        fontSize: tokens.typography.fontSize.sm,
+                        fontWeight: 500,
+                    }}
+                >
+                    Browser push
+                    {permission === "granted" && enabled && (
+                        <span
+                            style={{
+                                fontSize: 10,
+                                color: tokens.colors.success,
+                                fontWeight: 600,
+                                fontFamily:
+                                    tokens.typography.fontFamilyMono,
+                            }}
+                        >
+                            ACTIVE
+                        </span>
+                    )}
+                </div>
+                <div
+                    style={{
+                        fontSize: 12,
+                        color: tokens.colors.textMuted,
+                    }}
+                >
+                    {!supported
+                        ? "Your browser doesn't support push notifications."
+                        : permission === "denied"
+                          ? "Permission denied — update browser site settings to re-enable."
+                          : "Web-standard push via service worker. Works while the tab is closed."}
+                </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {enabled && permission === "granted" && (
+                    <Button
+                        size="small"
+                        onClick={() =>
+                            showTestNotification(
+                                "Test notification",
+                                "Push is working — you're all set.",
+                            )
+                        }
+                    >
+                        Test
+                    </Button>
+                )}
+                <Switch
+                    checked={enabled && permission === "granted"}
+                    disabled={
+                        !supported || permission === "denied" || busy
+                    }
+                    onChange={handleToggle}
+                />
+            </div>
         </div>
     );
 };

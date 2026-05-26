@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { devtools, persist } from "zustand/middleware";
+import type { ViewConfig } from "../types/view";
 
 interface UiState {
     sidebarCollapsed: boolean;
@@ -20,6 +21,11 @@ interface UiState {
 
     theme: "light" | "dark";
     setTheme: (t: "light" | "dark") => void;
+
+    /** Per-list saved views (persisted). */
+    savedViews: ViewConfig[];
+    saveView: (view: ViewConfig) => void;
+    deleteView: (id: string) => void;
 }
 
 export const useUiStore = create<UiState>()(
@@ -63,6 +69,24 @@ export const useUiStore = create<UiState>()(
 
                 theme: "light",
                 setTheme: (t) => set({ theme: t }),
+
+                savedViews: [],
+                saveView: (view) => {
+                    const existing = get().savedViews;
+                    const idx = existing.findIndex((v) => v.id === view.id);
+                    if (idx >= 0) {
+                        const next = [...existing];
+                        next[idx] = view;
+                        set({ savedViews: next });
+                    } else {
+                        set({ savedViews: [...existing, view] });
+                    }
+                },
+                deleteView: (id) => {
+                    set({
+                        savedViews: get().savedViews.filter((v) => v.id !== id),
+                    });
+                },
             }),
             {
                 name: "th-ui",
@@ -71,6 +95,7 @@ export const useUiStore = create<UiState>()(
                     expandedIds: s.expandedIds,
                     favoriteIds: s.favoriteIds,
                     theme: s.theme,
+                    savedViews: s.savedViews,
                 }),
             },
         ),
