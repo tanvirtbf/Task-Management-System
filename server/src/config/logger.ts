@@ -1,0 +1,22 @@
+import winston from "winston";
+import { Config } from "./index";
+
+const logger = winston.createLogger({
+    level: "info",
+    format: winston.format.combine(
+        winston.format.timestamp(),
+        winston.format.errors({ stack: true }),
+        winston.format.json(),
+    ),
+    defaultMeta: { service: "task-management-api" },
+    transports: [
+        new winston.transports.File({ filename: "logs/error.log", level: "error" }),
+        new winston.transports.File({ filename: "logs/combined.log" }),
+        new winston.transports.Console({
+            format: winston.format.combine(winston.format.colorize(), winston.format.simple()),
+            silent: Config.NODE_ENV === "test",
+        }),
+    ],
+});
+
+export default logger;
