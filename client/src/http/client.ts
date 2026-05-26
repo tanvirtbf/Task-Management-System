@@ -1,10 +1,17 @@
 import axios from "axios";
-import { useAuthStore } from "../store";
+import { useAuthStore } from "../stores/auth";
 
-// axios instance create
+/**
+ * Real backend HTTP client.
+ *
+ * NOT USED IN PHASE 1 — all data flows through src/lib/mock-api.ts during
+ * the mock-first build (Phases 1–12). This file is here for the backend
+ * integration phase that happens after the UI is approved.
+ */
+
 export const api = axios.create({
     baseURL: import.meta.env.VITE_BACKEND_API_URL,
-    withCredentials: true, // cookies pass with every request
+    withCredentials: true,
     headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
@@ -15,11 +22,9 @@ const refreshToken = async () => {
     await axios.post(
         `${import.meta.env.VITE_BACKEND_API_URL}/auth/refresh`,
         {},
-        {
-            withCredentials: true,
-        },
+        { withCredentials: true },
     );
-}; // separate axios call to avoid interceptor recursion
+};
 
 api.interceptors.response.use(
     (response) => response,
@@ -32,7 +37,7 @@ api.interceptors.response.use(
                 await refreshToken();
                 return api.request({ ...originalRequest, headers });
             } catch (refreshErr) {
-                console.warn("Error while refreshing access token");
+                console.warn("Error refreshing access token");
                 useAuthStore.getState().logout();
                 return Promise.reject(refreshErr);
             }

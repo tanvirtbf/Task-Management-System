@@ -1,0 +1,67 @@
+import type { Space } from "../types";
+import { workspace } from "./workspace";
+
+export const spaces: Space[] = [
+    {
+        id: "sp-ops",
+        workspaceId: workspace.id,
+        name: "Operations",
+        description: "Order processing, courier, COD reconciliation",
+        icon: "ShoppingCart",
+        color: "#4F46E5",
+        isPrivate: false,
+        position: 0,
+        archivedAt: null,
+        createdBy: "u-001",
+    },
+    {
+        id: "sp-inv",
+        workspaceId: workspace.id,
+        name: "Inventory",
+        description: "Stock tracking, reorders, suppliers",
+        icon: "Package",
+        color: "#F59E0B",
+        isPrivate: false,
+        position: 1,
+        archivedAt: null,
+        createdBy: "u-001",
+    },
+    {
+        id: "sp-cs",
+        workspaceId: workspace.id,
+        name: "Customer Support",
+        description: "Complaints, queries, returns",
+        icon: "Headphones",
+        color: "#E11D48",
+        isPrivate: false,
+        position: 2,
+        archivedAt: null,
+        createdBy: "u-001",
+    },
+    {
+        id: "sp-listing",
+        workspaceId: workspace.id,
+        name: "Product Listing",
+        description: "Photo, content, upload pipeline",
+        icon: "Image",
+        color: "#10B981",
+        isPrivate: false,
+        position: 3,
+        archivedAt: null,
+        createdBy: "u-001",
+    },
+    {
+        id: "sp-mkt",
+        workspaceId: workspace.id,
+        name: "Marketing",
+        description: "Content calendar, ads, campaigns",
+        icon: "Megaphone",
+        color: "#8B5CF6",
+        isPrivate: false,
+        position: 4,
+        archivedAt: null,
+        createdBy: "u-001",
+    },
+];
+
+export const spacesById = new Map(spaces.map((s) => [s.id, s]));

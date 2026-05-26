@@ -1,0 +1,45 @@
+{
+    "name": "ShutkiHut Tasks",
+    "short_name": "Tasks",
+    "description": "ClickUp-style task management for ShutkiHut — orders, complaints, listings, campaigns, and inventory in one workspace.",
+    "start_url": "/",
+    "scope": "/",
+    "display": "standalone",
+    "orientation": "any",
+    "background_color": "#FAFAFB",
+    "theme_color": "#4F46E5",
+    "lang": "en",
+    "categories": ["productivity", "business"],
+    "icons": [
+        {
+            "src": "/icon.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "any"
+        },
+        {
+            "src": "/icon-maskable.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "maskable"
+        }
+    ],
+    "shortcuts": [
+        {
+            "name": "Inbox",
+            "short_name": "Inbox",
+            "description": "Recent notifications",
+            "url": "/inbox"
+        },
+        {
+            "name": "Search",
+            "short_name": "Search",
+            "url": "/search"
+        },
+        {
+            "name": "Reminders",
+            "short_name": "Reminders",
+            "url": "/reminders"
+        }
+    ]
+}

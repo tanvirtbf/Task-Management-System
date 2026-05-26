@@ -1,7 +1,12 @@
-import type { Credentials } from "../type";
+import type { Credentials } from "../types";
 import { api } from "./client";
 
-// Auth Service
+/**
+ * Real API endpoint functions.
+ * NOT USED IN PHASE 1 — see http/client.ts header note.
+ */
+
+// Auth
 export const login = (credentials: Credentials) =>
     api.post("/auth/login", credentials);
 
