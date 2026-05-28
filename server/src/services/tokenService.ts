@@ -4,7 +4,8 @@ import { eq } from "drizzle-orm";
 import { MySql2Database } from "drizzle-orm/mysql2";
 import { Config } from "../config";
 import * as schema from "../db/schema";
-import { refreshTokens, User } from "../db/schema";
+import { sessions } from "../db/schema";
+import { fakeId, sha256 } from "../utils";
 
 export class TokenService {
     constructor(private db: MySql2Database<typeof schema>) {}
@@ -15,44 +16,73 @@ export class TokenService {
         }
         return sign(payload, Config.ACCESS_TOKEN_SECRET, {
             algorithm: "HS256",
-            expiresIn: "1h",
+            expiresIn: "15m",
             issuer: "task-management-server",
         });
     }
 
-    generateRefreshToken(payload: JwtPayload) {
+    generateRefreshToken(payload: JwtPayload & { id: string }) {
         if (!Config.REFRESH_TOKEN_SECRET) {
             throw createHttpError(500, "Refresh token secret not configured");
         }
         return sign(payload, Config.REFRESH_TOKEN_SECRET, {
             algorithm: "HS256",
-            expiresIn: "365d",
+            expiresIn: "30d",
             issuer: "task-management-server",
-            jwtid: String(payload.id),
+            jwtid: payload.id,
         });
     }
 
-    async persistRefreshToken(user: Pick<User, "id">) {
-        const MS_IN_YEAR = 1000 * 60 * 60 * 24 * 365;
+    /**
+     * Persist a session row. We store `sha256(refreshToken)` in `token_hash` so
+     * the raw refresh JWT is never written to disk.
+     */
+    async persistSession(input: {
+        userId: string;
+        refreshToken: string;
+        userAgent?: string;
+        ipAddress?: string;
+    }) {
+        const MS_IN_30_DAYS = 1000 * 60 * 60 * 24 * 30;
+        const id = fakeId("ses");
+        const tokenHash = sha256(input.refreshToken);
 
-        const result = await this.db.insert(refreshTokens).values({
-            userId: user.id,
-            expiresAt: new Date(Date.now() + MS_IN_YEAR),
+        await this.db.insert(sessions).values({
+            id,
+            userId: input.userId,
+            tokenHash,
+            userAgent: input.userAgent ?? null,
+            ipAddress: input.ipAddress ?? null,
+            expiresAt: new Date(Date.now() + MS_IN_30_DAYS),
         });
-        const insertId = (result as unknown as { insertId: number }[])[0]
-            ?.insertId;
 
-        const [token] = await this.db
-            .select()
-            .from(refreshTokens)
-            .where(eq(refreshTokens.id, insertId))
+        return { id, tokenHash };
+    }
+
+    /** Revoke a session (logout). Soft delete via `revoked_at`. */
+    async revokeSession(sessionId: string) {
+        await this.db
+            .update(sessions)
+            .set({ revokedAt: new Date() })
+            .where(eq(sessions.id, sessionId));
+    }
+
+    /** Check if a session exists and is still valid (not revoked, not expired). */
+    async findActiveSession(sessionId: string) {
+        const [row] = await this.db
+            .select({
+                id: sessions.id,
+                userId: sessions.userId,
+                expiresAt: sessions.expiresAt,
+                revokedAt: sessions.revokedAt,
+            })
+            .from(sessions)
+            .where(eq(sessions.id, sessionId))
             .limit(1);
-        return token;
-    }
 
-    async deleteRefreshToken(tokenId: number) {
-        return await this.db
-            .delete(refreshTokens)
-            .where(eq(refreshTokens.id, tokenId));
+        if (!row) return null;
+        if (row.revokedAt) return null;
+        if (row.expiresAt.getTime() < Date.now()) return null;
+        return row;
     }
 }

@@ -28,6 +28,7 @@ import { TaskActivitySection } from "./TaskActivitySection";
 import { BugFieldsSection } from "./BugFieldsSection";
 import { GitIntegrationPanel } from "./GitIntegrationPanel";
 import { PostmortemChecklist } from "./PostmortemChecklist";
+import { SLABadge } from "./SLABadge";
 import { CustomFieldsList } from "../custom-field/CustomFieldsList";
 import { useUpdateTask } from "../../hooks/useTaskMutations";
 import { tokens } from "../../theme";
@@ -365,6 +366,24 @@ export const TaskDetailDrawer = ({
                                     Deployed{" "}
                                     {new Date(task.deployedAt).toLocaleDateString()}
                                 </span>
+                            </>
+                        )}
+                        {task.rollbackReason && (
+                            <>
+                                <span>·</span>
+                                <span style={{ color: tokens.colors.danger }}>
+                                    Rolled back: {task.rollbackReason}
+                                </span>
+                            </>
+                        )}
+                        {task.slaDueAt && (
+                            <>
+                                <span>·</span>
+                                <SLABadge
+                                    slaDueAt={task.slaDueAt}
+                                    completedAt={task.completedAt}
+                                    size="sm"
+                                />
                             </>
                         )}
                     </div>

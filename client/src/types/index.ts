@@ -136,7 +136,7 @@ export interface TaskType {
 
 export interface Tag {
     id: string;
-    spaceId: string;
+    workspaceId: string;
     name: string;
     color: string;
 }
@@ -202,6 +202,16 @@ export interface Task {
     reporterTeam?: "ops" | "cs" | "inventory" | "listing" | "marketing" | "internal" | null;
     /** Deploy timestamp (set when status moves to Deployed). */
     deployedAt?: string | null;
+    /** Reason for rollback if deployment was reverted. */
+    rollbackReason?: string | null;
+    /**
+     * SLA deadline — auto-set at task create time based on task type / severity:
+     *   complaint task        → created_at + 24h
+     *   bug task severity=S0  → created_at + 2h
+     *   bug task severity=S1  → created_at + 24h
+     *   bug task severity=S2  → created_at + 7d
+     */
+    slaDueAt?: string | null;
 }
 
 export type RecurrencePattern = "daily" | "weekly" | "monthly" | "custom";

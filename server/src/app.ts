@@ -7,7 +7,7 @@ import logger from "./config/logger";
 import { Config } from "./config";
 
 import authRouter from "./routes/auth";
-import tenantRouter from "./routes/tenant";
+import workspaceRouter from "./routes/workspace";
 import userRouter from "./routes/user";
 
 const app = express();
@@ -27,7 +27,7 @@ app.get("/", async (_req, res) => {
 });
 
 app.use("/auth", authRouter);
-app.use("/tenants", tenantRouter);
+app.use("/workspaces", workspaceRouter);
 app.use("/users", userRouter);
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars

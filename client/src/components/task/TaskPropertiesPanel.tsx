@@ -1,5 +1,5 @@
 import { Tooltip } from "antd";
-import { Clock, Timer, Eye, Calendar as CalIcon, Flag, Zap, GitPullRequest } from "lucide-react";
+import { Clock, Timer, Eye, Calendar as CalIcon, Flag, Zap, GitPullRequest, Repeat } from "lucide-react";
 import { useUpdateTask } from "../../hooks/useTaskMutations";
 import { InlineAssigneeEdit } from "./InlineAssigneeEdit";
 import { InlineDateEdit } from "./InlineDateEdit";
@@ -9,6 +9,7 @@ import { InlineStatusEdit } from "./InlineStatusEdit";
 import { InlineReviewerEdit } from "./InlineReviewerEdit";
 import { InlineStoryPointsEdit } from "./InlineStoryPointsEdit";
 import { BugSeverityBadge } from "./BugSeverityBadge";
+import { RecurrenceConfig } from "./RecurrenceConfig";
 import type { Task } from "../../types";
 import { listsById } from "../../mocks/lists";
 import { sprintsById } from "../../mocks/sprints";
@@ -202,6 +203,18 @@ export const TaskPropertiesPanel = ({ task }: { task: Task }) => {
                     </PropValue>
                 </>
             )}
+
+            <PropLabel icon={<Repeat size={11} strokeWidth={1.75} />}>
+                Recurrence
+            </PropLabel>
+            <PropValue>
+                <RecurrenceConfig
+                    value={task.recurrence}
+                    onChange={(r) =>
+                        update.mutate({ id: task.id, patch: { recurrence: r } })
+                    }
+                />
+            </PropValue>
 
             <PropLabel>Tags</PropLabel>
             <PropValue>

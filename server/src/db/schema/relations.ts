@@ -38,6 +38,7 @@ import {
 import { forms, formFields, formSubmissions } from "./forms";
 import { notifications } from "./notifications";
 import { workspaceActivity } from "./audit";
+import { templates } from "./templates";
 
 // ─── workspaces ──────────────────────────────────────────────────────────────
 export const workspacesRelations = relations(workspaces, ({ many }) => ({
@@ -51,6 +52,19 @@ export const workspacesRelations = relations(workspaces, ({ many }) => ({
     invitations: many(invitations),
     onCallShifts: many(onCallShifts),
     workspaceActivity: many(workspaceActivity),
+    templates: many(templates),
+}));
+
+// ─── templates ───────────────────────────────────────────────────────────────
+export const templatesRelations = relations(templates, ({ one }) => ({
+    workspace: one(workspaces, {
+        fields: [templates.workspaceId],
+        references: [workspaces.id],
+    }),
+    createdByUser: one(users, {
+        fields: [templates.createdBy],
+        references: [users.id],
+    }),
 }));
 
 // ─── users ───────────────────────────────────────────────────────────────────

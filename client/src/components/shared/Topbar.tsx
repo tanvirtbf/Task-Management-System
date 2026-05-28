@@ -2,6 +2,7 @@ import { tokens } from "../../theme";
 import { Breadcrumb } from "./Breadcrumb";
 import { CommandPaletteTrigger } from "./CommandPaletteTrigger";
 import { NotificationBell } from "./NotificationBell";
+import { OnCallBadge } from "./OnCallBadge";
 import { QuickCreateButton } from "./QuickCreateButton";
 import { UserMenu } from "./UserMenu";
 
@@ -53,6 +54,7 @@ export const Topbar = () => (
                 flexShrink: 0,
             }}
         >
+            <OnCallBadge />
             <QuickCreateButton />
             <NotificationBell />
             <UserMenu />

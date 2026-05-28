@@ -8,6 +8,7 @@ import {
     Hexagon,
     Sparkles,
     Download,
+    LayoutTemplate,
 } from "lucide-react";
 import { tokens } from "../../theme";
 
@@ -56,6 +57,11 @@ const NAV: NavGroup[] = [
                 to: "/settings/custom-fields",
                 label: "Custom fields",
                 icon: Sparkles,
+            },
+            {
+                to: "/settings/templates",
+                label: "Templates",
+                icon: LayoutTemplate,
             },
         ],
     },

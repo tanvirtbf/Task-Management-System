@@ -5,6 +5,7 @@ import { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../db/schema";
 import { users } from "../db/schema";
 import { LimitedUserData, UserData } from "../types";
+import { fakeId } from "../utils";
 
 export class UserService {
     constructor(private db: MySql2Database<typeof schema>) {}
@@ -15,47 +16,46 @@ export class UserService {
         email,
         password,
         role,
-        tenantId,
+        workspaceId,
     }: UserData) {
+        if (!workspaceId) {
+            throw createHttpError(
+                400,
+                "workspaceId is required to create a user",
+            );
+        }
+
         const existing = await this.db
-            .select()
+            .select({ id: users.id })
             .from(users)
             .where(eq(users.email, email))
             .limit(1);
 
         if (existing.length > 0) {
-            throw createHttpError(400, "Email is already exists!");
+            throw createHttpError(409, "Email already exists");
         }
 
         const saltRounds = 10;
-        const hashedPassword = await bcrypt.hash(password, saltRounds);
+        const passwordHash = await bcrypt.hash(password, saltRounds);
+        const id = fakeId("u");
 
         try {
-            const inserted = await this.db.insert(users).values({
+            await this.db.insert(users).values({
+                id,
+                workspaceId,
                 firstName,
                 lastName,
                 email,
-                password: hashedPassword,
+                passwordHash,
                 role,
-                tenantId: tenantId ?? null,
+                status: "active",
             });
 
-            // mysql2 returns insertId on result
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const insertId = (inserted as unknown as { insertId: number }[])[0]
-                ?.insertId;
-
-            const [user] = await this.db
-                .select()
-                .from(users)
-                .where(eq(users.id, insertId))
-                .limit(1);
-
-            return user;
+            return this.findById(id);
         } catch {
             throw createHttpError(
                 500,
-                "Failed to store the data in the database",
+                "Failed to store the user in the database",
             );
         }
     }
@@ -64,11 +64,13 @@ export class UserService {
         const [user] = await this.db
             .select({
                 id: users.id,
+                workspaceId: users.workspaceId,
                 firstName: users.firstName,
                 lastName: users.lastName,
                 email: users.email,
                 role: users.role,
-                password: users.password,
+                status: users.status,
+                passwordHash: users.passwordHash,
             })
             .from(users)
             .where(eq(users.email, email))
@@ -76,15 +78,19 @@ export class UserService {
         return user ?? null;
     }
 
-    async findById(id: number) {
+    async findById(id: string) {
         const [user] = await this.db
             .select({
                 id: users.id,
+                workspaceId: users.workspaceId,
                 firstName: users.firstName,
                 lastName: users.lastName,
                 email: users.email,
                 role: users.role,
-                tenantId: users.tenantId,
+                status: users.status,
+                avatarUrl: users.avatarUrl,
+                timezone: users.timezone,
+                lastLoginAt: users.lastLoginAt,
                 createdAt: users.createdAt,
                 updatedAt: users.updatedAt,
             })
@@ -94,10 +100,7 @@ export class UserService {
         return user ?? null;
     }
 
-    async update(
-        userId: number,
-        { firstName, lastName, role }: LimitedUserData,
-    ) {
+    async update(userId: string, { firstName, lastName, role }: LimitedUserData) {
         try {
             await this.db
                 .update(users)
@@ -112,22 +115,32 @@ export class UserService {
         }
     }
 
-    async getAll() {
+    async listByWorkspace(workspaceId: string) {
         return await this.db
             .select({
                 id: users.id,
+                workspaceId: users.workspaceId,
                 firstName: users.firstName,
                 lastName: users.lastName,
                 email: users.email,
                 role: users.role,
-                tenantId: users.tenantId,
+                status: users.status,
+                avatarUrl: users.avatarUrl,
+                lastLoginAt: users.lastLoginAt,
                 createdAt: users.createdAt,
-                updatedAt: users.updatedAt,
             })
-            .from(users);
+            .from(users)
+            .where(eq(users.workspaceId, workspaceId));
     }
 
-    async deleteById(userId: number) {
+    async deleteById(userId: string) {
         return await this.db.delete(users).where(eq(users.id, userId));
+    }
+
+    async touchLastLogin(userId: string) {
+        await this.db
+            .update(users)
+            .set({ lastLoginAt: new Date() })
+            .where(eq(users.id, userId));
     }
 }

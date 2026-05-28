@@ -987,15 +987,162 @@ Save postmortem checklist state.
 
 ## 23. Templates
 
+User-defined reusable task structures with pre-built checklists. Backed by the `templates` table (schema §32). Surfaced in two places:
+- **Settings → Templates** — CRUD UI for managing the workspace's templates.
+- **Space header → "Apply template" button** — picks a template + spawns a task.
+
+Per FINAL_REQUIREMENTS.md §5.18 templates are workspace-wide and generic — any team can create their own. The `type` field is `task | list | space` (V1 ships only `task`; the other two are reserved for V2 list/space templating).
+
 ### GET `/api/v1/templates`
-List user-defined task templates (e.g. "Eid campaign", "New product launch", "Incident response").
-Query: `?type=task|space|list` (optional filter)
-**200 OK** — `Template[]`.
+List the workspace's templates.
+
+Query:
+- `?type=task|list|space` — optional filter (default: all)
+- `?q=…` — optional name search
+
+**200 OK**
+```json
+{
+  "data": [
+    {
+      "id": "tpl-eid-campaign",
+      "workspace_id": "ws-main",
+      "type": "task",
+      "name": "Eid Campaign — 12-step playbook",
+      "description": "Festival campaign with budget, creative, scheduling and post-launch review.",
+      "icon": "Sparkles",
+      "color": "#10B981",
+      "structure": {
+        "taskTypeId": "tt-campaign",
+        "priority": 2,
+        "tags": ["tag-eid"],
+        "checklistName": "Eid Campaign 12-step playbook",
+        "checklistItems": [
+          { "text": "Confirm budget with owner", "dueOffsetDays": 0 },
+          { "text": "Pick hero products (5-8)", "dueOffsetDays": 1 }
+        ],
+        "description": null
+      },
+      "usage_count": 8,
+      "created_by": "u-001",
+      "created_at": "2026-04-01T10:00:00Z",
+      "updated_at": "2026-05-12T08:30:00Z"
+    }
+  ],
+  "pagination": { "next_cursor": null, "has_more": false }
+}
+```
+
+### GET `/api/v1/templates/:id`
+**200 OK** — single `Template`. **404** if not found.
+
+### POST `/api/v1/templates`
+Create a new template.
+
+**Body**
+```json
+{
+  "type": "task",
+  "name": "New Product Launch — 7-step pipeline",
+  "description": "Source → Photo → Content → Price → Upload → FB Post → Live.",
+  "icon": "Package",
+  "color": "#8B5CF6",
+  "structure": {
+    "taskTypeId": "tt-product",
+    "priority": 3,
+    "tags": ["tag-new-arrival"],
+    "checklistName": "Product launch checklist",
+    "checklistItems": [
+      { "text": "Source supplier + confirm cost", "dueOffsetDays": 0 },
+      { "text": "Photo shoot", "dueOffsetDays": 2 },
+      { "text": "Write content + description", "dueOffsetDays": 4 }
+    ]
+  }
+}
+```
+
+Server validates:
+- `name` unique per workspace (DB enforces via `uq_templates_workspace_name`)
+- `type` is one of `task | list | space`
+- `structure.taskTypeId` (if provided) exists in the workspace
+- `structure.tags[]` (if provided) all exist in the workspace
+- `structure.checklistItems` non-empty (at least 1 step)
+
+**201 Created** — the created `Template`. **409** `template.duplicate` on name conflict.
+
+### PATCH `/api/v1/templates/:id`
+Update template metadata or structure. Partial body — only fields supplied are changed.
+
+**Body** (any subset of)
+```json
+{
+  "name": "…",
+  "description": "…",
+  "icon": "…",
+  "color": "#RRGGBB",
+  "structure": { /* full replacement of structure */ }
+}
+```
+
+Note: `type` is immutable after creation (changing it would require re-validating against a different scope's rules). `usage_count` is read-only. Editing `structure` does **not** retroactively affect tasks that were already spawned from this template.
+
+**200 OK** — the updated `Template`. **409** on name conflict.
+
+### DELETE `/api/v1/templates/:id`
+Hard delete (templates have no lifecycle worth preserving — if you need to keep a record, it's the spawned tasks themselves). Existing tasks spawned from this template are unaffected.
+
+**204 No Content.**
 
 ### POST `/api/v1/templates/:id/apply`
-"Apply template" button. Creates parent task + checklist using the template's structure.
-**Body** `{ "list_id": "l-campaigns", "task_name?": "Eid Campaign 2026", "anchor_date?": "2026-05-15" }`
-**201 Created** — parent `Task` with checklist embedded.
+"Apply template" — spawn a parent task with the template's checklist materialised.
+
+**Body**
+```json
+{
+  "list_id": "l-campaigns",
+  "task_name": "Eid Campaign 2026",
+  "anchor_date": "2026-05-15"
+}
+```
+
+Fields:
+- `list_id` (required) — the target list. List's `space_id` is used for any space-scoped validations (e.g., status workflow lookup).
+- `task_name` (optional) — defaults to the template's `name`.
+- `anchor_date` (optional, ISO date) — every checklist item's `dueOffsetDays` is computed relative to this. If omitted, `dueOffsetDays` is ignored (no item-level due dates).
+
+Server-side effect (single transaction):
+1. Insert a new row in `tasks` with `task_type_id`, `priority`, `tags` from the template's `structure`.
+2. Insert a row in `checklists` with `name = structure.checklistName`.
+3. Insert one row in `checklist_items` per `structure.checklistItems[]`, computing `due_date = anchor_date + dueOffsetDays` where set.
+4. Increment `templates.usage_count`.
+5. Append a `task_activity` row: `action = "created_from_template"`, `context = { templateId, templateName }`.
+
+**201 Created**
+```json
+{
+  "id": "t-90042",
+  "task_number": 90042,
+  "name": "Eid Campaign 2026",
+  "primary_list_id": "l-campaigns",
+  "task_type_id": "tt-campaign",
+  "priority": 2,
+  "tags": ["tag-eid"],
+  "subtasks_count": 0,
+  "checklists": [
+    {
+      "id": "ch-xxx",
+      "name": "Eid Campaign 12-step playbook",
+      "items": [ /* materialised ChecklistItem[] */ ]
+    }
+  ],
+  "created_at": "2026-05-28T09:00:00Z"
+}
+```
+
+**Error codes:**
+- `404 template.not_found` — template id doesn't exist
+- `404 list.not_found` — list_id invalid
+- `422 template.empty_structure` — template has no checklist items
 
 ---
 
@@ -1452,6 +1599,10 @@ Stable string codes — frontend can switch on these. Format: `<domain>.<reason>
 | `dep.self` | 422 | Task cannot depend on itself |
 | `notification.not_owner` | 403 | Cannot act on another user's notification |
 | `sla.invalid_due_at` | 422 | SLA due date is in the past |
+| `template.not_found` | 404 | Template id doesn't exist |
+| `template.duplicate` | 409 | Template name already exists in workspace |
+| `template.empty_structure` | 422 | Template has no checklist items |
+| `template.invalid_task_type` | 422 | `structure.taskTypeId` not in workspace |
 | `health.dependency_down` | 503 | Readiness check failed — see `checks` field |
 | `payload.too_large` | 413 | Body exceeded per-route limit (see §31.4) |
 | `rate.exceeded` | 429 | Per-bucket rate limit |
@@ -1813,6 +1964,44 @@ interface SLABreach {
   sla_due_at: string;
   minutes_breached: number;
   assignees: User[];
+}
+
+// Templates ────────────────────────────────────────────────────────
+type TemplateType = "task" | "list" | "space";
+
+interface TemplateChecklistItem {
+  text: string;
+  /** Offset in days from `anchor_date` supplied at apply time. */
+  due_offset_days?: number;
+}
+
+interface TemplateStructure {
+  /** Default task type when the template is applied. */
+  task_type_id?: string;
+  /** Default priority (0-4). */
+  priority?: number;
+  /** Default tag ids to apply. */
+  tags?: string[];
+  /** Checklist label shown on the materialised task. */
+  checklist_name?: string;
+  checklist_items?: TemplateChecklistItem[];
+  /** Pre-filled description (plain text for ops, Tiptap JSON for dev). */
+  description?: string;
+}
+
+interface Template {
+  id: string;
+  workspace_id: string;
+  type: TemplateType;            // "task" in V1
+  name: string;
+  description: string | null;
+  icon: string | null;           // lucide-react icon name
+  color: string | null;          // #RRGGBB
+  structure: TemplateStructure;
+  usage_count: number;           // monotonically increases on each /apply
+  created_by: string;
+  created_at: string;
+  updated_at: string;
 }
 ```
 

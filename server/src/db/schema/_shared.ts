@@ -73,6 +73,7 @@ export const reporterTeams = [
 ] as const;
 export const recurrencePatterns = ["none", "daily", "weekly"] as const;
 export const dependencyTypes = ["blocks"] as const;
+export const templateTypes = ["task", "list", "space"] as const;
 
 export const notificationTypes = [
     "assigned",

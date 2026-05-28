@@ -16,42 +16,65 @@ const daysAgo = (n: number) =>
 const hoursAgo = (n: number) =>
     new Date(Date.now() - n * 60 * 60 * 1000).toISOString();
 
+/**
+ * SLA window per bug severity (FINAL_REQUIREMENTS §5.19):
+ *   S0 → +2h, S1 → +24h, S2 → +7d, S3 → no SLA.
+ */
+const slaFromCreated = (
+    createdAt: string,
+    severity: "S0" | "S1" | "S2" | "S3",
+): string | null => {
+    const hours = { S0: 2, S1: 24, S2: 24 * 7, S3: 0 }[severity];
+    if (hours === 0) return null;
+    return new Date(
+        new Date(createdAt).getTime() + hours * 3600000,
+    ).toISOString();
+};
+
 const ENG_USERS = ["u-002", "u-003", "u-004", "u-005", "u-006"];
 
 const baseDevTask = (
     overrides: Partial<Task> & { name: string; primaryListId: string; statusId: string; taskTypeId: string },
-): Task => ({
-    id: nextId(),
-    taskNumber: nextNumber(),
-    customId: undefined,
-    name: overrides.name,
-    description: undefined,
-    statusId: overrides.statusId,
-    priority: 0,
-    taskTypeId: overrides.taskTypeId,
-    primaryListId: overrides.primaryListId,
-    parentTaskId: null,
-    isMilestone: false,
-    startDate: null,
-    dueDate: null,
-    timeEstimateSeconds: null,
-    timeTrackedSeconds: 0,
-    assignees: overrides.assignees ?? [],
-    watchers: [],
-    tags: [],
-    customFields: {},
-    subtasksCount: 0,
-    subtasksCompleted: 0,
-    commentsCount: 0,
-    attachmentsCount: 0,
-    createdAt: overrides.createdAt ?? daysAgo(3),
-    updatedAt: overrides.updatedAt ?? daysAgo(1),
-    createdBy: "u-001",
-    completedAt: null,
-    archivedAt: null,
-    nestingDepth: 0,
-    ...overrides,
-});
+): Task => {
+    const createdAt = overrides.createdAt ?? daysAgo(3);
+    const slaDueAt =
+        overrides.bugSeverity
+            ? slaFromCreated(createdAt, overrides.bugSeverity)
+            : (overrides.slaDueAt ?? null);
+    return {
+        id: nextId(),
+        taskNumber: nextNumber(),
+        customId: undefined,
+        name: overrides.name,
+        description: undefined,
+        statusId: overrides.statusId,
+        priority: 0,
+        taskTypeId: overrides.taskTypeId,
+        primaryListId: overrides.primaryListId,
+        parentTaskId: null,
+        isMilestone: false,
+        startDate: null,
+        dueDate: null,
+        slaDueAt,
+        timeEstimateSeconds: null,
+        timeTrackedSeconds: 0,
+        assignees: overrides.assignees ?? [],
+        watchers: [],
+        tags: [],
+        customFields: {},
+        subtasksCount: 0,
+        subtasksCompleted: 0,
+        commentsCount: 0,
+        attachmentsCount: 0,
+        createdAt,
+        updatedAt: overrides.updatedAt ?? daysAgo(1),
+        createdBy: "u-001",
+        completedAt: null,
+        archivedAt: null,
+        nestingDepth: 0,
+        ...overrides,
+    };
+};
 
 export const engTasks: Task[] = [
     // ─── Bug Triage ───

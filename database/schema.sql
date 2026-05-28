@@ -53,6 +53,7 @@ SET time_zone = '+00:00';
 
 -- Drop in reverse dependency order so re-running the file works cleanly.
 SET FOREIGN_KEY_CHECKS = 0;
+DROP TABLE IF EXISTS templates;
 DROP TABLE IF EXISTS workspace_activity;
 DROP TABLE IF EXISTS notifications;
 DROP TABLE IF EXISTS form_submissions;
@@ -1017,6 +1018,48 @@ CREATE TABLE workspace_activity (
         REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,
     INDEX idx_workspace_activity_workspace_time (workspace_id, created_at DESC),
     INDEX idx_workspace_activity_entity (entity_type, entity_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
+
+
+-- =============================================================================
+-- 32. templates  (reusable task structures — "Apply template" feature)
+--
+-- Per FINAL_REQUIREMENTS.md §5.18 — any team can have task templates with
+-- pre-built checklists, default task type, tags and description. Applied
+-- via `POST /templates/:id/apply` which spawns a parent task with the
+-- checklist materialised.
+-- =============================================================================
+CREATE TABLE templates (
+    id            VARCHAR(64)  NOT NULL,
+    workspace_id  VARCHAR(64)  NOT NULL,
+    -- 'task'  = creates a single task with checklist + meta (V1 scope)
+    -- 'list'  = creates a new list with seeded tasks (V2)
+    -- 'space' = creates a new space (V2)
+    type          ENUM('task','list','space') NOT NULL DEFAULT 'task',
+    name          VARCHAR(120) NOT NULL,
+    description   TEXT         NULL,
+    -- lucide-react icon name shown in the picker.
+    icon          VARCHAR(60)  NULL,
+    color         CHAR(7)      NULL,    -- #RRGGBB hex
+    -- Template body — JSON so the shape stays flexible:
+    --   { taskTypeId, priority, tags[], checklistName,
+    --     checklistItems: [{ text, dueOffsetDays? }],
+    --     description }
+    structure     JSON         NOT NULL,
+    usage_count   INT UNSIGNED NOT NULL DEFAULT 0,
+    created_by    VARCHAR(64)  NOT NULL,
+    created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                       ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    CONSTRAINT uq_templates_workspace_name UNIQUE (workspace_id, name),
+    CONSTRAINT fk_templates_workspace FOREIGN KEY (workspace_id)
+        REFERENCES workspaces(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_templates_created_by FOREIGN KEY (created_by)
+        REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    -- Filter by type in the picker ("show me task templates")
+    INDEX idx_templates_workspace_type (workspace_id, type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
 
 

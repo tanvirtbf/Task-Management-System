@@ -186,11 +186,15 @@ function generateOrderTask(listId: string, _idx: number, isFb: boolean): Task {
     };
 }
 
-function generateComplaintTask(idx: number): Task {
+function generateComplaintTask(_idx: number): Task {
     const taskNumber = seq();
     const statusId = pickStatus("l-complaints");
     const status = statusesByList("l-complaints").find((s) => s.id === statusId)!;
     const customer = fullName();
+    const createdHoursAgo = Math.floor(random() * 48);
+    const createdAt = new Date(Date.now() - createdHoursAgo * 3600000);
+    // SLA = created + 24h per spec
+    const slaDueAt = new Date(createdAt.getTime() + 24 * 3600000).toISOString();
     return {
         id: `t-${taskNumber}`,
         taskNumber,
@@ -204,6 +208,7 @@ function generateComplaintTask(idx: number): Task {
         isMilestone: false,
         startDate: null,
         dueDate: daysFromNow(Math.floor(random() * 5) - 2),
+        slaDueAt,
         timeEstimateSeconds: null,
         timeTrackedSeconds: Math.floor(random() * 1800),
         assignees: pickN(supportTeam, 1),
@@ -224,7 +229,7 @@ function generateComplaintTask(idx: number): Task {
         subtasksCompleted: 0,
         commentsCount: Math.floor(random() * 5),
         attachmentsCount: chance(0.4) ? 1 : 0,
-        createdAt: daysAgo(Math.floor(random() * 14)),
+        createdAt: createdAt.toISOString(),
         updatedAt: daysAgo(Math.floor(random() * 3)),
         createdBy: pick(supportTeam),
         completedAt: status.statusGroup === "done" || status.statusGroup === "closed" ? daysAgo(Math.floor(random() * 5)) : null,
@@ -299,7 +304,6 @@ function generateContentTask(idx: number): Task {
             cf_content_type: { option_id: contentType },
             cf_campaign: { option_id: campaign },
             cf_publish_date: { date: daysFromNow(Math.floor(random() * 14)) },
-            cf_designer: { user_ids: pickN(listingTeam, 1) },
             cf_boost_budget: {
                 amount: chance(0.4) ? 200000 : 0,
                 currency: "BDT",

@@ -1,13 +1,8 @@
 /**
  * Custom Fields + Forms.
  *
- * Per WHAT_BeautyBooth_ACTUALLY_NEEDS.md §3 #12 / §4.4 the user-facing
- * surface (settings UI, type picker, renderer) is restricted to 6 types:
- *     text, phone, money, date, dropdown, files
- *
- * The wider union below keeps the door open for legacy mock data without
- * crashing the type system. Legacy types render as "Unsupported field
- * type" in the UI, signaling that they should be migrated.
+ * Per FINAL_REQUIREMENTS.md §5.11 the supported custom field types are
+ * exactly 6: text, phone, money, date, dropdown, files. No legacy types.
  */
 
 export type CustomFieldType =
@@ -16,19 +11,7 @@ export type CustomFieldType =
   | "money"
   | "date"
   | "dropdown"
-  | "files"
-  // Legacy — kept only so old mock fixtures still parse.
-  | "long_text"
-  | "email"
-  | "url"
-  | "number"
-  | "checkbox"
-  | "labels"
-  | "people"
-  | "location"
-  | "formula"
-  | "progress"
-  | "rating";
+  | "files";
 
 export const SUPPORTED_FIELD_TYPES: CustomFieldType[] = [
   "text",

@@ -1,22 +1,36 @@
 import bcrypt from "bcrypt";
 import { initDb, closeDb } from "./client";
-import { users } from "./schema";
-import { Roles } from "../constants";
+import { users, workspaces } from "./schema";
 import logger from "../config/logger";
+import { fakeId } from "../utils";
 
 const seed = async () => {
     try {
         const db = await initDb();
         logger.info("Seeding database...");
 
-        // Owner user (single founder per SRS)
-        const password = await bcrypt.hash("Owner@12345", 10);
+        // Seed default workspace
+        const workspaceId = fakeId("ws");
+        await db.insert(workspaces).values({
+            id: workspaceId,
+            name: "BeautyBooth",
+            timezone: "Asia/Dhaka",
+            defaultLocale: "en-US",
+        });
+        logger.info("Workspace created", { id: workspaceId });
+
+        // Seed owner user
+        const passwordHash = await bcrypt.hash("Owner@12345", 10);
+        const ownerId = fakeId("u");
         await db.insert(users).values({
+            id: ownerId,
+            workspaceId,
             firstName: "Owner",
             lastName: "User",
             email: "owner@company.local",
-            password,
-            role: Roles.OWNER,
+            passwordHash,
+            role: "owner",
+            status: "active",
         });
 
         logger.info(

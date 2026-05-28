@@ -265,9 +265,25 @@ function calculateHomeKpis(): HomeKpiSet {
         teamSparkline.push(c);
     }
 
-    // SLA breaches (placeholder until sla_due_at wired into mock tasks)
-    const slaBreaches = 0;
-    const slaSparkline = [0, 0, 0, 0, 0, 0, 0];
+    // SLA breaches — tasks past sla_due_at without completion
+    const slaBreaches = tasks.filter((t) => {
+        if (!t.slaDueAt) return false;
+        if (t.completedAt) return false;
+        if (t.archivedAt) return false;
+        return new Date(t.slaDueAt) < now;
+    }).length;
+    const slaSparkline: number[] = [];
+    for (let i = 6; i >= 0; i--) {
+        const day = endOfDay(daysAgo(i));
+        const breached = tasks.filter((t) => {
+            if (!t.slaDueAt) return false;
+            if (new Date(t.slaDueAt) > day) return false;
+            if (t.completedAt && new Date(t.completedAt) <= day) return false;
+            if (t.archivedAt) return false;
+            return true;
+        }).length;
+        slaSparkline.push(breached);
+    }
 
     return {
         myTasks: {

@@ -38,6 +38,9 @@ const StatusesSettings = lazy(
 const CustomFieldsSettings = lazy(
     () => import("./pages/settings/CustomFieldsSettings"),
 );
+const TemplatesSettings = lazy(
+    () => import("./pages/settings/TemplatesSettings"),
+);
 const ImportExportSettings = lazy(
     () => import("./pages/settings/ImportExportSettings"),
 );
@@ -170,6 +173,12 @@ export const router = createBrowserRouter([
                                         path: "custom-fields",
                                         element: lazyRoute(
                                             <CustomFieldsSettings />,
+                                        ),
+                                    },
+                                    {
+                                        path: "templates",
+                                        element: lazyRoute(
+                                            <TemplatesSettings />,
                                         ),
                                     },
                                     {

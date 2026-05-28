@@ -16,6 +16,7 @@
 //   forms.ts           — forms, form_fields, form_submissions
 //   notifications.ts   — notifications
 //   audit.ts           — workspace_activity
+//   templates.ts       — templates (reusable task structures)
 //   views.ts           — v_open_tasks, v_open_bugs, v_active_sprint,
 //                        v_current_on_call, v_breached_sla
 //   relations.ts       — relations() for the Drizzle query API
@@ -34,5 +35,6 @@ export * from "./custom-fields";
 export * from "./forms";
 export * from "./notifications";
 export * from "./audit";
+export * from "./templates";
 export * from "./views";
 export * from "./relations";
