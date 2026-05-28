@@ -1,12 +1,10 @@
 import type {
     ActivityLogEntry,
-    Customer,
     HomeKpiSet,
     List,
     LoginResult,
     MyWorkBucket,
     Notification,
-    Reminder,
     Space,
     Status,
     Tag,
@@ -15,7 +13,6 @@ import type {
     User,
     Workspace,
 } from "../types";
-import { customers, findCustomerByPhone } from "../mocks/customers";
 import { delay } from "./delay";
 import { fakeId } from "./fake-id";
 import {
@@ -37,7 +34,6 @@ import {
     notificationsByUser,
     unreadCountForUser,
 } from "../mocks/notifications";
-import { reminders, remindersForUser } from "../mocks/reminders";
 import { activityLog, recentActivity } from "../mocks/activity";
 import { comments, commentsByTask } from "../mocks/comments";
 import { checklists, checklistsByTask } from "../mocks/checklists";
@@ -197,126 +193,23 @@ const daysAgo = (n: number) => {
     return d;
 };
 
-// ─── KPI calculations ───
-function formatBdt(n: number): string {
-    if (n >= 100000) return `৳${(n / 1000).toFixed(0)}k`;
-    if (n >= 1000) return `৳${(n / 1000).toFixed(1)}k`;
-    return `৳${n.toFixed(0)}`;
-}
-
+// ─── KPI calculations (pure task management) ───
 function calculateHomeKpis(): HomeKpiSet {
     const now = new Date();
     const today = startOfDay(now);
-
-    const orderLists = ["l-fb-orders", "l-web-orders"];
-    const todayOrders = tasks.filter(
-        (t) =>
-            orderLists.includes(t.primaryListId) &&
-            new Date(t.createdAt) >= today,
-    ).length;
-
-    const orderSparkline: number[] = [];
-    for (let i = 6; i >= 0; i--) {
-        const day = startOfDay(daysAgo(i));
-        const nextDay = endOfDay(daysAgo(i));
-        const count = tasks.filter(
-            (t) =>
-                orderLists.includes(t.primaryListId) &&
-                new Date(t.createdAt) >= day &&
-                new Date(t.createdAt) <= nextDay,
-        ).length;
-        orderSparkline.push(count);
-    }
-    const yesterdayOrders = orderSparkline[orderSparkline.length - 2] || 1;
-    const ordersTrend =
-        ((todayOrders - yesterdayOrders) / yesterdayOrders) * 100;
-
-    let codCollected = 0;
-    const codSparkline: number[] = [];
-    for (let i = 6; i >= 0; i--) {
-        const day = startOfDay(daysAgo(i));
-        const nextDay = endOfDay(daysAgo(i));
-        const sum = tasks
-            .filter((t) => {
-                const status = statuses.find((s) => s.id === t.statusId);
-                if (!status || status.name !== "COD Collected") return false;
-                const updated = new Date(t.updatedAt);
-                return updated >= day && updated <= nextDay;
-            })
-            .reduce((acc, t) => {
-                const cod = t.customFields?.cf_cod_amount as
-                    | { amount?: number }
-                    | undefined;
-                return acc + (cod?.amount ?? 0);
-            }, 0);
-        codSparkline.push(sum / 100);
-        if (i === 0) codCollected = sum / 100;
-    }
-    const yesterdayCod = codSparkline[codSparkline.length - 2] || 1;
-    const codTrend = ((codCollected - yesterdayCod) / yesterdayCod) * 100;
-
-    const complaintsList = "l-complaints";
-    const openComplaints = tasks.filter((t) => {
-        if (t.primaryListId !== complaintsList) return false;
-        const status = statuses.find((s) => s.id === t.statusId);
-        return (
-            status?.statusGroup !== "done" && status?.statusGroup !== "closed"
-        );
-    }).length;
-    const complaintsSparkline: number[] = [];
-    for (let i = 6; i >= 0; i--) {
-        const day = endOfDay(daysAgo(i));
-        const open = tasks.filter((t) => {
-            if (t.primaryListId !== complaintsList) return false;
-            if (new Date(t.createdAt) > day) return false;
-            if (t.completedAt && new Date(t.completedAt) <= day) return false;
-            return true;
-        }).length;
-        complaintsSparkline.push(open);
-    }
-    const yesterdayComplaints =
-        complaintsSparkline[complaintsSparkline.length - 2] || 1;
-    const complaintsTrend =
-        ((openComplaints - yesterdayComplaints) / yesterdayComplaints) * 100;
-
-    const lowStock = tasks.filter((t) => {
-        if (t.primaryListId !== "l-stock") return false;
-        const stockStatus = t.customFields?.cf_stock_status as
-            | { option_id?: string }
-            | undefined;
-        return (
-            stockStatus?.option_id === "Low" || stockStatus?.option_id === "Out"
-        );
-    }).length;
-    const stockSparkline = [
-        lowStock - 2,
-        lowStock - 1,
-        lowStock + 1,
-        lowStock,
-        lowStock - 1,
-        lowStock + 2,
-        lowStock,
-    ].map((v) => Math.max(0, v));
-    const yest = stockSparkline[stockSparkline.length - 2] || 1;
-    const stockTrend = ((lowStock - yest) / yest) * 100;
-
-    // Stuck orders — Confirmed status, not updated in >2h
-    const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
-    const stuckOrders = tasks.filter((t) => {
-        if (!orderLists.includes(t.primaryListId)) return false;
-        const s = statuses.find((x) => x.id === t.statusId);
-        if (!s) return false;
-        return s.name === "Confirmed" && new Date(t.updatedAt) < twoHoursAgo;
-    }).length;
-    const stuckSparkline = [0, 1, 2, 1, 3, 2, stuckOrders];
-
-    // My open tasks — assigned to current user
+    const todayEnd = endOfDay(now);
     const myUserId = currentUser?.id ?? "u-001";
-    const myOpenTasks = tasks.filter((t) => {
-        if (!t.assignees.includes(myUserId)) return false;
+
+    const isOpen = (t: Task): boolean => {
+        if (t.archivedAt) return false;
         const s = statuses.find((x) => x.id === t.statusId);
         return s?.statusGroup !== "done" && s?.statusGroup !== "closed";
-    }).length;
+    };
+
+    // My open tasks
+    const myOpenTasks = tasks.filter(
+        (t) => t.assignees.includes(myUserId) && isOpen(t),
+    ).length;
     const mySparkline = [
         Math.max(0, myOpenTasks - 3),
         Math.max(0, myOpenTasks - 2),
@@ -327,60 +220,56 @@ function calculateHomeKpis(): HomeKpiSet {
         myOpenTasks,
     ];
 
+    // Due today (assigned to me)
+    const dueToday = tasks.filter((t) => {
+        if (!t.assignees.includes(myUserId) || !isOpen(t) || !t.dueDate)
+            return false;
+        const d = new Date(t.dueDate);
+        return d >= today && d <= todayEnd;
+    }).length;
+    const dueTodaySparkline = [1, 2, 1, 3, 2, 1, dueToday];
+
+    // Overdue (assigned to me)
+    const overdue = tasks.filter((t) => {
+        if (!t.assignees.includes(myUserId) || !isOpen(t) || !t.dueDate)
+            return false;
+        return new Date(t.dueDate) < today;
+    }).length;
+    const overdueSparkline: number[] = [];
+    for (let i = 6; i >= 0; i--) {
+        const day = endOfDay(daysAgo(i));
+        const past = tasks.filter((t) => {
+            if (!t.assignees.includes(myUserId)) return false;
+            if (!t.dueDate || new Date(t.dueDate) > day) return false;
+            if (t.completedAt && new Date(t.completedAt) <= day) return false;
+            return true;
+        }).length;
+        overdueSparkline.push(past);
+    }
+
+    // Awaiting my review (engineering — placeholder, all-zero until reviewer field wired)
+    const awaitingReview = 0;
+    const awaitingReviewSparkline = [0, 0, 0, 0, 0, 0, 0];
+
+    // Open team tasks — workspace-wide open count
+    const openTeamTasks = tasks.filter(isOpen).length;
+    const teamSparkline: number[] = [];
+    for (let i = 6; i >= 0; i--) {
+        const day = endOfDay(daysAgo(i));
+        const c = tasks.filter((t) => {
+            if (new Date(t.createdAt) > day) return false;
+            if (t.completedAt && new Date(t.completedAt) <= day) return false;
+            if (t.archivedAt) return false;
+            return true;
+        }).length;
+        teamSparkline.push(c);
+    }
+
+    // SLA breaches (placeholder until sla_due_at wired into mock tasks)
+    const slaBreaches = 0;
+    const slaSparkline = [0, 0, 0, 0, 0, 0, 0];
+
     return {
-        todayOrders: {
-            label: "Today's Orders",
-            value: todayOrders,
-            valueDisplay: String(todayOrders),
-            trend: ordersTrend,
-            trendDirection:
-                ordersTrend > 0 ? "up" : ordersTrend < 0 ? "down" : "flat",
-            isPositive: true,
-            sparkline: orderSparkline,
-        },
-        codCollected: {
-            label: "COD Collected",
-            value: codCollected,
-            valueDisplay: formatBdt(codCollected),
-            trend: codTrend,
-            trendDirection:
-                codTrend > 0 ? "up" : codTrend < 0 ? "down" : "flat",
-            isPositive: true,
-            sparkline: codSparkline,
-        },
-        openComplaints: {
-            label: "Open Complaints",
-            value: openComplaints,
-            valueDisplay: String(openComplaints),
-            trend: complaintsTrend,
-            trendDirection:
-                complaintsTrend > 0
-                    ? "up"
-                    : complaintsTrend < 0
-                      ? "down"
-                      : "flat",
-            isPositive: false,
-            sparkline: complaintsSparkline,
-        },
-        stuckOrders: {
-            label: "Stuck Orders (>2h)",
-            value: stuckOrders,
-            valueDisplay: String(stuckOrders),
-            trend: 0,
-            trendDirection: "flat",
-            isPositive: false,
-            sparkline: stuckSparkline,
-        },
-        lowStock: {
-            label: "Low Stock Items",
-            value: lowStock,
-            valueDisplay: String(lowStock),
-            trend: stockTrend,
-            trendDirection:
-                stockTrend > 0 ? "up" : stockTrend < 0 ? "down" : "flat",
-            isPositive: false,
-            sparkline: stockSparkline,
-        },
         myTasks: {
             label: "My Open Tasks",
             value: myOpenTasks,
@@ -389,6 +278,51 @@ function calculateHomeKpis(): HomeKpiSet {
             trendDirection: "flat",
             isPositive: false,
             sparkline: mySparkline,
+        },
+        dueToday: {
+            label: "Due Today",
+            value: dueToday,
+            valueDisplay: String(dueToday),
+            trend: 0,
+            trendDirection: "flat",
+            isPositive: false,
+            sparkline: dueTodaySparkline,
+        },
+        overdue: {
+            label: "Overdue",
+            value: overdue,
+            valueDisplay: String(overdue),
+            trend: 0,
+            trendDirection: "flat",
+            isPositive: false,
+            sparkline: overdueSparkline,
+        },
+        awaitingReview: {
+            label: "Awaiting My Review",
+            value: awaitingReview,
+            valueDisplay: String(awaitingReview),
+            trend: 0,
+            trendDirection: "flat",
+            isPositive: false,
+            sparkline: awaitingReviewSparkline,
+        },
+        openTeamTasks: {
+            label: "Open Team Tasks",
+            value: openTeamTasks,
+            valueDisplay: String(openTeamTasks),
+            trend: 0,
+            trendDirection: "flat",
+            isPositive: false,
+            sparkline: teamSparkline,
+        },
+        slaBreaches: {
+            label: "SLA Breaches",
+            value: slaBreaches,
+            valueDisplay: String(slaBreaches),
+            trend: 0,
+            trendDirection: "flat",
+            isPositive: false,
+            sparkline: slaSparkline,
         },
     };
 }
@@ -1422,39 +1356,15 @@ export const mockApi = {
         },
     },
 
-    customers: {
-        async list(): Promise<Customer[]> {
-            await delay(60, 160);
-            log("GET /customers");
-            return customers;
-        },
-        async findByPhone(phone: string): Promise<Customer | null> {
-            await delay(50, 120);
-            return findCustomerByPhone(phone) ?? null;
-        },
-        async search(q: string): Promise<Customer[]> {
-            await delay(60, 160);
-            const needle = q.trim().toLowerCase();
-            if (!needle) return customers.slice(0, 20);
-            return customers
-                .filter(
-                    (c) =>
-                        c.phone.includes(needle) ||
-                        c.name.toLowerCase().includes(needle),
-                )
-                .slice(0, 20);
-        },
-    },
-
-    festivals: {
-        /** Spawn a Festival Campaign parent task with a 12-item checklist. */
-        async startCampaign(input: {
-            festival: string;
+    campaignTemplates: {
+        /** Spawn a parent task with a multi-step checklist from a named template. */
+        async apply(input: {
+            templateName: string;
             listId: string;
             createdBy: string;
         }): Promise<Task> {
             await delay(120, 280);
-            log("POST /festivals/start", input);
+            log("POST /campaign-templates/apply", input);
 
             const list = lists.find((l) => l.id === input.listId);
             if (!list) throw new Error("List not found");
@@ -1468,7 +1378,7 @@ export const mockApi = {
             const parent: Task = {
                 id: `t-${taskNumber}`,
                 taskNumber,
-                name: `${input.festival} Campaign`,
+                name: `${input.templateName} Campaign`,
                 statusId: defaultStatus.id,
                 priority: 2,
                 taskTypeId: "tt-campaign",
@@ -1499,13 +1409,13 @@ export const mockApi = {
             const items = [
                 "Confirm budget with owner",
                 "Pick hero products (5-8)",
-                "Brief creative team — Bangla + English copy",
-                "Photography / mockup",
+                "Brief creative team — copy",
+                "Photography / mockups",
                 "Design social posts",
-                "Schedule Facebook posts",
+                "Schedule posts",
                 "Set boost budget per post",
-                "Coordinate with inventory — buffer stock",
-                "Brief CS team — expected order spike",
+                "Coordinate with inventory team",
+                "Brief CS team — expected spike",
                 "Brief operations — packing schedule",
                 "Launch — go live",
                 "Post-campaign review",
@@ -1513,7 +1423,7 @@ export const mockApi = {
             const checklist: Checklist = {
                 id: `ch-${Date.now()}`,
                 taskId: parent.id,
-                name: `${input.festival} 12-step playbook`,
+                name: `${input.templateName} 12-step playbook`,
                 position: 0,
                 items: items.map((text, i) => ({
                     id: `ci-${Date.now()}-${i}`,
@@ -1579,76 +1489,6 @@ export const mockApi = {
             const idx = notifications.findIndex((x) => x.id === id);
             if (idx >= 0) notifications.splice(idx, 1);
             log("DELETE /notifications/:id", { id });
-        },
-    },
-
-    reminders: {
-        async dueToday(userId: string): Promise<Reminder[]> {
-            await delay(50, 150);
-            return remindersForUser(userId);
-        },
-        async all(userId: string): Promise<Reminder[]> {
-            await delay(50, 150);
-            return reminders.filter((r) => r.assignedTo === userId);
-        },
-        async create(input: {
-            title: string;
-            notes?: string;
-            dueAt: string;
-            assignedTo?: string;
-            taskId?: string | null;
-        }): Promise<Reminder> {
-            await delay();
-            const r: Reminder = {
-                id: `rem-${fakeId().slice(0, 8)}`,
-                userId: currentUser?.id ?? "u-001",
-                assignedTo: input.assignedTo ?? currentUser?.id ?? "u-001",
-                taskId: input.taskId ?? null,
-                title: input.title,
-                notes: input.notes,
-                dueAt: input.dueAt,
-                isCompleted: false,
-                completedAt: null,
-            };
-            reminders.push(r);
-            log("POST /reminders", r);
-            return r;
-        },
-        async update(
-            id: string,
-            patch: Partial<
-                Pick<Reminder, "title" | "notes" | "dueAt" | "assignedTo">
-            >,
-        ): Promise<Reminder> {
-            await delay();
-            const r = reminders.find((x) => x.id === id);
-            if (!r) throw new Error("Reminder not found");
-            Object.assign(r, patch);
-            log("PATCH /reminders/:id", { id, patch });
-            return r;
-        },
-        async toggleComplete(id: string): Promise<Reminder> {
-            await delay();
-            const r = reminders.find((x) => x.id === id);
-            if (!r) throw new Error("Reminder not found");
-            r.isCompleted = !r.isCompleted;
-            r.completedAt = r.isCompleted ? new Date().toISOString() : null;
-            log("POST /reminders/:id/toggle", { id });
-            return r;
-        },
-        async snooze(id: string, untilIso: string): Promise<Reminder> {
-            await delay();
-            const r = reminders.find((x) => x.id === id);
-            if (!r) throw new Error("Reminder not found");
-            r.dueAt = untilIso;
-            log("POST /reminders/:id/snooze", { id, untilIso });
-            return r;
-        },
-        async delete(id: string): Promise<void> {
-            await delay();
-            const idx = reminders.findIndex((r) => r.id === id);
-            if (idx >= 0) reminders.splice(idx, 1);
-            log("DELETE /reminders/:id", { id });
         },
     },
 

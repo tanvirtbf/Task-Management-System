@@ -328,12 +328,12 @@ export interface HomeKpi {
 }
 
 export interface HomeKpiSet {
-    todayOrders: HomeKpi;
-    codCollected: HomeKpi;
-    openComplaints: HomeKpi;
-    stuckOrders: HomeKpi;
-    lowStock: HomeKpi;
     myTasks: HomeKpi;
+    dueToday: HomeKpi;
+    overdue: HomeKpi;
+    awaitingReview: HomeKpi;
+    openTeamTasks: HomeKpi;
+    slaBreaches: HomeKpi;
 }
 
 // ============================================================

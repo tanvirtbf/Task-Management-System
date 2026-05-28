@@ -1,3 +1,38 @@
-export * from "./users";
-export * from "./tenants";
-export * from "./refresh-tokens";
+// =============================================================================
+// Drizzle schema — single re-export surface used by `drizzle.config.ts` and
+// the rest of the server.  Mirrors `database/schema.sql` 1:1.
+//
+// File layout:
+//   _shared.ts         — ENUM tuples + mysqlSet customType + common lengths
+//   auth.ts            — workspaces, users, sessions, password_reset_tokens,
+//                        invitations
+//   hierarchy.ts       — spaces, lists, task_types, statuses, tags
+//   sprints.ts         — sprints, on_call_shifts
+//   tasks.ts           — tasks, task_assignees, task_watchers, task_tags,
+//                        task_dependencies, task_activity
+//   task-content.ts    — comments, checklists, checklist_items, attachments
+//   custom-fields.ts   — custom_fields, custom_field_options,
+//                        task_custom_field_values
+//   forms.ts           — forms, form_fields, form_submissions
+//   notifications.ts   — notifications
+//   audit.ts           — workspace_activity
+//   views.ts           — v_open_tasks, v_open_bugs, v_active_sprint,
+//                        v_current_on_call, v_breached_sla
+//   relations.ts       — relations() for the Drizzle query API
+//
+// Triggers + the view DDL itself live in `db/migrations/_post.sql` and are
+// applied after `drizzle-kit push` / `drizzle-kit migrate`.
+// =============================================================================
+
+export * from "./_shared";
+export * from "./auth";
+export * from "./hierarchy";
+export * from "./sprints";
+export * from "./tasks";
+export * from "./task-content";
+export * from "./custom-fields";
+export * from "./forms";
+export * from "./notifications";
+export * from "./audit";
+export * from "./views";
+export * from "./relations";

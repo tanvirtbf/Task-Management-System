@@ -11,7 +11,6 @@ import {
     Settings,
     ChevronDown,
     Users,
-    UserCircle,
     Code,
     Zap,
     Shield,
@@ -237,11 +236,6 @@ export const Sidebar = () => {
                             icon={<Search size={15} strokeWidth={1.75} />}
                             label="Search"
                             rightSlot={<KbdHint k="⌘K" />}
-                        />
-                        <SidebarNavItem
-                            to="/customers"
-                            icon={<UserCircle size={15} strokeWidth={1.75} />}
-                            label="Customers"
                         />
                         <SectionHeader title="Engineering" icon={<Code size={11} />} />
                         <SidebarNavItem

@@ -15,9 +15,6 @@ export const statuses: Status[] = [
     // Daily Operations
     ...simpleStatuses("l-daily-ops"),
 
-    // Stock Master (simple — not Started / Low / Out / In Stock)
-    ...stockStatuses("l-stock"),
-
     // Purchase Orders
     ...poStatuses("l-po"),
 
@@ -29,9 +26,6 @@ export const statuses: Status[] = [
 
     // Queries
     ...simpleStatuses("l-queries"),
-
-    // COD Issues
-    ...simpleStatuses("l-cod-issues"),
 
     // New Product Pipeline
     ...productPipelineStatuses("l-new-products"),
@@ -95,15 +89,6 @@ function simpleStatuses(listId: string): Status[] {
         { id: `${listId}-s-review`, scopeType: "list", scopeId: listId, name: "In Review", color: "#F59E0B", statusGroup: "active", position: 2 },
         { id: `${listId}-s-done`, scopeType: "list", scopeId: listId, name: "Done", color: "#10B981", statusGroup: "done", position: 3 },
         { id: `${listId}-s-closed`, scopeType: "list", scopeId: listId, name: "Closed", color: "#6B7280", statusGroup: "closed", position: 4 },
-    ];
-}
-
-function stockStatuses(listId: string): Status[] {
-    return [
-        { id: `${listId}-s-in`, scopeType: "list", scopeId: listId, name: "In Stock", color: "#10B981", statusGroup: "active", position: 0 },
-        { id: `${listId}-s-low`, scopeType: "list", scopeId: listId, name: "Low", color: "#F59E0B", statusGroup: "active", position: 1 },
-        { id: `${listId}-s-out`, scopeType: "list", scopeId: listId, name: "Out of Stock", color: "#E11D48", statusGroup: "active", position: 2 },
-        { id: `${listId}-s-disc`, scopeType: "list", scopeId: listId, name: "Discontinued", color: "#6B7280", statusGroup: "closed", position: 3 },
     ];
 }
 

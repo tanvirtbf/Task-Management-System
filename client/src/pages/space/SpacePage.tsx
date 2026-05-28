@@ -7,7 +7,7 @@ import { DynamicIcon } from "../../components/shared/DynamicIcon";
 import { useAuthStore } from "../../stores/auth";
 import { tokens } from "../../theme";
 
-const FESTIVALS = [
+const CAMPAIGN_TEMPLATES = [
     "Eid ul-Fitr",
     "Eid ul-Adha",
     "Pohela Boishakh",
@@ -40,13 +40,13 @@ const SpacePage = () => {
         (l) => l.id === "l-campaigns" || l.name.toLowerCase().includes("campaign"),
     );
 
-    const startFestival = useMutation({
-        mutationFn: (festival: string) => {
+    const applyTemplate = useMutation({
+        mutationFn: (templateName: string) => {
             if (!campaignList || !user) {
                 throw new Error("Campaign list not found");
             }
-            return mockApi.festivals.startCampaign({
-                festival,
+            return mockApi.campaignTemplates.apply({
+                templateName,
                 listId: campaignList.id,
                 createdBy: user.id,
             });
@@ -62,7 +62,7 @@ const SpacePage = () => {
                 );
             }
         },
-        onError: () => message.error("Could not start festival campaign"),
+        onError: () => message.error("Could not apply template"),
     });
 
     if (!space) {
@@ -137,10 +137,10 @@ const SpacePage = () => {
                     <div style={{ marginLeft: "auto" }}>
                         <Dropdown
                             menu={{
-                                items: FESTIVALS.map((f) => ({
+                                items: CAMPAIGN_TEMPLATES.map((f) => ({
                                     key: f,
                                     label: f,
-                                    onClick: () => startFestival.mutate(f),
+                                    onClick: () => applyTemplate.mutate(f),
                                 })),
                             }}
                             trigger={["click"]}
@@ -160,10 +160,10 @@ const SpacePage = () => {
                                     fontWeight: 600,
                                     boxShadow: tokens.shadows.sm,
                                 }}
-                                disabled={startFestival.isPending}
+                                disabled={applyTemplate.isPending}
                             >
                                 <Sparkles size={14} strokeWidth={1.75} />
-                                Start festival campaign
+                                Apply template
                             </button>
                         </Dropdown>
                     </div>

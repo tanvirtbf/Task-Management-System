@@ -4,7 +4,6 @@ import { KpiRow } from "./KpiRow";
 import { MyWorkCard } from "./MyWorkCard";
 import { AgendaCard } from "./AgendaCard";
 import { LineupCard } from "./LineupCard";
-import { RemindersDueCard } from "./RemindersDueCard";
 import { RecentActivityCard } from "./RecentActivityCard";
 
 const HomePage = () => (
@@ -34,17 +33,16 @@ const HomePage = () => (
             <AgendaCard />
         </div>
 
-        {/* Bottom row — LineUp / Reminders / Activity */}
+        {/* Bottom row — LineUp / Activity */}
         <div
             style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
                 gap: tokens.spacing[4],
             }}
             className="home-bottom-row"
         >
             <LineupCard />
-            <RemindersDueCard />
             <RecentActivityCard />
         </div>
 

@@ -1,0 +1,150 @@
+-- =============================================================================
+-- POST-MIGRATION SQL — applied after `drizzle-kit migrate` / `drizzle-kit push`.
+--
+-- Drizzle ORM doesn't natively support:
+--   1.  TRIGGERS (counter maintenance + self-dep guard)
+--   2.  CREATE OR REPLACE VIEW with raw SQL expressions
+--
+-- So those DDL statements live here and are run by `db/migrate.ts` after
+-- `migrate(...)` completes the Drizzle migrations.
+-- =============================================================================
+
+-- ─── 1. Self-dependency guard triggers (BEFORE INSERT / UPDATE) ──────────────
+DELIMITER $$
+
+CREATE TRIGGER trg_task_dependencies_no_self_insert
+BEFORE INSERT ON task_dependencies
+FOR EACH ROW
+BEGIN
+    IF NEW.task_id = NEW.related_task_id THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'task_dependencies: task cannot depend on itself';
+    END IF;
+END$$
+
+CREATE TRIGGER trg_task_dependencies_no_self_update
+BEFORE UPDATE ON task_dependencies
+FOR EACH ROW
+BEGIN
+    IF NEW.task_id = NEW.related_task_id THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'task_dependencies: task cannot depend on itself';
+    END IF;
+END$$
+
+
+-- ─── 2. Counter-maintenance triggers ─────────────────────────────────────────
+
+CREATE TRIGGER trg_comments_after_insert
+AFTER INSERT ON comments
+FOR EACH ROW
+BEGIN
+    UPDATE tasks SET comments_count = comments_count + 1 WHERE id = NEW.task_id;
+END$$
+
+CREATE TRIGGER trg_comments_after_delete
+AFTER DELETE ON comments
+FOR EACH ROW
+BEGIN
+    UPDATE tasks SET comments_count = GREATEST(comments_count - 1, 0) WHERE id = OLD.task_id;
+END$$
+
+CREATE TRIGGER trg_attachments_after_insert
+AFTER INSERT ON attachments
+FOR EACH ROW
+BEGIN
+    IF NEW.deleted_at IS NULL THEN
+        UPDATE tasks SET attachments_count = attachments_count + 1 WHERE id = NEW.task_id;
+    END IF;
+END$$
+
+CREATE TRIGGER trg_attachments_after_update
+AFTER UPDATE ON attachments
+FOR EACH ROW
+BEGIN
+    IF OLD.deleted_at IS NULL AND NEW.deleted_at IS NOT NULL THEN
+        UPDATE tasks SET attachments_count = GREATEST(attachments_count - 1, 0) WHERE id = NEW.task_id;
+    ELSEIF OLD.deleted_at IS NOT NULL AND NEW.deleted_at IS NULL THEN
+        UPDATE tasks SET attachments_count = attachments_count + 1 WHERE id = NEW.task_id;
+    END IF;
+END$$
+
+CREATE TRIGGER trg_subtasks_after_insert
+AFTER INSERT ON tasks
+FOR EACH ROW
+BEGIN
+    IF NEW.parent_task_id IS NOT NULL THEN
+        UPDATE tasks SET subtasks_count = subtasks_count + 1 WHERE id = NEW.parent_task_id;
+    END IF;
+END$$
+
+CREATE TRIGGER trg_subtasks_after_update
+AFTER UPDATE ON tasks
+FOR EACH ROW
+BEGIN
+    IF NEW.parent_task_id IS NOT NULL AND OLD.status_id <> NEW.status_id THEN
+        UPDATE tasks p
+           JOIN statuses s_old ON s_old.id = OLD.status_id
+           JOIN statuses s_new ON s_new.id = NEW.status_id
+           SET p.subtasks_completed = p.subtasks_completed
+               + CASE WHEN s_new.status_group IN ('done','closed') THEN 1 ELSE 0 END
+               - CASE WHEN s_old.status_group IN ('done','closed') THEN 1 ELSE 0 END
+         WHERE p.id = NEW.parent_task_id;
+    END IF;
+END$$
+
+CREATE TRIGGER trg_subtasks_after_delete
+AFTER DELETE ON tasks
+FOR EACH ROW
+BEGIN
+    IF OLD.parent_task_id IS NOT NULL THEN
+        UPDATE tasks SET subtasks_count = GREATEST(subtasks_count - 1, 0) WHERE id = OLD.parent_task_id;
+    END IF;
+END$$
+
+CREATE TRIGGER trg_form_submissions_after_insert
+AFTER INSERT ON form_submissions
+FOR EACH ROW
+BEGIN
+    UPDATE forms SET submission_count = submission_count + 1 WHERE id = NEW.form_id;
+END$$
+
+DELIMITER ;
+
+
+-- ─── 3. Views ─────────────────────────────────────────────────────────────────
+
+CREATE OR REPLACE VIEW v_open_tasks AS
+    SELECT t.*, s.status_group
+      FROM tasks t
+      JOIN statuses s ON s.id = t.status_id
+     WHERE t.archived_at IS NULL
+       AND s.status_group NOT IN ('done','closed');
+
+CREATE OR REPLACE VIEW v_open_bugs AS
+    SELECT t.workspace_id, t.id, t.custom_id, t.name,
+           t.bug_severity, t.reporter_team, t.created_at, t.updated_at,
+           ta.user_id AS assignee_id
+      FROM tasks t
+      JOIN statuses s   ON s.id = t.status_id
+      LEFT JOIN task_assignees ta ON ta.task_id = t.id
+     WHERE t.task_type_id = 'tt-bug'
+       AND t.archived_at IS NULL
+       AND s.status_group NOT IN ('done','closed');
+
+CREATE OR REPLACE VIEW v_active_sprint AS
+    SELECT * FROM sprints WHERE status = 'active';
+
+CREATE OR REPLACE VIEW v_current_on_call AS
+    SELECT s.* FROM on_call_shifts s
+     WHERE CURDATE() BETWEEN s.week_start AND s.week_end;
+
+CREATE OR REPLACE VIEW v_breached_sla AS
+    SELECT t.id, t.workspace_id, t.primary_list_id, t.custom_id, t.name,
+           t.task_type_id, t.sla_due_at,
+           TIMESTAMPDIFF(MINUTE, t.sla_due_at, NOW()) AS minutes_breached
+      FROM tasks t
+     WHERE t.sla_due_at IS NOT NULL
+       AND t.sla_due_at < NOW()
+       AND t.completed_at IS NULL
+       AND t.archived_at IS NULL;

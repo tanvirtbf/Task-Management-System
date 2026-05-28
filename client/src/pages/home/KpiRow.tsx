@@ -44,12 +44,12 @@ export const KpiRow = () => {
                 gap: tokens.spacing[4],
             }}
         >
-            <KpiCard kpi={data.todayOrders} color={tokens.colors.primary} />
-            <KpiCard kpi={data.codCollected} color={tokens.colors.success} />
-            <KpiCard kpi={data.openComplaints} color={tokens.colors.danger} />
-            <KpiCard kpi={data.stuckOrders} color={tokens.colors.warning} />
-            <KpiCard kpi={data.lowStock} color={tokens.colors.warning} />
             <KpiCard kpi={data.myTasks} color={tokens.colors.primary} />
+            <KpiCard kpi={data.dueToday} color={tokens.colors.warning} />
+            <KpiCard kpi={data.overdue} color={tokens.colors.danger} />
+            <KpiCard kpi={data.awaitingReview} color={tokens.colors.primary} />
+            <KpiCard kpi={data.openTeamTasks} color={tokens.colors.success} />
+            <KpiCard kpi={data.slaBreaches} color={tokens.colors.danger} />
         </div>
     );
 };

@@ -80,7 +80,7 @@ const FormsListPage = () => {
                 <EmptyState
                     icon={FileText}
                     title="No forms yet"
-                    description="Create a form to collect requests, complaints, or sign-ups from customers."
+                    description="Create a form to collect requests, complaints, or sign-ups."
                 />
             ) : (
                 <div

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "antd";
-import { CalendarDays, Clock } from "lucide-react";
+import { CalendarDays } from "lucide-react";
 import { mockApi } from "../../lib/mock-api";
 import { useAuthStore } from "../../stores/auth";
 import { EmptyState } from "../../components/ui/EmptyState";
@@ -21,39 +21,23 @@ export const AgendaCard = () => {
             user ? mockApi.tasks.myWork(user.id) : Promise.resolve(null),
         enabled: !!user,
     });
-    const { data: reminders, isLoading: loadingReminders } = useQuery({
-        queryKey: ["reminders-due", user?.id],
-        queryFn: () =>
-            user ? mockApi.reminders.dueToday(user.id) : Promise.resolve([]),
-        enabled: !!user,
-    });
 
     const todayTasks = myWork?.today ?? [];
 
-    // Merge tasks + reminders into one chronological list
     const items: Array<{
-        kind: "task" | "reminder";
         time: string;
         title: string;
         id: string;
-    }> = [
-        ...todayTasks
-            .filter((t) => t.dueDate)
-            .map((t) => ({
-                kind: "task" as const,
-                time: t.dueDate!,
-                title: t.name,
-                id: t.id,
-            })),
-        ...(reminders ?? []).map((r) => ({
-            kind: "reminder" as const,
-            time: r.dueAt,
-            title: r.title,
-            id: r.id,
-        })),
-    ].sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+    }> = todayTasks
+        .filter((t) => t.dueDate)
+        .map((t) => ({
+            time: t.dueDate!,
+            title: t.name,
+            id: t.id,
+        }))
+        .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
 
-    const loading = loadingWork || loadingReminders;
+    const loading = loadingWork;
 
     return (
         <div
@@ -111,7 +95,7 @@ export const AgendaCard = () => {
                     <EmptyState
                         icon={CalendarDays}
                         title="No agenda today"
-                        description="Tasks with a due date and your reminders show up here."
+                        description="Tasks with a due date today show up here."
                         compact
                     />
                 ) : (
@@ -162,10 +146,7 @@ export const AgendaCard = () => {
                                         width: 4,
                                         height: 4,
                                         borderRadius: "50%",
-                                        background:
-                                            item.kind === "reminder"
-                                                ? tokens.colors.warning
-                                                : tokens.colors.primary,
+                                        background: tokens.colors.primary,
                                         marginTop: 8,
                                         flexShrink: 0,
                                     }}
@@ -183,14 +164,6 @@ export const AgendaCard = () => {
                                 >
                                     {item.title}
                                 </div>
-                                {item.kind === "reminder" && (
-                                    <Clock
-                                        size={12}
-                                        strokeWidth={1.75}
-                                        color={tokens.colors.warning}
-                                        style={{ flexShrink: 0, marginTop: 2 }}
-                                    />
-                                )}
                             </div>
                         ))}
                     </div>

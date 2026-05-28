@@ -43,7 +43,6 @@ const ImportExportSettings = lazy(
 );
 const InboxPage = lazy(() => import("./pages/inbox/InboxPage"));
 const SearchPage = lazy(() => import("./pages/search/SearchPage"));
-const CustomersPage = lazy(() => import("./pages/customers/CustomersPage"));
 const EngineeringHomePage = lazy(
     () => import("./pages/engineering/EngineeringHomePage"),
 );
@@ -111,10 +110,6 @@ export const router = createBrowserRouter([
                             {
                                 path: "search",
                                 element: lazyRoute(<SearchPage />),
-                            },
-                            {
-                                path: "customers",
-                                element: lazyRoute(<CustomersPage />),
                             },
                             {
                                 path: "eng",

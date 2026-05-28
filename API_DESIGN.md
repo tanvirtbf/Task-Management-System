@@ -1,6 +1,6 @@
 # BeautyBooth — API Design (v1)
 
-Production-grade REST API specification. Every endpoint here maps **one-to-one** to a real call the React frontend already makes (`mockApi.X.Y()` in `client/src/lib/mock-api.ts`), plus the production-only endpoints the mock can't model (file upload signing, refresh-token rotation, webhooks, SSE).
+Production-grade REST API specification. Every endpoint here maps **one-to-one** to a real call the React frontend already makes (`mockApi.X.Y()` in `client/src/lib/mock-api.ts`), plus the production-only endpoints the mock can't model (file upload signing, refresh-token rotation, SSE).
 
 If a backend implementation matches the contract in this document, the frontend swap is `mockApi.X` → `realApi.X` only — no UI rewrite.
 
@@ -33,22 +33,19 @@ If a backend implementation matches the contract in this document, the frontend 
 17. [Custom fields](#17-custom-fields)
 18. [Forms (public + internal)](#18-forms)
 19. [Notifications](#19-notifications)
-20. [Customers](#20-customers)
-21. [Sprints](#21-sprints)
-22. [On-call rotation](#22-on-call)
-23. [Engineering specials](#23-engineering-specials)
-24. [Festival campaigns](#24-festival-campaigns)
-25. [Search](#25-search)
-26. [Home / KPIs](#26-home-kpis)
-27. [Workspace activity](#27-workspace-activity)
-28. [Webhooks (incoming integrations)](#28-webhooks-incoming)
-29. [Server-Sent Events (real-time inbox)](#29-sse-realtime)
-30. [Background jobs](#30-background-jobs)
-31. [Inventory operations (P0)](#31-inventory)
-32. [SLA management (P0)](#32-sla)
-33. [Health & diagnostics](#33-health)
-34. [Cross-cutting production essentials](#34-production)
-35. [Error code catalog](#35-error-codes)
+20. [Sprints](#21-sprints)
+21. [On-call rotation](#22-on-call)
+22. [Engineering specials](#23-engineering-specials)
+23. [Templates](#24-festival-campaigns)
+24. [Search](#25-search)
+25. [Home / KPIs](#26-home-kpis)
+26. [Workspace activity](#27-workspace-activity)
+27. [Server-Sent Events (real-time inbox)](#29-sse-realtime)
+28. [Background jobs](#30-background-jobs)
+29. [SLA management](#32-sla)
+30. [Health & diagnostics](#33-health)
+31. [Cross-cutting production essentials](#34-production)
+32. [Error code catalog](#35-error-codes)
 
 ---
 
@@ -58,7 +55,7 @@ If a backend implementation matches the contract in this document, the frontend 
 
 | Header | Required | Notes |
 |---|---|---|
-| `Authorization` | yes (except `/auth/*`, `/public/*`, `/webhooks/*`) | `Bearer <access_token>` |
+| `Authorization` | yes (except `/auth/*`, `/public/*`) | `Bearer <access_token>` |
 | `Content-Type` | yes for `POST/PATCH/PUT` | `application/json` (or `multipart/form-data` for binary upload) |
 | `Accept-Language` | optional | `en` or `bn` — used for emails & error messages |
 | `X-Request-Id` | optional | Echoed back. Server generates if absent. |
@@ -105,7 +102,6 @@ If a backend implementation matches the contract in this document, the frontend 
 |---|---|
 | 200 | OK — body returned |
 | 201 | Created — body is the new resource |
-| 202 | Accepted — webhook receipt; processing async |
 | 204 | No content — successful delete / toggle |
 | 400 | Malformed JSON / bad parameter |
 | 401 | Missing/expired access token |
@@ -138,7 +134,6 @@ Bucketed per `user_id` (or per IP for `/auth/*` and `/public/*`).
 | `/auth/login`, `/auth/forgot-password` | 5 / minute / IP |
 | `/api/v1/*` (authenticated) | 600 / minute / user |
 | `/public/forms/:slug/submit` | 30 / minute / IP |
-| `/webhooks/*` | unlimited (verified signature) |
 | `/uploads/sign` | 60 / minute / user |
 
 Headers on every 200/4xx response: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`.
@@ -891,37 +886,7 @@ Query: `?filter=all|unread|mentions|assigned&cursor=…&limit=…`
 
 ---
 
-## 20. Customers
-
-### GET `/api/v1/customers`
-Query: `?q=…&vip=true&order_count_min=5&cursor=…`
-**200 OK** — paginated `Customer[]`.
-
-### GET `/api/v1/customers/search`
-Fast typeahead, returns max 20.
-Query: `?q=…`
-**200 OK** — `Customer[]`.
-
-### GET `/api/v1/customers/by-phone/:phone`
-Server normalises `+88` prefix, leading 0, etc. before lookup.
-**200 OK** — `Customer`. **404** if no match.
-
-### GET `/api/v1/customers/:id`
-**200 OK** — `Customer` with optional `?include=orders,complaints` to embed recent task IDs.
-
-### POST `/api/v1/customers`
-**Body** `{ "phone", "name", "default_address?", "notes?" }`
-**201 Created.** **409** on duplicate phone.
-
-### PATCH `/api/v1/customers/:id`
-**200 OK.**
-
-### DELETE `/api/v1/customers/:id`
-Soft delete + anonymise (GDPR-style). **204.**
-
----
-
-## 21. Sprints
+## 20. Sprints
 
 ### GET `/api/v1/sprints`
 Query: `?status=planned|active|closed`
@@ -959,7 +924,7 @@ Remove a task from the sprint.
 
 ---
 
-## 22. On-call
+## 21. On-call
 
 ### GET `/api/v1/on-call/current`
 **200 OK** — current `OnCallShift` with `engineer: User`.
@@ -978,7 +943,7 @@ Clear. **204.**
 
 ---
 
-## 23. Engineering specials <a id="23-engineering-specials"></a>
+## 22. Engineering specials <a id="23-engineering-specials"></a>
 
 ### POST `/api/v1/eng/report-bug`
 Cross-team bug intake (the "Report a bug" sidebar button). Creates a `Bug` task in Bug Triage with auto-routing to on-call for S0/S1.
@@ -1020,20 +985,21 @@ Save postmortem checklist state.
 
 ---
 
-## 24. Festival campaigns
+## 23. Templates
 
-### GET `/api/v1/festivals/upcoming`
-BD national + business festivals in the next 90 days.
-**200 OK** — `[ { "name": "Eid ul-Fitr", "date": "2026-06-17" }, … ]`
+### GET `/api/v1/templates`
+List user-defined task templates (e.g. "Eid campaign", "New product launch", "Incident response").
+Query: `?type=task|space|list` (optional filter)
+**200 OK** — `Template[]`.
 
-### POST `/api/v1/festivals/campaigns`
-"Start festival campaign" button. Creates parent task + 12-step checklist.
-**Body** `{ "festival": "Eid ul-Fitr", "list_id": "l-campaigns", "start_date?": "2026-05-15" }`
+### POST `/api/v1/templates/:id/apply`
+"Apply template" button. Creates parent task + checklist using the template's structure.
+**Body** `{ "list_id": "l-campaigns", "task_name?": "Eid Campaign 2026", "anchor_date?": "2026-05-15" }`
 **201 Created** — parent `Task` with checklist embedded.
 
 ---
 
-## 25. Search
+## 24. Search
 
 ### GET `/api/v1/search`
 Global typeahead.
@@ -1047,27 +1013,26 @@ Query: `?q=…&types=task,list,space,note,comment,user&limit=20`
   "spaces":   [Space, ...],
   "comments": [Comment, ...],
   "users":    [User, ...],
-  "customers":[Customer, ...],
   "total": 42
 }
 ```
 
 ---
 
-## 26. Home / KPIs <a id="26-home-kpis"></a>
+## 25. Home / KPIs <a id="26-home-kpis"></a>
 
 ### GET `/api/v1/home/kpis`
-The 6 KPI tiles on the owner home.
+The 6 task-management KPI tiles on the home page.
 
 **200 OK**
 ```json
 {
-  "today_orders":    { "label", "value", "value_display", "trend", "trend_direction": "up|down|flat", "is_positive", "sparkline": [n,n,n,n,n,n,n] },
-  "cod_collected":   { … },
-  "open_complaints": { … },
-  "stuck_orders":    { … },
-  "low_stock":       { … },
-  "my_tasks":        { … }
+  "my_tasks":         { "label", "value", "value_display", "trend", "trend_direction": "up|down|flat", "is_positive", "sparkline": [n,n,n,n,n,n,n] },
+  "due_today":        { … },
+  "overdue":          { … },
+  "awaiting_review":  { … },
+  "open_team_tasks":  { … },
+  "sla_breaches":     { … }
 }
 ```
 
@@ -1078,7 +1043,7 @@ Query: `?date=2026-05-28`
 
 ---
 
-## 27. Workspace activity <a id="27-workspace-activity"></a>
+## 26. Workspace activity <a id="27-workspace-activity"></a>
 
 ### GET `/api/v1/activity/recent`
 RecentActivityCard on Home expects to see both per-task events ("Rashida moved ORD-1024 to Delivered") and admin events ("Tanvir invited Karim"). Backend therefore returns a **UNION** of `task_activity` and `workspace_activity`, merged by `created_at DESC`. Each entry carries a `source` discriminator.
@@ -1125,58 +1090,7 @@ Query: `?actor_id=…&entity_type=task,list&action=created,archived&from=…&to=
 
 ---
 
-## 28. Webhooks (incoming integrations) <a id="28-webhooks-incoming"></a>
-
-All incoming webhooks:
-- Verify HMAC signature (header `X-Signature: sha256=…`). Reject with 401 on mismatch.
-- Persist raw payload to a `webhook_events` table for replay.
-- Return `202 Accepted` quickly; processing happens in a background worker.
-- Are idempotent: identical `event_id` is a no-op.
-
-### POST `/webhooks/website`
-**Trigger:** ecom website on new order placed.
-
-**Body**
-```json
-{
-  "event_id": "ord_evt_abc",
-  "order_id": "WO-12345",
-  "customer": { "phone": "01712345678", "name": "Iqbal Begum", "address": "Mirpur 10, Dhaka" },
-  "items": [{ "sku": "VITC", "qty": 1, "price": 95000 }],
-  "total_amount": 95000,
-  "payment_method": "cod",
-  "source": "website",
-  "created_at": "2026-05-28T09:00:00Z"
-}
-```
-**202 Accepted.** Server creates a Task in **Website Orders** list, auto-creates/updates `Customer` by phone.
-
-### POST `/webhooks/pathao`
-Pathao status update. Same idempotency rules.
-**202.**
-
-### POST `/webhooks/steadfast`
-Steadfast status update.
-**202.**
-
-### POST `/webhooks/facebook`
-FB Page DM / comment → auto-task in **Complaints**.
-**202.**
-
-### POST `/webhooks/sslcommerz`
-Payment confirmation. Marks the related order task `COD Collected` / `Paid`.
-**202.**
-
-### POST `/webhooks/sms-delivery`
-Bulk SMS BD delivery callback — updates SMS-send status on a task.
-**202.**
-
-### Outbound webhooks
-The system can fire workspace-configured outbound webhooks. Configured via env (no UI — per spec deletion list). Out of scope for V1 outbound.
-
----
-
-## 29. Server-Sent Events (real-time inbox) <a id="29-sse-realtime"></a>
+## 27. Server-Sent Events (real-time inbox) <a id="29-sse-realtime"></a>
 
 ### GET `/api/v1/stream/inbox`
 **Authenticated** (token via `?access_token=` query param since EventSource can't set headers).
@@ -1197,143 +1111,25 @@ Heartbeat every 30 s prevents proxy disconnect. Client reconnects with `Last-Eve
 
 ---
 
-## 30. Background jobs <a id="30-background-jobs"></a>
+## 28. Background jobs <a id="30-background-jobs"></a>
 
 Internal — invoked by cron, not by clients. Documented for ops visibility.
 
 | Endpoint | Schedule | What it does |
 |---|---|---|
-| `POST /jobs/pathao-poll` | every 15 min | Pulls status updates for all Pathao tracking IDs |
-| `POST /jobs/steadfast-poll` | every 15 min | Same for Steadfast |
 | `POST /jobs/recurrence-spawn` | hourly | Creates the next instance of recurring tasks past their due date |
 | `POST /jobs/email-digest` | daily 09:00 BD | Sends daily email digest of overdue + assigned-to-me tasks |
 | `POST /jobs/attachment-janitor` | hourly | Hard-deletes attachments whose upload never finalised after 1 h |
 | `POST /jobs/r2-purge` | daily | Hard-deletes R2 objects whose `attachments.deleted_at` > 7 days ago |
-| `POST /jobs/customer-aggregates` | nightly 02:00 | Recomputes `customers.total_orders`, `total_complaints`, `lifetime_value` |
 | `POST /jobs/session-cleanup` | hourly | Hard-deletes `sessions` rows past `expires_at + 30 days` |
 | `POST /jobs/snooze-wake` | every 5 min | Marks snoozed notifications back as unread when `snoozed_until <= NOW()` |
-| `POST /jobs/stuck-orders-alert` | every 15 min | Re-checks tasks Confirmed > 2h, fires `stuck_order` notification to on-call |
+| `POST /jobs/sla-breach-scan` | every 5 min | Reads `v_breached_sla`, fires `incident_alert` / `due_soon` notifications, escalates S0 bugs to on-call |
 
 All jobs accept a `?dry_run=true` query to log what they would do without writing. Guarded by an `X-Internal-Token` header so they can be triggered from k8s CronJobs but not from the public internet.
 
-Additional P0-related jobs:
-
-| Endpoint | Schedule | What it does |
-|---|---|---|
-| `POST /jobs/sla-breach-scan` | every 5 min | Reads `v_breached_sla`, fires `incident_alert` / `due_soon` notifications, escalates S0 bugs to on-call |
-| `POST /jobs/expiring-batches` | daily 08:00 BD | Reads `v_expiring_batches`, creates "Reorder due to expiry" tasks for items expiring < 30 days |
-| `POST /jobs/auto-reorder` | hourly | Reads `v_stock_levels`, creates Purchase Order tasks for SKUs where current_stock < reorder_level |
-| `POST /jobs/stock-level-sync` | every 15 min | Recomputes `cf_current_stock` custom-field values on Stock Master tasks from `v_stock_levels` |
-
 ---
 
-## 31. Inventory operations (P0 — stock batches + movements) <a id="31-inventory"></a>
-
-These endpoints expose the schema's `stock_batches` and `stock_movements` tables. Every mutation here also produces a `task_activity` row when a related task is involved, so the per-task feed shows "Decremented 3 units from LOT-A".
-
-### GET `/api/v1/inventory/batches`
-Paginated batch list.
-Query: `?sku=t-001&expiring_within_days=30&include_empty=false&cursor=…&limit=50`
-**200 OK** — paginated `StockBatch[]`.
-
-### GET `/api/v1/inventory/batches/:id`
-**200 OK** — `StockBatch`.
-
-### GET `/api/v1/inventory/batches/by-sku/:skuTaskId`
-Batches for one SKU, sorted by expiry ASC (FIFO order — the order the packing team should pick from).
-**200 OK** — `StockBatch[]`.
-
-### POST `/api/v1/inventory/batches`
-Receive a new batch. Server creates the batch row **and** a `stock_movements` row of type `receive` in one transaction.
-
-**Body**
-```json
-{
-  "sku_task_id": "t-stock-vitc-30",
-  "batch_number": "LOT-2026-A",
-  "mfg_date": "2026-01-15",
-  "expiry_date": "2026-06-15",
-  "quantity_received": 100,
-  "cost_per_unit_paisa": 55000,
-  "supplier_name": "Beauty Imports Ltd",
-  "received_via_task_id": "t-po-001",
-  "notes": "Boxes 1-2 had minor dents — accepted"
-}
-```
-**201 Created** — `StockBatch`. **409** `batch.duplicate` if `(sku_task_id, batch_number)` already exists.
-
-### PATCH `/api/v1/inventory/batches/:id`
-Correct expiry / mfg / notes / supplier_name. **Cannot** change quantity_received (immutable); use a movement instead.
-**Body** partial — `{ expiry_date?, mfg_date?, supplier_name?, notes?, cost_per_unit_paisa? }`
-**200 OK.**
-
-### GET `/api/v1/inventory/batches/expiring`
-Expiring in next N days (default 30). Drives the inventory team's daily alert.
-Query: `?days=30&include_zero_qty=false`
-**200 OK** — `[{ batch_id, sku_task_id, sku_name, batch_number, expiry_date, days_to_expiry, quantity_remaining }, …]`
-
----
-
-### GET `/api/v1/inventory/movements`
-Append-only ledger. Newest first.
-Query: `?sku=t-001&type=sale,receive&from=2026-05-01&to=2026-05-28&cursor=…&limit=50`
-**200 OK** — paginated `StockMovement[]`.
-
-### POST `/api/v1/inventory/movements`
-Append a manual movement (sale / receive / damage / adjustment / return / reversal). For `receive`, prefer using `POST /inventory/batches` which atomically creates batch + movement.
-
-**Body**
-```json
-{
-  "sku_task_id": "t-stock-vitc-30",
-  "movement_type": "damage",
-  "quantity_change": -2,
-  "batch_id": "b-001",
-  "reason": "Dropped during sorting",
-  "related_task_id": "t-damage-042"
-}
-```
-Server validates: if `batch_id` provided, `batch.quantity_remaining + quantity_change >= 0`. Atomic transaction updates `stock_batches.quantity_remaining` + inserts the movement row.
-
-**201 Created** — `StockMovement`. **422** `stock.insufficient` if it would drive batch negative.
-
-### GET `/api/v1/inventory/movements/by-task/:taskId`
-Movements caused by a specific task (e.g., everything decremented when ORD-1042 was packed).
-**200 OK** — `StockMovement[]`.
-
-### GET `/api/v1/inventory/levels`
-Current stock per SKU from `v_stock_levels`. Use this as the source of truth for "is it in stock".
-
-Query: `?low_stock_only=true&threshold=20&cursor=…&limit=100`
-
-**200 OK**
-```json
-{
-  "data": [
-    { "sku_task_id": "t-001", "sku_name": "Vit C 30ml", "current_stock": 97, "last_movement_at": "2026-05-28T09:00:00Z" },
-    …
-  ],
-  "pagination": { "next_cursor": "…", "has_more": false }
-}
-```
-
-### GET `/api/v1/inventory/levels/:skuTaskId`
-Single SKU current stock + batch breakdown.
-**200 OK**
-```json
-{
-  "sku_task_id": "t-001",
-  "current_stock": 97,
-  "batches": [
-    { "batch_id": "b-001", "batch_number": "LOT-A", "expiry_date": "2026-06-15", "quantity_remaining": 97 }
-  ],
-  "last_movement_at": "2026-05-28T09:00:00Z"
-}
-```
-
----
-
-## 32. SLA management (P0) <a id="32-sla"></a>
+## 29. SLA management <a id="32-sla"></a>
 
 Wraps `tasks.sla_due_at` + the `v_breached_sla` view.
 
@@ -1371,7 +1167,7 @@ Updating `bug_severity` after creation triggers a recompute of `sla_due_at` unle
 
 ---
 
-## 33. Health & diagnostics <a id="33-health"></a>
+## 30. Health & diagnostics <a id="33-health"></a>
 
 Production-essential endpoints — **not authenticated** but only reachable from internal network or behind reverse-proxy ACL.
 
@@ -1411,7 +1207,7 @@ http_request_duration_seconds_bucket{le="0.1"} 12000
 mysql_pool_connections_in_use 4
 mysql_pool_connections_max 20
 sse_connections_open 23
-background_job_runs_total{job="pathao-poll",status="success"} 192
+background_job_runs_total{job="sla-breach-scan",status="success"} 192
 ```
 
 Recommended metrics:
@@ -1422,11 +1218,10 @@ Recommended metrics:
 - `sse_connections_open` — gauge
 - `background_job_runs_total{job,status}` — counter
 - `background_job_duration_seconds_bucket{job}` — histogram
-- `webhook_events_total{provider,status}` — counter
 
 ---
 
-## 34. Cross-cutting production essentials <a id="34-production"></a>
+## 31. Cross-cutting production essentials <a id="34-production"></a>
 
 The backend implementer needs zero decisions on these — this section is the contract.
 
@@ -1505,7 +1300,7 @@ Credentials:        true             (refresh-token cookie requires this)
 Max-Age:            86400            (preflight cache 1 day)
 ```
 
-`/public/*` and `/webhooks/*` use **looser CORS** (allow any origin) since they're called from non-app contexts (FB intake links, courier servers).
+`/public/*` uses **looser CORS** (allow any origin) since public forms may be embedded on external intake pages.
 
 ### 34.3 Security headers
 
@@ -1530,7 +1325,6 @@ JSON responses additionally set `Content-Type: application/json; charset=utf-8`.
 | `/api/v1/*` JSON | 1 MB | 413 `payload.too_large` |
 | `/api/v1/uploads/sign` (metadata) | 4 KB | 413 |
 | `/api/v1/public/forms/:slug/submit` | 64 KB | 413 |
-| `/webhooks/*` | 256 KB | 413 (configure per provider) |
 | Multipart upload to R2 | 25 MB | enforced by signed-URL policy (server doesn't proxy bytes) |
 
 ### 34.5 Database connection pool
@@ -1623,7 +1417,7 @@ Retry-After: 300
 
 ---
 
-## 35. Error code catalog <a id="35-error-codes"></a>
+## 32. Error code catalog <a id="35-error-codes"></a>
 
 Stable string codes — frontend can switch on these. Format: `<domain>.<reason>`.
 
@@ -1657,18 +1451,9 @@ Stable string codes — frontend can switch on these. Format: `<domain>.<reason>
 | `dep.cycle` | 422 | Would create a dependency cycle |
 | `dep.self` | 422 | Task cannot depend on itself |
 | `notification.not_owner` | 403 | Cannot act on another user's notification |
-| `batch.not_found` | 404 | |
-| `batch.duplicate` | 409 | Same `(sku, batch_number)` already exists |
-| `batch.expired` | 422 | Trying to receive a batch whose expiry is in the past |
-| `batch.quantity_immutable` | 422 | Cannot change `quantity_received` after creation (use movement) |
-| `stock.insufficient` | 422 | Movement would drive batch quantity below zero |
-| `stock.invalid_movement_type` | 422 | Unknown `movement_type` value |
 | `sla.invalid_due_at` | 422 | SLA due date is in the past |
-| `inventory.sku_not_in_stock_list` | 422 | Provided SKU task is not in the Stock Master list |
 | `health.dependency_down` | 503 | Readiness check failed — see `checks` field |
-| `payload.too_large` | 413 | Body exceeded per-route limit (see §34.4) |
-| `webhook.bad_signature` | 401 | HMAC mismatch |
-| `webhook.duplicate_event` | 200 | Idempotent retry — treated as success but logged |
+| `payload.too_large` | 413 | Body exceeded per-route limit (see §31.4) |
 | `rate.exceeded` | 429 | Per-bucket rate limit |
 | `internal` | 500 | Unhandled — see `request_id` in logs |
 | `maintenance` | 503 | Planned downtime |
@@ -1970,20 +1755,6 @@ interface Notification {
   created_at: string;
 }
 
-// Customers ───────────────────────────────────────────────────────
-interface Customer {
-  id: string;
-  phone: string;                     // 11 digits, e.g. "01712345678"
-  name: string;
-  default_address: string | null;
-  total_orders: number;
-  total_complaints: number;
-  lifetime_value: number;            // BDT in paisa
-  vip_flag: boolean;                 // generated column
-  last_order_at: string | null;
-  created_at: string;
-}
-
 // Sprints & on-call ───────────────────────────────────────────────
 interface Sprint {
   id: string;
@@ -2034,49 +1805,6 @@ interface WorkspaceActivityEntry {
   created_at: string;
 }
 
-// Inventory (P0) ──────────────────────────────────────────────────
-interface StockBatch {
-  id: string;
-  workspace_id: string;
-  sku_task_id: string;
-  batch_number: string;
-  mfg_date: string | null;
-  expiry_date: string | null;
-  quantity_received: number;       // immutable after creation
-  quantity_remaining: number;       // maintained from stock_movements
-  cost_per_unit_paisa: number | null;
-  supplier_name: string | null;
-  received_via_task_id: string | null;
-  received_at: string;
-  notes: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-type StockMovementType =
-  | "receive" | "sale" | "return" | "damage"
-  | "adjustment" | "transfer" | "reversal";
-
-interface StockMovement {
-  id: string;
-  workspace_id: string;
-  sku_task_id: string;
-  batch_id: string | null;
-  movement_type: StockMovementType;
-  quantity_change: number;          // signed
-  reason: string | null;
-  related_task_id: string | null;
-  actor: User | null;
-  created_at: string;
-}
-
-interface StockLevel {
-  sku_task_id: string;
-  sku_name: string;
-  current_stock: number;
-  last_movement_at: string | null;
-}
-
 interface SLABreach {
   task_id: string;
   custom_id: string | null;
@@ -2121,16 +1849,15 @@ When wiring a backend, knock these off in order:
 3. **Mirror mockApi signatures** — implement §3–§22 endpoints with the exact response shape in this doc.
 4. **File upload** — Cloudflare R2 SDK + signed-URL flow (§16).
 5. **Email** — SMTP (postmark / sendgrid / amazon ses) for invitations + password-reset + daily digest.
-6. **Webhooks (§28)** — start with website + Pathao + Steadfast.
-7. **SSE inbox (§29)** — last; not blocking for V1.
-8. **Background jobs (§30)** — set up node-cron or system cron.
+6. **SSE inbox (§27)** — last; not blocking for V1.
+7. **Background jobs (§28)** — set up node-cron or system cron.
 
 Operational milestones:
 - **Week 1-3** — auth + CRUD for spaces, lists, statuses, tasks, comments, attachments.
 - **Week 4-5** — custom fields, forms, notifications, search.
 - **Week 6** — sprint, on-call, engineering specials. Frontend swap `mockApi` → `realApi`.
-- **Week 7-9** — integrations (webhooks).
-- **Week 10** — pilot with operations team.
+- **Week 7** — SLA management, background jobs, polish.
+- **Week 8** — pilot with operations team.
 
 ---
 

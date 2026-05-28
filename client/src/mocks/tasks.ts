@@ -43,17 +43,6 @@ const lastNames = [
     "Chowdhury", "Sheikh", "Ali", "Sultana", "Karim", "Mia", "Khatun",
     "Islam", "Jahan",
 ];
-const dhakaAreas = [
-    "Mirpur 10, Dhaka", "Dhanmondi, Dhaka", "Uttara Sector 7, Dhaka",
-    "Bashundhara R/A, Dhaka", "Gulshan 2, Dhaka", "Mohammadpur, Dhaka",
-    "Banani, Dhaka", "Tejgaon, Dhaka", "Wari, Dhaka", "Lalbagh, Dhaka",
-    "Khilkhet, Dhaka", "Mohakhali DOHS, Dhaka", "Badda, Dhaka",
-    "Rampura, Dhaka", "Mirpur DOHS, Dhaka",
-];
-const outsideDhakaAreas = [
-    "Chattogram", "Sylhet", "Khulna", "Rajshahi", "Barishal", "Rangpur",
-    "Comilla", "Mymensingh", "Narayanganj", "Gazipur", "Bogra", "Jessore",
-];
 const products = [
     "Celeste Vitamin C Serum", "Aloe Vera Soothing Gel",
     "Niacinamide 10% Serum", "Hyaluronic Acid Toner",
@@ -64,9 +53,6 @@ const products = [
     "Squalane Face Oil", "Bakuchiol Serum", "Centella Calming Gel",
     "Peptide Eye Cream", "AHA/BHA Exfoliating Toner",
 ];
-const couriers = ["Pathao", "Steadfast", "RedX", "Sundarban"] as const;
-const codStatuses = ["Pending", "Collected", "Returned"] as const;
-const orderSources = ["Facebook", "Website"] as const;
 const issueTypes = [
     "Wrong Item", "Damaged Package", "Late Delivery", "Refund Request",
     "Missing Item", "Quality Issue", "Other",
@@ -86,14 +72,7 @@ const supportTeam = ["u-007", "u-008"];
 const listingTeam = ["u-009", "u-010"];
 const marketingTeam = ["u-003", "u-011"];
 
-const phone = () => {
-    const prefix = pick(["017", "018", "019", "016", "015"]);
-    const suffix = String(Math.floor(random() * 100000000)).padStart(8, "0");
-    return `${prefix}${suffix}`;
-};
 const fullName = () => `${pick(firstNames)} ${pick(lastNames)}`;
-const address = () =>
-    chance(0.7) ? pick(dhakaAreas) : pick(outsideDhakaAreas);
 const isoNow = () => new Date().toISOString();
 
 const daysAgo = (n: number): string => {
@@ -164,15 +143,12 @@ const randomTaskDates = (statusGroup: string) => {
 // Per-list generators
 // ─────────────────────────────────────────────────────────
 
-function generateOrderTask(listId: string, idx: number, isFb: boolean): Task {
+function generateOrderTask(listId: string, _idx: number, isFb: boolean): Task {
     const taskNumber = seq();
     const statusId = pickStatus(listId);
     const status = statusesByList(listId).find((s) => s.id === statusId)!;
     const dates = randomTaskDates(status.statusGroup);
     const customer = fullName();
-    const orderValue = (Math.floor(random() * 50) + 5) * 100; // 500–5500 BDT
-    const isCod = chance(0.8);
-    const courier = pick(couriers);
 
     return {
         id: `t-${taskNumber}`,
@@ -192,31 +168,11 @@ function generateOrderTask(listId: string, idx: number, isFb: boolean): Task {
         assignees: pickN(opsTeam, chance(0.6) ? 1 : 2),
         watchers: pickN(userIds, 2),
         tags: [
-            isCod ? "tag-cod" : "tag-prepaid",
             isFb ? "tag-first-order" : "tag-returning",
-            chance(0.5) ? "tag-dhaka" : "tag-outside-dhaka",
             ...(chance(0.1) ? ["tag-urgent"] : []),
             ...(chance(0.08) ? ["tag-vip"] : []),
         ].filter(Boolean) as string[],
-        customFields: {
-            cf_customer_name: { text: customer },
-            cf_customer_phone: { text: phone() },
-            cf_address: { text: address() },
-            cf_order_source: { option_id: isFb ? "Facebook" : "Website" },
-            cf_products: { text: pickN(products, Math.floor(random() * 3) + 1).join(", ") },
-            cf_order_value: { amount: orderValue, currency: "BDT" },
-            cf_cod_amount: isCod
-                ? { amount: orderValue, currency: "BDT" }
-                : { amount: 0, currency: "BDT" },
-            cf_courier: { option_id: courier },
-            cf_tracking_id:
-                status.statusGroup === "active" || status.statusGroup === "done"
-                    ? { text: `${courier.slice(0, 2).toUpperCase()}${100000 + taskNumber}` }
-                    : { text: "" },
-            cf_cod_status: isCod
-                ? { option_id: status.statusGroup === "done" ? "Collected" : "Pending" }
-                : { option_id: "Collected" },
-        },
+        customFields: {},
         subtasksCount: chance(0.4) ? Math.floor(random() * 4) + 1 : 0,
         subtasksCompleted: 0,
         commentsCount: Math.floor(random() * 4),
@@ -225,57 +181,6 @@ function generateOrderTask(listId: string, idx: number, isFb: boolean): Task {
         updatedAt: daysAgo(Math.floor(random() * 3)),
         createdBy: pick(opsTeam),
         completedAt: dates.completedAt,
-        archivedAt: null,
-        nestingDepth: 0,
-        ...(idx < 0 ? {} : {}),
-    };
-}
-
-function generateStockTask(idx: number): Task {
-    const taskNumber = seq();
-    const statusId = pickStatus("l-stock");
-    const status = statusesByList("l-stock").find((s) => s.id === statusId)!;
-    const product = products[idx % products.length];
-    const currentStock = Math.floor(random() * 200);
-    const reorderLevel = 20 + Math.floor(random() * 30);
-
-    return {
-        id: `t-${taskNumber}`,
-        taskNumber,
-        name: product,
-        statusId,
-        priority: currentStock < reorderLevel ? 2 : 3,
-        taskTypeId: "tt-task",
-        primaryListId: "l-stock",
-        parentTaskId: null,
-        isMilestone: false,
-        startDate: null,
-        dueDate: null,
-        timeEstimateSeconds: null,
-        timeTrackedSeconds: 0,
-        assignees: pickN(["u-006"], 1),
-        watchers: ["u-001", "u-006"],
-        tags: currentStock < reorderLevel ? ["tag-low-stock", "tag-reorder"] : [],
-        customFields: {
-            cf_sku: { text: `SKU-${1000 + idx}` },
-            cf_current_stock: { number: currentStock },
-            cf_reorder_level: { number: reorderLevel },
-            cf_supplier: { text: pick(["Cosmo Trading", "Global Mart", "Beauty Hub BD", "Local Vendor"]) },
-            cf_lead_time: { number: 5 + Math.floor(random() * 10) },
-            cf_last_restock: { date: daysAgo(Math.floor(random() * 60)) },
-            cf_stock_status: {
-                option_id:
-                    currentStock === 0 ? "Out" : currentStock < reorderLevel ? "Low" : "In Stock",
-            },
-        },
-        subtasksCount: 0,
-        subtasksCompleted: 0,
-        commentsCount: Math.floor(random() * 2),
-        attachmentsCount: 0,
-        createdAt: daysAgo(60 + idx),
-        updatedAt: daysAgo(Math.floor(random() * 7)),
-        createdBy: "u-006",
-        completedAt: null,
         archivedAt: null,
         nestingDepth: 0,
     };
@@ -350,11 +255,8 @@ function generateProductTask(idx: number): Task {
         watchers: ["u-001", ...listingTeam],
         tags: ["tag-new-arrival"],
         customFields: {
-            cf_sku: { text: `SKU-${2000 + idx}` },
+            cf_product_sku: { text: `SKU-${2000 + idx}` },
             cf_category: { option_id: "Skincare" },
-            cf_cost_price: { amount: 35000, currency: "BDT" },
-            cf_selling_price: { amount: 89000, currency: "BDT" },
-            cf_supplier: { text: pick(["Cosmo Trading", "Beauty Hub BD"]) },
         },
         subtasksCount: 4,
         subtasksCompleted: Math.floor(random() * 4),
@@ -496,8 +398,8 @@ for (let i = 0; i < 15; i++) {
         watchers: ["u-001"],
         tags: ["tag-damaged"],
         customFields: {
-            cf_order_number: { text: `ORD-${1000 + Math.floor(random() * 1000)}` },
-            cf_reason: { text: pick(issueTypes) },
+            cf_return_order_number: { text: `ORD-${1000 + Math.floor(random() * 1000)}` },
+            cf_return_reason: { text: pick(issueTypes) },
         },
         subtasksCount: 0,
         subtasksCompleted: 0,
@@ -527,11 +429,6 @@ const dailyOpsTasks = [
 ];
 for (const title of dailyOpsTasks) {
     generated.push(generateGenericTask("l-daily-ops", title, opsTeam));
-}
-
-// Stock Master — 30 products
-for (let i = 0; i < 30; i++) {
-    generated.push(generateStockTask(i));
 }
 
 // Purchase Orders — 10
@@ -565,13 +462,6 @@ for (let i = 0; i < 25; i++) {
 for (let i = 0; i < 10; i++) {
     generated.push(
         generateGenericTask("l-queries", `Customer query — ${fullName()}`, supportTeam),
-    );
-}
-
-// COD Issues — 8
-for (let i = 0; i < 8; i++) {
-    generated.push(
-        generateGenericTask("l-cod-issues", `COD discrepancy — ${pick(couriers)}`, opsTeam),
     );
 }
 
