@@ -1,13 +1,28 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
-import { Folder } from "lucide-react";
+import { Folder, Sparkles } from "lucide-react";
+import { App as AntApp, Dropdown } from "antd";
 import { mockApi } from "../../lib/mock-api";
 import { DynamicIcon } from "../../components/shared/DynamicIcon";
+import { useAuthStore } from "../../stores/auth";
 import { tokens } from "../../theme";
+
+const FESTIVALS = [
+    "Eid ul-Fitr",
+    "Eid ul-Adha",
+    "Pohela Boishakh",
+    "Durga Puja",
+    "Victory Day",
+    "11.11 Sale",
+    "Black Friday",
+];
 
 const SpacePage = () => {
     const { spaceId } = useParams();
     const navigate = useNavigate();
+    const qc = useQueryClient();
+    const { message } = AntApp.useApp();
+    const user = useAuthStore((s) => s.user);
 
     const { data: space } = useQuery({
         queryKey: ["space", spaceId],
@@ -19,6 +34,35 @@ const SpacePage = () => {
         queryFn: () =>
             spaceId ? mockApi.lists.listBySpace(spaceId) : Promise.resolve([]),
         enabled: !!spaceId,
+    });
+
+    const campaignList = lists.find(
+        (l) => l.id === "l-campaigns" || l.name.toLowerCase().includes("campaign"),
+    );
+
+    const startFestival = useMutation({
+        mutationFn: (festival: string) => {
+            if (!campaignList || !user) {
+                throw new Error("Campaign list not found");
+            }
+            return mockApi.festivals.startCampaign({
+                festival,
+                listId: campaignList.id,
+                createdBy: user.id,
+            });
+        },
+        onSuccess: (task) => {
+            qc.invalidateQueries({
+                queryKey: ["tasks-by-list", campaignList?.id],
+            });
+            message.success(`${task.name} created with 12-step checklist`);
+            if (campaignList) {
+                navigate(
+                    `/s/${campaignList.spaceId}/l/${campaignList.id}?task=${task.id}`,
+                );
+            }
+        },
+        onError: () => message.error("Could not start festival campaign"),
     });
 
     if (!space) {
@@ -89,6 +133,41 @@ const SpacePage = () => {
                         </p>
                     )}
                 </div>
+                {space.id === "sp-mkt" && campaignList && (
+                    <div style={{ marginLeft: "auto" }}>
+                        <Dropdown
+                            menu={{
+                                items: FESTIVALS.map((f) => ({
+                                    key: f,
+                                    label: f,
+                                    onClick: () => startFestival.mutate(f),
+                                })),
+                            }}
+                            trigger={["click"]}
+                        >
+                            <button
+                                style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 6,
+                                    padding: "8px 14px",
+                                    borderRadius: tokens.radius.md,
+                                    background: tokens.colors.primary,
+                                    color: "#fff",
+                                    border: 0,
+                                    cursor: "pointer",
+                                    fontSize: tokens.typography.fontSize.sm,
+                                    fontWeight: 600,
+                                    boxShadow: tokens.shadows.sm,
+                                }}
+                                disabled={startFestival.isPending}
+                            >
+                                <Sparkles size={14} strokeWidth={1.75} />
+                                Start festival campaign
+                            </button>
+                        </Dropdown>
+                    </div>
+                )}
             </div>
 
             {/* Lists grid */}

@@ -14,7 +14,6 @@ import {
 import dayjs from "dayjs";
 import { mockApi } from "../../lib/mock-api";
 import { usersById } from "../../mocks/users";
-import { AttachmentLightbox } from "./AttachmentLightbox";
 import { tokens } from "../../theme";
 import type { Attachment } from "../../types/extras";
 
@@ -48,7 +47,6 @@ export const AttachmentsSection = ({ taskId }: Props) => {
     const { message } = AntApp.useApp();
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [dragOver, setDragOver] = useState(false);
-    const [viewing, setViewing] = useState<Attachment | null>(null);
 
     const { data: attachments = [] } = useQuery({
         queryKey: ["attachments", taskId],
@@ -193,17 +191,10 @@ export const AttachmentsSection = ({ taskId }: Props) => {
                         <AttachmentCard
                             key={a.id}
                             attachment={a}
-                            onView={() => setViewing(a)}
                             onDelete={() => remove.mutate(a.id)}
                         />
                     ))}
                 </div>
-            )}
-            {viewing && (
-                <AttachmentLightbox
-                    attachment={viewing}
-                    onClose={() => setViewing(null)}
-                />
             )}
         </div>
     );
@@ -211,11 +202,9 @@ export const AttachmentsSection = ({ taskId }: Props) => {
 
 const AttachmentCard = ({
     attachment: a,
-    onView,
     onDelete,
 }: {
     attachment: Attachment;
-    onView: () => void;
     onDelete: () => void;
 }) => {
     const Icon = ICON_BY_TYPE(a.type);
@@ -223,8 +212,10 @@ const AttachmentCard = ({
     const isImage = a.type.startsWith("image/");
 
     return (
-        <div
-            onClick={onView}
+        <a
+            href={a.url}
+            target="_blank"
+            rel="noreferrer"
             style={{
                 position: "relative",
                 background: tokens.colors.bgSurface,
@@ -234,6 +225,8 @@ const AttachmentCard = ({
                 overflow: "hidden",
                 display: "flex",
                 flexDirection: "column",
+                textDecoration: "none",
+                color: "inherit",
             }}
             onMouseEnter={(e) =>
                 e.currentTarget.classList.add("attachment-hover")
@@ -342,12 +335,13 @@ const AttachmentCard = ({
                         aria-label="Delete"
                         title="Delete"
                         style={overlayBtnStyle}
+                        onClick={(e) => e.preventDefault()}
                     >
                         <Trash2 size={11} strokeWidth={1.75} />
                     </button>
                 </Popconfirm>
             </div>
-        </div>
+        </a>
     );
 };
 

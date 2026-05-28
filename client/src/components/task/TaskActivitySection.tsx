@@ -1,67 +1,48 @@
 import { useQuery } from "@tanstack/react-query";
-import { History } from "lucide-react";
+import { Skeleton } from "antd";
+import { Activity } from "lucide-react";
 import { mockApi } from "../../lib/mock-api";
 import { usersById } from "../../mocks/users";
+import { Avatar } from "../ui/Avatar";
 import { tokens } from "../../theme";
-import type { ActivityLogEntry } from "../../types";
 
-const formatTime = (iso: string): string => {
+const timeAgo = (iso: string): string => {
     const diff = Date.now() - new Date(iso).getTime();
-    const m = Math.floor(diff / 60000);
+    const m = Math.floor(diff / (1000 * 60));
     if (m < 1) return "just now";
     if (m < 60) return `${m}m ago`;
     const h = Math.floor(m / 60);
     if (h < 24) return `${h}h ago`;
-    const d = Math.floor(h / 24);
-    if (d < 7) return `${d}d ago`;
-    return new Date(iso).toLocaleDateString();
+    return `${Math.floor(h / 24)}d ago`;
 };
 
-const formatAction = (a: ActivityLogEntry): React.ReactNode => {
-    const action = a.action.replace(/_/g, " ");
-    const ctx = a.context as Record<string, unknown>;
-    if (a.action === "task_created") return <>created this task</>;
-    if (a.action === "status_changed")
-        return (
-            <>
-                changed status from{" "}
-                <Pill>{String(ctx.fromName ?? ctx.from ?? "—")}</Pill> to{" "}
-                <Pill>{String(ctx.toName ?? ctx.to ?? "—")}</Pill>
-            </>
-        );
-    if (a.action === "priority_changed")
-        return (
-            <>
-                changed priority from{" "}
-                <Pill>{String(ctx.from ?? "—")}</Pill> to{" "}
-                <Pill>{String(ctx.to ?? "—")}</Pill>
-            </>
-        );
-    if (a.action === "assigned")
-        return <>assigned to {String(ctx.assigneeName ?? "—")}</>;
-    if (a.action === "due_date_changed")
-        return (
-            <>
-                set due date to <Pill>{String(ctx.to ?? "—")}</Pill>
-            </>
-        );
-    if (a.action === "comment_added") return <>added a comment</>;
-    if (a.action === "attachment_added") return <>uploaded an attachment</>;
-    if (a.action === "tag_added")
-        return (
-            <>
-                added tag <Pill>{String(ctx.tagName ?? "—")}</Pill>
-            </>
-        );
-    return <>{action}</>;
+const verb = (action: string): string => {
+    switch (action) {
+        case "created":
+            return "created this task";
+        case "status_changed":
+            return "moved status";
+        case "assigned":
+            return "assigned this task";
+        case "branch_created":
+            return "created branch";
+        case "pr_opened":
+            return "opened pull request";
+        case "pr_merged":
+            return "merged pull request";
+        case "comment_posted":
+            return "commented";
+        case "priority_changed":
+            return "changed priority";
+        case "completed":
+            return "marked done";
+        default:
+            return action.replace(/_/g, " ");
+    }
 };
 
-interface Props {
-    taskId: string;
-}
-
-export const TaskActivitySection = ({ taskId }: Props) => {
-    const { data: events = [] } = useQuery({
+export const TaskActivitySection = ({ taskId }: { taskId: string }) => {
+    const { data = [], isLoading } = useQuery({
         queryKey: ["task-activity", taskId],
         queryFn: () => mockApi.activity.byTask(taskId),
     });
@@ -86,7 +67,7 @@ export const TaskActivitySection = ({ taskId }: Props) => {
                     color: tokens.colors.textMuted,
                 }}
             >
-                <History size={11} strokeWidth={1.75} />
+                <Activity size={11} strokeWidth={1.75} />
                 Activity
                 <span
                     style={{
@@ -94,88 +75,55 @@ export const TaskActivitySection = ({ taskId }: Props) => {
                         fontFamily: tokens.typography.fontFamilyMono,
                     }}
                 >
-                    {events.length}
+                    {data.length}
                 </span>
             </div>
-            {events.length === 0 ? (
+
+            {isLoading ? (
+                <Skeleton active paragraph={{ rows: 3 }} />
+            ) : data.length === 0 ? (
                 <div
                     style={{
-                        padding: 12,
-                        textAlign: "center",
+                        fontSize: 12,
                         color: tokens.colors.textMuted,
-                        fontSize: tokens.typography.fontSize.sm,
-                        fontStyle: "italic",
                     }}
                 >
-                    No activity recorded yet.
+                    No activity yet.
                 </div>
             ) : (
                 <div
                     style={{
-                        position: "relative",
                         display: "flex",
                         flexDirection: "column",
-                        gap: 10,
-                        paddingLeft: 8,
+                        gap: 8,
                     }}
                 >
-                    {/* Vertical line */}
-                    <div
-                        style={{
-                            position: "absolute",
-                            left: 11,
-                            top: 4,
-                            bottom: 4,
-                            width: 1,
-                            background: tokens.colors.borderSubtle,
-                        }}
-                    />
-                    {events.map((a) => {
-                        const actor = usersById.get(a.actorId);
-                        const fullName = actor
-                            ? `${actor.firstName} ${actor.lastName}`
-                            : "Unknown";
+                    {data.map((entry) => {
+                        const actor = usersById.get(entry.actorId);
                         return (
                             <div
-                                key={a.id}
+                                key={entry.id}
                                 style={{
                                     display: "flex",
-                                    gap: 10,
+                                    gap: 8,
                                     alignItems: "flex-start",
-                                    position: "relative",
-                                    zIndex: 1,
                                 }}
                             >
-                                <span
-                                    style={{
-                                        width: 22,
-                                        height: 22,
-                                        borderRadius: "50%",
-                                        background:
-                                            tokens.colors.primarySubtle,
-                                        color: tokens.colors.primary,
-                                        display: "inline-flex",
-                                        alignItems: "center",
-                                        justifyContent: "center",
-                                        fontSize: 9,
-                                        fontWeight: 700,
-                                        flexShrink: 0,
-                                        border: `2px solid ${tokens.colors.bgSurface}`,
-                                        fontFamily:
-                                            tokens.typography.fontFamilyMono,
-                                    }}
-                                >
-                                    {actor
-                                        ? `${actor.firstName.charAt(0)}${actor.lastName.charAt(0)}`
-                                        : "?"}
-                                </span>
+                                <Avatar
+                                    name={
+                                        actor
+                                            ? `${actor.firstName} ${actor.lastName}`
+                                            : "?"
+                                    }
+                                    src={actor?.avatarUrl}
+                                    size={22}
+                                />
                                 <div
                                     style={{
                                         flex: 1,
-                                        minWidth: 0,
-                                        fontSize:
-                                            tokens.typography.fontSize.sm,
-                                        lineHeight: 1.5,
+                                        fontSize: tokens.typography.fontSize.sm,
+                                        color: tokens.colors.textSecondary,
+                                        lineHeight: 1.4,
                                     }}
                                 >
                                     <span
@@ -184,26 +132,34 @@ export const TaskActivitySection = ({ taskId }: Props) => {
                                             color: tokens.colors.textPrimary,
                                         }}
                                     >
-                                        {fullName}
+                                        {actor?.firstName ?? "Someone"}
                                     </span>{" "}
-                                    <span
-                                        style={{
-                                            color: tokens.colors.textSecondary,
-                                        }}
-                                    >
-                                        {formatAction(a)}
-                                    </span>
+                                    {verb(entry.action)}
+                                    {entry.context.taskName && (
+                                        <>
+                                            {" — "}
+                                            <span
+                                                style={{
+                                                    fontFamily:
+                                                        tokens.typography
+                                                            .fontFamilyMono,
+                                                    fontSize: 12,
+                                                    color: tokens.colors
+                                                        .textPrimary,
+                                                }}
+                                            >
+                                                {entry.context.taskName}
+                                            </span>
+                                        </>
+                                    )}
                                     <div
                                         style={{
                                             fontSize: 11,
                                             color: tokens.colors.textMuted,
-                                            fontFamily:
-                                                tokens.typography
-                                                    .fontFamilyMono,
-                                            marginTop: 2,
+                                            marginTop: 1,
                                         }}
                                     >
-                                        {formatTime(a.createdAt)}
+                                        {timeAgo(entry.createdAt)}
                                     </div>
                                 </div>
                             </div>
@@ -214,21 +170,3 @@ export const TaskActivitySection = ({ taskId }: Props) => {
         </div>
     );
 };
-
-const Pill = ({ children }: { children: React.ReactNode }) => (
-    <span
-        style={{
-            display: "inline-block",
-            padding: "1px 6px",
-            margin: "0 1px",
-            fontSize: 11,
-            background: tokens.colors.bgMuted,
-            borderRadius: 3,
-            color: tokens.colors.textPrimary,
-            fontWeight: 500,
-            fontFamily: tokens.typography.fontFamilyMono,
-        }}
-    >
-        {children}
-    </span>
-);

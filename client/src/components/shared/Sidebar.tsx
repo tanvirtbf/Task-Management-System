@@ -5,17 +5,16 @@ import {
     ChevronsLeft,
     ChevronsRight,
     Star,
-    BarChart3,
     Home,
     Inbox,
     Search,
     Settings,
-    StickyNote,
-    Clock,
     ChevronDown,
-    Zap,
-    Library,
     Users,
+    UserCircle,
+    Code,
+    Zap,
+    Shield,
     LogOut,
     Plus,
     X,
@@ -30,6 +29,7 @@ import { SidebarNavItem } from "./SidebarNavItem";
 import { SidebarSpaceTree } from "./SidebarSpaceTree";
 import { SidebarFavorites } from "./SidebarFavorites";
 import { CreateSpaceModal } from "./CreateSpaceModal";
+import { ReportBugButton } from "./ReportBugButton";
 
 export const Sidebar = () => {
     const navigate = useNavigate();
@@ -239,21 +239,29 @@ export const Sidebar = () => {
                             rightSlot={<KbdHint k="⌘K" />}
                         />
                         <SidebarNavItem
-                            to="/dashboards"
-                            icon={<BarChart3 size={15} strokeWidth={1.75} />}
-                            label="Dashboards"
+                            to="/customers"
+                            icon={<UserCircle size={15} strokeWidth={1.75} />}
+                            label="Customers"
+                        />
+                        <SectionHeader title="Engineering" icon={<Code size={11} />} />
+                        <SidebarNavItem
+                            to="/eng"
+                            icon={<Code size={15} strokeWidth={1.75} />}
+                            label="Eng Home"
                         />
                         <SidebarNavItem
-                            to="/automations"
+                            to="/eng/sprint"
                             icon={<Zap size={15} strokeWidth={1.75} />}
-                            label="Automations"
+                            label="Sprint Board"
                         />
                         <SidebarNavItem
-                            to="/templates"
-                            icon={<Library size={15} strokeWidth={1.75} />}
-                            label="Templates"
+                            to="/eng/on-call"
+                            icon={<Shield size={15} strokeWidth={1.75} />}
+                            label="On-call rotation"
                         />
-
+                        <div style={{ padding: "4px 6px" }}>
+                            <ReportBugButton />
+                        </div>
                         {/* Favorites section */}
                         <SectionHeader title="Favorites" icon={<Star size={11} />} />
                         <SidebarFavorites />
@@ -325,18 +333,6 @@ export const Sidebar = () => {
                 {sidebarCollapsed ? (
                     <>
                         <SidebarNavItem
-                            to="/notepad"
-                            icon={<StickyNote size={16} strokeWidth={1.75} />}
-                            label="Notepad"
-                            collapsed
-                        />
-                        <SidebarNavItem
-                            to="/reminders"
-                            icon={<Clock size={16} strokeWidth={1.75} />}
-                            label="Reminders"
-                            collapsed
-                        />
-                        <SidebarNavItem
                             to="/settings"
                             icon={<Settings size={16} strokeWidth={1.75} />}
                             label="Settings"
@@ -358,28 +354,17 @@ export const Sidebar = () => {
                                 justifyContent: "center",
                             }}
                             title="Expand sidebar"
+                            aria-label="Expand sidebar"
                         >
                             <ChevronsRight size={16} strokeWidth={1.75} />
                         </button>
                     </>
                 ) : (
-                    <>
-                        <SidebarNavItem
-                            to="/notepad"
-                            icon={<StickyNote size={15} strokeWidth={1.75} />}
-                            label="Notepad"
-                        />
-                        <SidebarNavItem
-                            to="/reminders"
-                            icon={<Clock size={15} strokeWidth={1.75} />}
-                            label="Reminders"
-                        />
-                        <SidebarNavItem
-                            to="/settings"
-                            icon={<Settings size={15} strokeWidth={1.75} />}
-                            label="Settings"
-                        />
-                    </>
+                    <SidebarNavItem
+                        to="/settings"
+                        icon={<Settings size={15} strokeWidth={1.75} />}
+                        label="Settings"
+                    />
                 )}
             </div>
             {createSpaceOpen && (
@@ -439,24 +424,6 @@ const CollapsedQuickLinks = ({ unreadCount }: { unreadCount: number }) => (
             to="/search"
             icon={<Search size={16} strokeWidth={1.75} />}
             label="Search"
-            collapsed
-        />
-        <SidebarNavItem
-            to="/dashboards"
-            icon={<BarChart3 size={16} strokeWidth={1.75} />}
-            label="Dashboards"
-            collapsed
-        />
-        <SidebarNavItem
-            to="/automations"
-            icon={<Zap size={16} strokeWidth={1.75} />}
-            label="Automations"
-            collapsed
-        />
-        <SidebarNavItem
-            to="/templates"
-            icon={<Library size={16} strokeWidth={1.75} />}
-            label="Templates"
             collapsed
         />
         <div

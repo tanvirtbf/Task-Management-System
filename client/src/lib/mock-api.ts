@@ -1,5 +1,6 @@
 import type {
     ActivityLogEntry,
+    Customer,
     HomeKpiSet,
     List,
     LoginResult,
@@ -14,6 +15,7 @@ import type {
     User,
     Workspace,
 } from "../types";
+import { customers, findCustomerByPhone } from "../mocks/customers";
 import { delay } from "./delay";
 import { fakeId } from "./fake-id";
 import {
@@ -298,6 +300,33 @@ function calculateHomeKpis(): HomeKpiSet {
     const yest = stockSparkline[stockSparkline.length - 2] || 1;
     const stockTrend = ((lowStock - yest) / yest) * 100;
 
+    // Stuck orders — Confirmed status, not updated in >2h
+    const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+    const stuckOrders = tasks.filter((t) => {
+        if (!orderLists.includes(t.primaryListId)) return false;
+        const s = statuses.find((x) => x.id === t.statusId);
+        if (!s) return false;
+        return s.name === "Confirmed" && new Date(t.updatedAt) < twoHoursAgo;
+    }).length;
+    const stuckSparkline = [0, 1, 2, 1, 3, 2, stuckOrders];
+
+    // My open tasks — assigned to current user
+    const myUserId = currentUser?.id ?? "u-001";
+    const myOpenTasks = tasks.filter((t) => {
+        if (!t.assignees.includes(myUserId)) return false;
+        const s = statuses.find((x) => x.id === t.statusId);
+        return s?.statusGroup !== "done" && s?.statusGroup !== "closed";
+    }).length;
+    const mySparkline = [
+        Math.max(0, myOpenTasks - 3),
+        Math.max(0, myOpenTasks - 2),
+        Math.max(0, myOpenTasks - 1),
+        myOpenTasks,
+        Math.max(0, myOpenTasks - 1),
+        myOpenTasks,
+        myOpenTasks,
+    ];
+
     return {
         todayOrders: {
             label: "Today's Orders",
@@ -333,6 +362,15 @@ function calculateHomeKpis(): HomeKpiSet {
             isPositive: false,
             sparkline: complaintsSparkline,
         },
+        stuckOrders: {
+            label: "Stuck Orders (>2h)",
+            value: stuckOrders,
+            valueDisplay: String(stuckOrders),
+            trend: 0,
+            trendDirection: "flat",
+            isPositive: false,
+            sparkline: stuckSparkline,
+        },
         lowStock: {
             label: "Low Stock Items",
             value: lowStock,
@@ -342,6 +380,15 @@ function calculateHomeKpis(): HomeKpiSet {
                 stockTrend > 0 ? "up" : stockTrend < 0 ? "down" : "flat",
             isPositive: false,
             sparkline: stockSparkline,
+        },
+        myTasks: {
+            label: "My Open Tasks",
+            value: myOpenTasks,
+            valueDisplay: String(myOpenTasks),
+            trend: 0,
+            trendDirection: "flat",
+            isPositive: false,
+            sparkline: mySparkline,
         },
     };
 }
@@ -1035,13 +1082,14 @@ export const mockApi = {
             taskId: string,
             body: string,
             authorId: string,
+            parentCommentId: string | null = null,
         ): Promise<Comment> {
             await delay(80, 200);
-            log("POST /tasks/:id/comments", { taskId, body });
+            log("POST /tasks/:id/comments", { taskId, body, parentCommentId });
             const newComment: Comment = {
                 id: `c-${Date.now()}`,
                 taskId,
-                parentCommentId: null,
+                parentCommentId,
                 authorId,
                 body,
                 assignedTo: null,
@@ -1053,7 +1101,6 @@ export const mockApi = {
                 createdAt: new Date().toISOString(),
             };
             comments.push(newComment);
-            // Bump commentsCount on task
             const task = tasks.find((t) => t.id === taskId);
             if (task) task.commentsCount = (task.commentsCount ?? 0) + 1;
             return newComment;
@@ -1372,6 +1419,115 @@ export const mockApi = {
             await delay();
             log("GET /home/kpis");
             return calculateHomeKpis();
+        },
+    },
+
+    customers: {
+        async list(): Promise<Customer[]> {
+            await delay(60, 160);
+            log("GET /customers");
+            return customers;
+        },
+        async findByPhone(phone: string): Promise<Customer | null> {
+            await delay(50, 120);
+            return findCustomerByPhone(phone) ?? null;
+        },
+        async search(q: string): Promise<Customer[]> {
+            await delay(60, 160);
+            const needle = q.trim().toLowerCase();
+            if (!needle) return customers.slice(0, 20);
+            return customers
+                .filter(
+                    (c) =>
+                        c.phone.includes(needle) ||
+                        c.name.toLowerCase().includes(needle),
+                )
+                .slice(0, 20);
+        },
+    },
+
+    festivals: {
+        /** Spawn a Festival Campaign parent task with a 12-item checklist. */
+        async startCampaign(input: {
+            festival: string;
+            listId: string;
+            createdBy: string;
+        }): Promise<Task> {
+            await delay(120, 280);
+            log("POST /festivals/start", input);
+
+            const list = lists.find((l) => l.id === input.listId);
+            if (!list) throw new Error("List not found");
+            const listStatuses = statusesByList(list.id);
+            const defaultStatus =
+                listStatuses.find((s) => s.statusGroup === "not_started") ??
+                listStatuses[0];
+
+            const taskNumber = Math.floor(Math.random() * 100000) + 5000;
+            const now = new Date().toISOString();
+            const parent: Task = {
+                id: `t-${taskNumber}`,
+                taskNumber,
+                name: `${input.festival} Campaign`,
+                statusId: defaultStatus.id,
+                priority: 2,
+                taskTypeId: "tt-campaign",
+                primaryListId: list.id,
+                parentTaskId: null,
+                isMilestone: false,
+                startDate: null,
+                dueDate: null,
+                timeEstimateSeconds: null,
+                timeTrackedSeconds: 0,
+                assignees: [input.createdBy],
+                watchers: [],
+                tags: [],
+                customFields: {},
+                subtasksCount: 0,
+                subtasksCompleted: 0,
+                commentsCount: 0,
+                attachmentsCount: 0,
+                createdAt: now,
+                updatedAt: now,
+                createdBy: input.createdBy,
+                completedAt: null,
+                archivedAt: null,
+                nestingDepth: 0,
+            };
+            tasks.unshift(parent);
+
+            const items = [
+                "Confirm budget with owner",
+                "Pick hero products (5-8)",
+                "Brief creative team — Bangla + English copy",
+                "Photography / mockup",
+                "Design social posts",
+                "Schedule Facebook posts",
+                "Set boost budget per post",
+                "Coordinate with inventory — buffer stock",
+                "Brief CS team — expected order spike",
+                "Brief operations — packing schedule",
+                "Launch — go live",
+                "Post-campaign review",
+            ];
+            const checklist: Checklist = {
+                id: `ch-${Date.now()}`,
+                taskId: parent.id,
+                name: `${input.festival} 12-step playbook`,
+                position: 0,
+                items: items.map((text, i) => ({
+                    id: `ci-${Date.now()}-${i}`,
+                    checklistId: `ch-${Date.now()}`,
+                    parentItemId: null,
+                    text,
+                    isCompleted: false,
+                    assigneeId: null,
+                    position: i,
+                })),
+            };
+            checklists.push(checklist);
+            parent.subtasksCount = items.length;
+            return parent;
         },
     },
 

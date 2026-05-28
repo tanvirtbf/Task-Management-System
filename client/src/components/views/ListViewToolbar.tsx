@@ -25,8 +25,6 @@ export type SortKey =
     | "updated_at";
 
 export interface FilterState {
-    /** "all" = AND between fields; "any" = OR. */
-    match: "all" | "any";
     priorities: Priority[];
     assigneeIds: string[];
 }
@@ -109,48 +107,6 @@ export const ListViewToolbar = ({
             }}
         >
             <div>
-                <Label>Match</Label>
-                <div
-                    style={{
-                        display: "inline-flex",
-                        background: tokens.colors.bgMuted,
-                        borderRadius: tokens.radius.sm,
-                        padding: 2,
-                        gap: 2,
-                    }}
-                >
-                    {(["all", "any"] as const).map((m) => (
-                        <button
-                            key={m}
-                            onClick={() =>
-                                onFiltersChange({ ...filters, match: m })
-                            }
-                            style={{
-                                padding: "3px 10px",
-                                fontSize: 11,
-                                fontWeight:
-                                    filters.match === m ? 700 : 500,
-                                background:
-                                    filters.match === m
-                                        ? tokens.colors.bgSurface
-                                        : "transparent",
-                                color:
-                                    filters.match === m
-                                        ? tokens.colors.textPrimary
-                                        : tokens.colors.textMuted,
-                                border: 0,
-                                borderRadius: tokens.radius.sm,
-                                cursor: "pointer",
-                                fontFamily:
-                                    tokens.typography.fontFamilyMono,
-                            }}
-                        >
-                            {m === "all" ? "ALL (AND)" : "ANY (OR)"}
-                        </button>
-                    ))}
-                </div>
-            </div>
-            <div>
                 <Label>Priority</Label>
                 <Select
                     mode="multiple"
@@ -195,7 +151,6 @@ export const ListViewToolbar = ({
                     style={{ alignSelf: "flex-start", padding: 0 }}
                     onClick={() => {
                         onFiltersChange({
-                            match: "all",
                             priorities: [],
                             assigneeIds: [],
                         });

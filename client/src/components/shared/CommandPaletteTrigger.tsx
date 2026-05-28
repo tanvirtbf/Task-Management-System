@@ -1,18 +1,17 @@
 import { Search } from "lucide-react";
-import { useUiStore } from "../../stores/ui";
+import { useNavigate } from "react-router-dom";
 import { tokens } from "../../theme";
 
 /**
- * The visible "Search or jump to..." pill in the topbar.
- * Opens the command palette (rendered in Phase 11).
+ * Search pill in the topbar — navigates to the search page on click.
  */
 export const CommandPaletteTrigger = () => {
-    const setOpen = useUiStore((s) => s.setCommandPaletteOpen);
+    const navigate = useNavigate();
     return (
         <button
-            onClick={() => setOpen(true)}
-            aria-label="Open command palette (Cmd K)"
-            title="Search or jump to (Cmd K)"
+            onClick={() => navigate("/search")}
+            aria-label="Search"
+            title="Search"
             style={{
                 display: "flex",
                 alignItems: "center",
@@ -38,21 +37,8 @@ export const CommandPaletteTrigger = () => {
         >
             <Search size={14} strokeWidth={1.75} />
             <span style={{ flex: 1, textAlign: "left" }}>
-                Search or jump to...
+                Search tasks, lists…
             </span>
-            <kbd
-                style={{
-                    fontFamily: tokens.typography.fontFamilyMono,
-                    fontSize: 10,
-                    background: tokens.colors.bgMuted,
-                    color: tokens.colors.textMuted,
-                    padding: "1px 5px",
-                    border: `1px solid ${tokens.colors.border}`,
-                    borderRadius: 4,
-                }}
-            >
-                ⌘K
-            </kbd>
         </button>
     );
 };

@@ -8,56 +8,26 @@ import RequireAuth from "./layouts/RequireAuth";
 import RequireGuest from "./layouts/RequireGuest";
 // Auth pages — small, keep eager
 import LoginPage from "./pages/auth/Login";
-import TwoFactorChallengePage from "./pages/auth/TwoFactorChallenge";
 import ForgotPasswordPage from "./pages/auth/ForgotPassword";
 import ResetPasswordPage from "./pages/auth/ResetPassword";
 import AcceptInvitationPage from "./pages/auth/AcceptInvitation";
-import TwoFactorSetupPage from "./pages/auth/TwoFactorSetup";
 // Home + Task redirect — small, keep eager
 import HomePage from "./pages/home/HomePage";
 import TaskRedirect from "./pages/task/TaskRedirect";
 import { RouteFallback } from "./components/shared/RouteFallback";
 
-// Heavy / less-frequently-visited pages — lazy
+// Lazy pages
 const SpacePage = lazy(() => import("./pages/space/SpacePage"));
 const ListPage = lazy(() => import("./pages/list/ListPage"));
 const FormsListPage = lazy(() => import("./pages/forms/FormsListPage"));
 const FormBuilderPage = lazy(() => import("./pages/forms/FormBuilderPage"));
 const PublicFormPage = lazy(() => import("./pages/public-form/PublicFormPage"));
-const CustomFieldsSettings = lazy(
-    () => import("./pages/settings/CustomFieldsSettings"),
-);
-const AutomationsListPage = lazy(
-    () => import("./pages/automations/AutomationsListPage"),
-);
-const AutomationBuilderPage = lazy(
-    () => import("./pages/automations/AutomationBuilderPage"),
-);
-const AutomationRunsPage = lazy(
-    () => import("./pages/automations/AutomationRunsPage"),
-);
-const TemplatesListPage = lazy(
-    () => import("./pages/templates/TemplatesListPage"),
-);
-const DashboardsListPage = lazy(
-    () => import("./pages/dashboards/DashboardsListPage"),
-);
-const DashboardViewPage = lazy(
-    () => import("./pages/dashboards/DashboardViewPage"),
-);
 const SettingsLayout = lazy(() => import("./pages/settings/SettingsLayout"));
 const ProfileSettings = lazy(() => import("./pages/settings/ProfileSettings"));
-const NotificationsSettings = lazy(
-    () => import("./pages/settings/NotificationsSettings"),
-);
-const SecuritySettings = lazy(
-    () => import("./pages/settings/SecuritySettings"),
-);
 const WorkspaceSettings = lazy(
     () => import("./pages/settings/WorkspaceSettings"),
 );
 const MembersSettings = lazy(() => import("./pages/settings/MembersSettings"));
-const RolesSettings = lazy(() => import("./pages/settings/RolesSettings"));
 const TaskTypesSettings = lazy(
     () => import("./pages/settings/TaskTypesSettings"),
 );
@@ -65,23 +35,24 @@ const TagsSettings = lazy(() => import("./pages/settings/TagsSettings"));
 const StatusesSettings = lazy(
     () => import("./pages/settings/StatusesSettings"),
 );
-const IntegrationsSettings = lazy(
-    () => import("./pages/settings/IntegrationsSettings"),
-);
-const WebhooksSettings = lazy(
-    () => import("./pages/settings/WebhooksSettings"),
+const CustomFieldsSettings = lazy(
+    () => import("./pages/settings/CustomFieldsSettings"),
 );
 const ImportExportSettings = lazy(
     () => import("./pages/settings/ImportExportSettings"),
 );
-const BillingSettings = lazy(() => import("./pages/settings/BillingSettings"));
 const InboxPage = lazy(() => import("./pages/inbox/InboxPage"));
 const SearchPage = lazy(() => import("./pages/search/SearchPage"));
-const TimeReportPage = lazy(
-    () => import("./pages/time-report/TimeReportPage"),
+const CustomersPage = lazy(() => import("./pages/customers/CustomersPage"));
+const EngineeringHomePage = lazy(
+    () => import("./pages/engineering/EngineeringHomePage"),
 );
-const NotepadPage = lazy(() => import("./pages/notepad/NotepadPage"));
-const RemindersPage = lazy(() => import("./pages/reminders/RemindersPage"));
+const SprintBoardPage = lazy(
+    () => import("./pages/engineering/SprintBoardPage"),
+);
+const OnCallRotationPage = lazy(
+    () => import("./pages/engineering/OnCallRotationPage"),
+);
 
 const lazyRoute = (node: ReactElement): ReactElement => (
     <Suspense fallback={<RouteFallback />}>{node}</Suspense>
@@ -92,7 +63,7 @@ export const router = createBrowserRouter([
         path: "/",
         element: <Root />,
         children: [
-            // Public form pages — no auth, no app shell
+            // Public form — no auth, no app shell
             {
                 element: <PublicFormLayout />,
                 children: [
@@ -103,7 +74,7 @@ export const router = createBrowserRouter([
                 ],
             },
 
-            // Public / guest-only auth pages
+            // Guest-only auth pages
             {
                 element: <RequireGuest />,
                 children: [
@@ -111,10 +82,6 @@ export const router = createBrowserRouter([
                         element: <AuthLayout />,
                         children: [
                             { path: "login", element: <LoginPage /> },
-                            {
-                                path: "login/2fa",
-                                element: <TwoFactorChallengePage />,
-                            },
                             {
                                 path: "forgot-password",
                                 element: <ForgotPasswordPage />,
@@ -146,24 +113,20 @@ export const router = createBrowserRouter([
                                 element: lazyRoute(<SearchPage />),
                             },
                             {
-                                path: "dashboards",
-                                element: lazyRoute(<DashboardsListPage />),
+                                path: "customers",
+                                element: lazyRoute(<CustomersPage />),
                             },
                             {
-                                path: "dashboards/:dashboardId",
-                                element: lazyRoute(<DashboardViewPage />),
+                                path: "eng",
+                                element: lazyRoute(<EngineeringHomePage />),
                             },
                             {
-                                path: "notepad",
-                                element: lazyRoute(<NotepadPage />),
+                                path: "eng/sprint",
+                                element: lazyRoute(<SprintBoardPage />),
                             },
                             {
-                                path: "reminders",
-                                element: lazyRoute(<RemindersPage />),
-                            },
-                            {
-                                path: "time-report",
-                                element: lazyRoute(<TimeReportPage />),
+                                path: "eng/on-call",
+                                element: lazyRoute(<OnCallRotationPage />),
                             },
                             {
                                 path: "settings",
@@ -183,18 +146,6 @@ export const router = createBrowserRouter([
                                         element: lazyRoute(<ProfileSettings />),
                                     },
                                     {
-                                        path: "notifications",
-                                        element: lazyRoute(
-                                            <NotificationsSettings />,
-                                        ),
-                                    },
-                                    {
-                                        path: "security",
-                                        element: lazyRoute(
-                                            <SecuritySettings />,
-                                        ),
-                                    },
-                                    {
                                         path: "workspace",
                                         element: lazyRoute(
                                             <WorkspaceSettings />,
@@ -202,13 +153,7 @@ export const router = createBrowserRouter([
                                     },
                                     {
                                         path: "members",
-                                        element: lazyRoute(
-                                            <MembersSettings />,
-                                        ),
-                                    },
-                                    {
-                                        path: "roles",
-                                        element: lazyRoute(<RolesSettings />),
+                                        element: lazyRoute(<MembersSettings />),
                                     },
                                     {
                                         path: "task-types",
@@ -233,26 +178,10 @@ export const router = createBrowserRouter([
                                         ),
                                     },
                                     {
-                                        path: "integrations",
-                                        element: lazyRoute(
-                                            <IntegrationsSettings />,
-                                        ),
-                                    },
-                                    {
-                                        path: "webhooks",
-                                        element: lazyRoute(
-                                            <WebhooksSettings />,
-                                        ),
-                                    },
-                                    {
                                         path: "import-export",
                                         element: lazyRoute(
                                             <ImportExportSettings />,
                                         ),
-                                    },
-                                    {
-                                        path: "billing",
-                                        element: lazyRoute(<BillingSettings />),
                                     },
                                 ],
                             },
@@ -270,7 +199,7 @@ export const router = createBrowserRouter([
                             },
                             { path: "t/:taskKey", element: <TaskRedirect /> },
 
-                            // Authenticated forms management
+                            // Forms management
                             {
                                 path: "forms",
                                 element: lazyRoute(<FormsListPage />),
@@ -279,35 +208,6 @@ export const router = createBrowserRouter([
                                 path: "forms/:formId/edit",
                                 element: lazyRoute(<FormBuilderPage />),
                             },
-
-                            // Automations & Templates
-                            {
-                                path: "automations",
-                                element: lazyRoute(<AutomationsListPage />),
-                            },
-                            {
-                                path: "automations/new",
-                                element: lazyRoute(<AutomationBuilderPage />),
-                            },
-                            {
-                                path: "automations/:automationId/edit",
-                                element: lazyRoute(<AutomationBuilderPage />),
-                            },
-                            {
-                                path: "automations/:automationId/runs",
-                                element: lazyRoute(<AutomationRunsPage />),
-                            },
-                            {
-                                path: "templates",
-                                element: lazyRoute(<TemplatesListPage />),
-                            },
-                        ],
-                    },
-                    // 2FA setup uses AuthLayout (no sidebar)
-                    {
-                        element: <AuthLayout />,
-                        children: [
-                            { path: "2fa-setup", element: <TwoFactorSetupPage /> },
                         ],
                     },
                 ],

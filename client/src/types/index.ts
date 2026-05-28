@@ -177,6 +177,31 @@ export interface Task {
     nestingDepth: number;
     /** Optional recurrence config — when set, completing the task spawns the next instance. */
     recurrence?: TaskRecurrence | null;
+    // ── Dev-only fields (only populated on dev task types) ──
+    /** Sprint this task belongs to. Null = backlog. */
+    sprintId?: string | null;
+    /** Story-point estimate (Fibonacci-ish). */
+    storyPoints?: number | null;
+    /** Single reviewer — distinct from assignees. */
+    reviewerId?: string | null;
+    /** Suggested Git branch name. */
+    branchName?: string | null;
+    /** GitHub / GitLab pull-request URL. */
+    prUrl?: string | null;
+    /** Cached PR state (paste-time fetched). */
+    prStatus?: "open" | "merged" | "closed" | "draft" | null;
+    /** Bug severity (S0..S3) — only on Bug task type. */
+    bugSeverity?: "S0" | "S1" | "S2" | "S3" | null;
+    /** Bug reproducibility. */
+    bugReproducibility?: "always" | "sometimes" | "once" | "cannot" | null;
+    /** Bug environment. */
+    bugEnvironment?: "production" | "staging" | "local" | null;
+    /** Browser / OS string (e.g. "Chrome 120 / Windows"). */
+    bugBrowser?: string | null;
+    /** Which team raised this bug — for cross-team intake tracking. */
+    reporterTeam?: "ops" | "cs" | "inventory" | "listing" | "marketing" | "internal" | null;
+    /** Deploy timestamp (set when status moves to Deployed). */
+    deployedAt?: string | null;
 }
 
 export type RecurrencePattern = "daily" | "weekly" | "monthly" | "custom";
@@ -306,7 +331,39 @@ export interface HomeKpiSet {
     todayOrders: HomeKpi;
     codCollected: HomeKpi;
     openComplaints: HomeKpi;
+    stuckOrders: HomeKpi;
     lowStock: HomeKpi;
+    myTasks: HomeKpi;
+}
+
+// ============================================================
+// Threaded comments (1 level deep)
+// ============================================================
+
+/** A reply to a top-level comment. Stored alongside Comment for simplicity. */
+export interface CommentReply {
+    id: string;
+    parentCommentId: string;
+    authorId: string;
+    body: string;
+    createdAt: string;
+}
+
+// ============================================================
+// Customer (Bangladesh ecom — keyed by phone number)
+// ============================================================
+
+export interface Customer {
+    id: string;
+    phone: string;
+    name: string;
+    defaultAddress?: string;
+    totalOrders: number;
+    totalComplaints: number;
+    lifetimeValue: number;
+    vipFlag: boolean;
+    createdAt: string;
+    lastOrderAt: string | null;
 }
 
 export interface MyWorkBucket {

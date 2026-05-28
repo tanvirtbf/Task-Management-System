@@ -4,13 +4,7 @@ import {
     LayoutList,
     LayoutGrid,
     Calendar,
-    BarChart3,
-    GanttChart,
-    Table2,
-    Users,
-    Map,
     FileText,
-    Activity,
     MoreHorizontal,
     UserPlus,
 } from "lucide-react";
@@ -24,12 +18,6 @@ import { InlineNameEdit } from "../../components/task/InlineNameEdit";
 import { ListView } from "../../components/views/ListView";
 import { BoardView } from "../../components/views/BoardView";
 import { CalendarView } from "../../components/views/CalendarView";
-import { GanttView } from "../../components/views/GanttView";
-import { TimelineView } from "../../components/views/TimelineView";
-import { TableView } from "../../components/views/TableView";
-import { WorkloadView } from "../../components/views/WorkloadView";
-import { MapView } from "../../components/views/MapView";
-import { ActivityView } from "../../components/views/ActivityView";
 import { FormView } from "../../components/views/FormView";
 import { TaskDetailDrawer } from "../../components/task/TaskDetailDrawer";
 import { tokens } from "../../theme";
@@ -38,12 +26,6 @@ const viewTabs = [
     { id: "list", label: "List", icon: LayoutList, available: true },
     { id: "board", label: "Board", icon: LayoutGrid, available: true },
     { id: "calendar", label: "Calendar", icon: Calendar, available: true },
-    { id: "gantt", label: "Gantt", icon: BarChart3, available: true },
-    { id: "timeline", label: "Timeline", icon: GanttChart, available: true },
-    { id: "table", label: "Table", icon: Table2, available: true },
-    { id: "workload", label: "Workload", icon: Users, available: true },
-    { id: "map", label: "Map", icon: Map, available: true },
-    { id: "activity", label: "Activity", icon: Activity, available: true },
     { id: "form", label: "Form", icon: FileText, available: true },
 ];
 
@@ -84,18 +66,6 @@ const ListPage = () => {
                 return <BoardView listId={listId} />;
             case "calendar":
                 return <CalendarView listId={listId} />;
-            case "gantt":
-                return <GanttView listId={listId} />;
-            case "timeline":
-                return <TimelineView listId={listId} />;
-            case "table":
-                return <TableView listId={listId} />;
-            case "workload":
-                return <WorkloadView listId={listId} />;
-            case "map":
-                return <MapView listId={listId} />;
-            case "activity":
-                return <ActivityView listId={listId} />;
             case "form":
                 return <FormView listId={listId} />;
             case "list":

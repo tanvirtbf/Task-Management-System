@@ -1,19 +1,13 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
     User,
-    Bell,
-    ShieldCheck,
     Settings as SettingsIcon,
     Users,
-    Lock,
     SquareDashed,
     Tag as TagIcon,
     Hexagon,
     Sparkles,
-    Plug,
-    Webhook,
     Download,
-    CreditCard,
 } from "lucide-react";
 import { tokens } from "../../theme";
 
@@ -31,19 +25,7 @@ type NavGroup = {
 const NAV: NavGroup[] = [
     {
         title: "My account",
-        items: [
-            { to: "/settings/profile", label: "Profile", icon: User },
-            {
-                to: "/settings/notifications",
-                label: "Notifications",
-                icon: Bell,
-            },
-            {
-                to: "/settings/security",
-                label: "Security & sessions",
-                icon: ShieldCheck,
-            },
-        ],
+        items: [{ to: "/settings/profile", label: "Profile", icon: User }],
     },
     {
         title: "Workspace",
@@ -54,11 +36,6 @@ const NAV: NavGroup[] = [
                 icon: SettingsIcon,
             },
             { to: "/settings/members", label: "Members", icon: Users },
-            {
-                to: "/settings/roles",
-                label: "Roles & permissions",
-                icon: Lock,
-            },
         ],
     },
     {
@@ -83,32 +60,12 @@ const NAV: NavGroup[] = [
         ],
     },
     {
-        title: "Integrations",
+        title: "Data",
         items: [
-            {
-                to: "/settings/integrations",
-                label: "Apps",
-                icon: Plug,
-            },
-            {
-                to: "/settings/webhooks",
-                label: "Webhooks & API",
-                icon: Webhook,
-            },
             {
                 to: "/settings/import-export",
                 label: "Import / Export",
                 icon: Download,
-            },
-        ],
-    },
-    {
-        title: "Plan",
-        items: [
-            {
-                to: "/settings/billing",
-                label: "Billing & usage",
-                icon: CreditCard,
             },
         ],
     },
@@ -125,7 +82,6 @@ export const SettingsLayout = () => {
                 background: tokens.colors.bgPage,
             }}
         >
-            {/* Left nav */}
             <aside
                 style={{
                     background: tokens.colors.bgSurface,
@@ -205,7 +161,6 @@ export const SettingsLayout = () => {
                 ))}
             </aside>
 
-            {/* Content */}
             <main
                 style={{
                     padding: tokens.spacing[6],

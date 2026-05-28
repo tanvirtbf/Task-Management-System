@@ -1,7 +1,9 @@
-import { Input } from "antd";
-import { Link2, Mail, Phone } from "lucide-react";
+import { useState } from "react";
+import { Input, Tooltip } from "antd";
+import { Phone, AlertCircle, PhoneCall } from "lucide-react";
 import type { CustomField } from "../../../types/custom-fields";
 import { tokens } from "../../../theme";
+import { isValidBdPhone, formatBdPhone } from "../../../lib/bd-phone";
 
 interface Props {
     field: CustomField;
@@ -35,76 +37,6 @@ export const TextFieldRenderer = ({
     />
 );
 
-export const LongTextFieldRenderer = ({
-    field,
-    value,
-    onChange,
-    disabled,
-    autoFocus,
-}: Props) => (
-    <Input.TextArea
-        value={getText(value)}
-        onChange={(e) => onChange({ text: e.target.value })}
-        maxLength={(field.config?.max_length as number) ?? 5000}
-        disabled={disabled}
-        autoFocus={autoFocus}
-        autoSize={{ minRows: 2, maxRows: 8 }}
-        placeholder={`Enter ${field.name.toLowerCase()}...`}
-    />
-);
-
-export const EmailFieldRenderer = ({
-    value,
-    onChange,
-    disabled,
-    autoFocus,
-}: Props) => (
-    <Input
-        type="email"
-        value={getText(value)}
-        onChange={(e) => onChange({ text: e.target.value })}
-        disabled={disabled}
-        autoFocus={autoFocus}
-        prefix={
-            <Mail
-                size={14}
-                strokeWidth={1.75}
-                color={tokens.colors.textMuted}
-            />
-        }
-        placeholder="name@example.com"
-    />
-);
-
-export const UrlFieldRenderer = ({
-    value,
-    onChange,
-    disabled,
-    autoFocus,
-}: Props) => (
-    <Input
-        type="url"
-        value={getText(value)}
-        onChange={(e) => onChange({ text: e.target.value })}
-        onBlur={(e) => {
-            const v = e.target.value.trim();
-            if (v && !/^https?:\/\//i.test(v)) {
-                onChange({ text: `https://${v}` });
-            }
-        }}
-        disabled={disabled}
-        autoFocus={autoFocus}
-        prefix={
-            <Link2
-                size={14}
-                strokeWidth={1.75}
-                color={tokens.colors.textMuted}
-            />
-        }
-        placeholder="https://example.com"
-    />
-);
-
 export const PhoneFieldRenderer = ({
     value,
     onChange,
@@ -112,27 +44,67 @@ export const PhoneFieldRenderer = ({
     autoFocus,
 }: Props) => {
     const text = getText(value);
+    const [touched, setTouched] = useState(false);
+    const isValid = !text || isValidBdPhone(text);
+    const showError = touched && !!text && !isValid;
+
     return (
-        <Input
-            type="tel"
-            value={text}
-            onChange={(e) => onChange({ text: e.target.value })}
-            disabled={disabled}
-            autoFocus={autoFocus}
-            prefix={
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <Input
+                type="tel"
+                value={text}
+                onChange={(e) =>
+                    onChange({ text: e.target.value.replace(/[^\d+\s-]/g, "") })
+                }
+                onBlur={() => setTouched(true)}
+                disabled={disabled}
+                autoFocus={autoFocus}
+                status={showError ? "error" : undefined}
+                prefix={
+                    <span
+                        style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 4,
+                            color: tokens.colors.textMuted,
+                        }}
+                    >
+                        <Phone size={14} strokeWidth={1.75} />
+                        <span style={{ fontSize: 11 }}>BD</span>
+                    </span>
+                }
+                suffix={
+                    isValid && text ? (
+                        <Tooltip title={`Call ${formatBdPhone(text)}`}>
+                            <a
+                                href={`tel:+88${text.replace(/\D/g, "")}`}
+                                style={{
+                                    color: tokens.colors.primary,
+                                    display: "inline-flex",
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <PhoneCall size={13} strokeWidth={1.75} />
+                            </a>
+                        </Tooltip>
+                    ) : null
+                }
+                placeholder="01712345678"
+            />
+            {showError && (
                 <span
                     style={{
                         display: "inline-flex",
                         alignItems: "center",
                         gap: 4,
-                        color: tokens.colors.textMuted,
+                        fontSize: 11,
+                        color: tokens.colors.danger,
                     }}
                 >
-                    <Phone size={14} strokeWidth={1.75} />
-                    <span style={{ fontSize: 11 }}>🇧🇩</span>
+                    <AlertCircle size={11} strokeWidth={1.75} />
+                    Enter a valid Bangladesh mobile (01[3-9]XXXXXXXX)
                 </span>
-            }
-            placeholder="017XXXXXXXX"
-        />
+            )}
+        </div>
     );
 };

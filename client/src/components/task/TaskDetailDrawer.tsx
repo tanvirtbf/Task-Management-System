@@ -11,20 +11,23 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { mockApi } from "../../lib/mock-api";
-import { taskTypesById } from "../../mocks/task-types";
+import { taskTypesById, isDevTaskType } from "../../mocks/task-types";
+import { statusesById } from "../../mocks/statuses";
 import { usersById } from "../../mocks/users";
 import { DynamicIcon } from "../shared/DynamicIcon";
 import { LoadingState } from "../shared/LoadingState";
 import { InlineNameEdit } from "./InlineNameEdit";
 import { TaskPropertiesPanel } from "./TaskPropertiesPanel";
 import { TaskDescription } from "./TaskDescription";
-import { SubtasksSection } from "./SubtasksSection";
 import { ChecklistsSection } from "./ChecklistsSection";
 import { CommentsSection } from "./CommentsSection";
 import { AttachmentsSection } from "./AttachmentsSection";
+import { SubtasksSection } from "./SubtasksSection";
 import { DependenciesSection } from "./DependenciesSection";
-import { TimeLogsSection } from "./TimeLogsSection";
 import { TaskActivitySection } from "./TaskActivitySection";
+import { BugFieldsSection } from "./BugFieldsSection";
+import { GitIntegrationPanel } from "./GitIntegrationPanel";
+import { PostmortemChecklist } from "./PostmortemChecklist";
 import { CustomFieldsList } from "../custom-field/CustomFieldsList";
 import { useUpdateTask } from "../../hooks/useTaskMutations";
 import { tokens } from "../../theme";
@@ -54,6 +57,13 @@ export const TaskDetailDrawer = ({
 
     const taskType = task ? taskTypesById.get(task.taskTypeId) : null;
     const creator = task ? usersById.get(task.createdBy) : null;
+    const isDev = task ? isDevTaskType(task.taskTypeId) : false;
+    const isBug = task?.taskTypeId === "tt-bug";
+    const isIncident = task?.taskTypeId === "tt-incident";
+    const status = task ? statusesById.get(task.statusId) : null;
+    const isIncidentResolved =
+        isIncident &&
+        (status?.statusGroup === "done" || status?.statusGroup === "closed");
 
     const duplicate = useMutation({
         mutationFn: () => {
@@ -146,12 +156,13 @@ export const TaskDetailDrawer = ({
         <Drawer
             open={!!taskId}
             onClose={onClose}
-            width={720}
+            size="large"
             placement="right"
             closeIcon={null}
             styles={{
                 body: { padding: 0 },
                 header: { display: "none" },
+                wrapper: { width: 720 },
             }}
             destroyOnHidden
         >
@@ -266,13 +277,18 @@ export const TaskDetailDrawer = ({
                         </div>
 
                         <TaskPropertiesPanel task={task} />
+
+                        {isBug && <BugFieldsSection task={task} />}
+
                         <CustomFieldsList task={task} />
+
                         <TaskDescription
                             description={
                                 typeof task.description === "string"
                                     ? task.description
                                     : ""
                             }
+                            rich={isDev}
                             onSave={(description) =>
                                 update.mutate({
                                     id: task.id,
@@ -280,16 +296,29 @@ export const TaskDetailDrawer = ({
                                 })
                             }
                         />
-                        <SubtasksSection task={task} />
+
+                        {isDev && <GitIntegrationPanel task={task} />}
+
+                        {isDev && <SubtasksSection task={task} />}
+
+                        {isDev && (
+                            <DependenciesSection
+                                taskId={task.id}
+                                listId={task.primaryListId}
+                            />
+                        )}
+
                         <ChecklistsSection taskId={task.id} />
-                        <DependenciesSection
-                            taskId={task.id}
-                            listId={task.primaryListId}
-                        />
+
+                        {isIncidentResolved && (
+                            <PostmortemChecklist taskId={task.id} />
+                        )}
+
                         <AttachmentsSection taskId={task.id} />
-                        <TimeLogsSection taskId={task.id} />
+
                         <CommentsSection taskId={task.id} />
-                        <TaskActivitySection taskId={task.id} />
+
+                        {isDev && <TaskActivitySection taskId={task.id} />}
                     </div>
 
                     {/* Footer */}
@@ -329,6 +358,15 @@ export const TaskDetailDrawer = ({
                         >
                             {task.customId ?? `T-${task.taskNumber}`}
                         </span>
+                        {task.deployedAt && (
+                            <>
+                                <span>·</span>
+                                <span style={{ color: tokens.colors.success }}>
+                                    Deployed{" "}
+                                    {new Date(task.deployedAt).toLocaleDateString()}
+                                </span>
+                            </>
+                        )}
                     </div>
                 </div>
             )}

@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import {
     LogOut,
     Settings,
-    ShieldCheck,
     User as UserIcon,
 } from "lucide-react";
 import { Avatar } from "../ui/Avatar";
@@ -22,7 +21,7 @@ export const UserMenu = () => {
         <Dropdown
             trigger={["click"]}
             placement="bottomRight"
-            dropdownRender={() => (
+            popupRender={() => (
                 <div
                     style={{
                         width: 240,
@@ -90,11 +89,6 @@ export const UserMenu = () => {
                             icon={<UserIcon size={14} strokeWidth={1.75} />}
                             label="Profile"
                             onClick={() => navigate("/settings/profile")}
-                        />
-                        <MenuRow
-                            icon={<ShieldCheck size={14} strokeWidth={1.75} />}
-                            label="Security & 2FA"
-                            onClick={() => navigate("/2fa-setup")}
                         />
                         <MenuRow
                             icon={<Settings size={14} strokeWidth={1.75} />}

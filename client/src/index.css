@@ -65,46 +65,6 @@
     --radius-xl: 10px;
 }
 
-/* ============================================================
-   Dark mode — applied when <html data-theme="dark">
-   ============================================================ */
-[data-theme="dark"] {
-    /* Brand */
-    --color-primary: #818cf8;
-    --color-primary-hover: #a5b4fc;
-    --color-primary-subtle: #2e2e4f;
-
-    /* Semantic */
-    --color-success: #34d399;
-    --color-warning: #fbbf24;
-    --color-danger: #f87171;
-    --color-info: #38bdf8;
-
-    /* Backgrounds */
-    --color-bg-page: #0b0c10;
-    --color-bg-surface: #15171c;
-    --color-bg-sidebar: #0f1115;
-    --color-bg-muted: #1c1f26;
-    --color-bg-hover: #1f232b;
-
-    /* Text */
-    --color-text-primary: #e2e8f0;
-    --color-text-secondary: #a5b4c3;
-    --color-text-muted: #6b7280;
-
-    /* Borders */
-    --color-border: #252a33;
-    --color-border-strong: #374151;
-    --color-border-subtle: #1b1f27;
-
-    /* Shadows — deeper on dark backgrounds */
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
-    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.55);
-    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
-    --shadow-focus: 0 0 0 3px rgba(129, 140, 248, 0.3);
-
-    color-scheme: dark;
-}
 
 /* ============================================================
    Base reset (minimal — Antd handles most resets)

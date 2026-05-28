@@ -112,18 +112,8 @@ export const BoardView = ({ listId }: BoardViewProps) => {
         }
     };
 
-    if (isLoading) {
-        return (
-            <div style={{ padding: tokens.spacing[8], textAlign: "center" }}>
-                Loading board...
-            </div>
-        );
-    }
-
-    const hasAnyTasks = tasks.length > 0;
-    const hasFilteredTasks = filtered.length > 0;
-
-    // Determine swimlanes (subgroups)
+    // Determine swimlanes (subgroups) — declared BEFORE any early return
+    // to keep hook order stable across renders.
     const swimlanes = useMemo(() => {
         if (subgroupBy === "none") {
             return [{ key: "all", label: "", count: filtered.length }];
@@ -176,6 +166,17 @@ export const BoardView = ({ listId }: BoardViewProps) => {
         }
         return [];
     }, [filtered, subgroupBy]);
+
+    if (isLoading) {
+        return (
+            <div style={{ padding: tokens.spacing[8], textAlign: "center" }}>
+                Loading board...
+            </div>
+        );
+    }
+
+    const hasAnyTasks = tasks.length > 0;
+    const hasFilteredTasks = filtered.length > 0;
 
     return (
         <>

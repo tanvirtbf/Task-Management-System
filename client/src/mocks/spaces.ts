@@ -62,6 +62,18 @@ export const spaces: Space[] = [
         archivedAt: null,
         createdBy: "u-001",
     },
+    {
+        id: "sp-eng",
+        workspaceId: workspace.id,
+        name: "Engineering",
+        description: "Bugs, features, incidents, sprints — for the dev team",
+        icon: "Code",
+        color: "#0EA5E9",
+        isPrivate: false,
+        position: 5,
+        archivedAt: null,
+        createdBy: "u-001",
+    },
 ];
 
 export const spacesById = new Map(spaces.map((s) => [s.id, s]));

@@ -1,84 +1,84 @@
-import { useMemo } from "react";
-import { Tooltip } from "antd";
-import { users } from "../../mocks/users";
+import { users, usersById } from "../../mocks/users";
 import { tokens } from "../../theme";
 
 /**
- * Renders plain text with `@firstname` style mentions resolved to a styled
- * chip. Match is case-insensitive against `firstName` and `firstName.lastName`.
+ * Render a plain-text body, transforming `@username` and `#TASK-123`
+ * tokens into styled inline pills. Used by CommentsSection for the
+ * read view (input still uses a textarea — autocomplete is a V2).
  */
-export const MentionRenderer = ({ text }: { text: string }) => {
-    const lookup = useMemo(() => {
-        const m = new Map<string, (typeof users)[number]>();
-        users.forEach((u) => {
-            m.set(u.firstName.toLowerCase(), u);
-            m.set(
-                `${u.firstName}.${u.lastName}`.toLowerCase(),
-                u,
-            );
-            m.set(u.email.toLowerCase(), u);
-        });
-        return m;
-    }, []);
-
-    if (!text) return null;
-
-    // Split text into segments: plain text + mentions
-    const parts: React.ReactNode[] = [];
-    const regex = /@([a-zA-Z0-9_.-]+)/g;
-    let lastIndex = 0;
-    let match: RegExpExecArray | null;
-    let key = 0;
-    while ((match = regex.exec(text)) !== null) {
-        if (match.index > lastIndex) {
-            parts.push(text.slice(lastIndex, match.index));
-        }
-        const handle = match[1];
-        const user = lookup.get(handle.toLowerCase());
-        if (user) {
-            parts.push(
-                <MentionChip
-                    key={`m-${key++}`}
-                    name={`${user.firstName} ${user.lastName}`}
-                    email={user.email}
-                />,
-            );
-        } else {
-            // Unknown mention — render as muted text
-            parts.push(
-                <span
-                    key={`m-${key++}`}
-                    style={{ color: tokens.colors.textMuted }}
-                >
-                    @{handle}
-                </span>,
-            );
-        }
-        lastIndex = match.index + match[0].length;
-    }
-    if (lastIndex < text.length) {
-        parts.push(text.slice(lastIndex));
-    }
-    return <>{parts}</>;
+export const MentionRenderer = ({ body }: { body: string }) => {
+    const parts = splitTokens(body);
+    return (
+        <span style={{ whiteSpace: "pre-wrap" }}>
+            {parts.map((p, i) => {
+                if (p.kind === "mention") {
+                    const u = matchUser(p.value);
+                    return (
+                        <span
+                            key={i}
+                            style={{
+                                background: tokens.colors.primarySubtle,
+                                color: tokens.colors.primary,
+                                padding: "1px 5px",
+                                borderRadius: 3,
+                                fontWeight: 600,
+                                fontSize: "0.93em",
+                            }}
+                            title={
+                                u
+                                    ? `${u.firstName} ${u.lastName} (${u.email})`
+                                    : `Unknown user @${p.value}`
+                            }
+                        >
+                            @{u ? u.firstName.toLowerCase() : p.value}
+                        </span>
+                    );
+                }
+                if (p.kind === "task") {
+                    return (
+                        <span
+                            key={i}
+                            style={{
+                                background: tokens.colors.bgMuted,
+                                color: tokens.colors.textPrimary,
+                                padding: "1px 5px",
+                                borderRadius: 3,
+                                fontFamily: tokens.typography.fontFamilyMono,
+                                fontWeight: 600,
+                                fontSize: "0.88em",
+                            }}
+                        >
+                            #{p.value}
+                        </span>
+                    );
+                }
+                return <span key={i}>{p.value}</span>;
+            })}
+        </span>
+    );
 };
 
-const MentionChip = ({ name, email }: { name: string; email: string }) => (
-    <Tooltip title={email}>
-        <span
-            style={{
-                display: "inline-flex",
-                alignItems: "baseline",
-                padding: "0 4px",
-                margin: "0 1px",
-                background: tokens.colors.primarySubtle,
-                color: tokens.colors.primary,
-                borderRadius: 3,
-                fontWeight: 600,
-                fontSize: "inherit",
-                cursor: "default",
-            }}
-        >
-            @{name.split(" ")[0]}
-        </span>
-    </Tooltip>
-);
+type Part = { kind: "text" | "mention" | "task"; value: string };
+
+const splitTokens = (s: string): Part[] => {
+    const out: Part[] = [];
+    const re = /(@[a-zA-Z0-9_.-]+)|(#[A-Z]+-\d+)/g;
+    let last = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(s))) {
+        if (m.index > last) out.push({ kind: "text", value: s.slice(last, m.index) });
+        if (m[1]) out.push({ kind: "mention", value: m[1].slice(1) });
+        else if (m[2]) out.push({ kind: "task", value: m[2].slice(1) });
+        last = m.index + m[0].length;
+    }
+    if (last < s.length) out.push({ kind: "text", value: s.slice(last) });
+    return out;
+};
+
+const matchUser = (handle: string) => {
+    const lower = handle.toLowerCase();
+    return (
+        users.find((u) => u.firstName.toLowerCase() === lower) ??
+        usersById.get(handle)
+    );
+};

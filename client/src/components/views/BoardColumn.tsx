@@ -9,6 +9,12 @@ import { useBoardStore, type CardDensity } from "../../stores/board";
 import { useCreateTask } from "../../hooks/useTaskMutations";
 import { tokens } from "../../theme";
 
+// Stable reference returned by the Zustand selector when the per-list
+// entry is missing — re-using a module-level constant prevents the
+// "getSnapshot should be cached to avoid an infinite loop" warning
+// that fires when a selector returns a fresh `[]` on every call.
+const EMPTY_COLLAPSED: string[] = [];
+
 interface BoardColumnProps {
     listId: string;
     status: Status;
@@ -23,7 +29,7 @@ export const BoardColumn = ({
     density,
 }: BoardColumnProps) => {
     const collapsedList = useBoardStore(
-        (s) => s.collapsedColumns[listId] ?? [],
+        (s) => s.collapsedColumns[listId] ?? EMPTY_COLLAPSED,
     );
     const toggleColumnCollapse = useBoardStore((s) => s.toggleColumnCollapse);
     const collapsed = collapsedList.includes(status.id);

@@ -67,6 +67,79 @@ export const taskTypes: TaskType[] = [
         isMilestoneType: false,
         isSystem: false,
     },
+    {
+        id: "tt-damage",
+        workspaceId: workspace.id,
+        name: "Damage Incident",
+        description: "Damaged stock, packaging issues, supplier defects",
+        icon: "AlertTriangle",
+        color: "#DC2626",
+        isMilestoneType: false,
+        isSystem: false,
+    },
+    // ─── Engineering task types ───
+    {
+        id: "tt-bug",
+        workspaceId: workspace.id,
+        name: "Bug",
+        description: "Defect reported by any team",
+        icon: "Bug",
+        color: "#E11D48",
+        isMilestoneType: false,
+        isSystem: false,
+    },
+    {
+        id: "tt-feature",
+        workspaceId: workspace.id,
+        name: "Feature",
+        description: "User-facing story or improvement",
+        icon: "Sparkles",
+        color: "#10B981",
+        isMilestoneType: false,
+        isSystem: false,
+    },
+    {
+        id: "tt-tech-debt",
+        workspaceId: workspace.id,
+        name: "Tech Debt",
+        description: "Refactor / cleanup work",
+        icon: "Wrench",
+        color: "#6366F1",
+        isMilestoneType: false,
+        isSystem: false,
+    },
+    {
+        id: "tt-incident",
+        workspaceId: workspace.id,
+        name: "Incident",
+        description: "Production fire",
+        icon: "AlertOctagon",
+        color: "#DC2626",
+        isMilestoneType: false,
+        isSystem: false,
+    },
+    {
+        id: "tt-release",
+        workspaceId: workspace.id,
+        name: "Release",
+        description: "Deployment / version cut",
+        icon: "Package",
+        color: "#0891B2",
+        isMilestoneType: false,
+        isSystem: false,
+    },
 ];
+
+/** Convenience set for "is this a dev task?" UI gating. */
+export const DEV_TASK_TYPE_IDS = new Set([
+    "tt-bug",
+    "tt-feature",
+    "tt-tech-debt",
+    "tt-incident",
+    "tt-release",
+]);
+
+export const isDevTaskType = (taskTypeId: string): boolean =>
+    DEV_TASK_TYPE_IDS.has(taskTypeId);
 
 export const taskTypesById = new Map(taskTypes.map((t) => [t.id, t]));

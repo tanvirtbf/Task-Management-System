@@ -26,3 +26,7 @@ export * from "./notes";
 export * from "./attachments";
 export * from "./task-dependencies";
 export * from "./time-logs";
+export * from "./customers";
+export * from "./sprints";
+export * from "./on-call";
+export * from "./eng-tasks";

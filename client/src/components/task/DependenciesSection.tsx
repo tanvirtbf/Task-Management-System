@@ -1,61 +1,12 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-    Button,
-    App as AntApp,
-    Popconfirm,
-    Select,
-    Modal,
-} from "antd";
-import {
-    GitBranch,
-    Plus,
-    X,
-    AlertOctagon,
-    Hourglass,
-    Link as LinkIcon,
-    Lock,
-} from "lucide-react";
+import { Skeleton, Select, Button, Tooltip } from "antd";
+import { Link2, ArrowRight, ArrowLeft, X, Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { mockApi } from "../../lib/mock-api";
+import { statusesById } from "../../mocks/statuses";
+import { tasks as allTasks } from "../../mocks/tasks";
 import { tokens } from "../../theme";
-import type { DependencyType, TaskDependency } from "../../types/extras";
-import type { Task } from "../../types";
-
-const TYPE_META: Record<
-    DependencyType,
-    {
-        label: string;
-        description: string;
-        icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
-        color: string;
-    }
-> = {
-    blocks: {
-        label: "Blocking",
-        description: "This task blocks the related one",
-        icon: AlertOctagon,
-        color: "#E11D48",
-    },
-    blocked_by: {
-        label: "Blocked by",
-        description: "This task is blocked by another",
-        icon: Lock,
-        color: "#F59E0B",
-    },
-    waiting_on: {
-        label: "Waiting on",
-        description: "Soft dependency — waiting for the other to finish",
-        icon: Hourglass,
-        color: "#8B5CF6",
-    },
-    linked: {
-        label: "Linked",
-        description: "Informational link, no scheduling impact",
-        icon: LinkIcon,
-        color: "#06B6D4",
-    },
-};
 
 interface Props {
     taskId: string;
@@ -64,40 +15,42 @@ interface Props {
 
 export const DependenciesSection = ({ taskId, listId }: Props) => {
     const qc = useQueryClient();
-    const { message } = AntApp.useApp();
-    const [addOpen, setAddOpen] = useState(false);
+    const navigate = useNavigate();
+    const [showPicker, setShowPicker] = useState<"blocks" | "blocked_by" | null>(
+        null,
+    );
+    const [pickedTaskId, setPickedTaskId] = useState<string | undefined>();
 
-    const { data: deps = [] } = useQuery({
-        queryKey: ["task-deps", taskId],
+    const { data: deps = [], isLoading } = useQuery({
+        queryKey: ["deps", taskId],
         queryFn: () => mockApi.taskDependencies.byTask(taskId),
     });
-    const { data: allTasks = [] } = useQuery({
-        queryKey: ["tasks-by-list", listId],
-        queryFn: () => mockApi.tasks.listByList(listId),
-    });
-    const tasksById = useMemo(
-        () => new Map(allTasks.map((t) => [t.id, t])),
-        [allTasks],
-    );
 
-    const grouped = useMemo(() => {
-        const map: Record<DependencyType, typeof deps> = {
-            blocks: [],
-            blocked_by: [],
-            waiting_on: [],
-            linked: [],
-        };
-        deps.forEach((d) => map[d.type].push(d));
-        return map;
-    }, [deps]);
+    const create = useMutation({
+        mutationFn: (input: { relatedTaskId: string; type: "blocks" }) =>
+            mockApi.taskDependencies.create({ taskId, ...input }),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ["deps", taskId] });
+            setShowPicker(null);
+            setPickedTaskId(undefined);
+        },
+    });
 
     const remove = useMutation({
         mutationFn: (id: string) => mockApi.taskDependencies.delete(id),
-        onSuccess: () => {
-            qc.invalidateQueries({ queryKey: ["task-deps", taskId] });
-            message.success("Dependency removed");
-        },
+        onSuccess: () => qc.invalidateQueries({ queryKey: ["deps", taskId] }),
     });
+
+    const blocks = deps.filter((d) => d.type === "blocks");
+    const blockedBy = deps.filter((d) => d.type === ("blocked_by" as never));
+
+    const candidates = allTasks.filter(
+        (t) =>
+            t.id !== taskId &&
+            t.primaryListId &&
+            !t.archivedAt &&
+            !deps.some((d) => d.otherTaskId === t.id),
+    );
 
     return (
         <div
@@ -119,7 +72,7 @@ export const DependenciesSection = ({ taskId, listId }: Props) => {
                     color: tokens.colors.textMuted,
                 }}
             >
-                <GitBranch size={11} strokeWidth={1.75} />
+                <Link2 size={11} strokeWidth={1.75} />
                 Dependencies
                 <span
                     style={{
@@ -130,309 +83,214 @@ export const DependenciesSection = ({ taskId, listId }: Props) => {
                     {deps.length}
                 </span>
                 <Button
-                    size="small"
                     type="text"
+                    size="small"
                     icon={<Plus size={12} strokeWidth={2} />}
-                    onClick={() => setAddOpen(true)}
+                    onClick={() => setShowPicker("blocks")}
                     style={{ marginLeft: "auto" }}
                 >
-                    Add
+                    Link
                 </Button>
             </div>
 
-            {deps.length === 0 ? (
-                <div
-                    style={{
-                        padding: tokens.spacing[3],
-                        textAlign: "center",
-                        color: tokens.colors.textMuted,
-                        fontSize: tokens.typography.fontSize.sm,
-                        border: `1px dashed ${tokens.colors.border}`,
-                        borderRadius: tokens.radius.md,
-                    }}
-                >
-                    No dependencies yet.
-                </div>
+            {isLoading ? (
+                <Skeleton active paragraph={{ rows: 2 }} />
             ) : (
+                <>
+                    {blocks.length > 0 && (
+                        <DepGroup
+                            label="Blocks"
+                            icon={<ArrowRight size={11} strokeWidth={1.75} />}
+                            items={blocks}
+                            onOpen={(otherId) => {
+                                const url = new URL(window.location.href);
+                                url.searchParams.set("task", otherId);
+                                navigate(url.pathname + url.search);
+                            }}
+                            onRemove={(id) => remove.mutate(id)}
+                        />
+                    )}
+                    {blockedBy.length > 0 && (
+                        <DepGroup
+                            label="Blocked by"
+                            icon={<ArrowLeft size={11} strokeWidth={1.75} />}
+                            items={blockedBy}
+                            onOpen={(otherId) => {
+                                const url = new URL(window.location.href);
+                                url.searchParams.set("task", otherId);
+                                navigate(url.pathname + url.search);
+                            }}
+                            onRemove={(id) => remove.mutate(id)}
+                            warn
+                        />
+                    )}
+                </>
+            )}
+
+            {showPicker && (
                 <div
                     style={{
                         display: "flex",
-                        flexDirection: "column",
-                        gap: 10,
+                        gap: 6,
+                        alignItems: "center",
+                        marginTop: tokens.spacing[2],
                     }}
                 >
-                    {(Object.keys(grouped) as DependencyType[])
-                        .filter((t) => grouped[t].length > 0)
-                        .map((type) => (
-                            <DepGroup
-                                key={type}
-                                type={type}
-                                deps={grouped[type]}
-                                tasksById={tasksById}
-                                onRemove={(id) => remove.mutate(id)}
-                            />
-                        ))}
+                    <Select
+                        size="small"
+                        showSearch
+                        autoFocus
+                        value={pickedTaskId}
+                        onChange={setPickedTaskId}
+                        placeholder="Pick a task to block…"
+                        style={{ flex: 1 }}
+                        optionFilterProp="label"
+                        options={candidates.slice(0, 200).map((t) => ({
+                            value: t.id,
+                            label: `${t.customId ?? `T-${t.taskNumber}`} — ${t.name}`,
+                        }))}
+                    />
+                    <Button
+                        size="small"
+                        type="primary"
+                        disabled={!pickedTaskId}
+                        onClick={() =>
+                            pickedTaskId &&
+                            create.mutate({
+                                relatedTaskId: pickedTaskId,
+                                type: "blocks",
+                            })
+                        }
+                    >
+                        Add
+                    </Button>
+                    <Button
+                        size="small"
+                        type="text"
+                        onClick={() => {
+                            setShowPicker(null);
+                            setPickedTaskId(undefined);
+                        }}
+                    >
+                        Cancel
+                    </Button>
                 </div>
-            )}
-
-            {addOpen && (
-                <AddDependencyModal
-                    taskId={taskId}
-                    allTasks={allTasks}
-                    onClose={() => setAddOpen(false)}
-                />
             )}
         </div>
     );
 };
 
 const DepGroup = ({
-    type,
-    deps,
-    tasksById,
+    label,
+    icon,
+    items,
+    onOpen,
     onRemove,
+    warn,
 }: {
-    type: DependencyType;
-    deps: Array<TaskDependency & { otherTaskId: string }>;
-    tasksById: Map<string, Task>;
+    label: string;
+    icon: React.ReactNode;
+    items: Array<{ id: string; otherTaskId: string }>;
+    onOpen: (otherTaskId: string) => void;
     onRemove: (id: string) => void;
-}) => {
-    const meta = TYPE_META[type];
-    const Icon = meta.icon;
-    const navigate = useNavigate();
-    return (
-        <div>
-            <div
-                style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                    fontSize: 11,
-                    fontWeight: 600,
-                    color: meta.color,
-                    marginBottom: 4,
-                }}
-            >
-                <Icon size={11} strokeWidth={1.75} />
-                <span>{meta.label}</span>
-            </div>
-            <div
-                style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 4,
-                }}
-            >
-                {deps.map((d) => {
-                    const other = tasksById.get(d.otherTaskId);
-                    return (
-                        <div
-                            key={d.id}
-                            style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 8,
-                                padding: "6px 10px",
-                                background: tokens.colors.bgMuted,
-                                borderRadius: tokens.radius.md,
-                                borderLeft: `3px solid ${meta.color}`,
-                            }}
-                        >
-                            <button
-                                onClick={() =>
-                                    navigate(
-                                        `/t/${other?.customId ?? d.otherTaskId}`,
-                                    )
-                                }
-                                disabled={!other}
-                                style={{
-                                    flex: 1,
-                                    background: "transparent",
-                                    border: 0,
-                                    cursor: other ? "pointer" : "default",
-                                    padding: 0,
-                                    textAlign: "left",
-                                    color: tokens.colors.textPrimary,
-                                    fontSize: tokens.typography.fontSize.sm,
-                                    fontWeight: 500,
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                    whiteSpace: "nowrap",
-                                }}
-                            >
-                                {other ? (
-                                    <>
-                                        <span
-                                            style={{
-                                                fontFamily:
-                                                    tokens.typography
-                                                        .fontFamilyMono,
-                                                fontSize: 11,
-                                                color: tokens.colors.textMuted,
-                                                marginRight: 6,
-                                            }}
-                                        >
-                                            {other.customId ??
-                                                `T-${other.taskNumber}`}
-                                        </span>
-                                        {other.name}
-                                    </>
-                                ) : (
-                                    <span
-                                        style={{
-                                            color: tokens.colors.textMuted,
-                                            fontStyle: "italic",
-                                        }}
-                                    >
-                                        Task not visible in this list
-                                    </span>
-                                )}
-                            </button>
-                            <Popconfirm
-                                title="Remove this dependency?"
-                                onConfirm={() => onRemove(d.id)}
-                            >
-                                <button
-                                    aria-label="Remove dependency"
-                                    title="Remove"
-                                    style={{
-                                        background: "transparent",
-                                        border: 0,
-                                        cursor: "pointer",
-                                        padding: 2,
-                                        color: tokens.colors.textMuted,
-                                        display: "inline-flex",
-                                    }}
-                                >
-                                    <X size={12} strokeWidth={1.75} />
-                                </button>
-                            </Popconfirm>
-                        </div>
-                    );
-                })}
-            </div>
-        </div>
-    );
-};
-
-const AddDependencyModal = ({
-    taskId,
-    allTasks,
-    onClose,
-}: {
-    taskId: string;
-    allTasks: Task[];
-    onClose: () => void;
-}) => {
-    const qc = useQueryClient();
-    const { message } = AntApp.useApp();
-    const [type, setType] = useState<DependencyType>("blocked_by");
-    const [relatedTaskId, setRelatedTaskId] = useState<string | undefined>();
-
-    const create = useMutation({
-        mutationFn: () => {
-            if (!relatedTaskId)
-                return Promise.reject(new Error("Pick a task"));
-            return mockApi.taskDependencies.create({
-                taskId,
-                relatedTaskId,
-                type,
-            });
-        },
-        onSuccess: () => {
-            qc.invalidateQueries({ queryKey: ["task-deps", taskId] });
-            message.success("Dependency added");
-            onClose();
-        },
-        onError: (err) =>
-            message.error(
-                err instanceof Error
-                    ? err.message
-                    : "Failed to add dependency",
-            ),
-    });
-
-    const options = allTasks
-        .filter((t) => t.id !== taskId)
-        .map((t) => ({
-            value: t.id,
-            label: `${t.customId ?? `T-${t.taskNumber}`} — ${t.name}`,
-        }));
-
-    return (
-        <Modal
-            open
-            onCancel={onClose}
-            onOk={() => create.mutate()}
-            okText="Add"
-            okButtonProps={{
-                disabled: !relatedTaskId,
-                loading: create.isPending,
+    warn?: boolean;
+}) => (
+    <div style={{ marginBottom: 6 }}>
+        <div
+            style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                fontSize: 11,
+                color: warn ? tokens.colors.danger : tokens.colors.textMuted,
+                fontWeight: 600,
+                marginBottom: 4,
             }}
-            title="Add dependency"
         >
-            <div
-                style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 12,
-                    paddingTop: 8,
-                }}
-            >
-                <div>
-                    <Label>Type</Label>
-                    <Select
-                        value={type}
-                        onChange={setType}
-                        style={{ width: "100%" }}
-                        options={(
-                            Object.keys(TYPE_META) as DependencyType[]
-                        ).map((t) => ({
-                            value: t,
-                            label: TYPE_META[t].label,
-                        }))}
-                    />
-                    <p
+            {icon}
+            {label}
+        </div>
+        <div
+            style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 2,
+            }}
+        >
+            {items.map((d) => {
+                const other = allTasks.find((t) => t.id === d.otherTaskId);
+                if (!other) return null;
+                const status = statusesById.get(other.statusId);
+                return (
+                    <div
+                        key={d.id}
                         style={{
-                            margin: 0,
-                            marginTop: 4,
-                            fontSize: 11,
-                            color: tokens.colors.textMuted,
-                            lineHeight: 1.4,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                            padding: "4px 8px",
+                            borderRadius: tokens.radius.sm,
+                            background: warn
+                                ? "rgba(220, 38, 38, 0.05)"
+                                : tokens.colors.bgMuted,
                         }}
                     >
-                        {TYPE_META[type].description}
-                    </p>
-                </div>
-                <div>
-                    <Label>Related task</Label>
-                    <Select
-                        value={relatedTaskId}
-                        onChange={setRelatedTaskId}
-                        placeholder="Search tasks in this list…"
-                        showSearch
-                        optionFilterProp="label"
-                        style={{ width: "100%" }}
-                        options={options}
-                    />
-                </div>
-            </div>
-        </Modal>
-    );
-};
-
-const Label = ({ children }: { children: React.ReactNode }) => (
-    <label
-        style={{
-            display: "block",
-            fontSize: 11,
-            fontWeight: 600,
-            color: tokens.colors.textMuted,
-            textTransform: "uppercase",
-            letterSpacing: "0.05em",
-            marginBottom: 4,
-        }}
-    >
-        {children}
-    </label>
+                        <span
+                            style={{
+                                width: 6,
+                                height: 6,
+                                borderRadius: "50%",
+                                background: status?.color ?? "#94A3B8",
+                            }}
+                        />
+                        <button
+                            onClick={() => onOpen(d.otherTaskId)}
+                            style={{
+                                flex: 1,
+                                background: "none",
+                                border: 0,
+                                padding: 0,
+                                cursor: "pointer",
+                                textAlign: "left",
+                                fontSize: tokens.typography.fontSize.sm,
+                                color: tokens.colors.textPrimary,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                            }}
+                        >
+                            <span
+                                style={{
+                                    fontFamily:
+                                        tokens.typography.fontFamilyMono,
+                                    color: tokens.colors.textMuted,
+                                    fontSize: 11,
+                                    marginRight: 6,
+                                }}
+                            >
+                                {other.customId ?? `T-${other.taskNumber}`}
+                            </span>
+                            {other.name}
+                        </button>
+                        <Tooltip title="Unlink">
+                            <button
+                                onClick={() => onRemove(d.id)}
+                                style={{
+                                    background: "none",
+                                    border: 0,
+                                    padding: 2,
+                                    cursor: "pointer",
+                                    color: tokens.colors.textMuted,
+                                    display: "flex",
+                                }}
+                                aria-label="Unlink"
+                            >
+                                <X size={11} strokeWidth={1.75} />
+                            </button>
+                        </Tooltip>
+                    </div>
+                );
+            })}
+        </div>
+    </div>
 );

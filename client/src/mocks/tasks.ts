@@ -1,5 +1,6 @@
 import type { Priority, Task } from "../types";
 import { statusesByList } from "./statuses";
+import { engTasks } from "./eng-tasks";
 
 /**
  * Generates 250+ realistic tasks for a Bangladesh eCommerce company.
@@ -614,7 +615,7 @@ for (let i = 0; i < 8; i++) {
     );
 }
 
-export const tasks: Task[] = generated;
+export const tasks: Task[] = [...generated, ...engTasks];
 
 export const tasksById = new Map(tasks.map((t) => [t.id, t]));
 export const tasksByList = (listId: string) =>

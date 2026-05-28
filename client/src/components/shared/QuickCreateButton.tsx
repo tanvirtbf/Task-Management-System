@@ -1,10 +1,6 @@
 import { useState } from "react";
-import { Dropdown, App as AntApp } from "antd";
-import { useNavigate } from "react-router-dom";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, CheckSquare, FileText, Calendar, ListChecks } from "lucide-react";
-import { mockApi } from "../../lib/mock-api";
-import { useAuthStore } from "../../stores/auth";
+import { Dropdown } from "antd";
+import { Plus, CheckSquare, ListChecks } from "lucide-react";
 import { CreateTaskModal } from "./CreateTaskModal";
 import { CreateListModal } from "./CreateListModal";
 import { tokens } from "../../theme";
@@ -12,26 +8,7 @@ import { tokens } from "../../theme";
 type ActiveModal = "task" | "list" | null;
 
 export const QuickCreateButton = () => {
-    const navigate = useNavigate();
-    const qc = useQueryClient();
-    const { message } = AntApp.useApp();
-    const user = useAuthStore((s) => s.user);
     const [modal, setModal] = useState<ActiveModal>(null);
-
-    const createNote = useMutation({
-        mutationFn: () =>
-            user
-                ? mockApi.notes.create({
-                      userId: user.id,
-                      title: "Untitled note",
-                  })
-                : Promise.reject(new Error("Not signed in")),
-        onSuccess: () => {
-            qc.invalidateQueries({ queryKey: ["notes", user?.id] });
-            navigate("/notepad");
-            message.success("New note ready");
-        },
-    });
 
     const items = [
         {
@@ -45,18 +22,6 @@ export const QuickCreateButton = () => {
             label: "New List",
             icon: <ListChecks size={14} strokeWidth={1.75} />,
             onClick: () => setModal("list"),
-        },
-        {
-            key: "doc",
-            label: "New Note",
-            icon: <FileText size={14} strokeWidth={1.75} />,
-            onClick: () => createNote.mutate(),
-        },
-        {
-            key: "reminder",
-            label: "New Reminder",
-            icon: <Calendar size={14} strokeWidth={1.75} />,
-            onClick: () => navigate("/reminders?new=1"),
         },
     ];
 

@@ -1,16 +1,18 @@
-import { Modal } from "antd";
-import { AlertTriangle, Clock, Timer, Eye, Calendar as CalIcon, Flag, Repeat } from "lucide-react";
+import { Tooltip } from "antd";
+import { Clock, Timer, Eye, Calendar as CalIcon, Flag, Zap, GitPullRequest } from "lucide-react";
 import { useUpdateTask } from "../../hooks/useTaskMutations";
 import { InlineAssigneeEdit } from "./InlineAssigneeEdit";
 import { InlineDateEdit } from "./InlineDateEdit";
 import { InlinePriorityEdit } from "./InlinePriorityEdit";
 import { InlineTagEdit } from "./InlineTagEdit";
 import { InlineStatusEdit } from "./InlineStatusEdit";
-import { RecurrenceConfig } from "./RecurrenceConfig";
-import { TimeTrackingControl } from "./TimeTrackingControl";
+import { InlineReviewerEdit } from "./InlineReviewerEdit";
+import { InlineStoryPointsEdit } from "./InlineStoryPointsEdit";
+import { BugSeverityBadge } from "./BugSeverityBadge";
 import type { Task } from "../../types";
 import { listsById } from "../../mocks/lists";
-import { getBlockingTasksForCompletion } from "../../lib/dependency-guard";
+import { sprintsById } from "../../mocks/sprints";
+import { isDevTaskType } from "../../mocks/task-types";
 import { tokens } from "../../theme";
 
 const formatSeconds = (s: number) => {
@@ -24,68 +26,9 @@ const formatSeconds = (s: number) => {
 export const TaskPropertiesPanel = ({ task }: { task: Task }) => {
     const list = listsById.get(task.primaryListId);
     const update = useUpdateTask(task.primaryListId);
-
-    const handleStatusChange = async (statusId: string) => {
-        const blockers = await getBlockingTasksForCompletion(
-            task.id,
-            statusId,
-        );
-        if (blockers.length === 0) {
-            update.mutate({ id: task.id, patch: { statusId } });
-            return;
-        }
-        Modal.confirm({
-            title: "Open blockers",
-            icon: (
-                <AlertTriangle
-                    size={20}
-                    strokeWidth={1.75}
-                    color={tokens.colors.warning}
-                />
-            ),
-            content: (
-                <div>
-                    <p style={{ marginTop: 0 }}>
-                        This task is still blocked by{" "}
-                        {blockers.length} open task
-                        {blockers.length > 1 ? "s" : ""}:
-                    </p>
-                    <ul
-                        style={{
-                            margin: 0,
-                            paddingLeft: 20,
-                            color: tokens.colors.textSecondary,
-                            fontSize: 13,
-                        }}
-                    >
-                        {blockers.map((b) => (
-                            <li key={b.id}>
-                                <code
-                                    style={{
-                                        fontSize: 11,
-                                        fontFamily:
-                                            tokens.typography.fontFamilyMono,
-                                        color: tokens.colors.textMuted,
-                                        marginRight: 4,
-                                    }}
-                                >
-                                    {b.customId ?? b.id.slice(0, 8)}
-                                </code>
-                                {b.name}
-                            </li>
-                        ))}
-                    </ul>
-                    <p style={{ marginBottom: 0, marginTop: 8 }}>
-                        Mark this task complete anyway?
-                    </p>
-                </div>
-            ),
-            okText: "Yes, complete it",
-            okType: "danger",
-            cancelText: "Cancel",
-            onOk: () => update.mutate({ id: task.id, patch: { statusId } }),
-        });
-    };
+    const isDev = isDevTaskType(task.taskTypeId);
+    const isBug = task.taskTypeId === "tt-bug";
+    const sprint = task.sprintId ? sprintsById.get(task.sprintId) : null;
 
     return (
         <div
@@ -104,10 +47,27 @@ export const TaskPropertiesPanel = ({ task }: { task: Task }) => {
                 <InlineStatusEdit
                     listId={task.primaryListId}
                     statusId={task.statusId}
-                    onChange={handleStatusChange}
+                    onChange={(statusId) =>
+                        update.mutate({ id: task.id, patch: { statusId } })
+                    }
                     size="md"
                 />
             </PropValue>
+
+            {isBug && (
+                <>
+                    <PropLabel>Severity</PropLabel>
+                    <PropValue>
+                        {task.bugSeverity ? (
+                            <BugSeverityBadge severity={task.bugSeverity} />
+                        ) : (
+                            <span style={{ color: tokens.colors.textMuted }}>
+                                Not set
+                            </span>
+                        )}
+                    </PropValue>
+                </>
+            )}
 
             <PropLabel icon={<Flag size={11} strokeWidth={1.75} />}>
                 Priority
@@ -130,6 +90,67 @@ export const TaskPropertiesPanel = ({ task }: { task: Task }) => {
                     }
                 />
             </PropValue>
+
+            {isDev && (
+                <>
+                    <PropLabel icon={<Eye size={11} strokeWidth={1.75} />}>
+                        Reviewer
+                    </PropLabel>
+                    <PropValue>
+                        <InlineReviewerEdit
+                            reviewerId={task.reviewerId}
+                            onChange={(id) =>
+                                update.mutate({
+                                    id: task.id,
+                                    patch: { reviewerId: id },
+                                })
+                            }
+                        />
+                    </PropValue>
+
+                    <PropLabel icon={<GitPullRequest size={11} strokeWidth={1.75} />}>
+                        Story points
+                    </PropLabel>
+                    <PropValue>
+                        <InlineStoryPointsEdit
+                            points={task.storyPoints}
+                            onChange={(p) =>
+                                update.mutate({
+                                    id: task.id,
+                                    patch: { storyPoints: p },
+                                })
+                            }
+                        />
+                    </PropValue>
+
+                    {sprint && (
+                        <>
+                            <PropLabel icon={<Zap size={11} strokeWidth={1.75} />}>
+                                Sprint
+                            </PropLabel>
+                            <PropValue>
+                                <span
+                                    style={{
+                                        fontWeight: 600,
+                                        color: tokens.colors.primary,
+                                    }}
+                                >
+                                    {sprint.name}
+                                </span>
+                                <span
+                                    style={{
+                                        marginLeft: 6,
+                                        fontSize: 11,
+                                        color: tokens.colors.textMuted,
+                                    }}
+                                >
+                                    {sprint.goal}
+                                </span>
+                            </PropValue>
+                        </>
+                    )}
+                </>
+            )}
 
             <PropLabel icon={<CalIcon size={11} strokeWidth={1.75} />}>
                 Start date
@@ -155,36 +176,32 @@ export const TaskPropertiesPanel = ({ task }: { task: Task }) => {
                 />
             </PropValue>
 
-            <PropLabel icon={<Repeat size={11} strokeWidth={1.75} />}>
-                Recurrence
-            </PropLabel>
-            <PropValue>
-                <RecurrenceConfig
-                    value={task.recurrence}
-                    onChange={(recurrence) =>
-                        update.mutate({
-                            id: task.id,
-                            patch: { recurrence },
-                        })
-                    }
-                />
-            </PropValue>
+            {!isDev && (
+                <>
+                    <PropLabel icon={<Timer size={11} strokeWidth={1.75} />}>
+                        Estimate
+                    </PropLabel>
+                    <PropValue>
+                        <span style={{ color: tokens.colors.textSecondary }}>
+                            {formatSeconds(task.timeEstimateSeconds ?? 0)}
+                        </span>
+                    </PropValue>
 
-            <PropLabel icon={<Timer size={11} strokeWidth={1.75} />}>
-                Estimate
-            </PropLabel>
-            <PropValue>
-                <span style={{ color: tokens.colors.textSecondary }}>
-                    {formatSeconds(task.timeEstimateSeconds ?? 0)}
-                </span>
-            </PropValue>
-
-            <PropLabel icon={<Clock size={11} strokeWidth={1.75} />}>
-                Time tracked
-            </PropLabel>
-            <PropValue>
-                <TimeTrackingControl task={task} />
-            </PropValue>
+                    <PropLabel icon={<Clock size={11} strokeWidth={1.75} />}>
+                        Time tracked
+                    </PropLabel>
+                    <PropValue>
+                        <span
+                            style={{
+                                color: tokens.colors.textSecondary,
+                                fontFamily: tokens.typography.fontFamilyMono,
+                            }}
+                        >
+                            {formatSeconds(task.timeTrackedSeconds)}
+                        </span>
+                    </PropValue>
+                </>
+            )}
 
             <PropLabel>Tags</PropLabel>
             <PropValue>
@@ -203,12 +220,11 @@ export const TaskPropertiesPanel = ({ task }: { task: Task }) => {
                 Watchers
             </PropLabel>
             <PropValue>
-                <InlineAssigneeEdit
-                    assigneeIds={task.watchers}
-                    onChange={(watchers) =>
-                        update.mutate({ id: task.id, patch: { watchers } })
-                    }
-                />
+                <Tooltip title={`${task.watchers.length} watching`}>
+                    <span style={{ color: tokens.colors.textSecondary }}>
+                        {task.watchers.length}
+                    </span>
+                </Tooltip>
             </PropValue>
         </div>
     );

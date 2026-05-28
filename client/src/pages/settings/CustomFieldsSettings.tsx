@@ -18,22 +18,11 @@ import {
     ArrowLeft,
     Settings2,
     Type,
-    AlignLeft,
-    Hash,
     DollarSign,
     Calendar as CalIcon,
     ChevronDown as DropDown,
-    Tag as LabelsIcon,
-    CheckSquare,
     Phone,
-    Link2,
-    Mail,
     Paperclip,
-    Users,
-    MapPin,
-    Calculator,
-    BarChart,
-    Star,
 } from "lucide-react";
 import { mockApi } from "../../lib/mock-api";
 import { spacesById } from "../../mocks";
@@ -46,42 +35,20 @@ import { LoadingState } from "../../components/shared/LoadingState";
 
 const TYPE_ICONS: Record<CustomFieldType, React.ReactNode> = {
     text: <Type size={14} strokeWidth={1.75} />,
-    long_text: <AlignLeft size={14} strokeWidth={1.75} />,
-    number: <Hash size={14} strokeWidth={1.75} />,
+    phone: <Phone size={14} strokeWidth={1.75} />,
     money: <DollarSign size={14} strokeWidth={1.75} />,
     date: <CalIcon size={14} strokeWidth={1.75} />,
     dropdown: <DropDown size={14} strokeWidth={1.75} />,
-    labels: <LabelsIcon size={14} strokeWidth={1.75} />,
-    checkbox: <CheckSquare size={14} strokeWidth={1.75} />,
-    phone: <Phone size={14} strokeWidth={1.75} />,
-    url: <Link2 size={14} strokeWidth={1.75} />,
-    email: <Mail size={14} strokeWidth={1.75} />,
     files: <Paperclip size={14} strokeWidth={1.75} />,
-    people: <Users size={14} strokeWidth={1.75} />,
-    location: <MapPin size={14} strokeWidth={1.75} />,
-    formula: <Calculator size={14} strokeWidth={1.75} />,
-    progress: <BarChart size={14} strokeWidth={1.75} />,
-    rating: <Star size={14} strokeWidth={1.75} />,
 };
 
 const TYPE_LABELS: Record<CustomFieldType, string> = {
     text: "Text",
-    long_text: "Long Text",
-    number: "Number",
-    money: "Money",
+    phone: "Phone (BD)",
+    money: "Money (৳)",
     date: "Date",
     dropdown: "Dropdown",
-    labels: "Labels (multi-select)",
-    checkbox: "Checkbox",
-    phone: "Phone",
-    url: "URL",
-    email: "Email",
     files: "Files",
-    people: "People",
-    location: "Location",
-    formula: "Formula",
-    progress: "Progress",
-    rating: "Rating",
 };
 
 const CustomFieldsSettings = () => {

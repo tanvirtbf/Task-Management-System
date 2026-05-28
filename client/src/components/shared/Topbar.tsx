@@ -3,7 +3,6 @@ import { Breadcrumb } from "./Breadcrumb";
 import { CommandPaletteTrigger } from "./CommandPaletteTrigger";
 import { NotificationBell } from "./NotificationBell";
 import { QuickCreateButton } from "./QuickCreateButton";
-import { ThemeToggle } from "./ThemeToggle";
 import { UserMenu } from "./UserMenu";
 
 export const Topbar = () => (
@@ -33,7 +32,7 @@ export const Topbar = () => (
             <Breadcrumb />
         </div>
 
-        {/* Center — command palette */}
+        {/* Center — search */}
         <div
             style={{
                 flex: 1,
@@ -55,7 +54,6 @@ export const Topbar = () => (
             }}
         >
             <QuickCreateButton />
-            <ThemeToggle />
             <NotificationBell />
             <UserMenu />
         </div>

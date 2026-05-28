@@ -1,48 +1,36 @@
-import { useEffect, useState } from "react";
-import { Button } from "antd";
-import { FileText, Pencil, X, Check } from "lucide-react";
-import { TiptapEditor } from "../editor/TiptapEditor";
+import { useEffect, useRef, useState } from "react";
+import { Input } from "antd";
+import { FileText } from "lucide-react";
+import { TiptapEditor, TiptapReadOnly } from "../editor/TiptapEditor";
 import { tokens } from "../../theme";
 
 interface TaskDescriptionProps {
-    /** TipTap JSON or legacy string. */
-    description: unknown;
-    onSave: (next: unknown) => void;
+    description: string;
+    onSave: (next: string) => void;
+    /** When true, use rich-text editor (TipTap). Default: plain textarea. */
+    rich?: boolean;
 }
-
-const isEmpty = (description: unknown): boolean => {
-    if (!description) return true;
-    if (typeof description === "string") return description.trim() === "";
-    if (typeof description === "object") {
-        const doc = description as { content?: Array<{ content?: unknown[] }> };
-        if (!doc.content || doc.content.length === 0) return true;
-        const onlyEmptyPara = doc.content.every(
-            (n) => !n.content || n.content.length === 0,
-        );
-        return onlyEmptyPara;
-    }
-    return true;
-};
 
 export const TaskDescription = ({
     description,
     onSave,
+    rich,
 }: TaskDescriptionProps) => {
     const [editing, setEditing] = useState(false);
-    const [draft, setDraft] = useState<unknown>(description);
+    const [draft, setDraft] = useState(description ?? "");
+    const ref = useRef<HTMLTextAreaElement>(null);
 
     useEffect(() => {
-        setDraft(description);
+        setDraft(description ?? "");
     }, [description]);
 
     const commit = () => {
-        if (JSON.stringify(draft) !== JSON.stringify(description)) {
-            onSave(draft);
-        }
+        if (draft !== description) onSave(draft);
         setEditing(false);
     };
+
     const cancel = () => {
-        setDraft(description);
+        setDraft(description ?? "");
         setEditing(false);
     };
 
@@ -68,60 +56,56 @@ export const TaskDescription = ({
             >
                 <FileText size={11} strokeWidth={1.75} />
                 Description
-                {!editing && (
-                    <Button
-                        size="small"
-                        type="text"
-                        icon={<Pencil size={11} strokeWidth={1.75} />}
-                        onClick={() => setEditing(true)}
-                        style={{
-                            marginLeft: "auto",
-                            height: 20,
-                            padding: "0 6px",
-                        }}
-                    >
-                        Edit
-                    </Button>
-                )}
-                {editing && (
-                    <span
-                        style={{
-                            marginLeft: "auto",
-                            display: "inline-flex",
-                            gap: 4,
-                        }}
-                    >
-                        <Button
-                            size="small"
-                            type="text"
-                            icon={<X size={11} strokeWidth={1.75} />}
-                            onClick={cancel}
-                            style={{ height: 20, padding: "0 6px" }}
-                        >
-                            Cancel
-                        </Button>
-                        <Button
-                            size="small"
-                            type="primary"
-                            icon={<Check size={11} strokeWidth={1.75} />}
-                            onClick={commit}
-                            style={{ height: 20, padding: "0 8px" }}
-                        >
-                            Save
-                        </Button>
-                    </span>
-                )}
             </div>
 
             {editing ? (
-                <TiptapEditor
-                    content={draft}
-                    onChange={(json) => setDraft(json)}
-                    placeholder="Describe this task… **bold**, lists, links — Markdown shortcuts work."
-                    autofocus
-                    minHeight={120}
-                />
-            ) : isEmpty(description) ? (
+                rich ? (
+                    <div>
+                        <TiptapEditor
+                            value={draft}
+                            onChange={setDraft}
+                            autoFocus
+                        />
+                        <div
+                            style={{
+                                display: "flex",
+                                gap: 6,
+                                justifyContent: "flex-end",
+                                marginTop: 6,
+                            }}
+                        >
+                            <button
+                                onClick={cancel}
+                                style={ghostBtn}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={commit}
+                                style={primaryBtn}
+                            >
+                                Save
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    <Input.TextArea
+                        ref={ref}
+                        autoFocus
+                        autoSize={{ minRows: 4, maxRows: 16 }}
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        onBlur={commit}
+                        onKeyDown={(e) => {
+                            if (e.key === "Escape") cancel();
+                            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                                commit();
+                            }
+                        }}
+                        placeholder="Add a description... (Cmd+Enter to save)"
+                    />
+                )
+            ) : (
                 <div
                     onClick={() => setEditing(true)}
                     style={{
@@ -130,9 +114,12 @@ export const TaskDescription = ({
                         borderRadius: tokens.radius.md,
                         border: `1px dashed ${tokens.colors.border}`,
                         cursor: "text",
-                        color: tokens.colors.textMuted,
+                        color: description
+                            ? tokens.colors.textPrimary
+                            : tokens.colors.textMuted,
                         fontSize: tokens.typography.fontSize.sm,
                         lineHeight: 1.6,
+                        whiteSpace: rich ? "normal" : "pre-wrap",
                         background: tokens.colors.bgPage,
                         transition: "border var(--transition-base)",
                     }}
@@ -145,33 +132,37 @@ export const TaskDescription = ({
                             tokens.colors.border)
                     }
                 >
-                    Click to add a description. Use **bold**, lists, links, or
-                    @-mention teammates.
-                </div>
-            ) : (
-                <div
-                    onClick={() => setEditing(true)}
-                    style={{
-                        cursor: "text",
-                        padding: tokens.spacing[2],
-                        borderRadius: tokens.radius.md,
-                        transition: "background var(--transition-base)",
-                    }}
-                    onMouseEnter={(e) =>
-                        (e.currentTarget.style.background =
-                            tokens.colors.bgHover)
-                    }
-                    onMouseLeave={(e) =>
-                        (e.currentTarget.style.background = "transparent")
-                    }
-                >
-                    <TiptapEditor
-                        content={description}
-                        onChange={() => {}}
-                        readonly
-                    />
+                    {description ? (
+                        rich ? (
+                            <TiptapReadOnly html={description} />
+                        ) : (
+                            description
+                        )
+                    ) : (
+                        "Click to add a description."
+                    )}
                 </div>
             )}
         </div>
     );
+};
+
+const ghostBtn: React.CSSProperties = {
+    background: "transparent",
+    border: `1px solid ${tokens.colors.border}`,
+    padding: "4px 12px",
+    borderRadius: tokens.radius.sm,
+    fontSize: tokens.typography.fontSize.sm,
+    cursor: "pointer",
+};
+
+const primaryBtn: React.CSSProperties = {
+    background: tokens.colors.primary,
+    color: "#fff",
+    border: 0,
+    padding: "4px 12px",
+    borderRadius: tokens.radius.sm,
+    fontSize: tokens.typography.fontSize.sm,
+    fontWeight: 600,
+    cursor: "pointer",
 };

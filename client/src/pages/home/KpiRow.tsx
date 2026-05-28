@@ -15,11 +15,11 @@ export const KpiRow = () => {
             <div
                 style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(4, 1fr)",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
                     gap: tokens.spacing[4],
                 }}
             >
-                {[1, 2, 3, 4].map((i) => (
+                {[1, 2, 3, 4, 5, 6].map((i) => (
                     <div
                         key={i}
                         style={{
@@ -40,14 +40,16 @@ export const KpiRow = () => {
         <div
             style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
                 gap: tokens.spacing[4],
             }}
         >
             <KpiCard kpi={data.todayOrders} color={tokens.colors.primary} />
             <KpiCard kpi={data.codCollected} color={tokens.colors.success} />
             <KpiCard kpi={data.openComplaints} color={tokens.colors.danger} />
+            <KpiCard kpi={data.stuckOrders} color={tokens.colors.warning} />
             <KpiCard kpi={data.lowStock} color={tokens.colors.warning} />
+            <KpiCard kpi={data.myTasks} color={tokens.colors.primary} />
         </div>
     );
 };

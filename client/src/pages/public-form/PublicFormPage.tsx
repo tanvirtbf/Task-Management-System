@@ -217,7 +217,6 @@ const PublicFormPage = () => {
                     style={{
                         height: 4,
                         background: primaryColor,
-                        borderRadius: 999,
                         marginBottom: tokens.spacing[6],
                         marginTop: -tokens.spacing[8],
                         marginLeft: -tokens.spacing[8],
