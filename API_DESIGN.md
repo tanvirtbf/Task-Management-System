@@ -44,7 +44,11 @@ If a backend implementation matches the contract in this document, the frontend 
 28. [Webhooks (incoming integrations)](#28-webhooks-incoming)
 29. [Server-Sent Events (real-time inbox)](#29-sse-realtime)
 30. [Background jobs](#30-background-jobs)
-31. [Error code catalog](#31-error-codes)
+31. [Inventory operations (P0)](#31-inventory)
+32. [SLA management (P0)](#32-sla)
+33. [Health & diagnostics](#33-health)
+34. [Cross-cutting production essentials](#34-production)
+35. [Error code catalog](#35-error-codes)
 
 ---
 
@@ -1212,9 +1216,414 @@ Internal — invoked by cron, not by clients. Documented for ops visibility.
 
 All jobs accept a `?dry_run=true` query to log what they would do without writing. Guarded by an `X-Internal-Token` header so they can be triggered from k8s CronJobs but not from the public internet.
 
+Additional P0-related jobs:
+
+| Endpoint | Schedule | What it does |
+|---|---|---|
+| `POST /jobs/sla-breach-scan` | every 5 min | Reads `v_breached_sla`, fires `incident_alert` / `due_soon` notifications, escalates S0 bugs to on-call |
+| `POST /jobs/expiring-batches` | daily 08:00 BD | Reads `v_expiring_batches`, creates "Reorder due to expiry" tasks for items expiring < 30 days |
+| `POST /jobs/auto-reorder` | hourly | Reads `v_stock_levels`, creates Purchase Order tasks for SKUs where current_stock < reorder_level |
+| `POST /jobs/stock-level-sync` | every 15 min | Recomputes `cf_current_stock` custom-field values on Stock Master tasks from `v_stock_levels` |
+
 ---
 
-## 31. Error code catalog <a id="31-error-codes"></a>
+## 31. Inventory operations (P0 — stock batches + movements) <a id="31-inventory"></a>
+
+These endpoints expose the schema's `stock_batches` and `stock_movements` tables. Every mutation here also produces a `task_activity` row when a related task is involved, so the per-task feed shows "Decremented 3 units from LOT-A".
+
+### GET `/api/v1/inventory/batches`
+Paginated batch list.
+Query: `?sku=t-001&expiring_within_days=30&include_empty=false&cursor=…&limit=50`
+**200 OK** — paginated `StockBatch[]`.
+
+### GET `/api/v1/inventory/batches/:id`
+**200 OK** — `StockBatch`.
+
+### GET `/api/v1/inventory/batches/by-sku/:skuTaskId`
+Batches for one SKU, sorted by expiry ASC (FIFO order — the order the packing team should pick from).
+**200 OK** — `StockBatch[]`.
+
+### POST `/api/v1/inventory/batches`
+Receive a new batch. Server creates the batch row **and** a `stock_movements` row of type `receive` in one transaction.
+
+**Body**
+```json
+{
+  "sku_task_id": "t-stock-vitc-30",
+  "batch_number": "LOT-2026-A",
+  "mfg_date": "2026-01-15",
+  "expiry_date": "2026-06-15",
+  "quantity_received": 100,
+  "cost_per_unit_paisa": 55000,
+  "supplier_name": "Beauty Imports Ltd",
+  "received_via_task_id": "t-po-001",
+  "notes": "Boxes 1-2 had minor dents — accepted"
+}
+```
+**201 Created** — `StockBatch`. **409** `batch.duplicate` if `(sku_task_id, batch_number)` already exists.
+
+### PATCH `/api/v1/inventory/batches/:id`
+Correct expiry / mfg / notes / supplier_name. **Cannot** change quantity_received (immutable); use a movement instead.
+**Body** partial — `{ expiry_date?, mfg_date?, supplier_name?, notes?, cost_per_unit_paisa? }`
+**200 OK.**
+
+### GET `/api/v1/inventory/batches/expiring`
+Expiring in next N days (default 30). Drives the inventory team's daily alert.
+Query: `?days=30&include_zero_qty=false`
+**200 OK** — `[{ batch_id, sku_task_id, sku_name, batch_number, expiry_date, days_to_expiry, quantity_remaining }, …]`
+
+---
+
+### GET `/api/v1/inventory/movements`
+Append-only ledger. Newest first.
+Query: `?sku=t-001&type=sale,receive&from=2026-05-01&to=2026-05-28&cursor=…&limit=50`
+**200 OK** — paginated `StockMovement[]`.
+
+### POST `/api/v1/inventory/movements`
+Append a manual movement (sale / receive / damage / adjustment / return / reversal). For `receive`, prefer using `POST /inventory/batches` which atomically creates batch + movement.
+
+**Body**
+```json
+{
+  "sku_task_id": "t-stock-vitc-30",
+  "movement_type": "damage",
+  "quantity_change": -2,
+  "batch_id": "b-001",
+  "reason": "Dropped during sorting",
+  "related_task_id": "t-damage-042"
+}
+```
+Server validates: if `batch_id` provided, `batch.quantity_remaining + quantity_change >= 0`. Atomic transaction updates `stock_batches.quantity_remaining` + inserts the movement row.
+
+**201 Created** — `StockMovement`. **422** `stock.insufficient` if it would drive batch negative.
+
+### GET `/api/v1/inventory/movements/by-task/:taskId`
+Movements caused by a specific task (e.g., everything decremented when ORD-1042 was packed).
+**200 OK** — `StockMovement[]`.
+
+### GET `/api/v1/inventory/levels`
+Current stock per SKU from `v_stock_levels`. Use this as the source of truth for "is it in stock".
+
+Query: `?low_stock_only=true&threshold=20&cursor=…&limit=100`
+
+**200 OK**
+```json
+{
+  "data": [
+    { "sku_task_id": "t-001", "sku_name": "Vit C 30ml", "current_stock": 97, "last_movement_at": "2026-05-28T09:00:00Z" },
+    …
+  ],
+  "pagination": { "next_cursor": "…", "has_more": false }
+}
+```
+
+### GET `/api/v1/inventory/levels/:skuTaskId`
+Single SKU current stock + batch breakdown.
+**200 OK**
+```json
+{
+  "sku_task_id": "t-001",
+  "current_stock": 97,
+  "batches": [
+    { "batch_id": "b-001", "batch_number": "LOT-A", "expiry_date": "2026-06-15", "quantity_remaining": 97 }
+  ],
+  "last_movement_at": "2026-05-28T09:00:00Z"
+}
+```
+
+---
+
+## 32. SLA management (P0) <a id="32-sla"></a>
+
+Wraps `tasks.sla_due_at` + the `v_breached_sla` view.
+
+### GET `/api/v1/sla/breached`
+Tasks past their SLA window that aren't done. Powers red flags in the CS UI and the eng on-call paging job.
+
+Query: `?team=cs|engineering&severity=S0,S1`
+**200 OK** — `[{ task_id, custom_id, name, task_type_id, sla_due_at, minutes_breached, assignees: User[] }, …]`
+
+### PATCH `/api/v1/tasks/:id/sla`
+Set or clear the SLA on a task. Admins can override system-set SLAs (e.g., escalating a complaint).
+
+**Body**
+```json
+{ "sla_due_at": "2026-05-29T12:00:00Z" }
+// OR clear:
+{ "sla_due_at": null }
+```
+**200 OK** — updated `Task`.
+
+### Implicit SLA assignment
+
+The application layer sets `sla_due_at` at task-create time based on a hardcoded policy (env-overridable):
+
+| Task type / condition | SLA |
+|---|---|
+| Complaint task created | created_at + 24h |
+| Bug task, severity = S0 | created_at + 2h |
+| Bug task, severity = S1 | created_at + 24h |
+| Bug task, severity = S2 | created_at + 7d |
+| Bug task, severity = S3 | no SLA (NULL) |
+| All other task types | no SLA (NULL) |
+
+Updating `bug_severity` after creation triggers a recompute of `sla_due_at` unless the field was manually overridden.
+
+---
+
+## 33. Health & diagnostics <a id="33-health"></a>
+
+Production-essential endpoints — **not authenticated** but only reachable from internal network or behind reverse-proxy ACL.
+
+### GET `/health`
+Cheap liveness probe — no DB hit. Always returns 200 if the process is up. Used by Kubernetes `livenessProbe`.
+
+**200 OK** `{ "status": "ok", "service": "beautybooth-api", "version": "1.0.0", "uptime_seconds": 12345 }`
+
+### GET `/health/ready`
+Readiness probe — checks downstream dependencies. Used by Kubernetes `readinessProbe`.
+**200 OK**
+```json
+{
+  "status": "ready",
+  "checks": {
+    "mysql":  { "ok": true, "latency_ms": 4 },
+    "r2":     { "ok": true, "latency_ms": 38 },
+    "smtp":   { "ok": true, "latency_ms": 120 },
+    "redis":  { "ok": true, "latency_ms": 1 }
+  }
+}
+```
+**503** if any check fails — load balancer pulls instance from rotation.
+
+### GET `/health/version`
+Build info for debugging.
+**200 OK** `{ "version": "1.4.2", "build_sha": "a1b2c3d", "built_at": "2026-05-28T07:00:00Z", "node_version": "20.10.0" }`
+
+### GET `/metrics`
+Prometheus exposition format. Gated by `X-Internal-Token` header.
+
+```
+# HELP http_requests_total Number of HTTP requests
+# TYPE http_requests_total counter
+http_requests_total{method="GET",route="/tasks",status="200"} 12345
+http_request_duration_seconds_bucket{le="0.1"} 12000
+mysql_pool_connections_in_use 4
+mysql_pool_connections_max 20
+sse_connections_open 23
+background_job_runs_total{job="pathao-poll",status="success"} 192
+```
+
+Recommended metrics:
+- `http_requests_total{method,route,status}` — counter
+- `http_request_duration_seconds_bucket` — histogram
+- `mysql_pool_connections_in_use` — gauge
+- `redis_pool_connections_in_use` — gauge
+- `sse_connections_open` — gauge
+- `background_job_runs_total{job,status}` — counter
+- `background_job_duration_seconds_bucket{job}` — histogram
+- `webhook_events_total{provider,status}` — counter
+
+---
+
+## 34. Cross-cutting production essentials <a id="34-production"></a>
+
+The backend implementer needs zero decisions on these — this section is the contract.
+
+### 34.1 Global error handler
+
+**Every** request goes through a single error-handler middleware that:
+1. Generates a `request_id` (ULID) if the request didn't carry `X-Request-Id`.
+2. Maps the thrown error to the standard envelope (§1 Response — error).
+3. Logs structured JSON to stdout with the request_id, route, user_id, error code, stack trace.
+4. Strips stack traces from the response body in production; includes them only when `NODE_ENV !== 'production'`.
+
+Example (Express + Zod, single source of truth for all 4xx/5xx):
+
+```ts
+import { ZodError } from "zod";
+import { ULID } from "ulid";
+
+// Domain error class — every business error throws this
+export class AppError extends Error {
+  constructor(
+    public code: string,
+    public status: number,
+    message: string,
+    public details?: unknown,
+  ) { super(message); }
+}
+
+// Single error middleware — registered LAST
+export function errorMiddleware(err, req, res, next) {
+  const requestId = req.header("X-Request-Id") ?? ULID();
+  res.setHeader("X-Request-Id", requestId);
+
+  if (err instanceof ZodError) {
+    const details = err.issues.map(i => ({ field: i.path.join("."), issue: i.message }));
+    logger.warn({ requestId, code: "validation", path: req.path, details });
+    return res.status(422).json({
+      error: { code: "validation", message: "Validation failed", request_id: requestId, details }
+    });
+  }
+
+  if (err instanceof AppError) {
+    logger.warn({ requestId, code: err.code, status: err.status, path: req.path, user_id: req.user?.id });
+    return res.status(err.status).json({
+      error: { code: err.code, message: err.message, request_id: requestId, details: err.details }
+    });
+  }
+
+  // Unhandled — log full stack, return generic 500
+  logger.error({ requestId, path: req.path, user_id: req.user?.id, err });
+  res.status(500).json({
+    error: { code: "internal", message: "An unexpected error occurred.", request_id: requestId }
+  });
+}
+```
+
+Domain code throws `AppError` (never bare `throw new Error()`):
+```ts
+if (!task) throw new AppError("task.not_found", 404, `Task ${id} does not exist`);
+if (task.archived_at) throw new AppError("task.archived", 409, "Cannot edit archived task");
+```
+
+### 34.2 CORS
+
+Configured via env. Defaults shipped:
+
+```
+Allowed origins:
+  prod    https://app.beautybooth.com
+  staging https://staging.beautybooth.com
+  dev     http://localhost:5173 + http://localhost:5174 + http://localhost:5177
+
+Allowed methods:    GET, POST, PATCH, PUT, DELETE, OPTIONS
+Allowed headers:    Authorization, Content-Type, Idempotency-Key, X-Request-Id, If-Match, Accept-Language
+Exposed headers:    X-Request-Id, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, ETag
+Credentials:        true             (refresh-token cookie requires this)
+Max-Age:            86400            (preflight cache 1 day)
+```
+
+`/public/*` and `/webhooks/*` use **looser CORS** (allow any origin) since they're called from non-app contexts (FB intake links, courier servers).
+
+### 34.3 Security headers
+
+Set globally on every response (use `helmet` for Express or equivalent):
+
+| Header | Value | Why |
+|---|---|---|
+| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains; preload` | Force HTTPS for 1 year |
+| `X-Content-Type-Options` | `nosniff` | Block MIME sniffing |
+| `X-Frame-Options` | `DENY` | No clickjacking |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | Don't leak full URL to 3rd parties |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=()` | Lock down powerful APIs |
+| `Content-Security-Policy` | `default-src 'self'; img-src 'self' https://*.r2.cloudflarestorage.com data:; …` | XSS defense — set on frontend HTML, mirrored here for JSON-only mistakes |
+| `Cross-Origin-Resource-Policy` | `same-site` | Block cross-origin embeds |
+
+JSON responses additionally set `Content-Type: application/json; charset=utf-8`.
+
+### 34.4 Request size limits
+
+| Endpoint family | Body max | On exceed |
+|---|---|---|
+| `/api/v1/*` JSON | 1 MB | 413 `payload.too_large` |
+| `/api/v1/uploads/sign` (metadata) | 4 KB | 413 |
+| `/api/v1/public/forms/:slug/submit` | 64 KB | 413 |
+| `/webhooks/*` | 256 KB | 413 (configure per provider) |
+| Multipart upload to R2 | 25 MB | enforced by signed-URL policy (server doesn't proxy bytes) |
+
+### 34.5 Database connection pool
+
+Default config (env-overridable):
+
+```
+mysql2 pool:
+  connectionLimit:      20
+  queueLimit:            50
+  enableKeepAlive:       true
+  keepAliveInitialDelay: 30000
+  acquireTimeout:        10000
+  connectTimeout:        10000
+  decimalNumbers:        true       # money is paisa, but BIGINT can lose precision in JS
+  bigNumberStrings:      true       # internal_id BIGINT → string
+  timezone:              "+00:00"   # always UTC
+```
+
+At startup, run a `SELECT 1` ping on each pool connection. Fail fast if MySQL isn't reachable.
+
+### 34.6 Structured logging
+
+All logs are **single-line JSON** to stdout (containers / k8s `kubectl logs` ready).
+
+Required fields per log line:
+```json
+{
+  "ts": "2026-05-28T09:12:00.123Z",
+  "level": "info | warn | error | debug",
+  "request_id": "01H…",
+  "user_id": "u-001" | null,
+  "method": "POST",
+  "route": "/api/v1/tasks",
+  "status": 201,
+  "duration_ms": 47,
+  "msg": "task.created",
+  "task_id": "t-90042"
+}
+```
+
+For 5xx errors include `stack` (only in dev; redacted in prod). Use `pino` (Node) or `bunyan`. Aggregator: Loki / CloudWatch / Datadog.
+
+Log levels:
+- `error` — 5xx, unhandled exceptions, downstream failures
+- `warn` — 4xx (validation, conflict), rate-limit hits, slow queries (> 500 ms)
+- `info` — every successful request (one line), background-job runs
+- `debug` — query plans, cache hits/misses (off in prod)
+
+### 34.7 Rate limiting backend
+
+Use **Redis** (`INCR` + `EXPIRE`) for distributed rate limits (per `(user_id, bucket)` or `(ip, bucket)`).
+
+```
+KEY:  rl:{bucket}:{user_id_or_ip}
+TTL:  60 seconds
+```
+
+If Redis is down, fail **open** (allow request) and emit a warn-level log — the limiter is a safety net, not the security perimeter.
+
+### 34.8 OpenAPI generation
+
+Recommend:
+- **Zod schemas** for request/response validation
+- **zod-to-openapi** to generate the OpenAPI 3.1 spec at build time
+- Serve at `GET /api/v1/openapi.json` (no auth — public schema)
+- Serve Swagger UI at `GET /api/v1/docs` — gated by admin auth in prod
+
+Frontend can codegen types from the OpenAPI spec via `openapi-typescript`. Keep `client/src/types/` and `server/src/types/` in sync this way.
+
+### 34.9 Caching (Redis recommended)
+
+Use Redis for:
+1. **Rate limit counters** (see 34.7)
+2. **Refresh-token revocation list** (24-h TTL — same as access-token lifetime)
+3. **Idempotency-Key response cache** (24-h TTL per §1)
+4. **KPI snapshots** (5-min TTL for `/home/kpis` — these are expensive aggregations)
+5. **Session lookup** (active session validation cache)
+
+Cache keys are prefixed: `rl:`, `idem:`, `kpi:`, `sess:`. Use Redis 7+.
+
+### 34.10 Maintenance mode
+
+Single env flag `MAINTENANCE_MODE=on` causes every non-`/health/*` route to return:
+```
+503 Service Unavailable
+Retry-After: 300
+{ "error": { "code": "maintenance", "message": "Scheduled maintenance — back shortly." } }
+```
+
+---
+
+## 35. Error code catalog <a id="35-error-codes"></a>
 
 Stable string codes — frontend can switch on these. Format: `<domain>.<reason>`.
 
@@ -1248,6 +1657,16 @@ Stable string codes — frontend can switch on these. Format: `<domain>.<reason>
 | `dep.cycle` | 422 | Would create a dependency cycle |
 | `dep.self` | 422 | Task cannot depend on itself |
 | `notification.not_owner` | 403 | Cannot act on another user's notification |
+| `batch.not_found` | 404 | |
+| `batch.duplicate` | 409 | Same `(sku, batch_number)` already exists |
+| `batch.expired` | 422 | Trying to receive a batch whose expiry is in the past |
+| `batch.quantity_immutable` | 422 | Cannot change `quantity_received` after creation (use movement) |
+| `stock.insufficient` | 422 | Movement would drive batch quantity below zero |
+| `stock.invalid_movement_type` | 422 | Unknown `movement_type` value |
+| `sla.invalid_due_at` | 422 | SLA due date is in the past |
+| `inventory.sku_not_in_stock_list` | 422 | Provided SKU task is not in the Stock Master list |
+| `health.dependency_down` | 503 | Readiness check failed — see `checks` field |
+| `payload.too_large` | 413 | Body exceeded per-route limit (see §34.4) |
 | `webhook.bad_signature` | 401 | HMAC mismatch |
 | `webhook.duplicate_event` | 200 | Idempotent retry — treated as success but logged |
 | `rate.exceeded` | 429 | Per-bucket rate limit |
@@ -1613,6 +2032,59 @@ interface WorkspaceActivityEntry {
   action: string;
   context: Record<string, unknown> | null;
   created_at: string;
+}
+
+// Inventory (P0) ──────────────────────────────────────────────────
+interface StockBatch {
+  id: string;
+  workspace_id: string;
+  sku_task_id: string;
+  batch_number: string;
+  mfg_date: string | null;
+  expiry_date: string | null;
+  quantity_received: number;       // immutable after creation
+  quantity_remaining: number;       // maintained from stock_movements
+  cost_per_unit_paisa: number | null;
+  supplier_name: string | null;
+  received_via_task_id: string | null;
+  received_at: string;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+type StockMovementType =
+  | "receive" | "sale" | "return" | "damage"
+  | "adjustment" | "transfer" | "reversal";
+
+interface StockMovement {
+  id: string;
+  workspace_id: string;
+  sku_task_id: string;
+  batch_id: string | null;
+  movement_type: StockMovementType;
+  quantity_change: number;          // signed
+  reason: string | null;
+  related_task_id: string | null;
+  actor: User | null;
+  created_at: string;
+}
+
+interface StockLevel {
+  sku_task_id: string;
+  sku_name: string;
+  current_stock: number;
+  last_movement_at: string | null;
+}
+
+interface SLABreach {
+  task_id: string;
+  custom_id: string | null;
+  name: string;
+  task_type_id: string;
+  sla_due_at: string;
+  minutes_breached: number;
+  assignees: User[];
 }
 ```
 

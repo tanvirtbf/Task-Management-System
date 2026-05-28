@@ -6,7 +6,7 @@ Single source of truth for the MySQL production schema.
 
 | File          | Purpose                                                           |
 |---------------|-------------------------------------------------------------------|
-| `schema.sql`  | Full DDL — 31 tables, FK constraints, indexes, views, triggers.   |
+| `schema.sql`  | Full DDL — 33 tables, FK constraints, indexes, views, triggers.   |
 
 ## Quick install
 
@@ -23,7 +23,7 @@ mysql -u root -p beautybooth < database/schema.sql
 
 # Verify
 mysql -u root -p beautybooth -e "SHOW TABLES;"
-# Should list 31 tables.
+# Should list 33 tables.
 ```
 
 ## Design summary
@@ -35,7 +35,7 @@ mysql -u root -p beautybooth -e "SHOW TABLES;"
 - **Soft delete:** `archived_at TIMESTAMP NULL` on user-visible entities. Hard `DELETE` reserved for actual GDPR-style removals.
 - **IDs:** `VARCHAR(64)` semantic IDs matching the frontend (`sp-ops`, `l-fb-orders`, `t-90042`). High-volume tables also get an `internal_id BIGINT UNSIGNED AUTO_INCREMENT UNIQUE` for cursor pagination.
 
-## Table inventory (31)
+## Table inventory (33)
 
 ```
 Auth / Identity           (5)
@@ -56,12 +56,28 @@ Custom fields             (3)
 Engineering               (2)
   sprints, on_call_shifts
 
-Cross-cutting / domain    (5)
-  customers, forms, form_fields, form_submissions, notifications
+Domain (BD ecom)          (3)  ← P0 added for batch/expiry + audit ledger
+  customers, stock_batches, stock_movements
+
+Forms                     (3)
+  forms, form_fields, form_submissions
+
+Notifications             (1)
+  notifications
 
 Audit                     (1)
   workspace_activity
 ```
+
+### P0 features added (May 2026)
+
+| Feature | Where |
+|---|---|
+| Batch / expiry tracking for beauty products | `stock_batches` table + `idx_stock_batches_sku_expiry` (FIFO) + `v_expiring_batches` view |
+| Stock movements audit ledger | `stock_movements` table (append-only) + `v_stock_levels` view |
+| SLA breach signal for CS complaints + S0/S1 bugs | `tasks.sla_due_at` column + `idx_tasks_sla` + `v_breached_sla` view |
+| Stock ↔ Order linkage | `stock_movements.related_task_id` FK |
+| Auto-reorder (application-layer cron) | Reads `v_stock_levels`, creates PO tasks in `Purchase Orders` list |
 
 ## Key indexes (the hot paths)
 

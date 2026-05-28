@@ -70,6 +70,8 @@ DROP TABLE IF EXISTS task_dependencies;
 DROP TABLE IF EXISTS task_tags;
 DROP TABLE IF EXISTS task_watchers;
 DROP TABLE IF EXISTS task_assignees;
+DROP TABLE IF EXISTS stock_movements;
+DROP TABLE IF EXISTS stock_batches;
 DROP TABLE IF EXISTS tasks;
 DROP TABLE IF EXISTS on_call_shifts;
 DROP TABLE IF EXISTS sprints;
@@ -437,8 +439,11 @@ CREATE TABLE customers (
     CONSTRAINT ck_customers_phone CHECK (phone REGEXP '^01[3-9][0-9]{8}$'),
     INDEX idx_customers_workspace_vip  (workspace_id, vip_flag, last_order_at),
     INDEX idx_customers_phone          (phone),
-    -- Full-text search on name (BD employees search "Iqbal" not "01712...")
-    FULLTEXT INDEX ft_customers_name (name)
+    -- Full-text search on name. `WITH PARSER ngram` is critical for Bangla:
+    -- the default whitespace tokenizer doesn't index sub-word matches in
+    -- non-Latin scripts well, so "সাল" wouldn't find "সালমা" without ngram.
+    -- ngram_token_size defaults to 2 — good for Bangla compound glyphs.
+    FULLTEXT INDEX ft_customers_name (name) WITH PARSER ngram
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
 
 
@@ -474,6 +479,18 @@ CREATE TABLE tasks (
     start_date           DATE         NULL,
     due_date             DATE         NULL,
     completed_at         TIMESTAMP    NULL,
+
+    -- ─── SLA (P0 — CS complaints + engineering S0/S1 bugs) ────────────────
+    -- Set by app at create time based on task type / severity:
+    --   complaint task        → created_at + 24h
+    --   bug task severity=S0  → created_at + 2h
+    --   bug task severity=S1  → created_at + 24h
+    --   bug task severity=S2  → created_at + 7d
+    --   other                 → NULL (no SLA)
+    -- App + cron read `WHERE sla_due_at < NOW() AND completed_at IS NULL AND
+    -- archived_at IS NULL` to find breached tasks for notifications + UI flags.
+    sla_due_at           TIMESTAMP    NULL,
+    -- ──────────────────────────────────────────────────────────────────────
 
     -- Recurrence — simple per spec. cron_expression reserved for future.
     recurrence_pattern   ENUM('none','daily','weekly') NOT NULL DEFAULT 'none',
@@ -555,7 +572,11 @@ CREATE TABLE tasks (
     -- Bug-triage queries by severity
     INDEX idx_tasks_severity (bug_severity, status_id),
     -- Recurring tasks scheduler scan
-    INDEX idx_tasks_recurrence (recurrence_pattern, due_date)
+    INDEX idx_tasks_recurrence (recurrence_pattern, due_date),
+    -- SLA breach scanner: tasks whose deadline passed and aren't done.
+    -- Composite ordered so MySQL can range-scan sla_due_at and skip closed
+    -- tasks via the second column. archived_at filter is on the index too.
+    INDEX idx_tasks_sla (sla_due_at, completed_at, archived_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC
   AUTO_INCREMENT = 1;
 
@@ -639,13 +660,132 @@ CREATE TABLE task_dependencies (
         REFERENCES tasks(id) ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT fk_task_dependencies_created_by FOREIGN KEY (created_by)
         REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
-    CONSTRAINT ck_task_dependencies_no_self CHECK (task_id <> related_task_id),
+    -- NOTE: A CHECK constraint `task_id <> related_task_id` would be ideal here
+    -- but MySQL 8 forbids CHECK on columns used in cascading FKs (ER_CHECK_CONSTRAINT_REFERS).
+    -- The self-loop is rejected at INSERT time by trg_task_dependencies_no_self below,
+    -- and the application layer also validates before issuing the INSERT.
     INDEX idx_task_dependencies_related (related_task_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
 
 
 -- =============================================================================
--- 18. task_activity  (per-task audit feed shown in TaskActivitySection)
+-- 18. stock_batches  (P0 — beauty / regulated product batch + expiry tracking)
+--
+-- Every receipt of stock comes as a "batch" with its own manufacturing batch
+-- number, manufactured date and expiry date. Critical for:
+--   * BSTI / regulatory compliance on cosmetics (expiry traceability)
+--   * FIFO selection at packing time
+--   * Recall-by-batch if a supplier flags a defect
+--
+-- A batch refers to a SKU which lives as a task in the Stock Master list
+-- (sku_task_id → tasks(id)). The PO task that brought the batch in is
+-- recorded in received_via_task_id so the audit chain stays intact.
+-- =============================================================================
+CREATE TABLE stock_batches (
+    id                    VARCHAR(64)  NOT NULL,
+    workspace_id          VARCHAR(64)  NOT NULL,
+    -- The SKU task (a row in the Stock Master list).
+    sku_task_id           VARCHAR(64)  NOT NULL,
+    -- Manufacturer's batch / lot number — printed on the carton.
+    batch_number          VARCHAR(80)  NOT NULL,
+    mfg_date              DATE         NULL,
+    expiry_date           DATE         NULL,
+    -- Initial quantity received in this batch (immutable).
+    quantity_received     INT UNSIGNED NOT NULL,
+    -- Remaining quantity — maintained by the application from stock_movements,
+    -- or via the optional triggers at the bottom of this file.
+    quantity_remaining    INT NOT NULL DEFAULT 0,   -- signed so we can detect negative drift
+    -- Cost basis per unit in paisa (1/100 BDT) — used by COGS reports.
+    cost_per_unit_paisa   BIGINT UNSIGNED NULL,
+    -- Free-text supplier reference. Denormalised; full supplier table is V2.
+    supplier_name         VARCHAR(200) NULL,
+    -- The Purchase Order task that brought this batch in.
+    received_via_task_id  VARCHAR(64)  NULL,
+    received_at           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    notes                 TEXT         NULL,
+    -- (Cannot use a generated column with CURDATE() — MySQL 8 disallows
+    -- non-deterministic functions in GENERATED expressions. Use the view
+    -- `v_expiring_batches` at the bottom of this file, or compute
+    -- `expiry_date < CURDATE()` in the application layer.)
+    created_at            TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at            TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                               ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    CONSTRAINT uq_stock_batches_sku_batch
+        UNIQUE (sku_task_id, batch_number),
+    CONSTRAINT fk_stock_batches_workspace FOREIGN KEY (workspace_id)
+        REFERENCES workspaces(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_stock_batches_sku FOREIGN KEY (sku_task_id)
+        REFERENCES tasks(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT fk_stock_batches_received_via FOREIGN KEY (received_via_task_id)
+        REFERENCES tasks(id) ON DELETE SET NULL ON UPDATE CASCADE,
+    -- FIFO selection at packing time: oldest-expiry first.
+    INDEX idx_stock_batches_sku_expiry (sku_task_id, expiry_date),
+    -- Workspace-wide "expiring in next 30 days" report.
+    INDEX idx_stock_batches_expiry (workspace_id, expiry_date),
+    -- Quick PO → batches reverse lookup.
+    INDEX idx_stock_batches_received_via (received_via_task_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
+
+
+-- =============================================================================
+-- 19. stock_movements  (P0 — append-only inventory ledger)
+--
+-- Every change to inventory is a row here. Powers:
+--   * Audit trail ("how did we get to current_stock = 37?")
+--   * Stock-out detection ("ORD-1042 was confirmed but stock was 0")
+--   * Aggregation: current_stock(sku) = SUM(quantity_change) per SKU
+--   * Returns to supplier, damage write-offs, physical-count adjustments
+--
+-- Append-only. Rows are never UPDATEd or DELETEd in normal operation; if a
+-- mistake is made, a compensating row is inserted (reason="reversal").
+-- =============================================================================
+CREATE TABLE stock_movements (
+    id              VARCHAR(64)  NOT NULL,
+    -- Numeric cursor for ledger pagination.
+    internal_id     BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    workspace_id    VARCHAR(64)  NOT NULL,
+    sku_task_id     VARCHAR(64)  NOT NULL,
+    -- Optional — only set when the movement comes out of a specific batch
+    -- (e.g., FIFO sale). NULL for non-batch movements like initial counts.
+    batch_id        VARCHAR(64)  NULL,
+    movement_type   ENUM('receive','sale','return','damage','adjustment',
+                         'transfer','reversal') NOT NULL,
+    -- Signed: +receive/+return, -sale/-damage. Adjustments can be either sign.
+    quantity_change INT NOT NULL,
+    reason          VARCHAR(300) NULL,
+    -- The task that caused the movement (order task for sale, PO task for
+    -- receive, damage task for damage, return task for return).
+    related_task_id VARCHAR(64)  NULL,
+    actor_id        VARCHAR(64)  NULL,
+    created_at      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_stock_movements_internal_id (internal_id),
+    CONSTRAINT fk_stock_movements_workspace FOREIGN KEY (workspace_id)
+        REFERENCES workspaces(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_stock_movements_sku FOREIGN KEY (sku_task_id)
+        REFERENCES tasks(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT fk_stock_movements_batch FOREIGN KEY (batch_id)
+        REFERENCES stock_batches(id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_stock_movements_task FOREIGN KEY (related_task_id)
+        REFERENCES tasks(id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_stock_movements_actor FOREIGN KEY (actor_id)
+        REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,
+    -- "History for this SKU, newest first"
+    INDEX idx_stock_movements_sku_time (sku_task_id, created_at DESC),
+    -- "Movements from this order" — find what was decremented for ORD-1042
+    INDEX idx_stock_movements_task (related_task_id),
+    -- "Batch lifecycle" — every event on a single batch
+    INDEX idx_stock_movements_batch (batch_id, created_at),
+    -- Workspace-wide ledger paging by internal_id
+    INDEX idx_stock_movements_workspace_time (workspace_id, created_at DESC)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
+
+
+-- =============================================================================
+-- 20. task_activity  (per-task audit feed shown in TaskActivitySection)
 -- A row per status change, branch link, PR event, assignment etc.
 -- =============================================================================
 CREATE TABLE task_activity (
@@ -1053,6 +1193,28 @@ CREATE TABLE workspace_activity (
 
 DELIMITER $$
 
+-- Enforce "a task cannot depend on itself" — replaces the CHECK constraint we
+-- couldn't add because MySQL 8 forbids CHECK on columns used in cascading FKs.
+CREATE TRIGGER trg_task_dependencies_no_self_insert
+BEFORE INSERT ON task_dependencies
+FOR EACH ROW
+BEGIN
+    IF NEW.task_id = NEW.related_task_id THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'task_dependencies: task cannot depend on itself';
+    END IF;
+END$$
+
+CREATE TRIGGER trg_task_dependencies_no_self_update
+BEFORE UPDATE ON task_dependencies
+FOR EACH ROW
+BEGIN
+    IF NEW.task_id = NEW.related_task_id THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'task_dependencies: task cannot depend on itself';
+    END IF;
+END$$
+
 CREATE TRIGGER trg_comments_after_insert
 AFTER INSERT ON comments
 FOR EACH ROW
@@ -1186,6 +1348,41 @@ CREATE OR REPLACE VIEW v_current_on_call AS
     SELECT s.*
       FROM on_call_shifts s
      WHERE CURDATE() BETWEEN s.week_start AND s.week_end;
+
+-- Live stock levels — aggregated from the immutable movements ledger.
+-- Use this as the source of truth; the cf_current_stock custom-field value
+-- on the SKU task is a fast-read cache the app can keep in sync from this view.
+CREATE OR REPLACE VIEW v_stock_levels AS
+    SELECT sku_task_id,
+           workspace_id,
+           SUM(quantity_change) AS current_stock,
+           MAX(created_at)      AS last_movement_at
+      FROM stock_movements
+  GROUP BY workspace_id, sku_task_id;
+
+-- Batches expiring inside the next 30 days, oldest first.
+-- Used for the inventory team's "expiring soon" alert.
+CREATE OR REPLACE VIEW v_expiring_batches AS
+    SELECT b.id, b.workspace_id, b.sku_task_id, b.batch_number,
+           b.expiry_date, b.quantity_remaining,
+           DATEDIFF(b.expiry_date, CURDATE()) AS days_to_expiry
+      FROM stock_batches b
+     WHERE b.expiry_date IS NOT NULL
+       AND b.expiry_date BETWEEN CURDATE() AND CURDATE() + INTERVAL 30 DAY
+       AND b.quantity_remaining > 0
+  ORDER BY b.expiry_date ASC;
+
+-- Tasks whose SLA window passed without completion — drives the red flag in
+-- the CS team UI and the on-call paging job for engineering S0/S1 bugs.
+CREATE OR REPLACE VIEW v_breached_sla AS
+    SELECT t.id, t.workspace_id, t.primary_list_id, t.custom_id, t.name,
+           t.task_type_id, t.sla_due_at,
+           TIMESTAMPDIFF(MINUTE, t.sla_due_at, NOW()) AS minutes_breached
+      FROM tasks t
+     WHERE t.sla_due_at IS NOT NULL
+       AND t.sla_due_at < NOW()
+       AND t.completed_at IS NULL
+       AND t.archived_at IS NULL;
 
 
 -- =============================================================================
