@@ -36,15 +36,21 @@ export class TokenService {
     /**
      * Persist a session row. We store `sha256(refreshToken)` in `token_hash` so
      * the raw refresh JWT is never written to disk.
+     *
+     * Callers may supply `id` so they can mint the refresh JWT with the
+     * session id embedded BEFORE the row is inserted (login does this so the
+     * cookie value carries the same id that ends up in the row). When omitted
+     * a fresh id is generated.
      */
     async persistSession(input: {
+        id?: string;
         userId: string;
         refreshToken: string;
         userAgent?: string;
         ipAddress?: string;
     }) {
         const MS_IN_30_DAYS = 1000 * 60 * 60 * 24 * 30;
-        const id = fakeId("ses");
+        const id = input.id ?? fakeId("ses");
         const tokenHash = sha256(input.refreshToken);
 
         await this.db.insert(sessions).values({

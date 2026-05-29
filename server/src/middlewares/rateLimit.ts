@@ -19,6 +19,27 @@ const isTest = process.env.NODE_ENV === "test";
 const handler = (_req: Request, _res: unknown, next: (err: AppError) => void) =>
     next(AppError.rateLimited());
 
+// Auth-specific bucket gets its own error code per API_DESIGN.md §32 — the
+// frontend can distinguish "you've been trying to log in too fast" from
+// "you've burst the general API quota".
+//
+// Exported via `_internal` so the test suite can unit-test the handler
+// without forcibly re-enabling the limiter in test mode.
+const authRateLimitHandler = (
+    _req: Request,
+    _res: unknown,
+    next: (err: AppError) => void,
+) =>
+    next(
+        new AppError(
+            429,
+            "auth.rate_limited",
+            "Too many login attempts. Try again in a minute.",
+        ),
+    );
+
+export const _internal = { authRateLimitHandler };
+
 const noop = (_req: Request, _res: Response, next: NextFunction) => next();
 
 // `/auth/login`, `/auth/forgot-password` — 5/min/IP
@@ -30,7 +51,7 @@ export const authStrictLimiter = isTest
           standardHeaders: true,
           legacyHeaders: false,
           keyGenerator: (req: Request) => ipKeyGenerator(req.ip ?? "unknown"),
-          handler,
+          handler: authRateLimitHandler,
       });
 
 // `/api/v1/*` authenticated calls — 600/min/user (fallback to IP if no user yet)

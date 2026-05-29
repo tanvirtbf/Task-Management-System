@@ -97,7 +97,29 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
         return;
     }
 
-    // 4. Unknown — log full detail, hide internals from client
+    // 4. body-parser conventions: any error with a numeric `statusCode` in the
+    //    4xx range and `expose: true` is meant to be surfaced to the client
+    //    (e.g. malformed JSON SyntaxError). We render it as the spec envelope
+    //    using `inferHttpErrorCode` for a sensible domain code.
+    const annotated = err as { statusCode?: number; status?: number; expose?: boolean };
+    const annotatedStatus = annotated?.statusCode ?? annotated?.status;
+    if (
+        typeof annotatedStatus === "number" &&
+        annotatedStatus >= 400 &&
+        annotatedStatus < 500 &&
+        annotated?.expose === true
+    ) {
+        res.status(annotatedStatus).json(
+            buildBody(
+                req,
+                inferHttpErrorCode(annotatedStatus),
+                (err as Error)?.message ?? "Bad request",
+            ),
+        );
+        return;
+    }
+
+    // 5. Unknown — log full detail, hide internals from client
     logger.error("Unhandled error", {
         requestId: req.requestId,
         name: (err as Error)?.name,

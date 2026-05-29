@@ -8,6 +8,7 @@ import { requestLoggerMiddleware } from "./middlewares/requestLogger";
 import { apiLimiter } from "./middlewares/rateLimit";
 import { notFoundMiddleware } from "./middlewares/notFound";
 import { errorHandler } from "./middlewares/errorHandler";
+import authRouter from "./routes/auth";
 
 const app = express();
 
@@ -59,8 +60,8 @@ app.get("/health", (_req, res) => {
 const v1 = express.Router();
 v1.use(apiLimiter);
 
-// Mount feature routers here, e.g.:
-//   v1.use("/auth", authRouter);
+v1.use("/auth", authRouter);
+// Future feature routers mount the same way:
 //   v1.use("/workspaces", workspaceRouter);
 //   v1.use("/spaces", spaceRouter);
 //   …
