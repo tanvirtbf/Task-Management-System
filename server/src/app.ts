@@ -9,10 +9,6 @@ import { apiLimiter } from "./middlewares/rateLimit";
 import { notFoundMiddleware } from "./middlewares/notFound";
 import { errorHandler } from "./middlewares/errorHandler";
 
-import authRouter from "./routes/auth";
-import workspaceRouter from "./routes/workspace";
-import userRouter from "./routes/user";
-
 const app = express();
 
 // Trust the proxy in front of us (Vercel, nginx, etc.) so req.ip / Forwarded
@@ -46,17 +42,28 @@ app.use(express.static("public"));
 app.use(cookieParser(Config.COOKIE_SECRET));
 app.use(express.json({ limit: "1mb" }));
 
-// Public liveness probe (per §30 — no auth, no DB hit)
+// Public liveness probe (per API_DESIGN.md §30 — no auth, no DB hit)
 app.get("/health", (_req, res) => {
     res.json({ status: "ok", uptime: process.uptime() });
 });
 
-// All authenticated APIs sit under /api/v1 per API_DESIGN.md §1.
+// ═════════════════════════════════════════════════════════════════════════════
+// API v1 router. Every endpoint defined in API_DESIGN.md mounts here.
+//
+// Pattern for each feature: create a router under `src/routes/<resource>.ts`,
+// import it here, and mount with `v1.use("/<resource>", <resource>Router)`.
+// Each router wires up its own controller + service via dependency injection
+// (see the existing TokenService / CredentialService for reference) and
+// chains validators through the `validate` middleware.
+// ═════════════════════════════════════════════════════════════════════════════
 const v1 = express.Router();
 v1.use(apiLimiter);
-v1.use("/auth", authRouter);
-v1.use("/workspaces", workspaceRouter);
-v1.use("/users", userRouter);
+
+// Mount feature routers here, e.g.:
+//   v1.use("/auth", authRouter);
+//   v1.use("/workspaces", workspaceRouter);
+//   v1.use("/spaces", spaceRouter);
+//   …
 
 app.use("/api/v1", v1);
 

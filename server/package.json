@@ -11,7 +11,7 @@
         "format:fix": "prettier . --write",
         "lint": "eslint .",
         "lint:fix": "eslint . --fix",
-        "test": "jest --no-cache --coverage --all --runInBand",
+        "test": "jest --no-cache --coverage --all --runInBand --passWithNoTests",
         "test:watch": "jest --watch --runInBand",
         "db:generate": "drizzle-kit generate",
         "db:migrate": "tsx src/db/migrate.ts",

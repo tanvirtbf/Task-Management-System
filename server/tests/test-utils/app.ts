@@ -1,16 +1,15 @@
-import request, { type SuperTest, type Test } from "supertest";
+import request, { type Test } from "supertest";
 import type { Express } from "express";
 
 /**
  * Lazy-load the app module so test setup (env loading + DB init) runs first.
- * Returns supertest helpers — one stateless (`oneOff`) and one for full
- * cookie-bearing flows (`loggedInAgent`).
  *
  * NOTE on cookies: supertest's built-in agent has flaky cookie-jar behaviour
  * across `await` boundaries inside jest. The reliable pattern is to grab the
- * `Set-Cookie` headers from /login and forward them on every subsequent
- * request via `.set('Cookie', ...)`. The `LoggedInClient` helper below does
- * exactly that.
+ * `Set-Cookie` headers from /login (or to mint cookies directly with
+ * `TokenService` via the `makeLoggedInClient` factory) and forward them on
+ * every subsequent request via `.set('Cookie', ...)`. The `LoggedInClient`
+ * helper below does exactly that.
  */
 
 let _app: Express | undefined;
@@ -28,14 +27,17 @@ export const getApp = async (): Promise<Express> => {
 };
 
 /** Stateless request — no cookies remembered. Useful for negative tests. */
-export const oneOff = async (): Promise<SuperTest<Test>> => {
+export const oneOff = async () => {
     const app = await getApp();
-    return request(app) as unknown as SuperTest<Test>;
+    return request(app);
 };
 
 /**
- * Authenticated client wrapper. Login once, then `client.get(...)` /
- * `client.post(...)` automatically attach the access + refresh cookies.
+ * Authenticated client wrapper. Built once with the access + refresh cookie
+ * values; every method attaches those cookies to its request.
+ *
+ * Use `makeLoggedInClient` (in `factories.ts`) to build one without
+ * depending on any specific login endpoint existing yet.
  */
 export class LoggedInClient {
     constructor(
@@ -69,28 +71,3 @@ export class LoggedInClient {
         return request(this.app).delete(path).set("Cookie", this.cookieValuesOnly());
     }
 }
-
-/**
- * Log a fixture user in and return a `LoggedInClient` that carries the
- * resulting access + refresh cookies on every subsequent request.
- */
-export const loggedInAgent = async (
-    email: string,
-    password: string,
-): Promise<LoggedInClient> => {
-    const app = await getApp();
-    const res = await request(app)
-        .post("/api/v1/auth/login")
-        .send({ email, password });
-    if (res.status !== 200) {
-        throw new Error(
-            `loggedInAgent: login failed for ${email} (status ${res.status}, body ${JSON.stringify(res.body)})`,
-        );
-    }
-    const setCookie = res.get("set-cookie");
-    if (!setCookie) {
-        throw new Error("loggedInAgent: login succeeded but no Set-Cookie header");
-    }
-    const header = Array.isArray(setCookie) ? setCookie.join(",") : setCookie;
-    return new LoggedInClient(app, header);
-};

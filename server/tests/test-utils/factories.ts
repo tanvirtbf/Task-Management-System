@@ -1,8 +1,11 @@
 import bcrypt from "bcrypt";
 import { getDb } from "../../src/db/client";
 import { workspaces, users, sessions } from "../../src/db/schema";
+import { TokenService } from "../../src/services/TokenService";
 import { fakeId, sha256 } from "../../src/utils";
 import type { Role } from "../../src/constants";
+import { LoggedInClient } from "./app";
+import { getApp } from "./app";
 
 /**
  * Factories for the common rows tests need. Each factory inserts a real row
@@ -92,4 +95,52 @@ export const makeSession = async (input: MakeSessionInput) => {
         revokedAt: input.revokedAt ?? null,
     });
     return { id, tokenHash };
+};
+
+/**
+ * Create an authenticated `LoggedInClient` without going through any login
+ * endpoint. The flow uses `TokenService` directly to mint a real access +
+ * refresh token, persists a real session row, and wraps the cookies in the
+ * same `LoggedInClient` test helper that endpoint-based tests use.
+ *
+ * Use this in tests for any endpoint that requires `authenticate` middleware
+ * — it stays valid even before /auth/login is rebuilt.
+ *
+ *   const u = await makeUser({ role: "admin" });
+ *   const client = await makeLoggedInClient(u);
+ *   const res = await client.get("/api/v1/spaces");
+ */
+export const makeLoggedInClient = async (user: {
+    id: string;
+    workspaceId: string;
+    role: Role;
+}): Promise<LoggedInClient> => {
+    const app = await getApp();
+    const db = getDb();
+    const tokens = new TokenService(db);
+
+    const payload = {
+        sub: user.id,
+        role: user.role,
+        workspaceId: user.workspaceId,
+    };
+
+    // Persist a real session row and bind the refresh token's `id` claim to it.
+    const tempRefresh = tokens.generateRefreshToken({ ...payload, id: "pending" });
+    const session = await tokens.persistSession({
+        userId: user.id,
+        refreshToken: tempRefresh,
+    });
+    const refreshToken = tokens.generateRefreshToken({
+        ...payload,
+        id: session.id,
+    });
+    const accessToken = tokens.generateAccessToken(payload);
+
+    const cookieHeader = [
+        `accessToken=${accessToken}; Path=/; HttpOnly`,
+        `refreshToken=${refreshToken}; Path=/; HttpOnly`,
+    ].join(",");
+
+    return new LoggedInClient(app, cookieHeader);
 };
