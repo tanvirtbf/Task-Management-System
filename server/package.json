@@ -18,6 +18,8 @@
         "db:push": "drizzle-kit push",
         "db:studio": "drizzle-kit studio",
         "db:drop": "drizzle-kit drop",
+        "db:setup": "tsx src/db/setup.ts",
+        "db:setup:fresh": "tsx src/db/setup.ts --drop",
         "db:seed": "tsx src/db/seed.ts"
     },
     "author": "",
@@ -55,6 +57,7 @@
         "drizzle-orm": "^0.36.0",
         "express": "^4.19.2",
         "express-jwt": "^8.4.1",
+        "express-rate-limit": "^8.5.2",
         "express-validator": "^7.0.1",
         "http-errors": "^2.0.0",
         "jsonwebtoken": "^9.0.2",

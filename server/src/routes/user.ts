@@ -8,6 +8,7 @@ import { getDb } from "../db/client";
 import logger from "../config/logger";
 import createUserValidator from "../validators/create-user-validator";
 import updateUserValidator from "../validators/update-user-validator";
+import { validate } from "../middlewares/validate";
 import { CreateUserRequest, UpdateUserRequest } from "../types";
 
 const router = express.Router();
@@ -20,6 +21,7 @@ router.post(
     authenticate,
     canAccess([Roles.OWNER, Roles.ADMIN]),
     createUserValidator,
+    validate,
     (req: CreateUserRequest, res: Response, next: NextFunction) =>
         userController.create(req, res, next),
 );
@@ -29,6 +31,7 @@ router.patch(
     authenticate,
     canAccess([Roles.OWNER, Roles.ADMIN]),
     updateUserValidator,
+    validate,
     (req: UpdateUserRequest, res: Response, next: NextFunction) =>
         userController.update(req, res, next),
 );

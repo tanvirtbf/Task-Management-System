@@ -7,6 +7,7 @@ import authenticate from "../middlewares/authenticate";
 import { canAccess } from "../middlewares/canAccess";
 import { Roles } from "../constants";
 import workspaceValidator from "../validators/workspace-validator";
+import { validate } from "../middlewares/validate";
 import { CreateWorkspaceRequest } from "../types";
 
 const router = express.Router();
@@ -19,6 +20,7 @@ router.post(
     authenticate,
     canAccess([Roles.OWNER, Roles.ADMIN]),
     workspaceValidator,
+    validate,
     (req: CreateWorkspaceRequest, res: Response, next: NextFunction) =>
         workspaceController.create(req, res, next),
 );
@@ -28,6 +30,7 @@ router.patch(
     authenticate,
     canAccess([Roles.OWNER, Roles.ADMIN]),
     workspaceValidator,
+    validate,
     (req: CreateWorkspaceRequest, res: Response, next: NextFunction) =>
         workspaceController.update(req, res, next),
 );

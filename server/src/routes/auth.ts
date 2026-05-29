@@ -11,6 +11,8 @@ import authenticate from "../middlewares/authenticate";
 import { AuthRequest } from "../types";
 import validateRefreshToken from "../middlewares/validateRefreshToken";
 import parseRefreshToken from "../middlewares/parseRefreshToken";
+import { validate } from "../middlewares/validate";
+import { authStrictLimiter } from "../middlewares/rateLimit";
 
 const router = express.Router();
 
@@ -27,20 +29,24 @@ const authController = new AuthController(
 
 router.post(
     "/register",
+    authStrictLimiter,
     registerValidator,
+    validate,
     (req: Request, res: Response, next: NextFunction) =>
         authController.register(req, res, next),
 );
 
 router.post(
     "/login",
+    authStrictLimiter,
     loginValidator,
+    validate,
     (req: Request, res: Response, next: NextFunction) =>
         authController.login(req, res, next),
 );
 
 router.get(
-    "/self",
+    "/me",
     authenticate,
     (req: Request, res: Response, next: NextFunction) =>
         authController.self(req as AuthRequest, res, next),

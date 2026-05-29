@@ -1,9 +1,8 @@
 import { NextFunction, Request, Response } from "express";
 import { Logger } from "winston";
-import { validationResult } from "express-validator";
-import createHttpError from "http-errors";
 
 import { WorkspaceService } from "../services/WorkspaceService";
+import { AppError } from "../errors";
 import { CreateWorkspaceRequest } from "../types";
 
 export class WorkspaceController {
@@ -17,13 +16,11 @@ export class WorkspaceController {
         res: Response,
         next: NextFunction,
     ) {
-        const result = validationResult(req);
-        if (!result.isEmpty()) {
-            return res.status(400).json({ errors: result.array() });
-        }
-
         const { name, logoUrl, timezone, defaultLocale } = req.body;
-        this.logger.debug("Request for creating a workspace", { name });
+        this.logger.debug("workspace.create", {
+            requestId: req.requestId,
+            name,
+        });
 
         try {
             const workspace = await this.workspaceService.create({
@@ -33,9 +30,12 @@ export class WorkspaceController {
                 defaultLocale,
             });
             if (!workspace) {
-                return next(createHttpError(500, "Workspace creation failed"));
+                return next(AppError.internal("Workspace creation failed"));
             }
-            this.logger.info("Workspace has been created", { id: workspace.id });
+            this.logger.info("workspace.create.ok", {
+                requestId: req.requestId,
+                workspaceId: workspace.id,
+            });
             res.status(201).json({ id: workspace.id });
         } catch (err) {
             next(err);
@@ -47,19 +47,22 @@ export class WorkspaceController {
         res: Response,
         next: NextFunction,
     ) {
-        const result = validationResult(req);
-        if (!result.isEmpty()) {
-            return res.status(400).json({ errors: result.array() });
-        }
-
         const { id } = req.params;
         if (!id) {
-            return next(createHttpError(400, "Workspace id required"));
+            return next(
+                AppError.badRequest(
+                    "workspace.id_required",
+                    "Workspace id required",
+                ),
+            );
         }
 
         try {
             await this.workspaceService.update(id, req.body);
-            this.logger.info("Workspace has been updated", { id });
+            this.logger.info("workspace.update.ok", {
+                requestId: req.requestId,
+                workspaceId: id,
+            });
             res.json({ id });
         } catch (err) {
             next(err);
@@ -78,13 +81,23 @@ export class WorkspaceController {
     async getOne(req: Request, res: Response, next: NextFunction) {
         const { id } = req.params;
         if (!id) {
-            return next(createHttpError(400, "Workspace id required"));
+            return next(
+                AppError.badRequest(
+                    "workspace.id_required",
+                    "Workspace id required",
+                ),
+            );
         }
 
         try {
             const workspace = await this.workspaceService.getById(id);
             if (!workspace) {
-                return next(createHttpError(404, "Workspace does not exist"));
+                return next(
+                    AppError.notFound(
+                        "workspace.not_found",
+                        "Workspace does not exist",
+                    ),
+                );
             }
             res.json(workspace);
         } catch (err) {
@@ -95,12 +108,20 @@ export class WorkspaceController {
     async destroy(req: Request, res: Response, next: NextFunction) {
         const { id } = req.params;
         if (!id) {
-            return next(createHttpError(400, "Workspace id required"));
+            return next(
+                AppError.badRequest(
+                    "workspace.id_required",
+                    "Workspace id required",
+                ),
+            );
         }
 
         try {
             await this.workspaceService.deleteById(id);
-            this.logger.info("Workspace has been deleted", { id });
+            this.logger.info("workspace.delete.ok", {
+                requestId: req.requestId,
+                workspaceId: id,
+            });
             res.json({ id });
         } catch (err) {
             next(err);

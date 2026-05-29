@@ -1,13 +1,12 @@
 import { NextFunction, Response } from "express";
 import { JwtPayload } from "jsonwebtoken";
 import { Logger } from "winston";
-import { validationResult } from "express-validator";
-import createHttpError from "http-errors";
 
 import { AuthRequest, LoginRequest, RegisterUserRequest } from "../types";
 import { UserService } from "../services/UserService";
 import { TokenService } from "../services/TokenService";
 import { CredentialService } from "../services/CredentialService";
+import { AppError } from "../errors";
 import { Roles } from "../constants";
 
 export class AuthController {
@@ -23,23 +22,21 @@ export class AuthController {
         res: Response,
         next: NextFunction,
     ) {
-        const result = validationResult(req);
-        if (!result.isEmpty()) {
-            return res.status(400).json({ errors: result.array() });
-        }
-
         const { firstName, lastName, email, password, workspaceId } = req.body;
 
-        this.logger.debug("New request to register a user", {
+        this.logger.debug("auth.register", {
+            requestId: req.requestId,
             firstName,
             lastName,
             email,
-            password: "******",
         });
 
         if (!workspaceId) {
             return next(
-                createHttpError(400, "workspaceId is required for registration"),
+                AppError.badRequest(
+                    "workspace.required",
+                    "workspaceId is required for registration",
+                ),
             );
         }
 
@@ -53,9 +50,12 @@ export class AuthController {
                 workspaceId,
             });
             if (!user) {
-                return next(createHttpError(500, "User creation failed"));
+                return next(AppError.internal("User creation failed"));
             }
-            this.logger.info("User has been registered", { id: user.id });
+            this.logger.info("auth.register.ok", {
+                requestId: req.requestId,
+                userId: user.id,
+            });
 
             await this.issueTokens(res, {
                 userId: user.id,
@@ -72,23 +72,18 @@ export class AuthController {
     }
 
     async login(req: LoginRequest, res: Response, next: NextFunction) {
-        const result = validationResult(req);
-        if (!result.isEmpty()) {
-            return res.status(400).json({ errors: result.array() });
-        }
-
         const { email, password } = req.body;
 
-        this.logger.debug("New request to login a user", {
-            email,
-            password: "******",
-        });
+        this.logger.debug("auth.login", { requestId: req.requestId, email });
 
         try {
             const user = await this.userService.findByEmailWithPassword(email);
             if (!user) {
                 return next(
-                    createHttpError(400, "Email or password does not match"),
+                    AppError.badRequest(
+                        "auth.invalid_credentials",
+                        "Email or password does not match",
+                    ),
                 );
             }
 
@@ -98,7 +93,10 @@ export class AuthController {
             );
             if (!passwordMatch) {
                 return next(
-                    createHttpError(400, "Email or password does not match"),
+                    AppError.badRequest(
+                        "auth.invalid_credentials",
+                        "Email or password does not match",
+                    ),
                 );
             }
 
@@ -111,12 +109,16 @@ export class AuthController {
             });
 
             void this.userService.touchLastLogin(user.id).catch((err) => {
-                this.logger.warn("Failed to touch lastLoginAt", {
+                this.logger.warn("auth.touch_last_login.fail", {
+                    requestId: req.requestId,
                     error: err instanceof Error ? err.message : err,
                 });
             });
 
-            this.logger.info("User has been logged in", { id: user.id });
+            this.logger.info("auth.login.ok", {
+                requestId: req.requestId,
+                userId: user.id,
+            });
             res.json({ id: user.id });
         } catch (err) {
             next(err);
@@ -127,7 +129,7 @@ export class AuthController {
         try {
             const user = await this.userService.findById(req.auth.sub);
             if (!user) {
-                return next(createHttpError(404, "User not found"));
+                return next(AppError.notFound("user.not_found", "User not found"));
             }
             res.json(user);
         } catch (err) {
@@ -140,7 +142,10 @@ export class AuthController {
             const user = await this.userService.findById(req.auth.sub);
             if (!user) {
                 return next(
-                    createHttpError(400, "User with the token could not find"),
+                    AppError.unauthorized(
+                        "auth.user_missing",
+                        "User with the token could not be found",
+                    ),
                 );
             }
 
@@ -157,7 +162,10 @@ export class AuthController {
                 ipAddress: req.ip,
             });
 
-            this.logger.info("User refreshed token", { id: user.id });
+            this.logger.info("auth.refresh.ok", {
+                requestId: req.requestId,
+                userId: user.id,
+            });
             res.json({ id: user.id });
         } catch (err) {
             next(err);
@@ -168,9 +176,15 @@ export class AuthController {
         try {
             if (req.auth.id) {
                 await this.tokenService.revokeSession(req.auth.id);
-                this.logger.info("Session has been revoked", { id: req.auth.id });
+                this.logger.info("auth.logout.session_revoked", {
+                    requestId: req.requestId,
+                    sessionId: req.auth.id,
+                });
             }
-            this.logger.info("User has been logged out", { id: req.auth.sub });
+            this.logger.info("auth.logout.ok", {
+                requestId: req.requestId,
+                userId: req.auth.sub,
+            });
 
             res.clearCookie("accessToken");
             res.clearCookie("refreshToken");
@@ -198,11 +212,6 @@ export class AuthController {
         };
         const accessToken = this.tokenService.generateAccessToken(accessPayload);
 
-        // Issue refresh: persist session first to get an ID we can embed.
-        // We sign a placeholder that we then update — simpler: generate ID via
-        // fakeId, then sign the token referencing it, then insert the row with
-        // sha256(token). To keep TokenService self-contained we just persist a
-        // dummy and rotate.
         const tempToken = this.tokenService.generateRefreshToken({
             ...accessPayload,
             id: "pending",

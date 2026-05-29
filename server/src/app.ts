@@ -1,10 +1,13 @@
-import express, { NextFunction, Request, Response } from "express";
+import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
-import { HttpError } from "http-errors";
 
-import logger from "./config/logger";
 import { Config } from "./config";
+import { requestIdMiddleware } from "./middlewares/requestId";
+import { requestLoggerMiddleware } from "./middlewares/requestLogger";
+import { apiLimiter } from "./middlewares/rateLimit";
+import { notFoundMiddleware } from "./middlewares/notFound";
+import { errorHandler } from "./middlewares/errorHandler";
 
 import authRouter from "./routes/auth";
 import workspaceRouter from "./routes/workspace";
@@ -12,38 +15,53 @@ import userRouter from "./routes/user";
 
 const app = express();
 
+// Trust the proxy in front of us (Vercel, nginx, etc.) so req.ip / Forwarded
+// headers resolve to the real client address.
+app.set("trust proxy", 1);
+
+// Order matters: request-id MUST come first so every later middleware,
+// including the error handler, sees the same id.
+app.use(requestIdMiddleware);
+app.use(requestLoggerMiddleware);
+
+// CORS — allow the frontend(s) defined in .env. `FRONTEND_URL` is the dev
+// app; `CORS_ALLOWED_ORIGINS` is a comma-separated production list.
+const corsOrigins: string[] = [];
+if (Config.FRONTEND_URL) corsOrigins.push(Config.FRONTEND_URL);
+if (Config.CORS_ALLOWED_ORIGINS) {
+    corsOrigins.push(
+        ...Config.CORS_ALLOWED_ORIGINS.split(",").map((s) => s.trim()).filter(
+            Boolean,
+        ),
+    );
+}
 app.use(
     cors({
-        origin: [Config.CLIENT_URL || "http://localhost:5173"],
+        origin: corsOrigins.length > 0 ? corsOrigins : true,
         credentials: true,
     }),
 );
+
 app.use(express.static("public"));
-app.use(cookieParser());
-app.use(express.json());
+app.use(cookieParser(Config.COOKIE_SECRET));
+app.use(express.json({ limit: "1mb" }));
 
-app.get("/", async (_req, res) => {
-    res.send("Welcome to Task Management Server");
+// Public liveness probe (per §30 — no auth, no DB hit)
+app.get("/health", (_req, res) => {
+    res.json({ status: "ok", uptime: process.uptime() });
 });
 
-app.use("/auth", authRouter);
-app.use("/workspaces", workspaceRouter);
-app.use("/users", userRouter);
+// All authenticated APIs sit under /api/v1 per API_DESIGN.md §1.
+const v1 = express.Router();
+v1.use(apiLimiter);
+v1.use("/auth", authRouter);
+v1.use("/workspaces", workspaceRouter);
+v1.use("/users", userRouter);
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-app.use((err: HttpError, req: Request, res: Response, _next: NextFunction) => {
-    logger.error(err.message);
-    const statusCode = err.statusCode || err.status || 500;
-    res.status(statusCode).json({
-        errors: [
-            {
-                type: err.name,
-                msg: err.message,
-                path: "",
-                location: "",
-            },
-        ],
-    });
-});
+app.use("/api/v1", v1);
+
+// 404 (envelope-formatted) + global error handler MUST be the last two.
+app.use(notFoundMiddleware);
+app.use(errorHandler);
 
 export default app;
