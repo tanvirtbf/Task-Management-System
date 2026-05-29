@@ -78,6 +78,34 @@ export class UsersRepo {
     }
 
     /**
+     * Lookup by primary key. Returns the same shape as `findByEmail` so the
+     * auth flow can rebuild a fresh JWT payload (role, workspaceId, status)
+     * during refresh-token rotation without trusting the claims in the
+     * incoming cookie.
+     */
+    async findById(userId: string): Promise<UserRecord | null> {
+        const [row] = await this.db
+            .select({
+                id: users.id,
+                workspaceId: users.workspaceId,
+                firstName: users.firstName,
+                lastName: users.lastName,
+                email: users.email,
+                passwordHash: users.passwordHash,
+                role: users.role,
+                avatarUrl: users.avatarUrl,
+                status: users.status,
+                timezone: users.timezone,
+                lastLoginAt: users.lastLoginAt,
+                createdAt: users.createdAt,
+            })
+            .from(users)
+            .where(eq(users.id, userId))
+            .limit(1);
+        return row ?? null;
+    }
+
+    /**
      * Bump `last_login_at` to NOW(). Best-effort: callers fire-and-forget so
      * a transient DB hiccup does not prevent a successful login from
      * returning to the user.

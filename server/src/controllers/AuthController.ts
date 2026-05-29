@@ -1,7 +1,7 @@
 import type { NextFunction, Response } from "express";
 import type { Logger } from "winston";
 import { AuthService } from "../services/AuthService";
-import type { LoginRequest } from "../types/auth";
+import type { LoginRequest, RefreshRequest } from "../types/auth";
 import type { UserRecord } from "../repositories/UsersRepo";
 
 /**
@@ -69,13 +69,7 @@ export class AuthController {
                 ipAddress: req.ip,
             });
 
-            res.cookie(REFRESH_COOKIE_NAME, result.refreshToken, {
-                httpOnly: true,
-                secure: process.env.NODE_ENV === "prod",
-                sameSite: "strict",
-                path: REFRESH_COOKIE_PATH,
-                maxAge: REFRESH_COOKIE_MAX_AGE_MS,
-            });
+            this.setRefreshCookie(res, result.refreshToken);
 
             this.logger.info("auth.login.ok", {
                 requestId: req.requestId,
@@ -90,5 +84,55 @@ export class AuthController {
         } catch (err) {
             next(err);
         }
+    }
+
+    async refresh(req: RefreshRequest, res: Response, next: NextFunction) {
+        try {
+            const rawCookie: unknown = req.cookies?.[REFRESH_COOKIE_NAME];
+            const cookie =
+                typeof rawCookie === "string" ? rawCookie : undefined;
+
+            this.logger.debug("auth.refresh.attempt", {
+                requestId: req.requestId,
+                hasCookie: Boolean(cookie),
+            });
+
+            const result = await this.authService.refresh({
+                refreshCookie: cookie,
+                userAgent: req.headers["user-agent"],
+                ipAddress: req.ip,
+            });
+
+            this.setRefreshCookie(res, result.refreshToken);
+
+            this.logger.info("auth.refresh.ok", {
+                requestId: req.requestId,
+                userId: result.user.id,
+                sessionId: result.sessionId,
+            });
+
+            res.status(200).json({
+                access_token: result.accessToken,
+                expires_in: ACCESS_TOKEN_TTL_SECONDS,
+                user: toWireUser(result.user),
+            });
+        } catch (err) {
+            next(err);
+        }
+    }
+
+    /**
+     * Set the `bb_refresh` cookie with the attributes mandated by
+     * API_DESIGN.md §2. Shared by login and refresh so the contract stays in
+     * exactly one place.
+     */
+    private setRefreshCookie(res: Response, refreshToken: string) {
+        res.cookie(REFRESH_COOKIE_NAME, refreshToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "prod",
+            sameSite: "strict",
+            path: REFRESH_COOKIE_PATH,
+            maxAge: REFRESH_COOKIE_MAX_AGE_MS,
+        });
     }
 }

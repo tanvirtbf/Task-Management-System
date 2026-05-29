@@ -16,3 +16,10 @@ export interface LoginRequestBody {
 export interface LoginRequest extends Request {
     body: LoginRequestBody;
 }
+
+/**
+ * The refresh endpoint takes no body fields — the `bb_refresh` cookie is the
+ * sole input. Aliased to `Request` for typing parallelism with `LoginRequest`
+ * so future readers see the intentional empty body.
+ */
+export type RefreshRequest = Request;

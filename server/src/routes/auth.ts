@@ -13,7 +13,7 @@ import logger from "../config/logger";
 import { authStrictLimiter } from "../middlewares/rateLimit";
 import { validate } from "../middlewares/validate";
 import { loginValidator } from "../validators/auth";
-import type { LoginRequest } from "../types/auth";
+import type { LoginRequest, RefreshRequest } from "../types/auth";
 
 const router = express.Router();
 
@@ -35,6 +35,15 @@ router.post(
     validate,
     (req: Request, res: Response, next: NextFunction) =>
         authController.login(req as LoginRequest, res, next),
+);
+
+// ─── POST /api/v1/auth/refresh ───────────────────────────────────────────────
+// Public — reads the `bb_refresh` cookie. The v1-level `apiLimiter` (600/min
+// /IP) already covers it; no per-endpoint validator (the cookie is the input).
+router.post(
+    "/refresh",
+    (req: Request, res: Response, next: NextFunction) =>
+        authController.refresh(req as RefreshRequest, res, next),
 );
 
 export default router;
