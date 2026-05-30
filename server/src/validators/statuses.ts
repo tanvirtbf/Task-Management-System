@@ -132,3 +132,46 @@ export const updateStatusValidator = checkSchema({
         },
     },
 });
+
+/**
+ * `DELETE /api/v1/statuses/:id`.
+ *
+ * Validates only the `:id` path param (no body). The service resolves the id
+ * within the caller's workspace and applies the `in_use` / `last_in_group`
+ * guards.
+ */
+export const deleteStatusValidator = checkSchema({
+    id: {
+        in: ["params"],
+        trim: true,
+        notEmpty: {
+            errorMessage: "id is required",
+        },
+        isLength: {
+            options: { max: 64 },
+            errorMessage: "id is too long (max 64 chars)",
+        },
+    },
+});
+
+/**
+ * `PATCH /api/v1/lists/:listId/statuses/reorder`.
+ *
+ * Validates only the `:listId` path param. The request body is a bare top-level
+ * JSON array (`[{ id, position }, …]`), which `checkSchema` cannot validate
+ * cleanly (it targets named body fields) — so the array's structure is validated
+ * in `StatusesController.reorder` and surfaced as `422 validation.failed`.
+ */
+export const reorderStatusesValidator = checkSchema({
+    listId: {
+        in: ["params"],
+        trim: true,
+        notEmpty: {
+            errorMessage: "listId is required",
+        },
+        isLength: {
+            options: { max: 64 },
+            errorMessage: "listId is too long (max 64 chars)",
+        },
+    },
+});

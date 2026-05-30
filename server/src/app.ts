@@ -17,6 +17,10 @@ import statusesRouter from "./routes/statuses";
 import tagsRouter from "./routes/tags";
 import listsRouter from "./routes/lists";
 import tasksRouter from "./routes/tasks";
+import taskDependenciesRouter from "./routes/taskDependencies";
+import customFieldsRouter from "./routes/customFields";
+import formsRouter from "./routes/forms";
+import attachmentsRouter from "./routes/attachments";
 
 const app = express();
 
@@ -82,6 +86,27 @@ v1.use(statusesRouter);
 // root: its endpoints span the `/spaces/:spaceId/lists` and (later) `/lists`
 // prefixes.
 v1.use(listsRouter);
+// §12 Task dependencies — declares full paths (`/tasks/:id/dependencies`,
+// `/task-dependencies`, `/task-dependencies/:id`) spanning the `/tasks` and
+// `/task-dependencies` prefixes, so it mounts at the v1 root. Registered BEFORE
+// the `/tasks` mount so its 2-segment `GET /tasks/:id/dependencies` resolves
+// ahead of the tasks router's `/:id` routes.
+v1.use(taskDependenciesRouter);
+// §17 Custom fields — declares full paths spanning `/custom-fields`,
+// `/lists/:listId/custom-fields`, and `/tasks/:id/custom-fields/:fieldId`, so it
+// mounts at the v1 root BEFORE `/tasks` (its multi-segment task value routes
+// resolve ahead of the tasks router's `/:id` routes).
+v1.use(customFieldsRouter);
+// §18 Forms — declares full paths spanning `/forms`, `/lists/:listId/forms`,
+// `/form-fields/:id`, and the public `/public/forms/:slug/submit`, so it mounts
+// at the v1 root BEFORE `/tasks` (its multi-segment `/forms/:id/...` and
+// `/lists/:listId/forms` routes resolve ahead of any `/:id` catch-alls).
+v1.use(formsRouter);
+// §16 Attachments — declares full paths spanning `/uploads/sign`,
+// `/attachments/:id/*`, and `/tasks/:id/attachments`, so it mounts at the v1
+// root BEFORE `/tasks` (its 2-segment `GET /tasks/:id/attachments` resolves
+// ahead of the tasks router's `/:id` routes).
+v1.use(attachmentsRouter);
 // §11 Task membership — assignees / watchers / tags under the `/tasks` prefix.
 v1.use("/tasks", tasksRouter);
 // Future feature routers mount the same way:

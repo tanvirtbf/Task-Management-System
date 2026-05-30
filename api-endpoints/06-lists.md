@@ -8,14 +8,14 @@
 
 | # | Method | Path | Purpose | Auth | Size | Status |
 |---|---|---|---|---|---|---|
-| 1 | GET | `/api/v1/spaces/:spaceId/lists` | Lists in one space | 🔐 | S | ☐ |
-| 2 | GET | `/api/v1/lists` | Lists across the whole workspace | 🔐 | S | ☐ |
-| 3 | GET | `/api/v1/lists/:id` | Read a single list | 🔐 | S | ☐ |
-| 4 | POST | `/api/v1/lists` | Create a new list in a space | 👑 | M | ☐ |
-| 5 | PATCH | `/api/v1/lists/:id` | Update name / description / icon / color / default task type | 👑 | S | ☐ |
-| 6 | POST | `/api/v1/lists/:id/archive` | Soft-delete | 👑 | S | ☐ |
-| 7 | POST | `/api/v1/lists/:id/unarchive` | Reverse #6 | 👑 | S | ☐ |
-| 8 | DELETE | `/api/v1/lists/:id` | Hard-delete (must be archived + empty) | 🛡️ | M | ☐ |
+| 1 | GET | `/api/v1/spaces/:spaceId/lists` | Lists in one space | 🔐 | S | ✅ |
+| 2 | GET | `/api/v1/lists` | Lists across the whole workspace | 🔐 | S | ✅ |
+| 3 | GET | `/api/v1/lists/:id` | Read a single list | 🔐 | S | ✅ |
+| 4 | POST | `/api/v1/lists` | Create a new list in a space | 👑 | M | ✅ |
+| 5 | PATCH | `/api/v1/lists/:id` | Update name / description / icon / color / default task type | 👑 | S | ✅ |
+| 6 | POST | `/api/v1/lists/:id/archive` | Soft-delete | 👑 | S | ✅ |
+| 7 | POST | `/api/v1/lists/:id/unarchive` | Reverse #6 | 👑 | S | ✅ |
+| 8 | DELETE | `/api/v1/lists/:id` | Hard-delete (must be archived + empty) | 🛡️ | M | ✅ |
 
 ## Dependencies
 

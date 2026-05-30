@@ -6,6 +6,7 @@ import { TasksRepo } from "../repositories/TasksRepo";
 import { TaskMembershipRepo } from "../repositories/TaskMembershipRepo";
 import { TaskActivityRepo } from "../repositories/TaskActivityRepo";
 import { NotificationsRepo } from "../repositories/NotificationsRepo";
+import { TagsRepo } from "../repositories/TagsRepo";
 
 export interface AddAssigneesInput {
     taskId: string;
@@ -45,6 +46,37 @@ export interface WatchSelfResult {
     watched: number;
 }
 
+export interface UnwatchSelfResult {
+    /** 1 when a watch was removed, 0 on an idempotent no-op. */
+    unwatched: number;
+}
+
+export interface AddTagsInput {
+    taskId: string;
+    workspaceId: string;
+    actorId: string;
+    /** Deduped, trimmed list of candidate tag ids (validated upstream). */
+    tagIds: string[];
+}
+
+export interface AddTagsResult {
+    /** How many tags were newly applied (0 on an idempotent no-op). */
+    added: number;
+}
+
+export interface RemoveTagInput {
+    taskId: string;
+    workspaceId: string;
+    actorId: string;
+    /** The tag to remove. */
+    tagId: string;
+}
+
+export interface RemoveTagResult {
+    /** 1 when a tag was removed, 0 on an idempotent no-op. */
+    removed: number;
+}
+
 const NOTIFICATION_TITLE_MAX = 300; // notifications.title VARCHAR(300)
 const ASSIGNED_TITLE_PREFIX = "You were assigned to ";
 
@@ -56,6 +88,7 @@ export class TaskMembershipService {
         private users: UsersRepo,
         private activity: TaskActivityRepo,
         private notifications: NotificationsRepo,
+        private tags: TagsRepo,
     ) {}
 
     /**
@@ -255,6 +288,163 @@ export class TaskMembershipService {
 
         const inserted = await this.membership.addWatcher(taskId, userId);
         return { watched: inserted ? 1 : 0 };
+    }
+
+    /**
+     * Unsubscribe the caller from watching a task (§11). Self-only — the watcher
+     * id comes from `req.auth.sub`. The mirror of `watchSelf`: a personal
+     * subscription change, so it writes NO task_activity, fires NO notification,
+     * and does NOT bump the task ETag. Idempotent — un-watching a task you are
+     * not watching is a no-op. One delete; no transaction or row lock, since
+     * there is a single write and no compound side effect to serialize. The
+     * archived-task guard mirrors `watchSelf` for symmetry.
+     */
+    async unwatchSelf(input: WatchSelfInput): Promise<UnwatchSelfResult> {
+        const { taskId, workspaceId, userId } = input;
+
+        const task = await this.tasks.findByIdInWorkspace(taskId, workspaceId);
+        if (!task) {
+            throw AppError.notFound(
+                "task.not_found",
+                `Task ${taskId} does not exist`,
+            );
+        }
+        if (task.archivedAt) {
+            throw AppError.conflict(
+                "task.archived",
+                "Cannot modify an archived task",
+            );
+        }
+
+        const removed = await this.membership.removeWatcher(taskId, userId);
+        return { unwatched: removed ? 1 : 0 };
+    }
+
+    /**
+     * Apply one or more tags to a task (§11).
+     *
+     * Idempotent: re-applying an already-applied tag writes nothing, logs no
+     * activity, and does not bump the task ETag. Every candidate tag must exist
+     * in the caller's workspace — the whole request is rejected (422
+     * `task.invalid_tag`) if any id is foreign/missing, so there are no partial
+     * writes and a cross-tenant tag id is indistinguishable from a missing one.
+     * A tag change IS a change to the task's shared state, so it follows the
+     * full transactional template (lock → diff → junction write → `tag_added`
+     * activity → ETag bump). No notification — there is no `tagged` type.
+     */
+    async addTags(input: AddTagsInput): Promise<AddTagsResult> {
+        const { taskId, workspaceId, actorId, tagIds } = input;
+
+        const task = await this.tasks.findByIdInWorkspace(taskId, workspaceId);
+        if (!task) {
+            throw AppError.notFound(
+                "task.not_found",
+                `Task ${taskId} does not exist`,
+            );
+        }
+        if (task.archivedAt) {
+            throw AppError.conflict(
+                "task.archived",
+                "Cannot modify an archived task",
+            );
+        }
+
+        const validIds = await this.tags.findIdsInWorkspace(
+            tagIds,
+            workspaceId,
+        );
+        const invalid = tagIds.filter((id) => !validIds.has(id));
+        if (invalid.length > 0) {
+            const details: ErrorDetail[] = invalid.map((id) => ({
+                field: "tag_ids",
+                issue: `${id} does not exist in this workspace`,
+            }));
+            throw AppError.unprocessable(
+                "task.invalid_tag",
+                "One or more tags do not exist in this workspace",
+                details,
+            );
+        }
+
+        return this.db.transaction(async (tx) => {
+            await this.tasks.lockById(taskId, tx);
+
+            const existing = new Set(
+                await this.membership.getTagIds(taskId, tx),
+            );
+            const newIds = tagIds.filter((id) => !existing.has(id));
+            if (newIds.length === 0) {
+                return { added: 0 };
+            }
+
+            await this.membership.addTags(taskId, newIds, tx);
+            await this.activity.recordMany(
+                newIds.map((tagId) => ({
+                    taskId,
+                    actorId,
+                    action: "tag_added",
+                    context: { tag_id: tagId },
+                })),
+                tx,
+            );
+            await this.tasks.touchUpdatedAt(taskId, tx);
+
+            return { added: newIds.length };
+        });
+    }
+
+    /**
+     * Remove a single tag from a task (§11).
+     *
+     * Idempotent: removing a tag that is not applied (or does not exist / is
+     * foreign-workspace) is the same no-op — never a membership oracle, writes
+     * nothing, logs no activity, no ETag bump. A real removal follows the full
+     * template (lock → diff → junction delete → `tag_removed` activity → ETag
+     * bump). No notification.
+     */
+    async removeTag(input: RemoveTagInput): Promise<RemoveTagResult> {
+        const { taskId, workspaceId, actorId, tagId } = input;
+
+        const task = await this.tasks.findByIdInWorkspace(taskId, workspaceId);
+        if (!task) {
+            throw AppError.notFound(
+                "task.not_found",
+                `Task ${taskId} does not exist`,
+            );
+        }
+        if (task.archivedAt) {
+            throw AppError.conflict(
+                "task.archived",
+                "Cannot modify an archived task",
+            );
+        }
+
+        return this.db.transaction(async (tx) => {
+            await this.tasks.lockById(taskId, tx);
+
+            const existing = new Set(
+                await this.membership.getTagIds(taskId, tx),
+            );
+            if (!existing.has(tagId)) {
+                return { removed: 0 };
+            }
+
+            await this.membership.removeTags(taskId, [tagId], tx);
+            await this.activity.recordMany(
+                [
+                    {
+                        taskId,
+                        actorId,
+                        action: "tag_removed",
+                        context: { tag_id: tagId },
+                    },
+                ],
+                tx,
+            );
+            await this.tasks.touchUpdatedAt(taskId, tx);
+
+            return { removed: 1 };
+        });
     }
 
     /** Build the `assigned` notification title, capped to the column width. */

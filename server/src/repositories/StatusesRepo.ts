@@ -1,8 +1,31 @@
-import { and, asc, eq, max } from "drizzle-orm";
+import { and, asc, count, eq, max } from "drizzle-orm";
 import { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../db/schema";
-import { lists, spaces, statuses, type Status } from "../db/schema";
+import { lists, spaces, statuses, tasks, type Status } from "../db/schema";
+import { fakeId } from "../utils";
 import type { DbExecutor } from "./types";
+
+/**
+ * The default status workflow seeded into every new list by `POST /api/v1/lists`
+ * (API_DESIGN.md §6: "Server seeds 5 default statuses"). The five names are
+ * fixed by the spec; the `status_group` mapping and colours are chosen here so a
+ * fresh list opens with a sensible Kanban flow:
+ *   To Do → not_started, In Progress / In Review → active, Done → done,
+ *   Closed → closed.
+ * `position` is the array index, so the workflow renders left-to-right in this
+ * order. Exported so tests assert against the single source of truth.
+ */
+export const DEFAULT_LIST_STATUSES: ReadonlyArray<{
+    name: string;
+    statusGroup: Status["statusGroup"];
+    color: string;
+}> = [
+    { name: "To Do", statusGroup: "not_started", color: "#94A3B8" },
+    { name: "In Progress", statusGroup: "active", color: "#3B82F6" },
+    { name: "In Review", statusGroup: "active", color: "#A855F7" },
+    { name: "Done", statusGroup: "done", color: "#22C55E" },
+    { name: "Closed", statusGroup: "closed", color: "#64748B" },
+];
 
 /**
  * Data access for the `statuses` table. Returns exactly the columns the wire
@@ -32,8 +55,11 @@ export class StatusesRepo {
      * The filter + sort are covered by `idx_statuses_scope (scope_type,
      * scope_id, position)`.
      */
-    async listByList(listId: string): Promise<StatusRecord[]> {
-        return this.db
+    async listByList(
+        listId: string,
+        executor: DbExecutor = this.db,
+    ): Promise<StatusRecord[]> {
+        return executor
             .select({
                 id: statuses.id,
                 scopeType: statuses.scopeType,
@@ -133,6 +159,30 @@ export class StatusesRepo {
     }
 
     /**
+     * Seed a brand-new list's default status workflow (`DEFAULT_LIST_STATUSES`)
+     * in one multi-row insert. Always called inside the `POST /lists` create
+     * transaction (pass `exec`) so the list and its statuses are atomic — a
+     * failure rolls back both. The list is freshly created in the same tx, so
+     * there is no pre-existing status to collide with `uq_statuses_scope_name`.
+     */
+    async seedDefaultsForList(
+        listId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<void> {
+        await exec.insert(statuses).values(
+            DEFAULT_LIST_STATUSES.map((s, i) => ({
+                id: fakeId("st"),
+                scopeType: "list" as const,
+                scopeId: listId,
+                name: s.name,
+                color: s.color,
+                statusGroup: s.statusGroup,
+                position: i,
+            })),
+        );
+    }
+
+    /**
      * Resolve a status by id *within a workspace*. A status reaches a workspace
      * only through its list's space (`statuses.scope_id → lists.id →
      * lists.space_id → spaces.workspace_id`), so this joins that chain and
@@ -220,5 +270,119 @@ export class StatusesRepo {
             .where(eq(statuses.id, statusId))
             .limit(1);
         return row ?? null;
+    }
+
+    /**
+     * How many tasks currently point at this status (`tasks.status_id`). Used by
+     * `DELETE /statuses/:id` to refuse with `409 status.in_use` before attempting
+     * the delete. Served by `idx_tasks_status_updated (status_id, updated_at)`, so
+     * it never scans the `tasks` heap. A status reaches a workspace only through
+     * its list, and `tasks.status_id` is FK-bound to that same status, so an
+     * in-workspace `statusId` cannot match a foreign workspace's tasks.
+     */
+    async countTasksUsingStatus(
+        statusId: string,
+        executor: DbExecutor = this.db,
+    ): Promise<number> {
+        const [row] = await executor
+            .select({ value: count() })
+            .from(tasks)
+            .where(eq(tasks.statusId, statusId));
+        return row?.value ?? 0;
+    }
+
+    /**
+     * Lock and return the ids of every list-scoped status sharing one
+     * `status_group` within a list, taking a `FOR UPDATE` row lock on each.
+     *
+     * `DELETE /statuses/:id` calls this inside its transaction so concurrent
+     * deletes of statuses in the SAME group serialize: the second deleter blocks
+     * until the first commits, then re-counts under the lock. That makes the
+     * "is this the last status of its group?" guard (`422 status.last_in_group`)
+     * race-safe — two parallel deletes can never both pass it and empty the group.
+     * The returned ids let the caller confirm the target row still exists under
+     * the lock. Pinned to `scope_type = 'list'` (V1 statuses are list-scoped).
+     */
+    async lockGroupStatusIds(
+        scopeId: string,
+        statusGroup: Status["statusGroup"],
+        executor: DbExecutor = this.db,
+    ): Promise<string[]> {
+        const rows = await executor
+            .select({ id: statuses.id })
+            .from(statuses)
+            .where(
+                and(
+                    eq(statuses.scopeType, "list"),
+                    eq(statuses.scopeId, scopeId),
+                    eq(statuses.statusGroup, statusGroup),
+                ),
+            )
+            .for("update");
+        return rows.map((r) => r.id);
+    }
+
+    /**
+     * Delete a status by its primary key, returning the affected-row count. Zero
+     * means the row was already gone (e.g. a concurrent delete won the race) — the
+     * caller renders that as `404 status.not_found`. The write is keyed on the PK
+     * alone, so callers MUST have resolved the id within the workspace first.
+     *
+     * If a task still references the status, the `fk_tasks_status` `ON DELETE
+     * RESTRICT` constraint rejects the delete with a mysql2 `ER_ROW_IS_REFERENCED_2`
+     * — the race-safe backstop for the caller's `countTasksUsingStatus` pre-check,
+     * translated by the service into `409 status.in_use`.
+     */
+    async deleteById(
+        statusId: string,
+        executor: DbExecutor = this.db,
+    ): Promise<number> {
+        const [result] = await executor
+            .delete(statuses)
+            .where(eq(statuses.id, statusId));
+        return result.affectedRows;
+    }
+
+    /**
+     * Lock and return the ids of every list-scoped status in a list, taking a
+     * `FOR UPDATE` row lock on each. `PATCH /lists/:listId/statuses/reorder` calls
+     * this inside its transaction so concurrent reorders of the SAME list
+     * serialize, and so the membership check ("does every body id belong to this
+     * list?") is race-safe against a concurrent delete. Pinned to
+     * `scope_type = 'list'`; covered by `idx_statuses_scope`.
+     */
+    async lockListStatusIds(
+        listId: string,
+        executor: DbExecutor = this.db,
+    ): Promise<string[]> {
+        const rows = await executor
+            .select({ id: statuses.id })
+            .from(statuses)
+            .where(
+                and(
+                    eq(statuses.scopeType, "list"),
+                    eq(statuses.scopeId, listId),
+                ),
+            )
+            .for("update");
+        return rows.map((r) => r.id);
+    }
+
+    /**
+     * Set a single status's `position`. Used by the reorder endpoint, once per
+     * supplied `{ id, position }` pair, inside the same transaction. `updated_at`
+     * auto-bumps via the column's `ON UPDATE`. The caller MUST have confirmed the
+     * id belongs to the target list under the reorder lock first — the write is
+     * keyed on the PK alone.
+     */
+    async updatePosition(
+        statusId: string,
+        position: number,
+        executor: DbExecutor = this.db,
+    ): Promise<void> {
+        await executor
+            .update(statuses)
+            .set({ position })
+            .where(eq(statuses.id, statusId));
     }
 }

@@ -206,12 +206,25 @@ export class TasksService {
     }
 }
 
-/** Tasks pagination window: default 50, max 200, min 1 (API_DESIGN.md §1). */
-const clampLimit = (raw?: number): number => {
-    if (raw === undefined) return DEFAULT_LIMIT;
-    if (raw < 1) return 1;
-    if (raw > MAX_LIMIT) return MAX_LIMIT;
-    return Math.floor(raw);
+/**
+ * Tasks pagination window: default 50, max 200, min 1 (API_DESIGN.md §1).
+ *
+ * Defensive against a non-scalar `limit`: a repeated query key (`?limit=1&limit=2`)
+ * survives `isInt`/`toInt` validation as an ARRAY, which would coerce to `NaN`
+ * here — and Drizzle renders `.limit(NaN)` as *no* `LIMIT` clause, dumping the
+ * whole result set unpaginated. Normalise an array to its last element and fall
+ * back to the default for anything non-finite.
+ */
+const clampLimit = (raw: unknown): number => {
+    const candidate: unknown = Array.isArray(raw)
+        ? (raw as unknown[])[raw.length - 1]
+        : raw;
+    if (candidate === undefined || candidate === null) return DEFAULT_LIMIT;
+    const n = Number(candidate);
+    if (!Number.isFinite(n)) return DEFAULT_LIMIT;
+    if (n < 1) return 1;
+    if (n > MAX_LIMIT) return MAX_LIMIT;
+    return Math.floor(n);
 };
 
 // Opaque cursor codec, kept local to the service (mirrors `UserService` — the

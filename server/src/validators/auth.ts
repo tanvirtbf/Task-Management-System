@@ -9,6 +9,13 @@ import { checkSchema } from "express-validator";
 export const loginValidator = checkSchema({
     email: {
         in: ["body"],
+        // Reject non-string types (array / number / object) BEFORE the `trim`
+        // sanitizer can coerce them into a string that would slip past isEmail
+        // — e.g. `["a@b.com"].toString() === "a@b.com"`. Declared first so it
+        // sees the raw value.
+        isString: {
+            errorMessage: "Email must be a string",
+        },
         trim: true,
         notEmpty: {
             errorMessage: "Email is required",
@@ -86,6 +93,13 @@ export const resetPasswordValidator = checkSchema({
 export const forgotPasswordValidator = checkSchema({
     email: {
         in: ["body"],
+        // Reject non-string types (array / number / object) BEFORE the `trim`
+        // sanitizer can coerce them into a string that would slip past isEmail
+        // — e.g. `["a@b.com"].toString() === "a@b.com"`. Declared first so it
+        // sees the raw value.
+        isString: {
+            errorMessage: "Email must be a string",
+        },
         trim: true,
         notEmpty: {
             errorMessage: "Email is required",

@@ -11,13 +11,27 @@ import { getPool } from "../../src/db/client";
  *
  * Unlike the statuses suite, this one DOES reset between tests: its pagination
  * fixtures reuse fixed primary ids (`u-000`…) that would collide on re-insert
- * without a wipe. It truncates ONLY the four tables this suite writes — never
- * all 31 — so the reset stays fast and avoids the server-wide metadata-lock
- * stall that a TRUNCATE-all triggers under concurrent load.
+ * without a wipe. It truncates ONLY the tables this suite writes — never all 31
+ * — so the reset stays fast and avoids the server-wide metadata-lock stall that
+ * a TRUNCATE-all triggers under concurrent load.
+ *
+ * The list MUST cover every table any §4 endpoint writes, or rows leak across
+ * tests and make them order-dependent: `invitations` (POST /users/invite) and
+ * `password_reset_tokens` (POST /users/:id/reset-password) are easy to forget
+ * because the invite/reset suites reuse a fixed email per test — without a wipe
+ * those rows accumulate and break count/identity assertions. FK checks are
+ * disabled around the loop, so truncation order is irrelevant.
  */
 jest.setTimeout(30000);
 
-const TABLES = ["sessions", "users", "workspace_activity", "workspaces"];
+const TABLES = [
+    "sessions",
+    "password_reset_tokens",
+    "invitations",
+    "users",
+    "workspace_activity",
+    "workspaces",
+];
 
 beforeAll(async () => {
     await connectTestDb();

@@ -741,6 +741,12 @@ CREATE TABLE attachments (
     uploaded_by   VARCHAR(64)  NOT NULL,
     uploaded_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted_at    TIMESTAMP    NULL,
+    -- §16 three-step upload flow: the row is created 'pending' at /uploads/sign,
+    -- then flips to 'complete' at /attachments/:id/finalize once an R2 HEAD
+    -- confirms the object landed. The attachments_count triggers count only
+    -- 'complete', non-deleted rows, so a signed-but-unfinalised row never inflates
+    -- the counter (and the hourly janitor sweeps rows still 'pending' after 1h).
+    upload_status ENUM('pending','complete') NOT NULL DEFAULT 'pending',
 
     PRIMARY KEY (id),
     CONSTRAINT fk_attachments_task FOREIGN KEY (task_id)
@@ -1114,11 +1120,14 @@ BEGIN
      WHERE id = OLD.task_id;
 END$$
 
+-- A row "counts" toward tasks.attachments_count only when it is finalised
+-- (upload_status='complete') AND not soft-deleted (deleted_at IS NULL). A
+-- 'pending' sign-time row therefore does NOT count until /finalize flips it.
 CREATE TRIGGER trg_attachments_after_insert
 AFTER INSERT ON attachments
 FOR EACH ROW
 BEGIN
-    IF NEW.deleted_at IS NULL THEN
+    IF NEW.deleted_at IS NULL AND NEW.upload_status = 'complete' THEN
         UPDATE tasks
            SET attachments_count = attachments_count + 1
          WHERE id = NEW.task_id;
@@ -1129,13 +1138,18 @@ CREATE TRIGGER trg_attachments_after_update
 AFTER UPDATE ON attachments
 FOR EACH ROW
 BEGIN
-    IF OLD.deleted_at IS NULL AND NEW.deleted_at IS NOT NULL THEN
-        UPDATE tasks
-           SET attachments_count = GREATEST(attachments_count - 1, 0)
-         WHERE id = NEW.task_id;
-    ELSEIF OLD.deleted_at IS NOT NULL AND NEW.deleted_at IS NULL THEN
+    -- Increment when the row crosses from not-counted to counted
+    -- (e.g. pending→complete at finalize, or an undelete that restores a
+    -- complete row); decrement on the reverse (soft-delete of a complete row).
+    IF (OLD.deleted_at IS NOT NULL OR OLD.upload_status <> 'complete')
+       AND (NEW.deleted_at IS NULL AND NEW.upload_status = 'complete') THEN
         UPDATE tasks
            SET attachments_count = attachments_count + 1
+         WHERE id = NEW.task_id;
+    ELSEIF (OLD.deleted_at IS NULL AND OLD.upload_status = 'complete')
+       AND (NEW.deleted_at IS NOT NULL OR NEW.upload_status <> 'complete') THEN
+        UPDATE tasks
+           SET attachments_count = GREATEST(attachments_count - 1, 0)
          WHERE id = NEW.task_id;
     END IF;
 END$$

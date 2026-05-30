@@ -15,6 +15,7 @@ import { validate } from "../middlewares/validate";
 import { Roles } from "../constants";
 import {
     createTaskTypeValidator,
+    deleteTaskTypeValidator,
     updateTaskTypeValidator,
 } from "../validators/taskTypes";
 import type { AuthRequest } from "../types";
@@ -76,6 +77,22 @@ router.patch(
     validate,
     (req: Request, res: Response, next: NextFunction) =>
         taskTypeController.update(req as UpdateTaskTypeRequest, res, next),
+);
+
+// ─── DELETE /api/v1/task-types/:id ───────────────────────────────────────────
+// 👑 Owner/admin only. `canAccess` runs before validation so a member is
+// rejected (403) without their target being inspected. Refuses with 403
+// `task_type.system` for a seeded system type and 409 `task_type.in_use` when a
+// task or list still references it; otherwise deletes the row + writes a
+// `workspace_activity` "deleted" row in one transaction and returns 204.
+router.delete(
+    "/:id",
+    authenticate,
+    canAccess([Roles.OWNER, Roles.ADMIN]),
+    deleteTaskTypeValidator,
+    validate,
+    (req: Request, res: Response, next: NextFunction) =>
+        taskTypeController.remove(req as AuthRequest, res, next),
 );
 
 export default router;

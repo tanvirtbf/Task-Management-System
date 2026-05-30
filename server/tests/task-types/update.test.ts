@@ -234,7 +234,11 @@ describe("PATCH /api/v1/task-types/:id", () => {
             ["color not hex", { color: "red" }],
             ["color is 3-digit shorthand", { color: "#fff" }],
             ["icon too long (65)", { icon: "x".repeat(65) }],
+            ["icon not a string (number)", { icon: 123 }],
+            ["icon not a string (boolean)", { icon: true }],
             ["description too long (301)", { description: "x".repeat(301) }],
+            ["description not a string (number)", { description: 123 }],
+            ["description not a string (boolean)", { description: true }],
             ["is_dev_type not boolean", { is_dev_type: "yes" }],
             ["is_milestone_type not boolean", { is_milestone_type: 1 }],
         ];

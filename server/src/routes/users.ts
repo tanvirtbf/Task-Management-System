@@ -9,6 +9,8 @@ import { UsersRepo } from "../repositories/UsersRepo";
 import { InvitationsRepo } from "../repositories/InvitationsRepo";
 import { WorkspaceActivityRepo } from "../repositories/WorkspaceActivityRepo";
 import { MailService } from "../services/MailService";
+import { TokenService } from "../services/TokenService";
+import { PasswordResetTokensRepo } from "../repositories/PasswordResetTokensRepo";
 import { getDb } from "../db/client";
 import logger from "../config/logger";
 import authenticate from "../middlewares/authenticate";
@@ -18,10 +20,16 @@ import {
     listUsersValidator,
     getUserValidator,
     inviteUserValidator,
+    patchUserValidator,
+    changeRoleValidator,
 } from "../validators/users";
 import { Roles } from "../constants";
 import type { AuthRequest } from "../types";
-import type { InviteUserRequest } from "../types/users";
+import type {
+    InviteUserRequest,
+    UpdateUserRequest,
+    ChangeRoleRequest,
+} from "../types/users";
 
 const router = express.Router();
 
@@ -33,12 +41,16 @@ const usersRepo = new UsersRepo(db);
 const invitationsRepo = new InvitationsRepo(db);
 const workspaceActivityRepo = new WorkspaceActivityRepo(db);
 const mailService = new MailService(logger);
+const tokenService = new TokenService(db);
+const passwordResetTokensRepo = new PasswordResetTokensRepo(db);
 const userService = new UserService(
     db,
     usersRepo,
     invitationsRepo,
     workspaceActivityRepo,
     mailService,
+    tokenService,
+    passwordResetTokensRepo,
     logger,
 );
 const userController = new UserController(userService, logger);
@@ -86,6 +98,82 @@ router.get(
     validate,
     (req: Request, res: Response, next: NextFunction) =>
         userController.get(req as AuthRequest, res, next),
+);
+
+// ─── PATCH /api/v1/users/:id/role ──────────────────────────────────────────
+// 👑 admin/owner. Chain order encodes the spec's status precedence:
+// `authenticate` (401) → `canAccess` (403 `auth.forbidden`) → validation (422,
+// where `role: "owner"` is rejected). The row-level rules (the owner's role is
+// immutable here; a caller cannot change their own role) are enforced in the
+// service as 403s. Declared before `PATCH /:id` so the more specific two-segment
+// path is registered first (defensive — the segment counts already differ).
+router.patch(
+    "/:id/role",
+    authenticate,
+    canAccess([Roles.OWNER, Roles.ADMIN]),
+    changeRoleValidator,
+    validate,
+    (req: Request, res: Response, next: NextFunction) =>
+        userController.changeRole(req as ChangeRoleRequest, res, next),
+);
+
+// ─── PATCH /api/v1/users/:id ───────────────────────────────────────────────
+// 🔐 self / 👑 admin. Deliberately NO `canAccess`: a member may edit their OWN
+// profile, so the rule is row-dependent ("self OR owner/admin") and enforced in
+// the service — a member editing someone else → 403 `user.forbidden_edit`; a
+// cross-workspace id → 404 `user.not_found`. Partial body: any of first_name,
+// last_name, email, timezone, avatar_url. `role` / `status` are not accepted, so
+// a profile edit can never escalate privilege or lifecycle.
+router.patch(
+    "/:id",
+    authenticate,
+    patchUserValidator,
+    validate,
+    (req: Request, res: Response, next: NextFunction) =>
+        userController.update(req as UpdateUserRequest, res, next),
+);
+
+// ─── POST /api/v1/users/:id/deactivate ─────────────────────────────────────
+// 👑 admin/owner. `authenticate` (401) → `canAccess` (403) → id-param validation
+// (422). Reuses `getUserValidator` (a pure user-id param check). The row rules
+// (owner cannot be deactivated; cannot deactivate self) are 403s in the service,
+// which also flips `status` and revokes every refresh session in one
+// transaction. Returns 204.
+router.post(
+    "/:id/deactivate",
+    authenticate,
+    canAccess([Roles.OWNER, Roles.ADMIN]),
+    getUserValidator,
+    validate,
+    (req: Request, res: Response, next: NextFunction) =>
+        userController.deactivate(req as AuthRequest, res, next),
+);
+
+// ─── POST /api/v1/users/:id/reactivate ─────────────────────────────────────
+// 👑 admin/owner. The inverse of deactivate. Same chain + `getUserValidator`.
+// Row rules (cannot reactivate self; a pending invite is not reactivatable) are
+// enforced in the service. Returns 204.
+router.post(
+    "/:id/reactivate",
+    authenticate,
+    canAccess([Roles.OWNER, Roles.ADMIN]),
+    getUserValidator,
+    validate,
+    (req: Request, res: Response, next: NextFunction) =>
+        userController.reactivate(req as AuthRequest, res, next),
+);
+
+// ─── POST /api/v1/users/:id/reset-password ─────────────────────────────────
+// 👑 admin/owner. Same chain + `getUserValidator`. The active-only rule and the
+// §2 forgot-password token mint + email live in the service. Returns 202.
+router.post(
+    "/:id/reset-password",
+    authenticate,
+    canAccess([Roles.OWNER, Roles.ADMIN]),
+    getUserValidator,
+    validate,
+    (req: Request, res: Response, next: NextFunction) =>
+        userController.resetPassword(req as AuthRequest, res, next),
 );
 
 export default router;

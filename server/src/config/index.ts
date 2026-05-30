@@ -47,6 +47,14 @@ const {
     CORS_ALLOWED_ORIGINS,
 
     INTERNAL_JOB_TOKEN,
+
+    // Cloudflare R2 (S3-compatible object storage for §16 attachments).
+    CLOUDFLARE_ACCOUNT_ID,
+    CLOUDFLARE_R2_ACCESS_KEY,
+    CLOUDFLARE_R2_SECRET_KEY,
+    CLOUDFLARE_R2_BUCKET,
+    CLOUDFLARE_R2_PUBLIC_URL,
+    R2_SIGNED_URL_TTL,
 } = process.env;
 
 export const Config = {
@@ -83,4 +91,14 @@ export const Config = {
     CORS_ALLOWED_ORIGINS,
 
     INTERNAL_JOB_TOKEN,
+
+    // Cloudflare R2 — consumed by R2Service. Absent in `.env.test`, which is
+    // how the attachment suite runs with zero network (R2Service falls back to
+    // its deterministic test transport).
+    CLOUDFLARE_ACCOUNT_ID,
+    CLOUDFLARE_R2_ACCESS_KEY,
+    CLOUDFLARE_R2_SECRET_KEY,
+    CLOUDFLARE_R2_BUCKET,
+    CLOUDFLARE_R2_PUBLIC_URL,
+    R2_SIGNED_URL_TTL,
 };

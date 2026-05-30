@@ -8,10 +8,10 @@
 
 | # | Method | Path | Purpose | Auth | Size | Status |
 |---|---|---|---|---|---|---|
-| 1 | GET | `/api/v1/tags` | List all tags in the workspace | 🔐 | S | ☐ |
-| 2 | POST | `/api/v1/tags` | Create a new tag | 👑 | S | ☐ |
-| 3 | PATCH | `/api/v1/tags/:id` | Update name / color | 👑 | S | ☐ |
-| 4 | DELETE | `/api/v1/tags/:id` | Delete a tag — also removes from any task that had it | 👑 | M | ☐ |
+| 1 | GET | `/api/v1/tags` | List all tags in the workspace | 🔐 | S | ✅ |
+| 2 | POST | `/api/v1/tags` | Create a new tag | 👑 | S | ✅ |
+| 3 | PATCH | `/api/v1/tags/:id` | Update name / color | 👑 | S | ✅ |
+| 4 | DELETE | `/api/v1/tags/:id` | Delete a tag — also removes from any task that had it | 👑 | M | ✅ |
 
 ## Dependencies
 

@@ -7,6 +7,7 @@ import {
     exists,
     gt,
     inArray,
+    isNotNull,
     isNull,
     like,
     or,
@@ -172,6 +173,182 @@ export class TasksRepo {
     }
 
     /**
+     * Next per-list `task_number` (MAX+1 over `primary_list_id`). `task_number`
+     * has no DB default / no trigger — it is app-allocated, scoped per list by
+     * `uq_tasks_list_number (primary_list_id, task_number)`. That unique index is
+     * the race-safe backstop: two concurrent creates in the same list can read
+     * the same MAX, the loser trips ER_DUP_ENTRY, and the service recomputes +
+     * retries. Pass `exec` to read inside the create transaction.
+     */
+    async nextTaskNumber(
+        listId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<number> {
+        const [row] = await exec
+            .select({
+                max: sql<number>`COALESCE(MAX(${tasks.taskNumber}), 0)`,
+            })
+            .from(tasks)
+            .where(eq(tasks.primaryListId, listId));
+        return Number(row?.max ?? 0) + 1;
+    }
+
+    /**
+     * Insert a `tasks` row. The service supplies the explicit, whitelisted
+     * column set (`id`, `workspaceId`, `primaryListId`, `taskNumber`, `statusId`,
+     * `taskTypeId`, `name`, …); `internal_id` auto-increments and the counter
+     * columns (`subtasks_count`, `comments_count`, …) keep their `0` default —
+     * their triggers own them, the app never writes them. NOTE: never insert with
+     * `parentTaskId` set — the AFTER INSERT counter trigger UPDATEs `tasks` and
+     * MySQL rejects that (error 1442); set the parent via a follow-up UPDATE.
+     * Takes an optional `exec` so the insert composes in the create transaction.
+     */
+    async insert(
+        values: typeof tasks.$inferInsert,
+        exec: DbExecutor = this.db,
+    ): Promise<void> {
+        await exec.insert(tasks).values(values);
+    }
+
+    /**
+     * Set `parent_task_id` (+ `nesting_depth`) on an already-inserted row. Split
+     * from `insert` to dodge the error-1442 trigger trap: an AFTER UPDATE that
+     * does not change `status_id` leaves the subtask-counter trigger's inner
+     * UPDATE un-fired, so this UPDATE is safe (the parent's `subtasks_count` is
+     * not auto-incremented — a known pre-existing schema-trigger limitation).
+     */
+    async setParent(
+        taskId: string,
+        parentTaskId: string,
+        nestingDepth: number,
+        exec: DbExecutor = this.db,
+    ): Promise<void> {
+        await exec
+            .update(tasks)
+            .set({ parentTaskId, nestingDepth })
+            .where(eq(tasks.id, taskId));
+    }
+
+    /**
+     * Apply a partial column update by primary key (#5 PATCH / #10 bulk). Only
+     * the supplied (whitelisted) columns are written; `updated_at` auto-bumps via
+     * `onUpdateNow` (the ETag). NEVER pass a counter column or `parent_task_id`
+     * here (the latter would fire the error-1442 trigger if status also changed —
+     * use `setParent` with status untouched). Takes an optional `exec`.
+     */
+    async update(
+        taskId: string,
+        patch: Partial<typeof tasks.$inferInsert>,
+        exec: DbExecutor = this.db,
+    ): Promise<void> {
+        await exec.update(tasks).set(patch).where(eq(tasks.id, taskId));
+    }
+
+    /**
+     * Set / clear `archived_at` with an `archived_at IS NULL` (archive) or
+     * `IS NOT NULL` (unarchive) guard so the conditional UPDATE is race-safe and
+     * idempotent: it returns `true` only when the row actually transitioned
+     * (affectedRows === 1), gating the audit write so a no-op or a concurrent
+     * double-archive writes exactly one activity row. Mirrors `ListsRepo.archive`.
+     */
+    async archive(taskId: string, exec: DbExecutor = this.db): Promise<boolean> {
+        const [res] = await exec
+            .update(tasks)
+            .set({ archivedAt: new Date() })
+            .where(and(eq(tasks.id, taskId), isNull(tasks.archivedAt)));
+        return res.affectedRows === 1;
+    }
+
+    async unarchive(
+        taskId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<boolean> {
+        const [res] = await exec
+            .update(tasks)
+            .set({ archivedAt: null })
+            .where(and(eq(tasks.id, taskId), isNotNull(tasks.archivedAt)));
+        return res.affectedRows === 1;
+    }
+
+    /**
+     * Hard-delete a task by primary key. The inbound FKs from
+     * `task_assignees`/`task_watchers`/`task_tags`/`task_dependencies`/
+     * `task_activity` and child tasks (`fk_tasks_parent`) are all `ON DELETE
+     * CASCADE`, so the DB tears those down; a single row delete suffices. Returns
+     * the affected-row count (0 if a concurrent delete already won).
+     */
+    async hardDelete(
+        taskId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<number> {
+        const [res] = await exec.delete(tasks).where(eq(tasks.id, taskId));
+        return res.affectedRows;
+    }
+
+    /**
+     * Cascade `archived_at = NOW()` to a task's descendants (children +
+     * grandchildren — nesting is ≤ 2). Only currently-live rows are touched
+     * (`archived_at IS NULL`). The two-step query avoids the MySQL 1093
+     * "can't UPDATE a table referenced in a subquery" trap, and setting only
+     * `archived_at` (no status change) never fires the error-1442 counter
+     * trigger. The ROOT is archived by the caller via `archive`.
+     */
+    async archiveDescendants(
+        rootId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<void> {
+        const kids = await exec
+            .select({ id: tasks.id })
+            .from(tasks)
+            .where(eq(tasks.parentTaskId, rootId));
+        const kidIds = kids.map((k) => k.id);
+        if (kidIds.length === 0) return;
+        await exec
+            .update(tasks)
+            .set({ archivedAt: new Date() })
+            .where(and(inArray(tasks.id, kidIds), isNull(tasks.archivedAt)));
+        const grands = await exec
+            .select({ id: tasks.id })
+            .from(tasks)
+            .where(inArray(tasks.parentTaskId, kidIds));
+        const grandIds = grands.map((g) => g.id);
+        if (grandIds.length === 0) return;
+        await exec
+            .update(tasks)
+            .set({ archivedAt: new Date() })
+            .where(and(inArray(tasks.id, grandIds), isNull(tasks.archivedAt)));
+    }
+
+    /** Reverse of `archiveDescendants` — clears `archived_at` on the subtree. */
+    async unarchiveDescendants(
+        rootId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<void> {
+        const kids = await exec
+            .select({ id: tasks.id })
+            .from(tasks)
+            .where(eq(tasks.parentTaskId, rootId));
+        const kidIds = kids.map((k) => k.id);
+        if (kidIds.length === 0) return;
+        await exec
+            .update(tasks)
+            .set({ archivedAt: null })
+            .where(and(inArray(tasks.id, kidIds), isNotNull(tasks.archivedAt)));
+        const grands = await exec
+            .select({ id: tasks.id })
+            .from(tasks)
+            .where(inArray(tasks.parentTaskId, kidIds));
+        const grandIds = grands.map((g) => g.id);
+        if (grandIds.length === 0) return;
+        await exec
+            .update(tasks)
+            .set({ archivedAt: null })
+            .where(
+                and(inArray(tasks.id, grandIds), isNotNull(tasks.archivedAt)),
+            );
+    }
+
+    /**
      * One filtered page of a list's tasks, keyset-paginated on `internal_id`
      * ASC (the documented stable order — API_DESIGN.md §1). Callers pass
      * `limit + 1` and use the extra row to derive `has_more`. Every clause is
@@ -192,6 +369,41 @@ export class TasksRepo {
             .limit(params.limit);
     }
 
+    /**
+     * Full task rows for a set of ids within a workspace (#10 bulk validate +
+     * re-read). Ordered by the stable `internal_id`. Ids not in the workspace
+     * are simply absent from the result — the caller compares the returned set
+     * against the requested ids to fail-atomic on any cross-tenant / missing id.
+     */
+    async findManyByIdsInWorkspace(
+        ids: string[],
+        workspaceId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<TaskRow[]> {
+        if (ids.length === 0) return [];
+        return exec
+            .select()
+            .from(tasks)
+            .where(
+                and(eq(tasks.workspaceId, workspaceId), inArray(tasks.id, ids)),
+            )
+            .orderBy(asc(tasks.internalId));
+    }
+
+    /**
+     * Apply one scalar column patch to many tasks in a single UPDATE (#10 bulk).
+     * `updated_at` is included by the caller so the ETag bumps even when only
+     * side tables change. NEVER pass a counter column or `parent_task_id`.
+     */
+    async updateMany(
+        ids: string[],
+        patch: Partial<typeof tasks.$inferInsert>,
+        exec: DbExecutor = this.db,
+    ): Promise<void> {
+        if (ids.length === 0) return;
+        await exec.update(tasks).set(patch).where(inArray(tasks.id, ids));
+    }
+
     /** Exact count for the same filter set — feeds `pagination.total_estimate`. */
     async countByList(params: TaskListParams): Promise<number> {
         const [row] = await this.db
@@ -199,6 +411,57 @@ export class TasksRepo {
             .from(tasks)
             .where(this.filterWhere(params));
         return row?.value ?? 0;
+    }
+
+    /**
+     * Count EVERY task whose `primary_list_id` is this list, regardless of
+     * archived state. Used by `DELETE /lists/:id` to refuse a hard-delete with
+     * `409 list.not_empty` before attempting it: `fk_tasks_list` is `ON DELETE
+     * RESTRICT`, so an archived task blocks the delete at the DB just as a live
+     * one does — hence the count is intentionally unfiltered by `archived_at`
+     * (stricter than the §6 prose's "non-archived", but it matches what the FK
+     * actually enforces and avoids a 500). Served by `idx_tasks_list_active
+     * (primary_list_id, …)`. Pass `exec` to read inside the delete tx.
+     */
+    async countByPrimaryList(
+        listId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<number> {
+        const [row] = await exec
+            .select({ value: count() })
+            .from(tasks)
+            .where(eq(tasks.primaryListId, listId));
+        return row?.value ?? 0;
+    }
+
+    /**
+     * The caller's "my work": every non-archived task in `workspaceId` that the
+     * user is assigned to, joined with its status's `status_group` so the
+     * service can bucket by done-ness + due date. Ordered by due date then the
+     * stable `internal_id`. Powers `GET /api/v1/tasks/my-work` (#11).
+     */
+    async myWorkRows(
+        userId: string,
+        workspaceId: string,
+    ): Promise<Array<{ task: TaskRow; statusGroup: string }>> {
+        return this.db
+            .select({ task: tasks, statusGroup: statuses.statusGroup })
+            .from(tasks)
+            .innerJoin(
+                taskAssignees,
+                and(
+                    eq(taskAssignees.taskId, tasks.id),
+                    eq(taskAssignees.userId, userId),
+                ),
+            )
+            .innerJoin(statuses, eq(statuses.id, tasks.statusId))
+            .where(
+                and(
+                    eq(tasks.workspaceId, workspaceId),
+                    isNull(tasks.archivedAt),
+                ),
+            )
+            .orderBy(asc(tasks.dueDate), asc(tasks.internalId));
     }
 
     /** Assignee user-ids for a page of tasks, grouped by task id. */

@@ -24,3 +24,36 @@ export interface InviteUserBody {
 export interface InviteUserRequest extends AuthRequest {
     body: InviteUserBody;
 }
+
+/**
+ * Body for `PATCH /api/v1/users/:id`. Every field is optional (a partial
+ * update); the validator trims the names, lowercases the email, and caps every
+ * length. `role` / `status` are intentionally absent — a profile edit can never
+ * change privilege or lifecycle (those are §4 #5 / #6 / #7), so a stray `role`
+ * in the body is ignored, not persisted. `avatar_url` may be an http(s) URL or
+ * `null` (to clear it).
+ */
+export interface UpdateUserBody {
+    first_name?: string;
+    last_name?: string;
+    email?: string;
+    timezone?: string;
+    avatar_url?: string | null;
+}
+
+export interface UpdateUserRequest extends AuthRequest {
+    body: UpdateUserBody;
+}
+
+/**
+ * Body for `PATCH /api/v1/users/:id/role`. `owner` is NOT an accepted value —
+ * the validator constrains it to the invitation set, so this endpoint can never
+ * mint a second workspace owner (there is exactly one: the creator).
+ */
+export interface ChangeRoleBody {
+    role: "admin" | "member" | "guest";
+}
+
+export interface ChangeRoleRequest extends AuthRequest {
+    body: ChangeRoleBody;
+}

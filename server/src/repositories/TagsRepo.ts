@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../db/schema";
 import { tags } from "../db/schema";
@@ -32,6 +32,30 @@ export class TagsRepo {
      * `tags` has no `archived_at` column — tags are hard-deleted (the delete
      * cascades to `task_tags`), so there is deliberately no soft-delete filter.
      */
+    /**
+     * Return the subset of `tagIds` that exist in `workspaceId`, as a Set — the
+     * bulk validator for task tag writes (#4 initial tags, #5/#10 tag_add). The
+     * caller compares the returned set against the requested ids and rejects the
+     * difference, so a cross-tenant tag id is indistinguishable from a missing
+     * one (no existence oracle). Mirrors `UsersRepo.findActiveIdsInWorkspace`.
+     */
+    async findIdsInWorkspace(
+        tagIds: string[],
+        workspaceId: string,
+    ): Promise<Set<string>> {
+        if (tagIds.length === 0) return new Set();
+        const rows = await this.db
+            .select({ id: tags.id })
+            .from(tags)
+            .where(
+                and(
+                    eq(tags.workspaceId, workspaceId),
+                    inArray(tags.id, tagIds),
+                ),
+            );
+        return new Set(rows.map((r) => r.id));
+    }
+
     async listByWorkspace(workspaceId: string): Promise<TagRecord[]> {
         const rows = await this.db
             .select({
@@ -109,6 +133,26 @@ export class TagsRepo {
         await exec
             .update(tags)
             .set(patch)
+            .where(and(eq(tags.id, id), eq(tags.workspaceId, workspaceId)));
+    }
+
+    /**
+     * Hard-delete a tag, scoped to the caller's workspace. The workspace-scoped
+     * `WHERE` is defense-in-depth (the caller already proved ownership via
+     * `lockByIdInWorkspace` inside the same tx). Deleting a tag automatically
+     * removes its rows from `task_tags` via `fk_task_tags_tag ON DELETE CASCADE`,
+     * so there is NO manual junction cleanup — the FK is the single, race-free
+     * guarantee. `tags` has no `archived_at`, so this is a true row delete, not a
+     * soft-delete. Pass `exec` to run inside the delete tx (so the paired
+     * `workspace_activity` write is atomic with this delete).
+     */
+    async delete(
+        id: string,
+        workspaceId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<void> {
+        await exec
+            .delete(tags)
             .where(and(eq(tags.id, id), eq(tags.workspaceId, workspaceId)));
     }
 }

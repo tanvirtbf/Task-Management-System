@@ -9,21 +9,33 @@ import { TasksController } from "../controllers/TasksController";
 import { TasksService } from "../services/TasksService";
 import { SpacesRepo } from "../repositories/SpacesRepo";
 import { ListsRepo } from "../repositories/ListsRepo";
+import { StatusesRepo } from "../repositories/StatusesRepo";
+import { TaskTypesRepo } from "../repositories/TaskTypesRepo";
+import { WorkspaceActivityRepo } from "../repositories/WorkspaceActivityRepo";
 import { TasksRepo } from "../repositories/TasksRepo";
 import { getDb } from "../db/client";
 import logger from "../config/logger";
 import authenticate from "../middlewares/authenticate";
+import { canAccess } from "../middlewares/canAccess";
 import { validate } from "../middlewares/validate";
+import { Roles } from "../constants";
 import {
+    createListValidator,
     getListValidator,
     listAllValidator,
     listBySpaceValidator,
+    updateListValidator,
 } from "../validators/lists";
 import { listTasksValidator } from "../validators/tasks";
 import type {
+    ArchiveListRequest,
+    CreateListRequest,
+    DeleteListRequest,
     GetListRequest,
     ListAllRequest,
     ListBySpaceRequest,
+    UnarchiveListRequest,
+    UpdateListRequest,
 } from "../types/lists";
 import type { ListTasksRequest } from "../types/tasks";
 
@@ -35,9 +47,21 @@ const router = express.Router();
 const db = getDb();
 const spacesRepo = new SpacesRepo(db);
 const listsRepo = new ListsRepo(db);
-const listService = new ListService(spacesRepo, listsRepo, logger);
-const listController = new ListController(listService, logger);
+const statusesRepo = new StatusesRepo(db);
+const taskTypesRepo = new TaskTypesRepo(db);
 const tasksRepo = new TasksRepo(db);
+const workspaceActivityRepo = new WorkspaceActivityRepo(db);
+const listService = new ListService(
+    db,
+    spacesRepo,
+    listsRepo,
+    statusesRepo,
+    taskTypesRepo,
+    tasksRepo,
+    workspaceActivityRepo,
+    logger,
+);
+const listController = new ListController(listService, logger);
 const tasksService = new TasksService(listsRepo, tasksRepo);
 const tasksController = new TasksController(tasksService, logger);
 
@@ -74,6 +98,24 @@ router.get(
         listController.listAll(req as ListAllRequest, res, next),
 );
 
+// ─── POST /api/v1/lists ───────────────────────────────────────────────────────
+// 👑 admin/owner only. Chain order encodes the spec's status precedence:
+// `authenticate` (401) → `canAccess` (403) → validation (422). Creates a list in
+// a space the caller's workspace owns (`space_id` in the body), seeds the 5
+// default statuses, and records the `created` activity — all in one transaction.
+// Workspace scope and the actor come from `req.auth`, never the body; `position`
+// appends server-side. Declared as a full `/lists` path because this router
+// mounts at the v1 root.
+router.post(
+    "/lists",
+    authenticate,
+    canAccess([Roles.OWNER, Roles.ADMIN]),
+    createListValidator,
+    validate,
+    (req: Request, res: Response, next: NextFunction) =>
+        listController.create(req as CreateListRequest, res, next),
+);
+
 // ─── GET /api/v1/lists/:id ────────────────────────────────────────────────────
 // Read one list by id. Any role may read; the list must resolve inside
 // `req.auth.workspaceId` (via the repo's `lists → spaces` join) or the service
@@ -88,6 +130,69 @@ router.get(
     validate,
     (req: Request, res: Response, next: NextFunction) =>
         listController.getById(req as GetListRequest, res, next),
+);
+
+// ─── PATCH /api/v1/lists/:id ──────────────────────────────────────────────────
+// 👑 admin/owner only. Partial update of name / description / icon / color /
+// default_task_type_id (at least one required). Chain order encodes the spec's
+// status precedence: `authenticate` (401) → `canAccess` (403) → validation
+// (422). The list is resolved within the caller's workspace (404
+// `list.not_found` otherwise); an archived list is read-only (409
+// `list.archived`). The `updated` activity is recorded in the same transaction.
+router.patch(
+    "/lists/:id",
+    authenticate,
+    canAccess([Roles.OWNER, Roles.ADMIN]),
+    updateListValidator,
+    validate,
+    (req: Request, res: Response, next: NextFunction) =>
+        listController.update(req as UpdateListRequest, res, next),
+);
+
+// ─── POST /api/v1/lists/:id/archive ───────────────────────────────────────────
+// 👑 admin/owner only. Soft-delete: sets `archived_at`. Idempotent (already
+// archived → 204 no-op). Resolved within the caller's workspace (404
+// `list.not_found` otherwise); the `archived` activity is recorded on a real
+// transition. Reuses `getListValidator` (just the `:id` param). Returns 204.
+router.post(
+    "/lists/:id/archive",
+    authenticate,
+    canAccess([Roles.OWNER, Roles.ADMIN]),
+    getListValidator,
+    validate,
+    (req: Request, res: Response, next: NextFunction) =>
+        listController.archive(req as ArchiveListRequest, res, next),
+);
+
+// ─── POST /api/v1/lists/:id/unarchive ─────────────────────────────────────────
+// 👑 admin/owner only. Reverse of archive: clears `archived_at`. Idempotent (not
+// archived → 204 no-op). Same workspace resolution + `unarchived` activity on a
+// real transition. Returns 204.
+router.post(
+    "/lists/:id/unarchive",
+    authenticate,
+    canAccess([Roles.OWNER, Roles.ADMIN]),
+    getListValidator,
+    validate,
+    (req: Request, res: Response, next: NextFunction) =>
+        listController.unarchive(req as UnarchiveListRequest, res, next),
+);
+
+// ─── DELETE /api/v1/lists/:id ─────────────────────────────────────────────────
+// 🛡️ OWNER only (stricter than the 👑 create/update/archive verbs — Appendix B
+// legend: 🛡️ = Owner role only). Hard-delete; the list must be archived AND
+// empty (no tasks). Chain: `authenticate` (401) → `canAccess` (403) → validation
+// (422). Resolved within the caller's workspace (404 `list.not_found`); a
+// non-archived list → 409 `list.not_archived`, a list with tasks → 409
+// `list.not_empty`. The teardown + `deleted` activity run in one transaction.
+router.delete(
+    "/lists/:id",
+    authenticate,
+    canAccess([Roles.OWNER]),
+    getListValidator,
+    validate,
+    (req: Request, res: Response, next: NextFunction) =>
+        listController.delete(req as DeleteListRequest, res, next),
 );
 
 // ─── GET /api/v1/lists/:listId/tasks ──────────────────────────────────────────

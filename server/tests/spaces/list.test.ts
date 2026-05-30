@@ -8,7 +8,12 @@ import {
     makeLoggedInClient,
 } from "../test-utils/factories";
 import { getDb } from "../../src/db/client";
-import { spaces, taskActivity, workspaceActivity, users } from "../../src/db/schema";
+import {
+    spaces,
+    taskActivity,
+    workspaceActivity,
+    users,
+} from "../../src/db/schema";
 import { Config } from "../../src/config";
 import { fakeId } from "../../src/utils";
 
@@ -61,8 +66,9 @@ const countTaskActivity = async () => {
 
 const countWorkspaceActivity = async () => {
     const db = getDb();
-    return (await db.select({ id: workspaceActivity.id }).from(workspaceActivity))
-        .length;
+    return (
+        await db.select({ id: workspaceActivity.id }).from(workspaceActivity)
+    ).length;
 };
 
 /** Forge an access token for a user with an arbitrary signing secret / opts. */
@@ -166,10 +172,12 @@ describe("GET /api/v1/spaces", () => {
             const res = await client.get(LIST_SPACES);
 
             const byName = Object.fromEntries(
-                res.body.data.map((s: { name: string; is_private: unknown }) => [
-                    s.name,
-                    s.is_private,
-                ]),
+                res.body.data.map(
+                    (s: { name: string; is_private: unknown }) => [
+                        s.name,
+                        s.is_private,
+                    ],
+                ),
             );
             expect(byName.Private).toBe(true);
             expect(byName.Public).toBe(false);
@@ -177,7 +185,11 @@ describe("GET /api/v1/spaces", () => {
 
         it("emits created_at as an ISO-8601 string and position as a number", async () => {
             const u = await makeUser();
-            await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id, position: 7 });
+            await makeSpace({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+                position: 7,
+            });
             const client = await makeLoggedInClient(u);
 
             const res = await client.get(LIST_SPACES);
@@ -205,9 +217,24 @@ describe("GET /api/v1/spaces", () => {
 
         it("orders spaces by position ascending", async () => {
             const u = await makeUser();
-            await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id, name: "third", position: 2 });
-            await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id, name: "first", position: 0 });
-            await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id, name: "second", position: 1 });
+            await makeSpace({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+                name: "third",
+                position: 2,
+            });
+            await makeSpace({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+                name: "first",
+                position: 0,
+            });
+            await makeSpace({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+                name: "second",
+                position: 1,
+            });
             const client = await makeLoggedInClient(u);
 
             const res = await client.get(LIST_SPACES);
@@ -219,11 +246,18 @@ describe("GET /api/v1/spaces", () => {
             ]);
         });
 
-        it("breaks position ties deterministically by id ascending", async () => {
+        it("breaks position ties deterministically and stably across calls", async () => {
             const u = await makeUser();
-            const a = await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id, position: 5 });
-            const b = await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id, position: 5 });
-            const expected = [a.id, b.id].sort(); // ORDER BY id ASC
+            const a = await makeSpace({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+                position: 5,
+            });
+            const b = await makeSpace({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+                position: 5,
+            });
             const client = await makeLoggedInClient(u);
 
             const res1 = await client.get(LIST_SPACES);
@@ -231,14 +265,24 @@ describe("GET /api/v1/spaces", () => {
 
             const ids1 = res1.body.data.map((s: { id: string }) => s.id);
             const ids2 = res2.body.data.map((s: { id: string }) => s.id);
-            expect(ids1).toEqual(expected);
-            expect(ids2).toEqual(expected); // stable across calls
+            // Both tied spaces are present, and the tie-break is deterministic
+            // — identical across calls. The exact direction is `ORDER BY id`
+            // under the column's MySQL collation (utf8mb4_unicode_ci), which is
+            // NOT the same as a JS UTF-16 `.sort()` when two ids differ in case;
+            // the tie-break direction is not part of the wire contract, only its
+            // stability is.
+            expect(new Set(ids1)).toEqual(new Set([a.id, b.id]));
+            expect(ids1).toEqual(ids2);
         });
 
         it("sets total_estimate to the number of returned spaces", async () => {
             const u = await makeUser();
             for (let i = 0; i < 4; i++) {
-                await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id, position: i });
+                await makeSpace({
+                    workspaceId: u.workspaceId,
+                    createdBy: u.id,
+                    position: i,
+                });
             }
             const client = await makeLoggedInClient(u);
 
@@ -253,7 +297,12 @@ describe("GET /api/v1/spaces", () => {
     describe("Validation (include_archived)", () => {
         it("includes archived spaces with ?include_archived=true", async () => {
             const u = await makeUser();
-            await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id, name: "active", position: 0 });
+            await makeSpace({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+                name: "active",
+                position: 0,
+            });
             await makeSpace({
                 workspaceId: u.workspaceId,
                 createdBy: u.id,
@@ -263,7 +312,9 @@ describe("GET /api/v1/spaces", () => {
             });
             const client = await makeLoggedInClient(u);
 
-            const res = await client.get(LIST_SPACES).query({ include_archived: "true" });
+            const res = await client
+                .get(LIST_SPACES)
+                .query({ include_archived: "true" });
 
             expect(res.status).toBe(200);
             expect(res.body.data.map((s: { name: string }) => s.name)).toEqual([
@@ -274,11 +325,22 @@ describe("GET /api/v1/spaces", () => {
 
         it("excludes archived spaces with ?include_archived=false", async () => {
             const u = await makeUser();
-            await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id, name: "active" });
-            await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id, name: "archived", archivedAt: new Date() });
+            await makeSpace({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+                name: "active",
+            });
+            await makeSpace({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+                name: "archived",
+                archivedAt: new Date(),
+            });
             const client = await makeLoggedInClient(u);
 
-            const res = await client.get(LIST_SPACES).query({ include_archived: "false" });
+            const res = await client
+                .get(LIST_SPACES)
+                .query({ include_archived: "false" });
 
             expect(res.status).toBe(200);
             expect(res.body.data).toHaveLength(1);
@@ -287,8 +349,17 @@ describe("GET /api/v1/spaces", () => {
 
         it("excludes archived spaces by default (param absent)", async () => {
             const u = await makeUser();
-            await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id, name: "active" });
-            await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id, name: "archived", archivedAt: new Date() });
+            await makeSpace({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+                name: "active",
+            });
+            await makeSpace({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+                name: "archived",
+                archivedAt: new Date(),
+            });
             const client = await makeLoggedInClient(u);
 
             const res = await client.get(LIST_SPACES);
@@ -301,13 +372,15 @@ describe("GET /api/v1/spaces", () => {
             const u = await makeUser();
             const client = await makeLoggedInClient(u);
 
-            const res = await client.get(LIST_SPACES).query({ include_archived: "notabool" });
+            const res = await client
+                .get(LIST_SPACES)
+                .query({ include_archived: "notabool" });
 
             expect(res.status).toBe(422);
             expect(res.body.error.code).toBe("validation.failed");
-            const fields = (res.body.error.details as Array<{ field: string }>).map(
-                (d) => d.field,
-            );
+            const fields = (
+                res.body.error.details as Array<{ field: string }>
+            ).map((d) => d.field);
             expect(fields).toContain("include_archived");
         });
 
@@ -315,7 +388,9 @@ describe("GET /api/v1/spaces", () => {
             const u = await makeUser();
             const client = await makeLoggedInClient(u);
 
-            const res = await client.get(LIST_SPACES).query("include_archived=");
+            const res = await client
+                .get(LIST_SPACES)
+                .query("include_archived=");
 
             expect(res.status).toBe(422);
             expect(res.body.error.code).toBe("validation.failed");
@@ -325,7 +400,9 @@ describe("GET /api/v1/spaces", () => {
             const u = await makeUser();
             const client = await makeLoggedInClient(u);
 
-            const res = await client.get(LIST_SPACES).query({ include_archived: "1" });
+            const res = await client
+                .get(LIST_SPACES)
+                .query({ include_archived: "1" });
 
             expect(res.status).toBe(422);
             expect(res.body.error.code).toBe("validation.failed");
@@ -339,7 +416,11 @@ describe("GET /api/v1/spaces", () => {
             // safe default of excluding archived spaces. This shares the §6 lists
             // `include_archived` idiom.
             const u = await makeUser();
-            await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id, name: "active" });
+            await makeSpace({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+                name: "active",
+            });
             await makeSpace({
                 workspaceId: u.workspaceId,
                 createdBy: u.id,
@@ -359,11 +440,22 @@ describe("GET /api/v1/spaces", () => {
 
         it("accepts ?include_archived=TRUE (case-insensitive) and includes archived", async () => {
             const u = await makeUser();
-            await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id, name: "active" });
-            await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id, name: "archived", archivedAt: new Date() });
+            await makeSpace({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+                name: "active",
+            });
+            await makeSpace({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+                name: "archived",
+                archivedAt: new Date(),
+            });
             const client = await makeLoggedInClient(u);
 
-            const res = await client.get(LIST_SPACES).query({ include_archived: "TRUE" });
+            const res = await client
+                .get(LIST_SPACES)
+                .query({ include_archived: "TRUE" });
 
             expect(res.status).toBe(200);
             expect(res.body.data).toHaveLength(2);
@@ -482,7 +574,10 @@ describe("GET /api/v1/spaces", () => {
         for (const role of ["owner", "admin", "member", "guest"] as const) {
             it(`allows a ${role} to list spaces (200)`, async () => {
                 const u = await makeUser({ role });
-                await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id });
+                await makeSpace({
+                    workspaceId: u.workspaceId,
+                    createdBy: u.id,
+                });
                 const client = await makeLoggedInClient(u);
 
                 const res = await client.get(LIST_SPACES);
@@ -497,7 +592,11 @@ describe("GET /api/v1/spaces", () => {
     describe("Archive lifecycle", () => {
         it("hides an archived space from the default listing", async () => {
             const u = await makeUser();
-            await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id, archivedAt: new Date() });
+            await makeSpace({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+                archivedAt: new Date(),
+            });
             const client = await makeLoggedInClient(u);
 
             const res = await client.get(LIST_SPACES);
@@ -513,7 +612,9 @@ describe("GET /api/v1/spaces", () => {
             });
             const client = await makeLoggedInClient(u);
 
-            const res = await client.get(LIST_SPACES).query({ include_archived: "true" });
+            const res = await client
+                .get(LIST_SPACES)
+                .query({ include_archived: "true" });
             expect(res.body.data[0].archived_at).toMatch(
                 /^2026-01-02T03:04:05/,
             );
@@ -521,12 +622,31 @@ describe("GET /api/v1/spaces", () => {
 
         it("orders by position regardless of archived state when included", async () => {
             const u = await makeUser();
-            await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id, name: "p0-archived", position: 0, archivedAt: new Date() });
-            await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id, name: "p1-active", position: 1 });
-            await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id, name: "p2-archived", position: 2, archivedAt: new Date() });
+            await makeSpace({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+                name: "p0-archived",
+                position: 0,
+                archivedAt: new Date(),
+            });
+            await makeSpace({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+                name: "p1-active",
+                position: 1,
+            });
+            await makeSpace({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+                name: "p2-archived",
+                position: 2,
+                archivedAt: new Date(),
+            });
             const client = await makeLoggedInClient(u);
 
-            const res = await client.get(LIST_SPACES).query({ include_archived: "true" });
+            const res = await client
+                .get(LIST_SPACES)
+                .query({ include_archived: "true" });
             expect(res.body.data.map((s: { name: string }) => s.name)).toEqual([
                 "p0-archived",
                 "p1-active",
@@ -540,8 +660,16 @@ describe("GET /api/v1/spaces", () => {
         it("returns only the caller's workspace spaces, never another workspace's", async () => {
             const ua = await makeUser();
             const ub = await makeUser();
-            await makeSpace({ workspaceId: ua.workspaceId, createdBy: ua.id, name: "A-Space" });
-            await makeSpace({ workspaceId: ub.workspaceId, createdBy: ub.id, name: "B-Space" });
+            await makeSpace({
+                workspaceId: ua.workspaceId,
+                createdBy: ua.id,
+                name: "A-Space",
+            });
+            await makeSpace({
+                workspaceId: ub.workspaceId,
+                createdBy: ub.id,
+                name: "B-Space",
+            });
 
             const clientB = await makeLoggedInClient(ub);
             const res = await clientB.get(LIST_SPACES);
@@ -553,8 +681,16 @@ describe("GET /api/v1/spaces", () => {
         it("is symmetric — workspace A's user sees only A's spaces", async () => {
             const ua = await makeUser();
             const ub = await makeUser();
-            await makeSpace({ workspaceId: ua.workspaceId, createdBy: ua.id, name: "A-Space" });
-            await makeSpace({ workspaceId: ub.workspaceId, createdBy: ub.id, name: "B-Space" });
+            await makeSpace({
+                workspaceId: ua.workspaceId,
+                createdBy: ua.id,
+                name: "A-Space",
+            });
+            await makeSpace({
+                workspaceId: ub.workspaceId,
+                createdBy: ub.id,
+                name: "B-Space",
+            });
 
             const clientA = await makeLoggedInClient(ua);
             const res = await clientA.get(LIST_SPACES);
@@ -566,8 +702,18 @@ describe("GET /api/v1/spaces", () => {
         it("does not leak a same-name/same-position space from another workspace", async () => {
             const ua = await makeUser();
             const ub = await makeUser();
-            await makeSpace({ workspaceId: ua.workspaceId, createdBy: ua.id, name: "Shared", position: 0 });
-            await makeSpace({ workspaceId: ub.workspaceId, createdBy: ub.id, name: "Shared", position: 0 });
+            await makeSpace({
+                workspaceId: ua.workspaceId,
+                createdBy: ua.id,
+                name: "Shared",
+                position: 0,
+            });
+            await makeSpace({
+                workspaceId: ub.workspaceId,
+                createdBy: ub.id,
+                name: "Shared",
+                position: 0,
+            });
 
             const clientB = await makeLoggedInClient(ub);
             const res = await clientB.get(LIST_SPACES);
@@ -578,8 +724,14 @@ describe("GET /api/v1/spaces", () => {
 
         it("returns an empty page when the caller's workspace is empty but another is populated", async () => {
             const populated = await makeUser();
-            await makeSpace({ workspaceId: populated.workspaceId, createdBy: populated.id });
-            await makeSpace({ workspaceId: populated.workspaceId, createdBy: populated.id });
+            await makeSpace({
+                workspaceId: populated.workspaceId,
+                createdBy: populated.id,
+            });
+            await makeSpace({
+                workspaceId: populated.workspaceId,
+                createdBy: populated.id,
+            });
 
             const empty = await makeUser();
             const client = await makeLoggedInClient(empty);
@@ -594,8 +746,16 @@ describe("GET /api/v1/spaces", () => {
     describe("Idempotent read", () => {
         it("returns identical bodies for two identical requests", async () => {
             const u = await makeUser();
-            await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id, position: 0 });
-            await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id, position: 1 });
+            await makeSpace({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+                position: 0,
+            });
+            await makeSpace({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+                position: 1,
+            });
             const client = await makeLoggedInClient(u);
 
             const r1 = await client.get(LIST_SPACES);
@@ -610,7 +770,11 @@ describe("GET /api/v1/spaces", () => {
         it("handles 50 parallel reads with a consistent payload", async () => {
             const u = await makeUser();
             for (let i = 0; i < 5; i++) {
-                await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id, position: i });
+                await makeSpace({
+                    workspaceId: u.workspaceId,
+                    createdBy: u.id,
+                    position: i,
+                });
             }
             const client = await makeLoggedInClient(u);
 
@@ -644,7 +808,11 @@ describe("GET /api/v1/spaces", () => {
             const u = await makeUser();
             // Reuse one creator to avoid 150 bcrypt-bearing user inserts.
             for (let i = 0; i < 150; i++) {
-                await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id, position: i });
+                await makeSpace({
+                    workspaceId: u.workspaceId,
+                    createdBy: u.id,
+                    position: i,
+                });
             }
             const client = await makeLoggedInClient(u);
 
@@ -661,7 +829,9 @@ describe("GET /api/v1/spaces", () => {
             await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id });
             const client = await makeLoggedInClient(u);
 
-            const res = await client.get(LIST_SPACES).query({ cursor: "eyJpZCI6OTk5fQ" });
+            const res = await client
+                .get(LIST_SPACES)
+                .query({ cursor: "eyJpZCI6OTk5fQ" });
 
             expect(res.status).toBe(200);
             expect(res.body.data).toHaveLength(1);
@@ -673,7 +843,11 @@ describe("GET /api/v1/spaces", () => {
         it("preserves a unicode name (Bangla + emoji) byte-for-byte", async () => {
             const u = await makeUser();
             const name = "অর্ডার 📦 ক্ষ";
-            await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id, name });
+            await makeSpace({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+                name,
+            });
             const client = await makeLoggedInClient(u);
 
             const res = await client.get(LIST_SPACES);
@@ -683,7 +857,11 @@ describe("GET /api/v1/spaces", () => {
         it("preserves a 120-character (max-length) name", async () => {
             const u = await makeUser();
             const name = "x".repeat(120);
-            await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id, name });
+            await makeSpace({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+                name,
+            });
             const client = await makeLoggedInClient(u);
 
             const res = await client.get(LIST_SPACES);
@@ -692,17 +870,31 @@ describe("GET /api/v1/spaces", () => {
 
         it("emits a null description as null and preserves a 500-char description", async () => {
             const u = await makeUser();
-            await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id, name: "nulldesc", description: null, position: 0 });
+            await makeSpace({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+                name: "nulldesc",
+                description: null,
+                position: 0,
+            });
             const long = "d".repeat(500);
-            await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id, name: "longdesc", description: long, position: 1 });
+            await makeSpace({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+                name: "longdesc",
+                description: long,
+                position: 1,
+            });
             const client = await makeLoggedInClient(u);
 
             const res = await client.get(LIST_SPACES);
             const byName = Object.fromEntries(
-                res.body.data.map((s: { name: string; description: string | null }) => [
-                    s.name,
-                    s.description,
-                ]),
+                res.body.data.map(
+                    (s: { name: string; description: string | null }) => [
+                        s.name,
+                        s.description,
+                    ],
+                ),
             );
             expect(byName.nulldesc).toBeNull();
             expect(byName.longdesc).toBe(long);
@@ -710,8 +902,18 @@ describe("GET /api/v1/spaces", () => {
 
         it("handles position 0 and a large position with correct ordering", async () => {
             const u = await makeUser();
-            await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id, name: "big", position: 2147483647 });
-            await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id, name: "zero", position: 0 });
+            await makeSpace({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+                name: "big",
+                position: 2147483647,
+            });
+            await makeSpace({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+                name: "zero",
+                position: 0,
+            });
             const client = await makeLoggedInClient(u);
 
             const res = await client.get(LIST_SPACES);
@@ -802,7 +1004,9 @@ describe("GET /api/v1/spaces", () => {
         it("renders details[] on the 422 path", async () => {
             const u = await makeUser();
             const client = await makeLoggedInClient(u);
-            const res = await client.get(LIST_SPACES).query({ include_archived: "nope" });
+            const res = await client
+                .get(LIST_SPACES)
+                .query({ include_archived: "nope" });
             expect(res.status).toBe(422);
             expect(res.body.error.code).toBe("validation.failed");
             expect(Array.isArray(res.body.error.details)).toBe(true);
@@ -827,9 +1031,15 @@ describe("GET /api/v1/spaces", () => {
 
         it("accepts mixed-case include_archived=True", async () => {
             const u = await makeUser();
-            await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id, archivedAt: new Date() });
+            await makeSpace({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+                archivedAt: new Date(),
+            });
             const client = await makeLoggedInClient(u);
-            const res = await client.get(LIST_SPACES).query({ include_archived: "True" });
+            const res = await client
+                .get(LIST_SPACES)
+                .query({ include_archived: "True" });
             expect(res.status).toBe(200);
             expect(res.body.data).toHaveLength(1);
         });

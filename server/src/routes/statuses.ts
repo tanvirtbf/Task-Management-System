@@ -15,12 +15,16 @@ import { validate } from "../middlewares/validate";
 import { Roles } from "../constants";
 import {
     createStatusValidator,
+    deleteStatusValidator,
     listStatusesValidator,
+    reorderStatusesValidator,
     updateStatusValidator,
 } from "../validators/statuses";
 import type {
     CreateStatusRequest,
+    DeleteStatusRequest,
     ListStatusesRequest,
+    ReorderStatusesRequest,
     UpdateStatusRequest,
 } from "../types/statuses";
 
@@ -32,7 +36,12 @@ const router = express.Router();
 const db = getDb();
 const listsRepo = new ListsRepo(db);
 const statusesRepo = new StatusesRepo(db);
-const statusesService = new StatusesService(listsRepo, statusesRepo, logger);
+const statusesService = new StatusesService(
+    db,
+    listsRepo,
+    statusesRepo,
+    logger,
+);
 const statusesController = new StatusesController(statusesService, logger);
 
 // ─── GET /api/v1/lists/:listId/statuses ──────────────────────────────────────
@@ -67,6 +76,23 @@ router.post(
         statusesController.create(req as CreateStatusRequest, res, next),
 );
 
+// ─── PATCH /api/v1/lists/:listId/statuses/reorder ─────────────────────────────
+// 👑 Owner/Admin only. Bulk-repositions a list's statuses from a bare JSON array
+// of `{ id, position }` items (array structure validated in the controller).
+// 404 `list.not_found` if the list is missing/cross-workspace; 404
+// `status.not_found` if any id is not a status in this list. Returns 200 with the
+// full list reordered. Declared before `/statuses/:id` for readability; the paths
+// do not overlap (different prefixes), so order does not affect matching.
+router.patch(
+    "/lists/:listId/statuses/reorder",
+    authenticate,
+    canAccess([Roles.OWNER, Roles.ADMIN]),
+    reorderStatusesValidator,
+    validate,
+    (req: Request, res: Response, next: NextFunction) =>
+        statusesController.reorder(req as ReorderStatusesRequest, res, next),
+);
+
 // ─── PATCH /api/v1/statuses/:id ───────────────────────────────────────────────
 // 👑 Owner/Admin only. Updates a status's name / color / status_group (partial —
 // at least one field). The bare id is resolved within the caller's workspace via
@@ -81,6 +107,21 @@ router.patch(
     validate,
     (req: Request, res: Response, next: NextFunction) =>
         statusesController.update(req as UpdateStatusRequest, res, next),
+);
+
+// ─── DELETE /api/v1/statuses/:id ──────────────────────────────────────────────
+// 👑 Owner/Admin only. Deletes a status the caller's workspace owns (404
+// `status.not_found` otherwise). Refuses with 409 `status.in_use` if any task
+// references it, and 422 `status.last_in_group` if it is the last status of its
+// group (the Board view needs ≥1 status per group). Returns 204 No Content.
+router.delete(
+    "/statuses/:id",
+    authenticate,
+    canAccess([Roles.OWNER, Roles.ADMIN]),
+    deleteStatusValidator,
+    validate,
+    (req: Request, res: Response, next: NextFunction) =>
+        statusesController.remove(req as DeleteStatusRequest, res, next),
 );
 
 export default router;

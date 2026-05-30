@@ -26,6 +26,21 @@ export interface SpaceRecord {
     createdAt: Date;
 }
 
+/**
+ * Partial mutable fields for `PATCH /api/v1/spaces/:id`. Every key is optional;
+ * the service builds this from only the body fields actually supplied, so an
+ * absent key leaves that column untouched. `workspace_id` / `created_by` /
+ * timestamps are never updatable here.
+ */
+export interface SpaceUpdateFields {
+    name?: string;
+    description?: string | null;
+    icon?: string;
+    color?: string;
+    isPrivate?: boolean;
+    position?: number;
+}
+
 export class SpacesRepo {
     constructor(private db: MySql2Database<typeof schema>) {}
 
@@ -144,5 +159,74 @@ export class SpacesRepo {
             createdBy: input.createdBy,
         });
         return id;
+    }
+
+    /**
+     * Acquire a row lock on the space (`SELECT … FOR UPDATE`) inside a
+     * transaction so concurrent writes to the SAME space (update / archive /
+     * unarchive / delete) serialize. Every writer takes this lock first, in the
+     * same order, which removes the InnoDB deadlock between the row mutation and
+     * its paired `workspace_activity` append, and lets the caller re-read the
+     * authoritative row state race-free. Mirrors `TasksRepo.lockById`.
+     */
+    async lockById(spaceId: string, exec: DbExecutor = this.db): Promise<void> {
+        await exec
+            .select({ id: spaces.id })
+            .from(spaces)
+            .where(eq(spaces.id, spaceId))
+            .for("update");
+    }
+
+    /**
+     * Apply a partial update to a space. Only the keys present in `fields` are
+     * written (Drizzle's `.set()` emits a column only when its key exists), so
+     * an omitted field is left untouched; `updated_at` bumps automatically via
+     * its `ON UPDATE CURRENT_TIMESTAMP`. The caller must pass at least one field
+     * — an empty `.set()` is invalid SQL — and scopes the workspace check before
+     * calling. Pass `exec` to run inside the caller's transaction.
+     */
+    async updateFields(
+        spaceId: string,
+        fields: SpaceUpdateFields,
+        exec: DbExecutor = this.db,
+    ): Promise<void> {
+        await exec.update(spaces).set(fields).where(eq(spaces.id, spaceId));
+    }
+
+    /**
+     * Set (archive) or clear (unarchive) a space's `archived_at`. A `Date`
+     * soft-deletes the space; `null` restores it. `updated_at` bumps via its
+     * `ON UPDATE CURRENT_TIMESTAMP`. Pass `exec` to run inside the caller's
+     * transaction so the flip and its `workspace_activity` row (and any list
+     * cascade) commit atomically.
+     */
+    async setArchivedAt(
+        spaceId: string,
+        value: Date | null,
+        exec: DbExecutor = this.db,
+    ): Promise<void> {
+        await exec
+            .update(spaces)
+            .set({ archivedAt: value })
+            .where(eq(spaces.id, spaceId));
+    }
+
+    /**
+     * Permanently delete a space by id, returning the number of rows removed
+     * (0 when a concurrent delete already won). The caller MUST enforce the
+     * preconditions first (resolved within the workspace, archived, and holding
+     * NO lists). With no lists the space has no children to cascade — list-scoped
+     * statuses/tasks/forms live under lists, and V1 creates no space-scoped
+     * statuses/custom_fields — so a plain row delete is clean and orphan-free.
+     * Pass `exec` to run inside the delete transaction.
+     */
+    async deleteById(
+        spaceId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<number> {
+        const [result] = await exec
+            .delete(spaces)
+            .where(eq(spaces.id, spaceId));
+        return result.affectedRows;
     }
 }

@@ -41,3 +41,30 @@ export interface CreateSpaceBody {
 export interface CreateSpaceRequest extends AuthRequest {
     body: CreateSpaceBody;
 }
+
+/**
+ * Body for `PATCH /api/v1/spaces/:id`. Every field is optional — a partial
+ * update. `updateSpaceValidator` has already trimmed strings, enforced the
+ * lengths / hex-colour format and range-checked `position`. The `:id` path
+ * param is read off `req.params` in the controller.
+ */
+export interface UpdateSpaceBody {
+    name?: string;
+    description?: string;
+    icon?: string;
+    color?: string;
+    is_private?: boolean;
+    position?: number;
+}
+
+export interface UpdateSpaceRequest extends AuthRequest {
+    body: UpdateSpaceBody;
+}
+
+/**
+ * Request shape for the param-only space endpoints — `POST /:id/archive`,
+ * `POST /:id/unarchive`, `DELETE /:id`. No body; the workspace scope comes from
+ * `req.auth` and the only input is the `:id` path param (validated by
+ * `spaceIdParamValidator`).
+ */
+export type SpaceIdRequest = AuthRequest;

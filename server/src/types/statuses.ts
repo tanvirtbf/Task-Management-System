@@ -53,3 +53,20 @@ export interface UpdateStatusBody {
 export interface UpdateStatusRequest extends AuthRequest {
     body: UpdateStatusBody;
 }
+
+/**
+ * Authenticated request for `DELETE /api/v1/statuses/:id`. The status id is a
+ * path param; there is no body. Identity and workspace scope come from
+ * `req.auth`. Aliased to `AuthRequest` for typing parallelism with the other §7
+ * request shapes.
+ */
+export type DeleteStatusRequest = AuthRequest;
+
+/**
+ * Authenticated request for `PATCH /api/v1/lists/:listId/statuses/reorder`. The
+ * list id is a path param; the body is a bare JSON array of `{ id, position }`
+ * items (validated/normalised in the controller). Identity and workspace scope
+ * come from `req.auth`. Typed as `AuthRequest` because the body is a top-level
+ * array, not an object literal.
+ */
+export type ReorderStatusesRequest = AuthRequest;

@@ -9,12 +9,23 @@ import { getPool } from "../../src/db/client";
 // (called by connectTestDb) connects to the private DB, not the shared one.
 Config.DB_NAME = "taskmanagement_tags_test";
 
-// The tags suite only ever writes these four tables (workspaces ← users ←
-// sessions, plus tags). Truncating just them — rather than all 31 like the
+// The tags suite writes these tables: workspaces ← users ← sessions, plus tags,
+// and (since the §9 write endpoints landed) one `workspace_activity` row per
+// create/update/delete. Truncating just this set — rather than all 31 like the
 // shared `resetTestDb` — keeps the per-test reset fast and avoids piling
 // metadata-lock work onto a MySQL server that may be under load from another
-// test process. FK checks are disabled so truncation order does not matter.
-const TABLES = ["sessions", "tags", "users", "workspaces"] as const;
+// test process. `workspace_activity` is included so the read suite's global
+// "no activity rows" assertion stays valid even when a write suite ran first in
+// the same invocation. (The DELETE-cascade test also creates `tasks`/`task_tags`
+// rows; those are asserted by specific id, so they need no per-test reset.) FK
+// checks are disabled so truncation order does not matter.
+const TABLES = [
+    "sessions",
+    "tags",
+    "workspace_activity",
+    "users",
+    "workspaces",
+] as const;
 
 const resetTagsTables = async (): Promise<void> => {
     const conn = await getPool().getConnection();
@@ -28,6 +39,13 @@ const resetTagsTables = async (): Promise<void> => {
         conn.release();
     }
 };
+
+// The tags suite sets no per-file timeout, so the default 5s applies — too tight
+// for a cold first test (ts-jest transform + first bcrypt hash + first pool
+// connect can take ~7-8s) and for the write suites' factory-heavy / concurrent
+// cases. Raise it here so it covers every tags test file at once, matching the
+// spaces/users/statuses sibling suites (which all set 30000 in their setup-each).
+jest.setTimeout(30000);
 
 beforeAll(async () => {
     await connectTestDb();

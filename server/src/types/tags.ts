@@ -36,3 +36,10 @@ export interface UpdateTagBody {
 export interface UpdateTagRequest extends AuthRequest {
     body: UpdateTagBody;
 }
+
+/**
+ * `DELETE /api/v1/tags/:id`. Reads only the `:id` path param (validated by
+ * `deleteTagValidator`) and the identity from `req.auth`; it carries no body, so
+ * — like the framework-level requests — it aliases `AuthRequest`.
+ */
+export type DeleteTagRequest = AuthRequest;

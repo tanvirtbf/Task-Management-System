@@ -2,7 +2,11 @@ import type { NextFunction, Response } from "express";
 import type { Logger } from "winston";
 import { TagService } from "../services/TagService";
 import type { AuthRequest } from "../types";
-import type { CreateTagRequest, UpdateTagRequest } from "../types/tags";
+import type {
+    CreateTagRequest,
+    DeleteTagRequest,
+    UpdateTagRequest,
+} from "../types/tags";
 import type { TagRecord } from "../repositories/TagsRepo";
 
 /** Schema default for `tags.color` — applied when the body omits `color`. */
@@ -142,6 +146,36 @@ export class TagController {
             });
 
             res.status(200).json(toWireTag(tag));
+        } catch (err) {
+            next(err);
+        }
+    }
+
+    /**
+     * DELETE /api/v1/tags/:id — delete a workspace-wide tag (👑 admin/owner; the
+     * role gate runs in the route's `canAccess` middleware).
+     *
+     * Identity and tenant come from the verified access token (`req.auth`); the
+     * tag id is a path param. Removing the tag also removes it from every task
+     * that had it — handled by the `task_tags` FK cascade, not by the app. A
+     * missing or cross-workspace id is `404 tag.not_found`. Returns `204 No
+     * Content` with an empty body.
+     */
+    async delete(req: DeleteTagRequest, res: Response, next: NextFunction) {
+        try {
+            const { sub: actorId, workspaceId } = req.auth;
+            const id = req.params.id;
+
+            await this.tagService.delete({ workspaceId, actorId, id });
+
+            this.logger.info("tags.delete.ok", {
+                requestId: req.requestId,
+                workspaceId,
+                actorId,
+                tagId: id,
+            });
+
+            res.status(204).end();
         } catch (err) {
             next(err);
         }

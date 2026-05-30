@@ -183,4 +183,31 @@ export class TaskTypeController {
             next(err);
         }
     }
+
+    /**
+     * DELETE /api/v1/task-types/:id — delete a task type (👑 owner/admin,
+     * enforced by the route's `canAccess`). Refuses with `403 task_type.system`
+     * for a seeded system type and `409 task_type.in_use` when a task or list
+     * still references it. The workspace and actor come from the verified access
+     * token (`req.auth`). Returns `204 No Content` on success.
+     */
+    async remove(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            const workspaceId = req.auth.workspaceId;
+            const actorId = req.auth.sub;
+            const id = req.params.id;
+
+            await this.taskTypeService.delete({ workspaceId, actorId, id });
+
+            this.logger.info("task_types.delete.ok", {
+                requestId: req.requestId,
+                workspaceId,
+                taskTypeId: id,
+            });
+
+            res.status(204).send();
+        } catch (err) {
+            next(err);
+        }
+    }
 }

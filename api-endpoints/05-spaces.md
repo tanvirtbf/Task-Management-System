@@ -20,7 +20,7 @@
 
 - §2 Auth (every endpoint).
 - DB tables: `spaces`, plus `lists` (to check empty-ness on delete).
-- Tier 2 — recommended right after auth/users so Tier 3+ has spaces to put lists/tasks into.
+- Tier 2 — recommended right afte/ y6r auth/users so Tier 3+ has spaces to put lists/tasks into.
 
 ## Notes
 

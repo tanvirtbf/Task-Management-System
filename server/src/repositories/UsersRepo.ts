@@ -176,6 +176,43 @@ export class UsersRepo {
     }
 
     /**
+     * Workspace-scoped single-user read that takes a `FOR UPDATE` row lock — same
+     * projection as `findByIdInWorkspace`, but it MUST run inside a transaction
+     * (pass the `tx` executor). It serializes concurrent mutations of the SAME
+     * user so a guarded no-op (already at the target role/status) is re-checked
+     * atomically: a second identical concurrent writer blocks here, then re-reads
+     * the post-change row and short-circuits — one logical transition, one audit
+     * row. Mirrors the `.for("update")` lock pattern used by
+     * `TasksRepo`/`PasswordResetTokensRepo`.
+     */
+    async findByIdForUpdate(
+        userId: string,
+        workspaceId: string,
+        exec: DbExecutor,
+    ): Promise<UserListRow | null> {
+        const [row] = await exec
+            .select({
+                id: users.id,
+                firstName: users.firstName,
+                lastName: users.lastName,
+                email: users.email,
+                role: users.role,
+                avatarUrl: users.avatarUrl,
+                status: users.status,
+                timezone: users.timezone,
+                lastLoginAt: users.lastLoginAt,
+                createdAt: users.createdAt,
+            })
+            .from(users)
+            .where(
+                and(eq(users.id, userId), eq(users.workspaceId, workspaceId)),
+            )
+            .limit(1)
+            .for("update");
+        return row ?? null;
+    }
+
+    /**
      * Bump `last_login_at` to NOW(). Best-effort: callers fire-and-forget so
      * a transient DB hiccup does not prevent a successful login from
      * returning to the user.
@@ -221,6 +258,36 @@ export class UsersRepo {
     }
 
     /**
+     * Patch a user row by primary key with an explicit, whitelisted field set —
+     * never a spread of raw client input, so this is not a mass-assignment
+     * surface (the caller maps only the fields its endpoint permits). `role` and
+     * `status` are accepted here because §4 #5/#6/#7 set them, but each caller
+     * passes only what its endpoint allows. `updated_at` is bumped explicitly
+     * (mirroring `TasksRepo.touchUpdatedAt`) so the audit timestamp moves even on
+     * a same-value write where `ON UPDATE CURRENT_TIMESTAMP` would not fire.
+     * Takes an optional `exec` so the write enlists in the same transaction as
+     * the `workspace_activity` audit row (all-or-nothing).
+     */
+    async update(
+        userId: string,
+        values: Partial<{
+            firstName: string;
+            lastName: string;
+            email: string;
+            timezone: string;
+            avatarUrl: string | null;
+            role: Role;
+            status: UserStatus;
+        }>,
+        exec: DbExecutor = this.db,
+    ): Promise<void> {
+        await exec
+            .update(users)
+            .set({ ...values, updatedAt: new Date() })
+            .where(eq(users.id, userId));
+    }
+
+    /**
      * Return the subset of `userIds` that are ACTIVE members of `workspaceId`.
      * Used to validate assignee / membership writes: callers compare the
      * returned set against the requested ids and reject the difference, so an
@@ -243,6 +310,40 @@ export class UsersRepo {
                 ),
             );
         return new Set(rows.map((r) => r.id));
+    }
+
+    /**
+     * Batch-fetch the non-sensitive row for several users in one workspace, for
+     * hydrating an `actor` / `user` object onto a feed without an N+1. Returns
+     * only the ids that exist in `workspaceId` (a missing or cross-workspace id
+     * is simply absent), in no particular order — callers index the result by
+     * `id`. Same projection as `findByIdInWorkspace` (no `password_hash`).
+     */
+    async findManyByIdsInWorkspace(
+        userIds: string[],
+        workspaceId: string,
+    ): Promise<UserListRow[]> {
+        if (userIds.length === 0) return [];
+        return this.db
+            .select({
+                id: users.id,
+                firstName: users.firstName,
+                lastName: users.lastName,
+                email: users.email,
+                role: users.role,
+                avatarUrl: users.avatarUrl,
+                status: users.status,
+                timezone: users.timezone,
+                lastLoginAt: users.lastLoginAt,
+                createdAt: users.createdAt,
+            })
+            .from(users)
+            .where(
+                and(
+                    eq(users.workspaceId, workspaceId),
+                    inArray(users.id, userIds),
+                ),
+            );
     }
 
     /**

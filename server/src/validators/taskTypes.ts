@@ -26,9 +26,12 @@ const HEX_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
 export const createTaskTypeValidator = checkSchema({
     name: {
         in: ["body"],
+        // `isString` runs BEFORE `trim`: the `trim` sanitizer stringifies its
+        // input (`123` → `"123"`), so a type check placed after it would never
+        // see a non-string. Order matters — type-guard first, then sanitize.
+        isString: { errorMessage: "name must be a string" },
         trim: true,
         notEmpty: { errorMessage: "name is required" },
-        isString: { errorMessage: "name must be a string" },
         isLength: {
             options: { max: MAX_NAME_LENGTH },
             errorMessage: "name is too long (max 80 chars)",
@@ -37,8 +40,8 @@ export const createTaskTypeValidator = checkSchema({
     icon: {
         in: ["body"],
         optional: true,
-        trim: true,
         isString: { errorMessage: "icon must be a string" },
+        trim: true,
         isLength: {
             options: { max: MAX_ICON_LENGTH },
             errorMessage: "icon is too long (max 64 chars)",
@@ -58,8 +61,10 @@ export const createTaskTypeValidator = checkSchema({
         // `null` is accepted (treated as "not provided") so a client may clear
         // the field explicitly; a blank string is normalised to NULL downstream.
         optional: { options: { values: "null" } },
-        trim: true,
+        // `isString` before `trim`: `trim` stringifies its input, so the type
+        // guard must run first (same fix as name/icon).
         isString: { errorMessage: "description must be a string" },
+        trim: true,
         isLength: {
             options: { max: MAX_DESCRIPTION_LENGTH },
             errorMessage: "description is too long (max 300 chars)",
@@ -79,6 +84,24 @@ export const createTaskTypeValidator = checkSchema({
         isBoolean: {
             options: { strict: true },
             errorMessage: "is_dev_type must be a boolean",
+        },
+    },
+});
+
+/**
+ * `DELETE /api/v1/task-types/:id`.
+ *
+ * Validates only the `:id` path param (no body). The service resolves the id
+ * within the caller's workspace and applies the `system` / `in_use` guards.
+ */
+export const deleteTaskTypeValidator = checkSchema({
+    id: {
+        in: ["params"],
+        trim: true,
+        notEmpty: { errorMessage: "id is required" },
+        isLength: {
+            options: { max: MAX_ID_LENGTH },
+            errorMessage: "id is too long (max 64 chars)",
         },
     },
 });
@@ -106,9 +129,11 @@ export const updateTaskTypeValidator = checkSchema({
     name: {
         in: ["body"],
         optional: true,
+        // `isString` before `trim` — see the create validator: `trim`
+        // stringifies its input, so the type guard must run first.
+        isString: { errorMessage: "name must be a string" },
         trim: true,
         notEmpty: { errorMessage: "name must not be empty" },
-        isString: { errorMessage: "name must be a string" },
         isLength: {
             options: { max: MAX_NAME_LENGTH },
             errorMessage: "name is too long (max 80 chars)",
@@ -117,8 +142,8 @@ export const updateTaskTypeValidator = checkSchema({
     icon: {
         in: ["body"],
         optional: true,
-        trim: true,
         isString: { errorMessage: "icon must be a string" },
+        trim: true,
         isLength: {
             options: { max: MAX_ICON_LENGTH },
             errorMessage: "icon is too long (max 64 chars)",
@@ -137,8 +162,10 @@ export const updateTaskTypeValidator = checkSchema({
         in: ["body"],
         // `null` clears the field; `undefined` (absent) leaves it unchanged.
         optional: { options: { values: "null" } },
-        trim: true,
+        // `isString` before `trim`: `trim` stringifies its input, so the type
+        // guard must run first (same fix as name/icon).
         isString: { errorMessage: "description must be a string" },
+        trim: true,
         isLength: {
             options: { max: MAX_DESCRIPTION_LENGTH },
             errorMessage: "description is too long (max 300 chars)",

@@ -8,13 +8,14 @@ import {
     foreignKey,
     index,
     int,
+    mysqlEnum,
     mysqlTable,
     text,
     timestamp,
     uniqueIndex,
     varchar,
 } from "drizzle-orm/mysql-core";
-import { ID_LENGTH, URL_LENGTH } from "./_shared";
+import { ID_LENGTH, URL_LENGTH, uploadStatuses } from "./_shared";
 import { users } from "./auth";
 import { tasks } from "./tasks";
 
@@ -155,6 +156,9 @@ export const attachments = mysqlTable(
             }),
         uploadedAt: timestamp("uploaded_at").notNull().defaultNow(),
         deletedAt: timestamp("deleted_at"),
+        uploadStatus: mysqlEnum("upload_status", uploadStatuses)
+            .notNull()
+            .default("pending"),
     },
     (t) => ({
         taskIdx: index("idx_attachments_task").on(t.taskId, t.uploadedAt),

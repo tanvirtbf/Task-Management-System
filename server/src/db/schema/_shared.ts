@@ -58,6 +58,9 @@ export const customFieldTypes = [
     "files",
 ] as const;
 
+/** §16 attachment lifecycle: created at /uploads/sign, finalised at /finalize. */
+export const uploadStatuses = ["pending", "complete"] as const;
+
 export const sprintStatuses = ["planned", "active", "closed"] as const;
 export const prStatuses = ["open", "merged", "closed", "draft"] as const;
 export const bugSeverities = ["S0", "S1", "S2", "S3"] as const;

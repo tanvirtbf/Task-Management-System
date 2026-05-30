@@ -8,10 +8,10 @@
 
 | # | Method | Path | Purpose | Auth | Size | Status |
 |---|---|---|---|---|---|---|
-| 1 | GET | `/api/v1/task-types` | List all task types in the workspace | 🔐 | S | ☐ |
+| 1 | GET | `/api/v1/task-types` | List all task types in the workspace | 🔐 | S | ✅ |
 | 2 | POST | `/api/v1/task-types` | Create a new task type | 👑 | M | ✅ |
 | 3 | PATCH | `/api/v1/task-types/:id` | Update name / icon / color / `is_dev_type` | 👑 | S | ✅ |
-| 4 | DELETE | `/api/v1/task-types/:id` | Delete a task type (must have no tasks referencing it) | 👑 | M | ☐ |
+| 4 | DELETE | `/api/v1/task-types/:id` | Delete a task type (must have no tasks referencing it) | 👑 | M | ✅ |
 
 ## Dependencies
 

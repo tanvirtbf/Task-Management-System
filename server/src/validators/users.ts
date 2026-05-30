@@ -1,7 +1,10 @@
 import { checkSchema, type Meta } from "express-validator";
 import {
     EMAIL_LENGTH,
+    ID_LENGTH,
     SHORT_NAME_LENGTH,
+    TIMEZONE_LENGTH,
+    URL_LENGTH,
     invitationRoles,
     userRoles,
     userStatuses,
@@ -149,6 +152,128 @@ export const inviteUserValidator = checkSchema({
         customSanitizer: {
             options: (value: unknown) =>
                 typeof value === "string" ? value.toLowerCase() : value,
+        },
+    },
+    role: {
+        in: ["body"],
+        isString: { errorMessage: "role must be a string", bail: true },
+        isIn: {
+            options: [[...invitationRoles]],
+            errorMessage: `role must be one of: ${invitationRoles.join(", ")}`,
+        },
+    },
+});
+
+/**
+ * Body + param validator for `PATCH /api/v1/users/:id` (🔐 self / 👑 admin).
+ *
+ * Every body field is OPTIONAL (a partial update) but, when present, must be
+ * valid. `role` and `status` are deliberately NOT in the schema — a profile
+ * edit can never change privilege or lifecycle (those are §4 #5 / #6 / #7), so
+ * a stray `role`/`status` is dropped by `matchedData`, not persisted.
+ * `avatar_url` accepts an http(s) URL or an explicit `null` (to clear it). The
+ * "at least one field" requirement is enforced in the controller —
+ * express-validator has no first-class cross-field "require one of" rule.
+ */
+export const patchUserValidator = checkSchema({
+    id: {
+        in: ["params"],
+        trim: true,
+        notEmpty: { errorMessage: "id must not be empty" },
+        isLength: {
+            options: { max: ID_LENGTH },
+            errorMessage: `id must be at most ${ID_LENGTH} characters`,
+        },
+    },
+    first_name: {
+        in: ["body"],
+        optional: true,
+        isString: { errorMessage: "first_name must be a string", bail: true },
+        trim: true,
+        notEmpty: { errorMessage: "first_name must not be empty" },
+        isLength: {
+            options: { max: SHORT_NAME_LENGTH },
+            errorMessage: `first_name must be at most ${SHORT_NAME_LENGTH} characters`,
+        },
+    },
+    last_name: {
+        in: ["body"],
+        optional: true,
+        isString: { errorMessage: "last_name must be a string", bail: true },
+        trim: true,
+        notEmpty: { errorMessage: "last_name must not be empty" },
+        isLength: {
+            options: { max: SHORT_NAME_LENGTH },
+            errorMessage: `last_name must be at most ${SHORT_NAME_LENGTH} characters`,
+        },
+    },
+    email: {
+        in: ["body"],
+        optional: true,
+        trim: true,
+        notEmpty: { errorMessage: "email must not be empty" },
+        isEmail: { errorMessage: "Must be a valid email address" },
+        isLength: {
+            options: { max: EMAIL_LENGTH },
+            errorMessage: `email is too long (max ${EMAIL_LENGTH} chars)`,
+        },
+        customSanitizer: {
+            options: (value: unknown) =>
+                typeof value === "string" ? value.toLowerCase() : value,
+        },
+    },
+    timezone: {
+        in: ["body"],
+        optional: true,
+        isString: { errorMessage: "timezone must be a string", bail: true },
+        trim: true,
+        notEmpty: { errorMessage: "timezone must not be empty" },
+        isLength: {
+            options: { max: TIMEZONE_LENGTH },
+            errorMessage: `timezone must be at most ${TIMEZONE_LENGTH} characters`,
+        },
+    },
+    avatar_url: {
+        in: ["body"],
+        // `optional: true` skips only `undefined`; an explicit `null` flows into
+        // the custom validator below (and is allowed, to clear the avatar).
+        optional: true,
+        custom: {
+            options: (value: unknown): boolean => {
+                if (value === null) return true;
+                if (typeof value !== "string") {
+                    throw new Error("avatar_url must be a string or null");
+                }
+                if (value.length > URL_LENGTH) {
+                    throw new Error(
+                        `avatar_url must be at most ${URL_LENGTH} characters`,
+                    );
+                }
+                if (!/^https?:\/\/.+/i.test(value)) {
+                    throw new Error("avatar_url must be an http(s) URL");
+                }
+                return true;
+            },
+        },
+    },
+});
+
+/**
+ * Body + param validator for `PATCH /api/v1/users/:id/role` (👑 admin/owner).
+ *
+ * `role` is required and constrained to the invitation set (`admin|member|guest`)
+ * — `owner` is rejected here (422), so a role change can never create a second
+ * workspace owner. The row-level rules ("owner's role is immutable here",
+ * "cannot change your own role") are enforced in the service, not the validator.
+ */
+export const changeRoleValidator = checkSchema({
+    id: {
+        in: ["params"],
+        trim: true,
+        notEmpty: { errorMessage: "id must not be empty" },
+        isLength: {
+            options: { max: ID_LENGTH },
+            errorMessage: `id must be at most ${ID_LENGTH} characters`,
         },
     },
     role: {

@@ -110,3 +110,22 @@ export const updateTagValidator = checkSchema({
         custom: { options: atLeastOne(["name", "color"]) },
     },
 });
+
+/**
+ * `DELETE /api/v1/tags/:id`.
+ *
+ * Only the `:id` path param is validated (bounded to the column width); there is
+ * no body. Mirrors `updateTagValidator`'s id block so the two id-keyed verbs
+ * reject the same malformed ids identically.
+ */
+export const deleteTagValidator = checkSchema({
+    id: {
+        in: ["params"],
+        trim: true,
+        notEmpty: { errorMessage: "Tag id is required" },
+        isLength: {
+            options: { max: ID_MAX },
+            errorMessage: `Tag id is too long (max ${ID_MAX} chars)`,
+        },
+    },
+});

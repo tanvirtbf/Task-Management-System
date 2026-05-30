@@ -44,7 +44,7 @@ afterEach(() => {
     mailSpy.mockRestore();
 });
 
-const post = async (body: unknown) => (await oneOff()).post(PATH).send(body);
+const post = async (body: object) => (await oneOff()).post(PATH).send(body);
 
 const getResetTokens = async (userId: string) => {
     const db = getDb();

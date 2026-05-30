@@ -1,12 +1,22 @@
 import type { NextFunction, Response } from "express";
 import type { Logger } from "winston";
 import { ListService } from "../services/ListService";
+import { AppError } from "../errors";
 import type { ListRecord } from "../repositories/ListsRepo";
 import type {
+    ArchiveListRequest,
+    CreateListRequest,
+    DeleteListRequest,
     GetListRequest,
     ListAllRequest,
     ListBySpaceRequest,
+    UnarchiveListRequest,
+    UpdateListRequest,
 } from "../types/lists";
+
+/** Schema defaults for `lists.icon` / `lists.color`, applied when omitted. */
+const DEFAULT_LIST_ICON = "ListChecks";
+const DEFAULT_LIST_COLOR = "#4F46E5";
 
 /**
  * §6 Lists HTTP layer.
@@ -186,6 +196,203 @@ export class ListController {
             });
 
             res.status(200).json(toWireList(list));
+        } catch (err) {
+            next(err);
+        }
+    }
+
+    /**
+     * POST /api/v1/lists — create a list in a space (👑 admin/owner; the role
+     * gate runs in the route's `canAccess` middleware).
+     *
+     * Identity comes from the verified access token (`req.auth`), never the body
+     * — so the list always lands in the caller's own workspace and the creator
+     * cannot be spoofed. Only the documented fields are read; stray keys
+     * (`workspace_id`, `created_by`, `position`) are ignored. Omitted optional
+     * fields fall back to the schema defaults. The service seeds the 5 default
+     * statuses and writes the `created` activity in the same transaction.
+     * Returns the new resource as a bare object per the spec single-resource
+     * shape.
+     */
+    async create(req: CreateListRequest, res: Response, next: NextFunction) {
+        try {
+            const { sub: actorId, workspaceId } = req.auth;
+            const body = req.body;
+
+            const list = await this.listService.create({
+                workspaceId,
+                actorId,
+                spaceId: body.space_id,
+                name: body.name,
+                description: body.description ?? null,
+                icon: body.icon ?? DEFAULT_LIST_ICON,
+                color: body.color ?? DEFAULT_LIST_COLOR,
+                isPrivate: body.is_private ?? false,
+                defaultTaskTypeId: body.default_task_type_id ?? null,
+            });
+
+            this.logger.info("lists.create.ok", {
+                requestId: req.requestId,
+                workspaceId,
+                actorId,
+                listId: list.id,
+                spaceId: list.spaceId,
+            });
+
+            res.status(201).json(toWireList(list));
+        } catch (err) {
+            next(err);
+        }
+    }
+
+    /**
+     * PATCH /api/v1/lists/:id — partial update of a list (👑 admin/owner; the
+     * role gate runs in the route's `canAccess` middleware).
+     *
+     * Reads only the whitelisted body fields (`name`, `description`, `icon`,
+     * `color`, `default_task_type_id`); `space_id` / `is_private` / `position` /
+     * `created_by` / `id` are never patchable here. At least one updatable field
+     * must be present (422 otherwise). `description` / `default_task_type_id`
+     * accept an explicit `null` to clear. Identity comes from `req.auth`. Returns
+     * `200` with the updated `List` as a bare object.
+     */
+    async update(req: UpdateListRequest, res: Response, next: NextFunction) {
+        try {
+            const { id } = req.params;
+            const { name, description, icon, color, default_task_type_id } =
+                req.body;
+
+            // Count an explicit `null` as "provided" (it clears the field), so a
+            // `null`-only patch is a valid update, not an empty one.
+            const fields: string[] = [];
+            if (name !== undefined) fields.push("name");
+            if (description !== undefined) fields.push("description");
+            if (icon !== undefined) fields.push("icon");
+            if (color !== undefined) fields.push("color");
+            if (default_task_type_id !== undefined)
+                fields.push("default_task_type_id");
+            if (fields.length === 0) {
+                throw AppError.validationFailed([
+                    {
+                        issue: "Provide at least one field to update: name, description, icon, color, or default_task_type_id",
+                    },
+                ]);
+            }
+
+            const list = await this.listService.update({
+                listId: id,
+                workspaceId: req.auth.workspaceId,
+                actorId: req.auth.sub,
+                name,
+                description,
+                icon,
+                color,
+                defaultTaskTypeId: default_task_type_id,
+                fields,
+            });
+
+            this.logger.info("lists.update.ok", {
+                requestId: req.requestId,
+                workspaceId: req.auth.workspaceId,
+                listId: id,
+                fields,
+            });
+
+            res.status(200).json(toWireList(list));
+        } catch (err) {
+            next(err);
+        }
+    }
+
+    /**
+     * POST /api/v1/lists/:id/archive — soft-delete a list (👑 admin/owner; role
+     * gate in the route's `canAccess`).
+     *
+     * Idempotent: archiving an already-archived list is still `204`. The list is
+     * resolved within `req.auth.workspaceId` (404 `list.not_found` otherwise).
+     * Returns `204 No Content` with an empty body.
+     */
+    async archive(req: ArchiveListRequest, res: Response, next: NextFunction) {
+        try {
+            const { id } = req.params;
+
+            await this.listService.archive({
+                listId: id,
+                workspaceId: req.auth.workspaceId,
+                actorId: req.auth.sub,
+            });
+
+            this.logger.info("lists.archive.ok", {
+                requestId: req.requestId,
+                workspaceId: req.auth.workspaceId,
+                listId: id,
+            });
+
+            res.status(204).end();
+        } catch (err) {
+            next(err);
+        }
+    }
+
+    /**
+     * POST /api/v1/lists/:id/unarchive — reverse an archive (👑 admin/owner).
+     *
+     * Idempotent: unarchiving a non-archived list is still `204`. The list is
+     * resolved within `req.auth.workspaceId` (404 `list.not_found` otherwise).
+     * Returns `204 No Content` with an empty body.
+     */
+    async unarchive(
+        req: UnarchiveListRequest,
+        res: Response,
+        next: NextFunction,
+    ) {
+        try {
+            const { id } = req.params;
+
+            await this.listService.unarchive({
+                listId: id,
+                workspaceId: req.auth.workspaceId,
+                actorId: req.auth.sub,
+            });
+
+            this.logger.info("lists.unarchive.ok", {
+                requestId: req.requestId,
+                workspaceId: req.auth.workspaceId,
+                listId: id,
+            });
+
+            res.status(204).end();
+        } catch (err) {
+            next(err);
+        }
+    }
+
+    /**
+     * DELETE /api/v1/lists/:id — hard-delete a list (🛡️ owner only; role gate in
+     * the route's `canAccess`).
+     *
+     * The list must be archived and empty (no tasks). The list is resolved within
+     * `req.auth.workspaceId` (404 `list.not_found` otherwise); a non-archived
+     * list is `409 list.not_archived`, a list with tasks `409 list.not_empty`.
+     * Returns `204 No Content`.
+     */
+    async delete(req: DeleteListRequest, res: Response, next: NextFunction) {
+        try {
+            const { id } = req.params;
+
+            await this.listService.delete({
+                listId: id,
+                workspaceId: req.auth.workspaceId,
+                actorId: req.auth.sub,
+            });
+
+            this.logger.info("lists.delete.ok", {
+                requestId: req.requestId,
+                workspaceId: req.auth.workspaceId,
+                listId: id,
+            });
+
+            res.status(204).end();
         } catch (err) {
             next(err);
         }

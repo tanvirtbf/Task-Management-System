@@ -13,6 +13,8 @@ import type {
 import type { InvitationsRepo } from "../repositories/InvitationsRepo";
 import type { WorkspaceActivityRepo } from "../repositories/WorkspaceActivityRepo";
 import type { MailService } from "./MailService";
+import type { TokenService } from "./TokenService";
+import type { PasswordResetTokensRepo } from "../repositories/PasswordResetTokensRepo";
 
 /**
  * §4 Users domain logic. The read paths (`list`, `getUser`) delegate straight
@@ -25,6 +27,14 @@ const MAX_LIMIT = 200;
 
 /** Invitations are valid for 7 days (spec is silent; reset tokens are ≤30 min). */
 const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Admin-initiated password resets reuse the §2 forgot-password contract: a
+ * single-use token valid for 30 minutes. Mirror of `AuthService`'s
+ * `RESET_TOKEN_TTL_MS` — keep the two in sync (the emailed link lands on the
+ * same shared `POST /auth/reset-password` consume endpoint).
+ */
+const RESET_TOKEN_TTL_MS = 30 * 60 * 1000;
 
 /**
  * `password_hash` is NOT NULL but an invited user has no password until they
@@ -77,6 +87,44 @@ export interface InviteUserInput {
     role: "admin" | "member" | "guest";
 }
 
+/** The whitelisted profile fields `PATCH /api/v1/users/:id` may change. */
+export interface ProfilePatch {
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    timezone?: string;
+    avatarUrl?: string | null;
+}
+
+export interface UpdateProfileInput {
+    workspaceId: string;
+    /** The caller (`req.auth.sub`) — recorded as the activity actor. */
+    actorId: string;
+    /** The caller's role (`req.auth.role`) — gates the self-or-admin rule. */
+    actorRole: Role;
+    /** The target user id from the path. */
+    userId: string;
+    patch: ProfilePatch;
+}
+
+export interface ChangeRoleInput {
+    workspaceId: string;
+    /** The acting owner/admin (`req.auth.sub`). */
+    actorId: string;
+    /** The target user id from the path. */
+    userId: string;
+    /** Already validated to the invitation set (`owner` is never accepted). */
+    newRole: "admin" | "member" | "guest";
+}
+
+export interface AdminUserActionInput {
+    workspaceId: string;
+    /** The acting owner/admin (`req.auth.sub`). */
+    actorId: string;
+    /** The target user id from the path. */
+    userId: string;
+}
+
 export class UserService {
     constructor(
         private db: MySql2Database<typeof schema>,
@@ -84,6 +132,8 @@ export class UserService {
         private invitations: InvitationsRepo,
         private activity: WorkspaceActivityRepo,
         private mail: MailService,
+        private tokens: TokenService,
+        private resetTokens: PasswordResetTokensRepo,
         private logger: Logger,
     ) {}
 
@@ -229,6 +279,362 @@ export class UserService {
         }
 
         return created;
+    }
+
+    /**
+     * Update a member's profile fields (`PATCH /api/v1/users/:id`).
+     *
+     * Authorization is the §4 "self OR admin/owner" rule: a member may edit only
+     * their own profile, an owner/admin may edit anyone in the workspace. The
+     * target is loaded workspace-scoped first, so a cross-tenant id resolves to a
+     * 404 `user.not_found` — never a 403 leak. `role` and `status` are not part
+     * of the patch (privilege/lifecycle live in #5/#6/#7), so this can never
+     * escalate. An `email` change re-checks the app-wide uniqueness invariant
+     * (a friendly 409 pre-check, with the per-workspace `uq_users_workspace_email`
+     * index as the race-free backstop). The field write and the
+     * `workspace_activity` audit row commit atomically.
+     */
+    async updateProfile(input: UpdateProfileInput): Promise<UserListRow> {
+        const current = await this.users.findByIdInWorkspace(
+            input.userId,
+            input.workspaceId,
+        );
+        if (!current) {
+            throw AppError.notFound(
+                "user.not_found",
+                `User ${input.userId} does not exist`,
+            );
+        }
+
+        const isSelf = input.actorId === input.userId;
+        const isAdmin =
+            input.actorRole === "owner" || input.actorRole === "admin";
+        if (!isSelf && !isAdmin) {
+            throw AppError.forbidden(
+                "user.forbidden_edit",
+                "You can only edit your own profile",
+            );
+        }
+
+        // Email is treated as globally unique (the app-wide `findByEmail`
+        // invariant). A friendly pre-check; the unique index is the race-free
+        // backstop in the catch below. A same-email no-op resolves to the same
+        // row (id === userId) and is allowed.
+        if (input.patch.email !== undefined) {
+            const existing = await this.users.findByEmail(input.patch.email);
+            if (existing && existing.id !== input.userId) {
+                throw AppError.conflict(
+                    "user.email_already_exists",
+                    `A user with email ${input.patch.email} already exists`,
+                );
+            }
+        }
+
+        try {
+            await this.db.transaction(async (tx) => {
+                await this.users.update(input.userId, input.patch, tx);
+                await this.activity.record(
+                    {
+                        workspaceId: input.workspaceId,
+                        actorId: input.actorId,
+                        entityType: "user",
+                        entityId: input.userId,
+                        action: "profile_updated",
+                        context: { fields: Object.keys(input.patch) },
+                    },
+                    tx,
+                );
+            });
+        } catch (err) {
+            if (isDuplicateKeyError(err)) {
+                throw AppError.conflict(
+                    "user.email_already_exists",
+                    `A user with email ${input.patch.email ?? ""} already exists`,
+                );
+            }
+            throw err;
+        }
+
+        // Re-read the committed row so the response carries the authoritative
+        // shape (same projection the list / by-id reads return).
+        const updated = await this.users.findByIdInWorkspace(
+            input.userId,
+            input.workspaceId,
+        );
+        if (!updated) {
+            throw AppError.internal("Updated user could not be loaded");
+        }
+        return updated;
+    }
+
+    /**
+     * Promote / demote a member between admin ↔ member ↔ guest
+     * (`PATCH /api/v1/users/:id/role`, 👑 admin/owner — the coarse role gate
+     * runs in the route's `canAccess`).
+     *
+     * The validator already rejected `owner`, so this can never create a second
+     * workspace owner. Two row-level rules are enforced here (mirroring the
+     * `TaskTypeService` in-service `AppError.forbidden` precedent):
+     *   - the workspace owner's role is immutable via this endpoint — a 403
+     *     `user.cannot_change_owner_role` (this also blocks an owner demoting
+     *     themselves, per the spec, and an admin demoting the owner);
+     *   - you cannot change your OWN role — a 403 `user.cannot_change_own_role`
+     *     (the spec forbids owner self-demotion; we extend it to every caller to
+     *     avoid accidental self-lockout).
+     * A change to the role the user already holds is an idempotent 200 no-op
+     * (no audit row). The role write and the `workspace_activity` row commit
+     * atomically.
+     */
+    async changeRole(input: ChangeRoleInput): Promise<UserListRow> {
+        return this.db.transaction(async (tx) => {
+            // Row lock + workspace scope: a second identical concurrent call
+            // blocks here, then re-reads the post-change row, so the no-op guard
+            // below holds atomically — one transition, one audit row.
+            const current = await this.users.findByIdForUpdate(
+                input.userId,
+                input.workspaceId,
+                tx,
+            );
+            if (!current) {
+                throw AppError.notFound(
+                    "user.not_found",
+                    `User ${input.userId} does not exist`,
+                );
+            }
+            if (current.role === "owner") {
+                throw AppError.forbidden(
+                    "user.cannot_change_owner_role",
+                    "The workspace owner's role cannot be changed here",
+                );
+            }
+            if (input.actorId === input.userId) {
+                throw AppError.forbidden(
+                    "user.cannot_change_own_role",
+                    "You cannot change your own role",
+                );
+            }
+            // No-op: already the requested role → return as-is, write no audit row.
+            if (current.role === input.newRole) {
+                return current;
+            }
+
+            await this.users.update(input.userId, { role: input.newRole }, tx);
+            await this.activity.record(
+                {
+                    workspaceId: input.workspaceId,
+                    actorId: input.actorId,
+                    entityType: "user",
+                    entityId: input.userId,
+                    action: "role_changed",
+                    context: { from: current.role, to: input.newRole },
+                },
+                tx,
+            );
+            // Only `role` changed; the rest of the locked row is authoritative.
+            return { ...current, role: input.newRole };
+        });
+    }
+
+    /**
+     * Deactivate a member (`POST /api/v1/users/:id/deactivate`, 👑 admin/owner
+     * — the coarse gate runs in the route's `canAccess`).
+     *
+     * Flips `status` to `deactivated` AND revokes every active refresh session in
+     * ONE transaction, so a half-deactivated state (status flipped but sessions
+     * still live, or vice-versa) can never be observed. Their tasks/comments are
+     * untouched (no cascade). Two row-level rules (in-service `AppError.forbidden`,
+     * per the `TaskTypeService` precedent): the workspace owner can never be
+     * deactivated (would orphan the workspace), and you cannot deactivate
+     * yourself (self-lockout guard). Re-deactivating an already-deactivated user
+     * is an idempotent no-op (no audit row, no redundant revoke). The live access
+     * token (≤15 min) is intentionally NOT killed — only refresh is revoked, so
+     * the user is locked out within ≤15 min when refresh fails (API_DESIGN §2/§4).
+     */
+    async deactivate(input: AdminUserActionInput): Promise<void> {
+        await this.db.transaction(async (tx) => {
+            // Row lock so two concurrent deactivations of the same user collapse
+            // to a single transition + audit row (the second blocks, re-reads
+            // `deactivated`, and short-circuits).
+            const current = await this.users.findByIdForUpdate(
+                input.userId,
+                input.workspaceId,
+                tx,
+            );
+            if (!current) {
+                throw AppError.notFound(
+                    "user.not_found",
+                    `User ${input.userId} does not exist`,
+                );
+            }
+            if (current.role === "owner") {
+                throw AppError.forbidden(
+                    "user.cannot_deactivate_owner",
+                    "The workspace owner cannot be deactivated",
+                );
+            }
+            if (input.actorId === input.userId) {
+                throw AppError.forbidden(
+                    "user.cannot_self_deactivate",
+                    "You cannot deactivate your own account",
+                );
+            }
+            if (current.status === "deactivated") {
+                return; // idempotent no-op (re-checked under the row lock)
+            }
+
+            await this.users.update(
+                input.userId,
+                { status: "deactivated" },
+                tx,
+            );
+            await this.tokens.revokeAllForUser(input.userId, tx);
+            await this.activity.record(
+                {
+                    workspaceId: input.workspaceId,
+                    actorId: input.actorId,
+                    entityType: "user",
+                    entityId: input.userId,
+                    action: "deactivated",
+                    context: { from: current.status },
+                },
+                tx,
+            );
+        });
+    }
+
+    /**
+     * Reactivate a member (`POST /api/v1/users/:id/reactivate`, 👑 admin/owner)
+     * — the inverse of `deactivate`. Flips `status` back to `active`.
+     *
+     * Rules:
+     *   - you cannot reactivate yourself (403 `user.cannot_self_reactivate`) —
+     *     symmetric with the self-deactivate guard, and it closes the window in
+     *     which a just-deactivated admin holding a still-valid ≤15-min access
+     *     token could otherwise revive their own account;
+     *   - an already-`active` user is an idempotent 204 no-op;
+     *   - a still-`invited` user is NOT "deactivated" — reactivation does not
+     *     apply (409 `user.not_deactivated`); a pending invite must be accepted
+     *     via the §2 invite-accept flow (which sets the password), never forced
+     *     to `active` here (that would mint a password-less active member).
+     * Only the `deactivated → active` transition writes (status + audit row, one
+     * transaction). Sessions are NOT restored — the user signs in afresh.
+     */
+    async reactivate(input: AdminUserActionInput): Promise<void> {
+        await this.db.transaction(async (tx) => {
+            // Row lock so two concurrent reactivations collapse to one
+            // transition + audit row (the second blocks, re-reads `active`, and
+            // short-circuits).
+            const current = await this.users.findByIdForUpdate(
+                input.userId,
+                input.workspaceId,
+                tx,
+            );
+            if (!current) {
+                throw AppError.notFound(
+                    "user.not_found",
+                    `User ${input.userId} does not exist`,
+                );
+            }
+            if (input.actorId === input.userId) {
+                throw AppError.forbidden(
+                    "user.cannot_self_reactivate",
+                    "You cannot reactivate your own account",
+                );
+            }
+            if (current.status === "active") {
+                return; // idempotent no-op (re-checked under the row lock)
+            }
+            if (current.status === "invited") {
+                throw AppError.conflict(
+                    "user.not_deactivated",
+                    "Only a deactivated user can be reactivated; a pending invitation must be accepted, not reactivated",
+                );
+            }
+
+            await this.users.update(input.userId, { status: "active" }, tx);
+            await this.activity.record(
+                {
+                    workspaceId: input.workspaceId,
+                    actorId: input.actorId,
+                    entityType: "user",
+                    entityId: input.userId,
+                    action: "reactivated",
+                    context: { from: current.status },
+                },
+                tx,
+            );
+        });
+    }
+
+    /**
+     * Admin-initiated password reset (`POST /api/v1/users/:id/reset-password`,
+     * 👑 admin/owner). Mirrors the §2 self-service forgot-password MINT half,
+     * just triggered by an admin: it mints a fresh single-use reset token
+     * (invalidating any prior unconsumed link) and emails the standard
+     * `/reset-password/<token>` link; that link lands on the shared §2
+     * `POST /auth/reset-password` consume endpoint, which is what actually sets
+     * the new password + revokes sessions. Like forgot-password, only an ACTIVE
+     * user can be reset — an `invited` user must accept their invitation (which
+     * sets the first password) and a `deactivated` user must be reactivated
+     * first; either is a 409 `user.not_active` (no enumeration concern here — the
+     * admin already knows the user exists). The token write + audit row commit
+     * atomically; the email is best-effort after commit (a mail hiccup never
+     * undoes a persisted token — the admin can retry). The controller returns 202.
+     */
+    async resetPassword(input: AdminUserActionInput): Promise<void> {
+        const target = await this.users.findByIdInWorkspace(
+            input.userId,
+            input.workspaceId,
+        );
+        if (!target) {
+            throw AppError.notFound(
+                "user.not_found",
+                `User ${input.userId} does not exist`,
+            );
+        }
+        if (target.status !== "active") {
+            throw AppError.conflict(
+                "user.not_active",
+                "Only an active user can be sent a password reset",
+            );
+        }
+
+        const rawToken = randomToken();
+        const tokenHash = sha256(rawToken);
+        const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
+
+        await this.db.transaction(async (tx) => {
+            await this.resetTokens.deleteActiveForUser(input.userId, tx);
+            await this.resetTokens.create(
+                {
+                    id: fakeId("prt"),
+                    userId: input.userId,
+                    tokenHash,
+                    expiresAt,
+                },
+                tx,
+            );
+            await this.activity.record(
+                {
+                    workspaceId: input.workspaceId,
+                    actorId: input.actorId,
+                    entityType: "user",
+                    entityId: input.userId,
+                    action: "password_reset_requested",
+                },
+                tx,
+            );
+        });
+
+        const resetUrl = `${Config.FRONTEND_URL ?? ""}/reset-password/${rawToken}`;
+        try {
+            await this.mail.sendPasswordResetEmail(target.email, resetUrl);
+        } catch (err: unknown) {
+            this.logger.warn("users.reset_password.email_failed", {
+                userId: input.userId,
+                error: err instanceof Error ? err.message : String(err),
+            });
+        }
     }
 
     async listUsers(input: ListUsersInput): Promise<ListUsersResult> {

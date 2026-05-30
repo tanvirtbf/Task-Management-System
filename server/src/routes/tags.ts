@@ -12,10 +12,18 @@ import logger from "../config/logger";
 import authenticate from "../middlewares/authenticate";
 import { canAccess } from "../middlewares/canAccess";
 import { validate } from "../middlewares/validate";
-import { createTagValidator, updateTagValidator } from "../validators/tags";
+import {
+    createTagValidator,
+    deleteTagValidator,
+    updateTagValidator,
+} from "../validators/tags";
 import { Roles } from "../constants";
 import type { AuthRequest } from "../types";
-import type { CreateTagRequest, UpdateTagRequest } from "../types/tags";
+import type {
+    CreateTagRequest,
+    DeleteTagRequest,
+    UpdateTagRequest,
+} from "../types/tags";
 
 const router = express.Router();
 
@@ -65,6 +73,21 @@ router.patch(
     validate,
     (req: Request, res: Response, next: NextFunction) =>
         tagController.update(req as UpdateTagRequest, res, next),
+);
+
+// ─── DELETE /api/v1/tags/:id ───────────────────────────────────────────────
+// 👑 admin/owner only. Same chain/precedence as POST/PATCH: `authenticate`
+// (401) → `canAccess` (403) → validation (422). Deleting a tag also removes it
+// from every task that had it (via the `task_tags` FK cascade). The tag id is a
+// path param; workspace scope and the actor come from `req.auth`, never the body.
+router.delete(
+    "/:id",
+    authenticate,
+    canAccess([Roles.OWNER, Roles.ADMIN]),
+    deleteTagValidator,
+    validate,
+    (req: Request, res: Response, next: NextFunction) =>
+        tagController.delete(req as DeleteTagRequest, res, next),
 );
 
 export default router;

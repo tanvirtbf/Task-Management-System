@@ -8,9 +8,9 @@
 
 | # | Method | Path | Purpose | Auth | Size | Status |
 |---|---|---|---|---|---|---|
-| 1 | GET | `/api/v1/tasks/:id/dependencies` | Both incoming (blocked-by) and outgoing (blocks) | 🔐 | S | ☐ |
-| 2 | POST | `/api/v1/task-dependencies` | Add a blocks-relationship | 🔐 | M | ☐ |
-| 3 | DELETE | `/api/v1/task-dependencies/:id` | Remove one | 🔐 | S | ☐ |
+| 1 | GET | `/api/v1/tasks/:id/dependencies` | Both incoming (blocked-by) and outgoing (blocks) | 🔐 | S | ✅ |
+| 2 | POST | `/api/v1/task-dependencies` | Add a blocks-relationship | 🔐 | M | ✅ |
+| 3 | DELETE | `/api/v1/task-dependencies/:id` | Remove one | 🔐 | S | ✅ |
 
 ## Dependencies
 

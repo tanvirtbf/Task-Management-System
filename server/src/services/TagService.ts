@@ -37,6 +37,12 @@ export interface UpdateTagInput {
     color?: string;
 }
 
+export interface DeleteTagInput {
+    workspaceId: string;
+    actorId: string;
+    id: string;
+}
+
 export class TagService {
     constructor(
         private db: MySql2Database<typeof schema>,
@@ -174,5 +180,51 @@ export class TagService {
             }
             throw err;
         }
+    }
+
+    /**
+     * Delete a tag the caller owns, recording one `deleted` activity row in the
+     * same transaction. Mirrors the update flow:
+     *
+     *   1. Lock the row scoped to the caller's workspace; missing ⇒ `404
+     *      tag.not_found` (a cross-tenant id is indistinguishable from a missing
+     *      one — no existence oracle).
+     *   2. Delete it — `fk_task_tags_tag ON DELETE CASCADE` removes the tag from
+     *      every task that had it, so no manual `task_tags` cleanup is needed.
+     *   3. Append the `deleted` activity, capturing the tag's name/color (read
+     *      under the lock) for the audit context.
+     *
+     * The `FOR UPDATE` lock serializes concurrent deletes of the SAME tag: the
+     * loser re-reads inside its tx, finds the row gone, and returns 404 — so the
+     * side effects (one row removed, one activity row) happen exactly once.
+     */
+    async delete(input: DeleteTagInput): Promise<void> {
+        const { workspaceId, actorId, id } = input;
+        await this.db.transaction(async (tx) => {
+            const current = await this.repo.lockByIdInWorkspace(
+                id,
+                workspaceId,
+                tx,
+            );
+            if (!current) {
+                throw AppError.notFound(
+                    "tag.not_found",
+                    `Tag ${id} does not exist`,
+                );
+            }
+
+            await this.repo.delete(id, workspaceId, tx);
+            await this.activity.record(
+                {
+                    workspaceId,
+                    actorId,
+                    entityType: "tag",
+                    entityId: id,
+                    action: "deleted",
+                    context: { name: current.name, color: current.color },
+                },
+                tx,
+            );
+        });
     }
 }

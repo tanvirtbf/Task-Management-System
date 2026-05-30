@@ -1,13 +1,13 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../db/schema";
-import { taskAssignees, taskWatchers } from "../db/schema";
+import { taskAssignees, taskTags, taskWatchers } from "../db/schema";
 import type { DbExecutor } from "./types";
 
 /**
  * Data access for a task's membership junctions (`task_assignees`,
- * `task_watchers`). Tag membership (`task_tags`) will join here when §11's tag
- * endpoints are built.
+ * `task_watchers`, `task_tags`). Used by the §10 task writes (create / update /
+ * bulk) and the §11 membership endpoints.
  */
 export class TaskMembershipRepo {
     constructor(private db: MySql2Database<typeof schema>) {}
@@ -84,6 +84,28 @@ export class TaskMembershipRepo {
     }
 
     /**
+     * Stop watching a task for a single user (the `/watchers/self` DELETE).
+     * Idempotent: a no-op (returns `false`) when the user is not currently
+     * watching. Mirrors `addWatcher`'s boolean contract (`true` = a row was
+     * actually removed) so the service can report whether anything changed.
+     */
+    async removeWatcher(
+        taskId: string,
+        userId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<boolean> {
+        const [result] = await exec
+            .delete(taskWatchers)
+            .where(
+                and(
+                    eq(taskWatchers.taskId, taskId),
+                    eq(taskWatchers.userId, userId),
+                ),
+            );
+        return result.affectedRows > 0;
+    }
+
+    /**
      * Delete a single assignee row. A no-op (zero rows affected) when the user
      * is not assigned — the caller decides whether anything actually changed by
      * checking the current set under the task lock first, mirroring how
@@ -100,6 +122,70 @@ export class TaskMembershipRepo {
                 and(
                     eq(taskAssignees.taskId, taskId),
                     eq(taskAssignees.userId, userId),
+                ),
+            );
+    }
+
+    /** Bulk-remove assignees (used by #5 update / #10 bulk assignee diffs). */
+    async removeAssignees(
+        taskId: string,
+        userIds: string[],
+        exec: DbExecutor = this.db,
+    ): Promise<void> {
+        if (userIds.length === 0) return;
+        await exec
+            .delete(taskAssignees)
+            .where(
+                and(
+                    eq(taskAssignees.taskId, taskId),
+                    inArray(taskAssignees.userId, userIds),
+                ),
+            );
+    }
+
+    /** Current tag ids on a task. Pass `exec` to read inside a tx. */
+    async getTagIds(
+        taskId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<string[]> {
+        const rows = await exec
+            .select({ tagId: taskTags.tagId })
+            .from(taskTags)
+            .where(eq(taskTags.taskId, taskId));
+        return rows.map((r) => r.tagId);
+    }
+
+    /**
+     * Insert task↔tag rows. Idempotent via the `(task_id, tag_id)` primary key —
+     * a concurrent re-insert of the same pair is a harmless no-op.
+     */
+    async addTags(
+        taskId: string,
+        tagIds: string[],
+        exec: DbExecutor = this.db,
+    ): Promise<void> {
+        if (tagIds.length === 0) return;
+        await exec
+            .insert(taskTags)
+            .values(tagIds.map((tagId) => ({ taskId, tagId })))
+            .onDuplicateKeyUpdate({
+                set: { addedAt: sql`${taskTags.addedAt}` },
+            });
+    }
+
+    /** Bulk-remove task↔tag rows (used by #5 update / #10 bulk tag diffs). */
+    async removeTags(
+        taskId: string,
+        tagIds: string[],
+        exec: DbExecutor = this.db,
+    ): Promise<void> {
+        if (tagIds.length === 0) return;
+        await exec
+            .delete(taskTags)
+            .where(
+                and(
+                    eq(taskTags.taskId, taskId),
+                    inArray(taskTags.tagId, tagIds),
                 ),
             );
     }

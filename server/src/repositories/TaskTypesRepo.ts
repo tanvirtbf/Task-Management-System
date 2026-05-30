@@ -1,7 +1,7 @@
-import { and, asc, eq, max } from "drizzle-orm";
+import { and, asc, count, eq, max } from "drizzle-orm";
 import { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../db/schema";
-import { taskTypes } from "../db/schema";
+import { lists, taskTypes, tasks } from "../db/schema";
 import type { DbExecutor } from "./types";
 
 /**
@@ -203,5 +203,64 @@ export class TaskTypesRepo {
             throw new Error(`task_type ${id} missing immediately after update`);
         }
         return updated;
+    }
+
+    /**
+     * How many tasks reference this task type (`tasks.task_type_id`). Used by
+     * `DELETE /task-types/:id` to refuse with `409 task_type.in_use`. Served by
+     * the index InnoDB maintains for `fk_tasks_task_type`, so it never scans the
+     * `tasks` heap. A task type reaches a workspace only via `tasks.workspace_id`
+     * = the same workspace, so an in-workspace `typeId` cannot match a foreign
+     * workspace's tasks.
+     */
+    async countTasksUsingType(
+        typeId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<number> {
+        const [row] = await exec
+            .select({ value: count() })
+            .from(tasks)
+            .where(eq(tasks.taskTypeId, typeId));
+        return row?.value ?? 0;
+    }
+
+    /**
+     * How many lists name this task type as their default
+     * (`lists.default_task_type_id`). The DB FK is `ON DELETE SET NULL`, so a
+     * referencing list does NOT block the delete at the database level — but §8
+     * requires refusing with `409 task_type.in_use` if a list still references
+     * it, so the service counts these explicitly before deleting. Served by
+     * `idx_lists_default_task_type (default_task_type_id)`.
+     */
+    async countListsUsingType(
+        typeId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<number> {
+        const [row] = await exec
+            .select({ value: count() })
+            .from(lists)
+            .where(eq(lists.defaultTaskTypeId, typeId));
+        return row?.value ?? 0;
+    }
+
+    /**
+     * Delete a task type by id, returning the affected-row count. Zero means the
+     * row was already gone (a concurrent delete won the race) — the caller renders
+     * that as `404 task_type.not_found`. The write is keyed on the PK alone, so
+     * callers MUST have resolved the id within the workspace first.
+     *
+     * If a task still references the type, `fk_tasks_task_type`'s `ON DELETE
+     * RESTRICT` rejects the delete with `ER_ROW_IS_REFERENCED_2` — the race-safe
+     * backstop for the caller's `countTasksUsingType` pre-check, translated by the
+     * service into `409 task_type.in_use`.
+     */
+    async deleteById(
+        id: string,
+        exec: DbExecutor = this.db,
+    ): Promise<number> {
+        const [result] = await exec
+            .delete(taskTypes)
+            .where(eq(taskTypes.id, id));
+        return result.affectedRows;
     }
 }

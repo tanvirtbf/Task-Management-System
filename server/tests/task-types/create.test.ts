@@ -201,7 +201,11 @@ describe("POST /api/v1/task-types", () => {
             ["color is 3-digit shorthand", { name: "C", color: "#fff" }],
             ["color too short", { name: "C", color: "#12345" }],
             ["icon too long (65)", { name: "C", icon: "x".repeat(65) }],
+            ["icon not a string (number)", { name: "C", icon: 123 }],
+            ["icon not a string (boolean)", { name: "C", icon: true }],
             ["description too long (301)", { name: "C", description: "x".repeat(301) }],
+            ["description not a string (number)", { name: "C", description: 123 }],
+            ["description not a string (boolean)", { name: "C", description: true }],
             ["is_dev_type not boolean", { name: "C", is_dev_type: "yes" }],
             ["is_milestone_type not boolean", { name: "C", is_milestone_type: 1 }],
         ];
@@ -328,6 +332,31 @@ describe("POST /api/v1/task-types", () => {
             const res = await client.post(TASK_TYPES).send({ name: "  Order  " });
 
             expect(res.status).toBe(409);
+        });
+    });
+
+    // ─── i. Concurrency ───────────────────────────────────────────────────────
+    describe("Concurrency", () => {
+        it("N parallel identical creates → exactly one 201, the rest 409, one row, one activity", async () => {
+            const { ws, client } = await setup();
+
+            const results = await Promise.all(
+                Array.from({ length: 6 }, () =>
+                    client.post(TASK_TYPES).send({ name: "Race" }),
+                ),
+            );
+
+            const created = results.filter((r) => r.status === 201);
+            const conflicts = results.filter((r) => r.status === 409);
+            expect(created).toHaveLength(1);
+            expect(conflicts).toHaveLength(5);
+            for (const r of conflicts) {
+                expect(r.body.error.code).toBe("task_type.duplicate");
+            }
+            // The unique index (workspace_id, name) is the race arbiter: exactly
+            // one row persisted, and only the winner's transaction logged activity.
+            expect(await rowsIn(ws.id)).toHaveLength(1);
+            expect(await activityIn(ws.id)).toHaveLength(1);
         });
     });
 

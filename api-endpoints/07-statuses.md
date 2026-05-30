@@ -8,11 +8,11 @@
 
 | # | Method | Path | Purpose | Auth | Size | Status |
 |---|---|---|---|---|---|---|
-| 1 | GET | `/api/v1/lists/:listId/statuses` | All statuses for a list, ordered by position | 🔐 | S | ☐ |
-| 2 | POST | `/api/v1/lists/:listId/statuses` | Add a status to a list | 👑 | M | ☐ |
-| 3 | PATCH | `/api/v1/statuses/:id` | Update name / color / group | 👑 | S | ☐ |
-| 4 | DELETE | `/api/v1/statuses/:id` | Delete a status (must have no tasks referencing it) | 👑 | M | ☐ |
-| 5 | PATCH | `/api/v1/lists/:listId/statuses/reorder` | Reorder statuses in bulk | 👑 | M | ☐ |
+| 1 | GET | `/api/v1/lists/:listId/statuses` | All statuses for a list, ordered by position | 🔐 | S | ✅ |
+| 2 | POST | `/api/v1/lists/:listId/statuses` | Add a status to a list | 👑 | M | ✅ |
+| 3 | PATCH | `/api/v1/statuses/:id` | Update name / color / group | 👑 | S | ✅ |
+| 4 | DELETE | `/api/v1/statuses/:id` | Delete a status (must have no tasks referencing it) | 👑 | M | ✅ |
+| 5 | PATCH | `/api/v1/lists/:listId/statuses/reorder` | Reorder statuses in bulk | 👑 | M | ✅ |
 
 ## Dependencies
 

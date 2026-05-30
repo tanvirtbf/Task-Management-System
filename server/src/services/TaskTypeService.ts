@@ -35,6 +35,12 @@ export interface UpdateTaskTypeInput {
     patch: TaskTypeUpdateRow;
 }
 
+export interface DeleteTaskTypeInput {
+    workspaceId: string;
+    actorId: string;
+    id: string;
+}
+
 /**
  * Fields a seeded `is_system` task type does NOT allow changing. Per
  * API_DESIGN.md §8 only `icon`/`color`/`description` are mutable on system
@@ -52,6 +58,18 @@ const isDuplicateKeyError = (err: unknown): boolean =>
     err !== null &&
     "code" in err &&
     (err as { code?: unknown }).code === "ER_DUP_ENTRY";
+
+/**
+ * True for the mysql2 foreign-key RESTRICT violation on the parent row (errno
+ * 1451 / `ER_ROW_IS_REFERENCED_2`). Lets `delete` translate an
+ * `fk_tasks_task_type` rejection — a task referencing the type raced in after
+ * the `countTasksUsingType` pre-check — into `409 task_type.in_use`.
+ */
+const isReferencedError = (err: unknown): boolean =>
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code?: unknown }).code === "ER_ROW_IS_REFERENCED_2";
 
 export class TaskTypeService {
     constructor(
@@ -199,5 +217,98 @@ export class TaskTypeService {
             }
             throw err;
         }
+    }
+
+    /**
+     * Delete a task type in the caller's workspace.
+     *
+     * Resolved within the workspace first (404 `task_type.not_found` for a
+     * missing or cross-tenant id — no existence oracle). Then, in one
+     * transaction holding a `FOR UPDATE` lock on the row:
+     *
+     *   - `403 task_type.system` — seeded `is_system` types can never be deleted
+     *     (mirrors the PATCH guard; the curated §8 note overrides API_DESIGN.md's
+     *     looser "409 if is_system").
+     *   - `409 task_type.in_use` — any task references it (`tasks.task_type_id`,
+     *     FK `RESTRICT`) OR any list names it as its default
+     *     (`lists.default_task_type_id`, FK `SET NULL` — so the DB would NOT block
+     *     it; §8 still requires the refusal, hence the explicit count). The
+     *     `RESTRICT` constraint is the race-safe backstop for the task check.
+     *
+     * On success the row is deleted and a `workspace_activity` "deleted" row is
+     * written in the same transaction. Precedence: not_found → system (403) →
+     * in_use (409). Returns nothing; the controller renders `204 No Content`.
+     */
+    async delete(input: DeleteTaskTypeInput): Promise<void> {
+        const { workspaceId, actorId, id } = input;
+
+        await this.db.transaction(async (tx) => {
+            const existing = await this.taskTypes.findByIdInWorkspace(
+                id,
+                workspaceId,
+                tx,
+                { forUpdate: true },
+            );
+            if (!existing) {
+                throw AppError.notFound(
+                    "task_type.not_found",
+                    `Task type ${id} does not exist`,
+                );
+            }
+
+            if (existing.isSystem) {
+                throw AppError.forbidden(
+                    "task_type.system",
+                    "System task types cannot be deleted",
+                );
+            }
+
+            // Two sequential awaits, not Promise.all: both counts run on the
+            // single connection bound to `tx`, which mysql2 serialises anyway —
+            // so parallelising here would only mislead, not speed anything up.
+            const taskCount = await this.taskTypes.countTasksUsingType(id, tx);
+            const listCount = await this.taskTypes.countListsUsingType(id, tx);
+            if (taskCount > 0 || listCount > 0) {
+                throw AppError.conflict(
+                    "task_type.in_use",
+                    `Task type ${id} is still referenced by ${taskCount} task(s) and ${listCount} list(s); reassign them first`,
+                );
+            }
+
+            let affected: number;
+            try {
+                affected = await this.taskTypes.deleteById(id, tx);
+            } catch (err) {
+                if (isReferencedError(err)) {
+                    // A task referencing the type raced in after the pre-check;
+                    // the FK RESTRICT rejected the delete.
+                    throw AppError.conflict(
+                        "task_type.in_use",
+                        `Task type ${id} is still referenced by a task; reassign it first`,
+                    );
+                }
+                throw err;
+            }
+            if (affected === 0) {
+                // The row vanished between the lock and the delete (a concurrent
+                // delete) — surface a 404, not a silent success.
+                throw AppError.notFound(
+                    "task_type.not_found",
+                    `Task type ${id} does not exist`,
+                );
+            }
+
+            await this.workspaceActivity.record(
+                {
+                    workspaceId,
+                    actorId,
+                    entityType: "task_type",
+                    entityId: id,
+                    action: "deleted",
+                    context: { name: existing.name },
+                },
+                tx,
+            );
+        });
     }
 }

@@ -8,7 +8,7 @@
 
 | # | Method | Path | Purpose | Auth | Size | Status |
 |---|---|---|---|---|---|---|
-| 1 | GET | `/api/v1/tasks/:id/activity` | Reverse-chronological activity feed for a task | 🔐 | M | ☐ |
+| 1 | GET | `/api/v1/tasks/:id/activity` | Reverse-chronological activity feed for a task | 🔐 | M | ✅ |
 
 ## Dependencies
 
@@ -18,6 +18,6 @@
 ## Notes
 
 - Pagination by `internal_id` cursor — newest first.
-- Support `?action=` filter (e.g., `?action=status_change`).
+- Support `?action=` filter (e.g., `?action=status_changed`). Accepted as a free-form code (exact match) rather than a closed enum — the action vocabulary is owned by the writing endpoints and grows over time, so an unrecognised value yields an empty page, not a 422.
 - Response should hydrate the `actor` user object (not just the id) so the UI doesn't have to make extra calls.
 - This endpoint enforces the convention: every other endpoint that mutates a task is expected to write an activity row. Failing to do so will make the feed lossy — call this out in the implementation plan when you build §10 and friends.

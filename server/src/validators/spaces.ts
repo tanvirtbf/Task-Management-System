@@ -47,6 +47,26 @@ export const getSpaceValidator = checkSchema({
 });
 
 /**
+ * Shared `:id` path-param validator for the param-only space endpoints —
+ * `POST /:id/archive`, `POST /:id/unarchive`, `DELETE /:id`. Same rule as
+ * `getSpaceValidator` (trim, required, ≤64 chars); kept as its own export so
+ * the read and the mutating routes read clearly at their call sites.
+ */
+export const spaceIdParamValidator = checkSchema({
+    id: {
+        in: ["params"],
+        trim: true,
+        notEmpty: {
+            errorMessage: "id is required",
+        },
+        isLength: {
+            options: { max: 64 },
+            errorMessage: "id is too long (max 64 chars)",
+        },
+    },
+});
+
+/**
  * `POST /api/v1/spaces`.
  *
  * `name` is required; everything else is optional and the controller applies
@@ -62,6 +82,87 @@ export const createSpaceValidator = checkSchema({
         isString: { errorMessage: "name must be a string", bail: true },
         trim: true,
         notEmpty: { errorMessage: "name is required" },
+        isLength: {
+            options: { max: NAME_MAX },
+            errorMessage: `name must be at most ${NAME_MAX} characters`,
+        },
+    },
+    description: {
+        in: ["body"],
+        optional: true,
+        isString: { errorMessage: "description must be a string", bail: true },
+        trim: true,
+        isLength: {
+            options: { max: DESCRIPTION_MAX },
+            errorMessage: `description must be at most ${DESCRIPTION_MAX} characters`,
+        },
+    },
+    icon: {
+        in: ["body"],
+        optional: true,
+        isString: { errorMessage: "icon must be a string", bail: true },
+        trim: true,
+        notEmpty: { errorMessage: "icon must not be empty" },
+        isLength: {
+            options: { max: ICON_MAX },
+            errorMessage: `icon must be at most ${ICON_MAX} characters`,
+        },
+    },
+    color: {
+        in: ["body"],
+        optional: true,
+        isString: { errorMessage: "color must be a string", bail: true },
+        trim: true,
+        matches: {
+            options: HEX_COLOR,
+            errorMessage: "color must be a hex code like #RRGGBB",
+        },
+    },
+    is_private: {
+        in: ["body"],
+        optional: true,
+        custom: {
+            options: (value: unknown) => typeof value === "boolean",
+            errorMessage: "is_private must be a boolean",
+        },
+    },
+    position: {
+        in: ["body"],
+        optional: true,
+        isInt: {
+            options: { min: 0, max: POSITION_MAX },
+            errorMessage: `position must be an integer between 0 and ${POSITION_MAX}`,
+        },
+        toInt: true,
+    },
+});
+
+/**
+ * `PATCH /api/v1/spaces/:id`.
+ *
+ * Every body field is OPTIONAL (a partial update) but, when present, obeys the
+ * same rules as create — so `name`, if sent, must still be a non-empty
+ * ≤120-char string, `color` a `#RRGGBB` hex, `is_private` a real boolean, etc.
+ * The `:id` param is validated like `getSpaceValidator`. A body with no
+ * updatable fields is accepted and handled as a no-op by the service.
+ * `workspace_id` / `created_by` are never read from the body.
+ */
+export const updateSpaceValidator = checkSchema({
+    id: {
+        in: ["params"],
+        trim: true,
+        notEmpty: { errorMessage: "id is required" },
+        isLength: {
+            options: { max: 64 },
+            errorMessage: "id is too long (max 64 chars)",
+        },
+    },
+    name: {
+        in: ["body"],
+        optional: true,
+        isString: { errorMessage: "name must be a string", bail: true },
+        trim: true,
+        notEmpty: { errorMessage: "name must not be empty" },
         isLength: {
             options: { max: NAME_MAX },
             errorMessage: `name must be at most ${NAME_MAX} characters`,
