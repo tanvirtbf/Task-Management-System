@@ -72,11 +72,19 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
         return;
     }
 
-    // 2. express-jwt UnauthorizedError (most common: missing/invalid token)
+    // 2. express-jwt UnauthorizedError — map to the spec-defined codes from
+    //    API_DESIGN.md §32. `auth.invalid_token` is not in the table but is
+    //    the only sensible code for a bad-signature / wrong-algorithm /
+    //    malformed JWT; documented as an intentional extension.
     if (err instanceof UnauthorizedError) {
-        res.status(401).json(
-            buildBody(req, "auth.unauthorized", err.message),
-        );
+        const inner = (err as UnauthorizedError & { inner?: Error }).inner;
+        let code = "auth.invalid_token";
+        if (err.code === "credentials_required") {
+            code = "auth.missing_token";
+        } else if (inner?.name === "TokenExpiredError") {
+            code = "auth.expired_token";
+        }
+        res.status(401).json(buildBody(req, code, err.message));
         return;
     }
 

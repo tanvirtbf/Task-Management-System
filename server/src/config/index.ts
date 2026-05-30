@@ -58,7 +58,10 @@ export const Config = {
     DB_PORT,
     DB_USERNAME,
     DB_PASSWORD,
-    DB_NAME,
+    // `DB_NAME_OVERRIDE` lets a single process (e.g. one jest run) target an
+    // isolated database without editing the shared `.env.test`. Backward
+    // compatible: when unset, the normal `DB_NAME` applies.
+    DB_NAME: process.env.DB_NAME_OVERRIDE ?? DB_NAME,
     DB_POOL_MAX,
     DB_POOL_QUEUE_LIMIT,
 

@@ -9,6 +9,14 @@ import { apiLimiter } from "./middlewares/rateLimit";
 import { notFoundMiddleware } from "./middlewares/notFound";
 import { errorHandler } from "./middlewares/errorHandler";
 import authRouter from "./routes/auth";
+import usersRouter from "./routes/users";
+import workspaceRouter from "./routes/workspace";
+import spacesRouter from "./routes/spaces";
+import taskTypesRouter from "./routes/taskTypes";
+import statusesRouter from "./routes/statuses";
+import tagsRouter from "./routes/tags";
+import listsRouter from "./routes/lists";
+import tasksRouter from "./routes/tasks";
 
 const app = express();
 
@@ -61,9 +69,23 @@ const v1 = express.Router();
 v1.use(apiLimiter);
 
 v1.use("/auth", authRouter);
+v1.use("/workspace", workspaceRouter);
+v1.use("/users", usersRouter);
+v1.use("/spaces", spacesRouter);
+v1.use("/task-types", taskTypesRouter);
+v1.use("/tags", tagsRouter);
+// §7 Statuses — the router declares full paths (`/lists/:listId/statuses`, and
+// later `/statuses/:id`) because its routes span the `/lists` and `/statuses`
+// prefixes, so it mounts at the v1 root rather than under a single prefix.
+v1.use(statusesRouter);
+// §6 Lists — like §7, this router declares full paths and mounts at the v1
+// root: its endpoints span the `/spaces/:spaceId/lists` and (later) `/lists`
+// prefixes.
+v1.use(listsRouter);
+// §11 Task membership — assignees / watchers / tags under the `/tasks` prefix.
+v1.use("/tasks", tasksRouter);
 // Future feature routers mount the same way:
-//   v1.use("/workspaces", workspaceRouter);
-//   v1.use("/spaces", spaceRouter);
+//   v1.use("/lists", listRouter);
 //   …
 
 app.use("/api/v1", v1);

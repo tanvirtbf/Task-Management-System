@@ -1,8 +1,16 @@
 import type { NextFunction, Response } from "express";
 import type { Logger } from "winston";
 import { AuthService } from "../services/AuthService";
-import type { LoginRequest, RefreshRequest } from "../types/auth";
-import type { UserRecord } from "../repositories/UsersRepo";
+import type {
+    ForgotPasswordRequest,
+    LoginRequest,
+    LogoutAllRequest,
+    LogoutRequest,
+    MeRequest,
+    RefreshRequest,
+    ResetPasswordRequest,
+} from "../types/auth";
+import { toWireUser } from "../serializers/userSerializer";
 
 /**
  * §2 Authentication HTTP layer.
@@ -16,36 +24,6 @@ const ACCESS_TOKEN_TTL_SECONDS = 15 * 60; // 15 min, matches TokenService
 const REFRESH_COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const REFRESH_COOKIE_NAME = "bb_refresh";
 const REFRESH_COOKIE_PATH = "/api/v1/auth";
-
-/**
- * Wire-format `User` per API_DESIGN.md Appendix A. snake_case fields, never
- * leak `password_hash`, `workspace_id`, or `updated_at`.
- */
-interface WireUser {
-    id: string;
-    first_name: string;
-    last_name: string;
-    email: string;
-    role: UserRecord["role"];
-    avatar_url: string | null;
-    status: UserRecord["status"];
-    timezone: string;
-    created_at: string;
-    last_login_at: string | null;
-}
-
-const toWireUser = (u: UserRecord): WireUser => ({
-    id: u.id,
-    first_name: u.firstName,
-    last_name: u.lastName,
-    email: u.email,
-    role: u.role,
-    avatar_url: u.avatarUrl,
-    status: u.status,
-    timezone: u.timezone,
-    created_at: u.createdAt.toISOString(),
-    last_login_at: u.lastLoginAt ? u.lastLoginAt.toISOString() : null,
-});
 
 export class AuthController {
     constructor(
@@ -86,6 +64,29 @@ export class AuthController {
         }
     }
 
+    async forgotPassword(
+        req: ForgotPasswordRequest,
+        res: Response,
+        next: NextFunction,
+    ) {
+        try {
+            const { email } = req.body;
+
+            this.logger.debug("auth.forgot_password.attempt", {
+                requestId: req.requestId,
+                email,
+            });
+
+            await this.authService.forgotPassword({ email });
+
+            // Always 202 with an empty body — never reveal whether the email is
+            // registered (API_DESIGN.md §2 enumeration protection).
+            res.status(202).json({});
+        } catch (err) {
+            next(err);
+        }
+    }
+
     async refresh(req: RefreshRequest, res: Response, next: NextFunction) {
         try {
             const rawCookie: unknown = req.cookies?.[REFRESH_COOKIE_NAME];
@@ -121,6 +122,99 @@ export class AuthController {
         }
     }
 
+    async logout(req: LogoutRequest, res: Response, next: NextFunction) {
+        try {
+            const sessionId =
+                typeof req.auth?.id === "string" && req.auth.id.length > 0
+                    ? req.auth.id
+                    : undefined;
+
+            await this.authService.logout({ sessionId });
+
+            this.clearRefreshCookie(res);
+
+            this.logger.info("auth.logout.ok", {
+                requestId: req.requestId,
+                userId: req.auth?.sub,
+                sessionId: sessionId ?? null,
+            });
+
+            res.sendStatus(204);
+        } catch (err) {
+            next(err);
+        }
+    }
+
+    async logoutAll(req: LogoutAllRequest, res: Response, next: NextFunction) {
+        try {
+            const userId = req.auth?.sub;
+
+            await this.authService.logoutAll({ userId });
+
+            this.clearRefreshCookie(res);
+
+            this.logger.info("auth.logout_all.ok", {
+                requestId: req.requestId,
+                userId,
+            });
+
+            res.sendStatus(204);
+        } catch (err) {
+            next(err);
+        }
+    }
+
+    async resetPassword(
+        req: ResetPasswordRequest,
+        res: Response,
+        next: NextFunction,
+    ) {
+        try {
+            const { token, new_password } = req.body;
+
+            // Log the attempt with NO sensitive material — never the token or
+            // the password. `requestId` alone correlates with the access log.
+            this.logger.debug("auth.reset_password.attempt", {
+                requestId: req.requestId,
+            });
+
+            await this.authService.resetPassword({
+                token,
+                newPassword: new_password,
+            });
+
+            this.logger.info("auth.reset_password.ok", {
+                requestId: req.requestId,
+            });
+
+            res.sendStatus(204);
+        } catch (err) {
+            next(err);
+        }
+    }
+
+    async me(req: MeRequest, res: Response, next: NextFunction) {
+        try {
+            const userId = req.auth.sub;
+
+            this.logger.debug("auth.me.attempt", {
+                requestId: req.requestId,
+                userId,
+            });
+
+            const user = await this.authService.me(userId);
+
+            this.logger.info("auth.me.ok", {
+                requestId: req.requestId,
+                userId,
+            });
+
+            res.status(200).json(toWireUser(user));
+        } catch (err) {
+            next(err);
+        }
+    }
+
     /**
      * Set the `bb_refresh` cookie with the attributes mandated by
      * API_DESIGN.md §2. Shared by login and refresh so the contract stays in
@@ -133,6 +227,19 @@ export class AuthController {
             sameSite: "strict",
             path: REFRESH_COOKIE_PATH,
             maxAge: REFRESH_COOKIE_MAX_AGE_MS,
+        });
+    }
+
+    /**
+     * Clear the `bb_refresh` cookie. The attributes here MUST match the set
+     * attributes (especially `Path`) or the browser will keep the cookie.
+     */
+    private clearRefreshCookie(res: Response) {
+        res.clearCookie(REFRESH_COOKIE_NAME, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "prod",
+            sameSite: "strict",
+            path: REFRESH_COOKIE_PATH,
         });
     }
 }

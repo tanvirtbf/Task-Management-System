@@ -19,3 +19,14 @@ export const fakeId = (prefix = "id"): string => {
  */
 export const sha256 = (input: string): string =>
     createHash("sha256").update(input).digest("hex");
+
+/**
+ * Cryptographically-random, URL-safe secret token (default 256 bits).
+ *
+ * Used for single-use links such as password-reset and invitation tokens: the
+ * raw value is emailed to the user and placed in a URL, while only its
+ * `sha256(token)` is persisted. Distinct from `fakeId` — that mints a
+ * prefixed row identifier, this mints an unguessable secret.
+ */
+export const randomToken = (bytes = 32): string =>
+    randomBytes(bytes).toString("base64url");

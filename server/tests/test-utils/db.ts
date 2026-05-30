@@ -13,6 +13,35 @@ const cleanSql = (raw: string): string =>
         .replace(/\$\$\s*$/gm, ";");
 
 /**
+ * Resolve THIS jest invocation's test database name.
+ *
+ * When `TEST_DB_SUFFIX` is set, the name is derived as
+ * `taskmanagement_<suffix>_test` — unique per invocation and never written to
+ * the shared `.env.test`, so a suite running concurrently in another process
+ * can't name it (and therefore can't `DROP DATABASE` it out from under us).
+ * Without the suffix it falls back to `Config.DB_NAME` (the legacy
+ * `.env.test`-driven name), so existing single-run behaviour is unchanged.
+ */
+export const resolveTestDbName = (): string => {
+    const suffix = process.env.TEST_DB_SUFFIX;
+    if (suffix && /^[a-z0-9_]+$/i.test(suffix)) {
+        return `taskmanagement_${suffix.toLowerCase()}_test`;
+    }
+    return Config.DB_NAME ?? "";
+};
+
+/**
+ * Pin `Config.DB_NAME` to the resolved per-invocation name. Call once at the
+ * start of BOTH the global-setup process and each test worker so provisioning,
+ * the app connection pool, and truncation all target the same database — even
+ * if another process rewrites `.env.test` mid-run.
+ */
+export const applyTestDbName = (): string => {
+    Config.DB_NAME = resolveTestDbName();
+    return Config.DB_NAME;
+};
+
+/**
  * One-time setup: ensure the test database exists with a fresh schema.
  * Called from the `globalSetup` jest hook.
  */

@@ -6,6 +6,7 @@ import { Config } from "../config";
 import * as schema from "../db/schema";
 import { sessions } from "../db/schema";
 import { fakeId, sha256 } from "../utils";
+import type { DbExecutor } from "../repositories/types";
 
 export class TokenService {
     constructor(private db: MySql2Database<typeof schema>) {}
@@ -152,11 +153,14 @@ export class TokenService {
 
     /**
      * Revoke every active session for a user. Triggered by the reuse-detection
-     * branch of refresh: replaying an already-revoked refresh token is a
-     * strong signal of theft, so we kill the whole family.
+     * branch of refresh (replaying a revoked refresh token signals theft) and
+     * by password reset (force re-login everywhere). Takes an optional `exec`
+     * so the reset flow can run it inside the same transaction as the password
+     * change. Filters on `revoked_at IS NULL`, so it is idempotent and a user
+     * with no active sessions resolves cleanly.
      */
-    async revokeAllForUser(userId: string) {
-        await this.db
+    async revokeAllForUser(userId: string, exec: DbExecutor = this.db) {
+        await exec
             .update(sessions)
             .set({ revokedAt: new Date() })
             .where(and(eq(sessions.userId, userId), isNull(sessions.revokedAt)));

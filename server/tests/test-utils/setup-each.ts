@@ -1,6 +1,15 @@
 process.env.NODE_ENV = "test";
 
-import { connectTestDb, disconnectTestDb, resetTestDb } from "./db";
+import {
+    applyTestDbName,
+    connectTestDb,
+    disconnectTestDb,
+    resetTestDb,
+} from "./db";
+
+// Pin the per-invocation DB name before any connection is opened in this
+// worker, so it matches what global-setup provisioned (see resolveTestDbName).
+applyTestDbName();
 
 beforeAll(async () => {
     await connectTestDb();

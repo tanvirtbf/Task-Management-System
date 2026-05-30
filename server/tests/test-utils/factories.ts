@@ -1,6 +1,16 @@
 import bcrypt from "bcrypt";
 import { getDb } from "../../src/db/client";
-import { workspaces, users, sessions } from "../../src/db/schema";
+import {
+    workspaces,
+    users,
+    sessions,
+    spaces,
+    lists,
+    tags,
+    taskTypes,
+    statuses,
+    tasks,
+} from "../../src/db/schema";
 import { TokenService } from "../../src/services/TokenService";
 import { fakeId, sha256 } from "../../src/utils";
 import type { Role } from "../../src/constants";
@@ -143,4 +153,189 @@ export const makeLoggedInClient = async (user: {
     ].join(",");
 
     return new LoggedInClient(app, cookieHeader);
+};
+
+export interface MakeTagInput {
+    workspaceId: string;
+    name?: string;
+    color?: string;
+}
+
+/**
+ * Insert a tag row in the given workspace. `name` is UNIQUE per workspace
+ * (`uq_tags_workspace_name`); the default appends a sequence number so repeated
+ * calls never collide. Omit `color` to exercise the schema default (#94A3B8).
+ */
+export const makeTag = async (input: MakeTagInput) => {
+    const db = getDb();
+    const id = fakeId("tag");
+    const seq = nextSeq();
+    const name = input.name ?? `Tag ${seq}`;
+    const values: { id: string; workspaceId: string; name: string; color?: string } = {
+        id,
+        workspaceId: input.workspaceId,
+        name,
+    };
+    if (input.color !== undefined) values.color = input.color;
+    await db.insert(tags).values(values);
+    return { id, name, color: input.color ?? "#94A3B8", workspaceId: input.workspaceId };
+};
+
+export interface MakeSpaceInput {
+    workspaceId: string;
+    createdBy?: string;
+    name?: string;
+    description?: string | null;
+    icon?: string;
+    color?: string;
+    isPrivate?: boolean;
+    position?: number;
+    archivedAt?: Date | null;
+}
+
+/**
+ * Insert a space row in the given workspace. `created_by` references
+ * `users.id` (`ON DELETE RESTRICT`), so a creator user is made in the same
+ * workspace when one is not supplied — pass `createdBy` to avoid the extra
+ * (bcrypt-bearing) user insert in bulk / perf tests. Omit `icon` / `color` to
+ * exercise the schema defaults ('Folder' / '#4F46E5').
+ */
+export const makeSpace = async (input: MakeSpaceInput) => {
+    const db = getDb();
+    const id = fakeId("sp");
+    const seq = nextSeq();
+    const createdBy =
+        input.createdBy ??
+        (await makeUser({ workspaceId: input.workspaceId })).id;
+    const name = input.name ?? `Space ${seq}`;
+
+    const values: typeof spaces.$inferInsert = {
+        id,
+        workspaceId: input.workspaceId,
+        name,
+        createdBy,
+        isPrivate: input.isPrivate ?? false,
+        position: input.position ?? 0,
+        archivedAt: input.archivedAt ?? null,
+    };
+    if (input.description !== undefined) values.description = input.description;
+    if (input.icon !== undefined) values.icon = input.icon;
+    if (input.color !== undefined) values.color = input.color;
+
+    await db.insert(spaces).values(values);
+    return { id, name, workspaceId: input.workspaceId, createdBy };
+};
+
+export interface MakeTaskTypeInput {
+    workspaceId: string;
+    name?: string;
+}
+
+/** Insert a workspace-scoped task type. `name` is UNIQUE per workspace. */
+export const makeTaskType = async (input: MakeTaskTypeInput) => {
+    const db = getDb();
+    const id = fakeId("tt");
+    const seq = nextSeq();
+    await db.insert(taskTypes).values({
+        id,
+        workspaceId: input.workspaceId,
+        name: input.name ?? `Type ${seq}`,
+    });
+    return { id, workspaceId: input.workspaceId };
+};
+
+export interface MakeListInput {
+    workspaceId: string;
+    spaceId?: string;
+    createdBy?: string;
+    name?: string;
+}
+
+/**
+ * Insert a list. A parent space + creator user are made in the same workspace
+ * when omitted (`space_id` / `created_by` are NOT-NULL FKs).
+ */
+export const makeList = async (input: MakeListInput) => {
+    const db = getDb();
+    const createdBy =
+        input.createdBy ??
+        (await makeUser({ workspaceId: input.workspaceId })).id;
+    const spaceId =
+        input.spaceId ??
+        (await makeSpace({ workspaceId: input.workspaceId, createdBy })).id;
+    const id = fakeId("l");
+    const seq = nextSeq();
+    await db.insert(lists).values({
+        id,
+        spaceId,
+        name: input.name ?? `List ${seq}`,
+        createdBy,
+    });
+    return { id, spaceId, workspaceId: input.workspaceId, createdBy };
+};
+
+export type StatusGroup = "not_started" | "active" | "done" | "closed";
+
+export interface MakeStatusInput {
+    /** A list id — statuses are list-scoped in V1. */
+    scopeId: string;
+    statusGroup?: StatusGroup;
+    name?: string;
+}
+
+/** Insert a list-scoped status. UNIQUE on (scope_type, scope_id, name). */
+export const makeStatus = async (input: MakeStatusInput) => {
+    const db = getDb();
+    const id = fakeId("st");
+    const seq = nextSeq();
+    await db.insert(statuses).values({
+        id,
+        scopeType: "list",
+        scopeId: input.scopeId,
+        name: input.name ?? `Status ${seq}`,
+        statusGroup: input.statusGroup ?? "not_started",
+    });
+    return { id };
+};
+
+export interface MakeTaskInput {
+    workspaceId: string;
+    createdBy?: string;
+    listId?: string;
+    statusId?: string;
+    taskTypeId?: string;
+    name?: string;
+    archivedAt?: Date | null;
+}
+
+/**
+ * Create a task, materialising any missing parent rows (creator → space → list,
+ * task type, status) in the same workspace. Returns the ids a caller needs for
+ * assertions. Pass `archivedAt` to exercise the soft-delete guard.
+ */
+export const makeTask = async (input: MakeTaskInput) => {
+    const db = getDb();
+    const workspaceId = input.workspaceId;
+    const createdBy =
+        input.createdBy ?? (await makeUser({ workspaceId })).id;
+    const listId =
+        input.listId ?? (await makeList({ workspaceId, createdBy })).id;
+    const taskTypeId =
+        input.taskTypeId ?? (await makeTaskType({ workspaceId })).id;
+    const statusId =
+        input.statusId ?? (await makeStatus({ scopeId: listId })).id;
+    const id = fakeId("t");
+    const seq = nextSeq();
+    await db.insert(tasks).values({
+        id,
+        workspaceId,
+        primaryListId: listId,
+        taskNumber: seq,
+        name: input.name ?? `Task ${seq}`,
+        statusId,
+        taskTypeId,
+        createdBy,
+        archivedAt: input.archivedAt ?? null,
+    });
+    return { id, workspaceId, listId, statusId, taskTypeId, createdBy };
 };

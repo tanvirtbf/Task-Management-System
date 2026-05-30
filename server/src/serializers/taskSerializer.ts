@@ -1,0 +1,142 @@
+import type { Task as TaskRow } from "../db/schema";
+
+/**
+ * Wire-format `Task` per API_DESIGN.md §10 + Appendix A. snake_case;
+ * `assignees` / `watchers` / `tags` are ID arrays and `custom_field_values` is
+ * keyed by custom-field id (the hydration the controller passes in). The
+ * `internal_id` column is never exposed — it only travels inside the opaque
+ * pagination cursor. `sla_due_at` is included to match the DB column and the
+ * frontend's `slaDueAt` (Appendix A's prose omits it).
+ *
+ * Single source for the `Task` response shape, shared by every §10–§14 endpoint
+ * that returns a task — the same role `userSerializer` plays for `User`.
+ */
+export interface WireTask {
+    id: string;
+    custom_id: string | null;
+    task_number: number;
+    workspace_id: string;
+    primary_list_id: string;
+    name: string;
+    description: string | null;
+    status_id: string;
+    priority: number;
+    task_type_id: string;
+    parent_task_id: string | null;
+    nesting_depth: number;
+    is_milestone: boolean;
+    start_date: string | null;
+    due_date: string | null;
+    completed_at: string | null;
+    sla_due_at: string | null;
+    recurrence_pattern: string;
+    recurrence_days: string[] | null;
+    recurrence_ends_at: string | null;
+    time_estimate_seconds: number | null;
+    time_tracked_seconds: number;
+    subtasks_count: number;
+    subtasks_completed: number;
+    comments_count: number;
+    attachments_count: number;
+    sprint_id: string | null;
+    story_points: number | null;
+    reviewer_id: string | null;
+    branch_name: string | null;
+    pr_url: string | null;
+    pr_status: string | null;
+    bug_severity: string | null;
+    bug_reproducibility: string | null;
+    bug_environment: string | null;
+    bug_browser: string | null;
+    reporter_team: string | null;
+    deployed_at: string | null;
+    rollback_reason: string | null;
+    assignees: string[];
+    watchers: string[];
+    tags: string[];
+    custom_field_values: Record<string, unknown>;
+    archived_at: string | null;
+    created_by: string;
+    created_at: string;
+    updated_at: string;
+}
+
+/** The inline collections a task row is hydrated with before serialisation. */
+export interface TaskHydration {
+    assignees: string[];
+    watchers: string[];
+    tags: string[];
+    customFieldValues: Record<string, unknown>;
+}
+
+/**
+ * Format a MySQL DATE to the `YYYY-MM-DD` wire form using local date
+ * components: the mysql2 driver materialises a DATE as a Date at local
+ * midnight, so `toISOString()` could shift it across the UTC boundary. Accepts
+ * a pre-formatted string defensively (string-mode columns).
+ */
+const toWireDate = (value: Date | string | null): string | null => {
+    if (value === null) return null;
+    if (typeof value === "string") return value.slice(0, 10);
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+};
+
+/** Format a nullable TIMESTAMP to ISO-8601 UTC (`…Z`). */
+const toWireTimestamp = (value: Date | null): string | null =>
+    value ? value.toISOString() : null;
+
+export const toWireTask = (t: TaskRow, h: TaskHydration): WireTask => ({
+    id: t.id,
+    custom_id: t.customId,
+    task_number: t.taskNumber,
+    workspace_id: t.workspaceId,
+    primary_list_id: t.primaryListId,
+    name: t.name,
+    description: t.description,
+    status_id: t.statusId,
+    priority: t.priority,
+    task_type_id: t.taskTypeId,
+    parent_task_id: t.parentTaskId,
+    nesting_depth: t.nestingDepth,
+    is_milestone: t.isMilestone,
+    start_date: toWireDate(t.startDate),
+    due_date: toWireDate(t.dueDate),
+    completed_at: toWireTimestamp(t.completedAt),
+    sla_due_at: toWireTimestamp(t.slaDueAt),
+    recurrence_pattern: t.recurrencePattern,
+    recurrence_days:
+        t.recurrenceDays && t.recurrenceDays.length > 0
+            ? t.recurrenceDays
+            : null,
+    recurrence_ends_at: toWireDate(t.recurrenceEndsAt),
+    time_estimate_seconds: t.timeEstimateSeconds,
+    time_tracked_seconds: t.timeTrackedSeconds,
+    subtasks_count: t.subtasksCount,
+    subtasks_completed: t.subtasksCompleted,
+    comments_count: t.commentsCount,
+    attachments_count: t.attachmentsCount,
+    sprint_id: t.sprintId,
+    story_points: t.storyPoints,
+    reviewer_id: t.reviewerId,
+    branch_name: t.branchName,
+    pr_url: t.prUrl,
+    pr_status: t.prStatus,
+    bug_severity: t.bugSeverity,
+    bug_reproducibility: t.bugReproducibility,
+    bug_environment: t.bugEnvironment,
+    bug_browser: t.bugBrowser,
+    reporter_team: t.reporterTeam,
+    deployed_at: toWireTimestamp(t.deployedAt),
+    rollback_reason: t.rollbackReason,
+    assignees: h.assignees,
+    watchers: h.watchers,
+    tags: h.tags,
+    custom_field_values: h.customFieldValues,
+    archived_at: toWireTimestamp(t.archivedAt),
+    created_by: t.createdBy,
+    created_at: t.createdAt.toISOString(),
+    updated_at: t.updatedAt.toISOString(),
+});

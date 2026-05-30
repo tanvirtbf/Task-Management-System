@@ -1,0 +1,130 @@
+import type { NextFunction, Response } from "express";
+import type { Logger } from "winston";
+import { TaskMembershipService } from "../services/TaskMembershipService";
+import type {
+    AddAssigneesBody,
+    AddAssigneesRequest,
+    RemoveAssigneeRequest,
+    WatchSelfRequest,
+} from "../types/tasks";
+
+/**
+ * §11 Task membership HTTP layer (assignees · watchers · tags).
+ *
+ * Controllers translate request → service input and service result → wire
+ * format. Business logic + DB writes live in `TaskMembershipService`.
+ */
+export class TaskMembershipController {
+    constructor(
+        private service: TaskMembershipService,
+        private logger: Logger,
+    ) {}
+
+    async addAssignees(
+        req: AddAssigneesRequest,
+        res: Response,
+        next: NextFunction,
+    ) {
+        try {
+            const taskId = req.params.id;
+            const { sub: actorId, workspaceId } = req.auth;
+            const userIds = this.collectUserIds(req.body);
+
+            const { added } = await this.service.addAssignees({
+                taskId,
+                workspaceId,
+                actorId,
+                userIds,
+            });
+
+            this.logger.info("task.assignees.added", {
+                requestId: req.requestId,
+                taskId,
+                actorId,
+                added,
+            });
+
+            res.sendStatus(204);
+        } catch (err) {
+            next(err);
+        }
+    }
+
+    async removeAssignee(
+        req: RemoveAssigneeRequest,
+        res: Response,
+        next: NextFunction,
+    ) {
+        try {
+            const taskId = req.params.id;
+            const userId = req.params.userId;
+            const { sub: actorId, workspaceId } = req.auth;
+
+            const { removed } = await this.service.removeAssignee({
+                taskId,
+                workspaceId,
+                actorId,
+                userId,
+            });
+
+            this.logger.info("task.assignees.removed", {
+                requestId: req.requestId,
+                taskId,
+                userId,
+                actorId,
+                removed,
+            });
+
+            res.sendStatus(204);
+        } catch (err) {
+            next(err);
+        }
+    }
+
+    async watchSelf(req: WatchSelfRequest, res: Response, next: NextFunction) {
+        try {
+            const taskId = req.params.id;
+            const { sub: userId, workspaceId } = req.auth;
+
+            const { watched } = await this.service.watchSelf({
+                taskId,
+                workspaceId,
+                userId,
+            });
+
+            this.logger.info("task.watchers.self.added", {
+                requestId: req.requestId,
+                taskId,
+                userId,
+                watched,
+            });
+
+            res.sendStatus(204);
+        } catch (err) {
+            next(err);
+        }
+    }
+
+    /**
+     * Normalise the two accepted body shapes (`{ user_id }` and
+     * `{ user_ids: [] }`) into a single trimmed, deduped id list, preserving
+     * first-seen order. The validator has already guaranteed at least one is
+     * present and well-typed.
+     */
+    private collectUserIds(body: AddAssigneesBody): string[] {
+        const raw: string[] = [];
+        if (typeof body.user_id === "string") raw.push(body.user_id);
+        if (Array.isArray(body.user_ids)) raw.push(...body.user_ids);
+
+        const seen = new Set<string>();
+        const out: string[] = [];
+        for (const id of raw) {
+            const trimmed = id.trim();
+            if (trimmed.length > 0 && !seen.has(trimmed)) {
+                seen.add(trimmed);
+                out.push(trimmed);
+            }
+        }
+        return out;
+    }
+}

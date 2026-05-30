@@ -42,3 +42,64 @@ export const loginValidator = checkSchema({
         },
     },
 });
+
+/**
+ * `POST /api/v1/auth/reset-password`. The raw `token` is bounded (it is hashed
+ * server-side; an over-long value can never match a stored 64-char hash, but we
+ * cap the input defensively). `new_password` is NOT trimmed — leading/trailing
+ * whitespace is a legitimate part of a secret and must be preserved verbatim.
+ */
+export const resetPasswordValidator = checkSchema({
+    token: {
+        in: ["body"],
+        notEmpty: {
+            errorMessage: "Reset token is required",
+        },
+        isString: {
+            errorMessage: "Reset token must be a string",
+        },
+        isLength: {
+            options: { max: 512 },
+            errorMessage: "Reset token is too long (max 512 chars)",
+        },
+    },
+    new_password: {
+        in: ["body"],
+        notEmpty: {
+            errorMessage: "New password is required",
+        },
+        isString: {
+            errorMessage: "New password must be a string",
+        },
+        isLength: {
+            options: { min: 8, max: 200 },
+            errorMessage: "New password must be between 8 and 200 characters",
+        },
+    },
+});
+
+/**
+ * `POST /api/v1/auth/forgot-password`. Email-only — mirrors `loginValidator`'s
+ * email rules (trim → notEmpty → isEmail → max 255 → lowercase, never
+ * `normalizeEmail`) so the lookup key matches login exactly.
+ */
+export const forgotPasswordValidator = checkSchema({
+    email: {
+        in: ["body"],
+        trim: true,
+        notEmpty: {
+            errorMessage: "Email is required",
+        },
+        isEmail: {
+            errorMessage: "Must be a valid email address",
+        },
+        isLength: {
+            options: { max: 255 },
+            errorMessage: "Email is too long (max 255 chars)",
+        },
+        customSanitizer: {
+            options: (value: unknown) =>
+                typeof value === "string" ? value.toLowerCase() : value,
+        },
+    },
+});

@@ -8,11 +8,17 @@ export default expressjwt({
     algorithms: ["HS256"],
     getToken(req: Request) {
         const authHeader = req.headers.authorization;
-
-        // Bearer <token>
-        if (authHeader && authHeader.split(" ")[1] !== "undefined") {
-            const token = authHeader.split(" ")[1];
-            if (token) {
+        if (authHeader) {
+            // RFC 6750: the scheme is `Bearer`, case-insensitive. Splitting
+            // blindly and taking [1] would also accept `Basic <jwt>` etc. —
+            // scheme-blindness is a footgun (proxies / caches may treat the
+            // two differently), so we pin the scheme here.
+            const [scheme, token] = authHeader.split(" ");
+            if (
+                scheme?.toLowerCase() === "bearer" &&
+                token &&
+                token !== "undefined"
+            ) {
                 return token;
             }
         }

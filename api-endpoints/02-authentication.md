@@ -29,7 +29,7 @@ Covers password login, refresh-token rotation, logout (single + all sessions), `
 - Will need: an email sender for #6 + #10 invitations. SMTP env vars exist; a `MailService` will need to be built once and reused.
 
 ## Notes
-
+, 
 - **#2 refresh**: rotate the session — revoke old, persist new, mint both cookies with the new session id.
 - **#6 forgot-password**: must respond with the same success body regardless of whether the email exists (user enumeration protection).
 - **#10 invitation accept**: single transaction — create user, mark invitation accepted, issue login cookies, log activity.

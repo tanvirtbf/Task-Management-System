@@ -3,3 +3,4 @@ node_modules
 *.spec.ts
 tests/
 src/db/migrations
+jest.statuses.config.cjs

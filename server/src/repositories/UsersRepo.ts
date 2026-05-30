@@ -1,8 +1,9 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, count, eq, gt, inArray, like, or } from "drizzle-orm";
 import { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../db/schema";
 import { users } from "../db/schema";
 import type { Role } from "../constants";
+import type { DbExecutor } from "./types";
 
 /**
  * Data access for the `users` table. Owns the Drizzle queries; services compose
@@ -35,6 +36,38 @@ export interface UserRecord {
     lastLoginAt: Date | null;
     createdAt: Date;
 }
+
+/** Filters accepted by the workspace user-list query (`GET /api/v1/users`). */
+export interface UserListFilters {
+    status?: UserStatus;
+    role?: Role;
+    q?: string;
+}
+
+/**
+ * Row shape returned by `listByWorkspace`. Mirrors the camelCase source fields
+ * of the wire `User` and — unlike `UserRecord` — never includes `passwordHash`.
+ */
+export interface UserListRow {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    role: Role;
+    avatarUrl: string | null;
+    status: UserStatus;
+    timezone: string;
+    lastLoginAt: Date | null;
+    createdAt: Date;
+}
+
+/**
+ * Escape LIKE wildcards so a user's `q` matches literally. MySQL's default
+ * escape character is backslash; without this, a search for "50%" or "a_b"
+ * would behave as a wildcard pattern.
+ */
+const escapeLike = (input: string): string =>
+    input.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 
 export class UsersRepo {
     constructor(private db: MySql2Database<typeof schema>) {}
@@ -106,6 +139,43 @@ export class UsersRepo {
     }
 
     /**
+     * Workspace-scoped single-user lookup for `GET /api/v1/users/:id`.
+     *
+     * Returns the same non-sensitive projection as `listByWorkspace` (no
+     * `password_hash` / `workspace_id` / `updated_at`), so a hash never leaves
+     * the data layer for a read response. The `workspace_id` predicate is the
+     * tenant-isolation control: an id that belongs to another workspace returns
+     * `null` — indistinguishable from a non-existent id, so there is no
+     * cross-tenant existence oracle. Unlike `findById` (used by the auth flow,
+     * which trusts the token's own user and needs `passwordHash`), this method
+     * is safe to back a member-facing read.
+     */
+    async findByIdInWorkspace(
+        userId: string,
+        workspaceId: string,
+    ): Promise<UserListRow | null> {
+        const [row] = await this.db
+            .select({
+                id: users.id,
+                firstName: users.firstName,
+                lastName: users.lastName,
+                email: users.email,
+                role: users.role,
+                avatarUrl: users.avatarUrl,
+                status: users.status,
+                timezone: users.timezone,
+                lastLoginAt: users.lastLoginAt,
+                createdAt: users.createdAt,
+            })
+            .from(users)
+            .where(
+                and(eq(users.id, userId), eq(users.workspaceId, workspaceId)),
+            )
+            .limit(1);
+        return row ?? null;
+    }
+
+    /**
      * Bump `last_login_at` to NOW(). Best-effort: callers fire-and-forget so
      * a transient DB hiccup does not prevent a successful login from
      * returning to the user.
@@ -115,5 +185,139 @@ export class UsersRepo {
             .update(users)
             .set({ lastLoginAt: new Date() })
             .where(eq(users.id, userId));
+    }
+
+    /**
+     * Replace a user's password hash, addressed by primary key. Takes an
+     * optional `exec` so the password-reset flow can run it inside the same
+     * transaction as the token-consume + session-revoke (all-or-nothing). The
+     * caller hashes the plaintext (bcrypt) before calling — this repo only
+     * persists the final hash, never the raw password.
+     */
+    async updatePassword(
+        userId: string,
+        passwordHash: string,
+        exec: DbExecutor = this.db,
+    ): Promise<void> {
+        await exec
+            .update(users)
+            .set({ passwordHash })
+            .where(eq(users.id, userId));
+    }
+
+    /**
+     * Insert a user row. Takes an optional `exec` so the invite flow can run it
+     * in the same transaction as the matching `invitations` + `workspace_activity`
+     * rows (all-or-nothing). The caller builds the row explicitly — fields like
+     * `status` / `password_hash` are never copied from client input — so this is
+     * not a mass-assignment surface. A duplicate `(workspace_id, email)` raises
+     * `ER_DUP_ENTRY`, which the service maps to 409.
+     */
+    async create(
+        values: typeof users.$inferInsert,
+        exec: DbExecutor = this.db,
+    ): Promise<void> {
+        await exec.insert(users).values(values);
+    }
+
+    /**
+     * Return the subset of `userIds` that are ACTIVE members of `workspaceId`.
+     * Used to validate assignee / membership writes: callers compare the
+     * returned set against the requested ids and reject the difference, so an
+     * id from another workspace is indistinguishable from a non-existent one
+     * (no cross-tenant existence oracle).
+     */
+    async findActiveIdsInWorkspace(
+        userIds: string[],
+        workspaceId: string,
+    ): Promise<Set<string>> {
+        if (userIds.length === 0) return new Set();
+        const rows = await this.db
+            .select({ id: users.id })
+            .from(users)
+            .where(
+                and(
+                    eq(users.workspaceId, workspaceId),
+                    eq(users.status, "active"),
+                    inArray(users.id, userIds),
+                ),
+            );
+        return new Set(rows.map((r) => r.id));
+    }
+
+    /**
+     * Workspace-scoped, filtered page of users for `GET /api/v1/users`.
+     *
+     * Keyset pagination on the primary key `id` ASC — `users` has no
+     * `internal_id`, so `id` is the documented stable sort key (API_DESIGN.md
+     * §1: "primary key … ASC unless documented otherwise"). Callers pass
+     * `limit + 1` and use the extra row to derive `has_more`.
+     *
+     * The projection omits `password_hash` (and `workspace_id` / `updated_at`)
+     * so a hash never leaves the data layer for a list response.
+     */
+    async listByWorkspace(
+        params: UserListFilters & {
+            workspaceId: string;
+            afterId?: string;
+            limit: number;
+        },
+    ): Promise<UserListRow[]> {
+        return this.db
+            .select({
+                id: users.id,
+                firstName: users.firstName,
+                lastName: users.lastName,
+                email: users.email,
+                role: users.role,
+                avatarUrl: users.avatarUrl,
+                status: users.status,
+                timezone: users.timezone,
+                lastLoginAt: users.lastLoginAt,
+                createdAt: users.createdAt,
+            })
+            .from(users)
+            .where(this.filterWhere(params))
+            .orderBy(asc(users.id))
+            .limit(params.limit);
+    }
+
+    /** Exact count for the same filter set — feeds `pagination.total_estimate`. */
+    async countByWorkspace(
+        params: UserListFilters & { workspaceId: string },
+    ): Promise<number> {
+        const [row] = await this.db
+            .select({ value: count() })
+            .from(users)
+            .where(this.filterWhere(params));
+        return row?.value ?? 0;
+    }
+
+    /**
+     * Shared WHERE for the list + count queries. All clauses are ANDed;
+     * `workspace_id` is always present (tenant isolation). Optional filters and
+     * the keyset cursor are appended only when supplied — Drizzle's `and()`
+     * ignores `undefined` entries.
+     */
+    private filterWhere(
+        params: UserListFilters & { workspaceId: string; afterId?: string },
+    ) {
+        const pattern =
+            params.q && params.q.length > 0
+                ? `%${escapeLike(params.q)}%`
+                : undefined;
+        return and(
+            eq(users.workspaceId, params.workspaceId),
+            params.status ? eq(users.status, params.status) : undefined,
+            params.role ? eq(users.role, params.role) : undefined,
+            pattern
+                ? or(
+                      like(users.firstName, pattern),
+                      like(users.lastName, pattern),
+                      like(users.email, pattern),
+                  )
+                : undefined,
+            params.afterId ? gt(users.id, params.afterId) : undefined,
+        );
     }
 }

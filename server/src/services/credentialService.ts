@@ -1,5 +1,10 @@
 import bcrypt from "bcrypt";
 
+// Work factor for newly-hashed passwords. 10 matches the dummy-compare cost
+// and the project's documented bcrypt rounds. The cost is embedded in the
+// stored hash, so `comparePassword` keeps working if this is raised later.
+const BCRYPT_ROUNDS = 10;
+
 export class CredentialService {
     /**
      * Lazily-computed dummy bcrypt hash used by `dummyCompare`. We bake the
@@ -11,6 +16,15 @@ export class CredentialService {
 
     async comparePassword(userPassword: string, passwordHash: string) {
         return await bcrypt.compare(userPassword, passwordHash);
+    }
+
+    /**
+     * Hash a plaintext password for storage. Used by the password-reset flow
+     * (and future change-password / signup). Returns the full bcrypt hash
+     * (algorithm + cost + salt + digest) for `users.password_hash`.
+     */
+    async hashPassword(plainPassword: string): Promise<string> {
+        return await bcrypt.hash(plainPassword, BCRYPT_ROUNDS);
     }
 
     /**
