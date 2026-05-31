@@ -20,7 +20,8 @@
         "db:drop": "drizzle-kit drop",
         "db:setup": "tsx src/db/setup.ts",
         "db:setup:fresh": "tsx src/db/setup.ts --drop",
-        "db:seed": "tsx src/db/seed.ts"
+        "db:seed": "tsx src/db/seed.ts",
+        "job": "cross-env NODE_ENV=dev tsx src/bin/run-job.ts"
     },
     "author": "",
     "license": "ISC",

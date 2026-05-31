@@ -828,10 +828,14 @@ describe("GET /api/v1/lists", () => {
             expect(res.body.error.request_id).toBe(res.get("X-Request-Id"));
         });
 
-        it("returns 404 route.not_found for POST on the same path", async () => {
+        it("returns 404 route.not_found for an unrouted method (PUT) on the same path", async () => {
+            // NB: POST /api/v1/lists is now the §6 create endpoint (👑), so a POST
+            // here legitimately resolves (403 for a non-admin) rather than 404.
+            // This probe uses PUT — a method with no handler on `/lists` — to still
+            // exercise the route-not-found envelope for an unrouted method.
             const { client } = await setup();
 
-            const res = await client.post(url());
+            const res = await client.put(url());
 
             expect(res.status).toBe(404);
             expect(res.body.error.code).toBe("route.not_found");

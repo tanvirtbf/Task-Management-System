@@ -10,6 +10,8 @@ import {
     taskTypes,
     statuses,
     tasks,
+    sprints,
+    onCallShifts,
 } from "../../src/db/schema";
 import { TokenService } from "../../src/services/TokenService";
 import { fakeId, sha256 } from "../../src/utils";
@@ -338,4 +340,104 @@ export const makeTask = async (input: MakeTaskInput) => {
         archivedAt: input.archivedAt ?? null,
     });
     return { id, workspaceId, listId, statusId, taskTypeId, createdBy };
+};
+
+export interface MakeSprintInput {
+    workspaceId: string;
+    name?: string;
+    goal?: string | null;
+    startDate?: string; // YYYY-MM-DD
+    endDate?: string; // YYYY-MM-DD
+    status?: "planned" | "active" | "closed";
+    committedPoints?: number;
+}
+
+/**
+ * Insert a sprint row. `name` is UNIQUE per workspace (`uq_sprints_workspace_name`)
+ * and `start_date <= end_date` (`ck_sprints_dates`) — the defaults satisfy both,
+ * and the default `name` appends a sequence number so repeated calls never
+ * collide. There is no `created_by` column on sprints. Dates are passed as
+ * `YYYY-MM-DD` and stored as LOCAL-midnight Dates (Drizzle `date()` mode
+ * "date"), matching the serializer's local-component formatting.
+ */
+export const makeSprint = async (input: MakeSprintInput) => {
+    const db = getDb();
+    const id = fakeId("spr");
+    const seq = nextSeq();
+    const name = input.name ?? `Sprint ${seq}`;
+    const status = input.status ?? "planned";
+    const toLocalDate = (value: string): Date => {
+        const [y, m, d] = value.split("-").map(Number);
+        return new Date(y, m - 1, d);
+    };
+    await db.insert(sprints).values({
+        id,
+        workspaceId: input.workspaceId,
+        name,
+        goal: input.goal ?? null,
+        startDate: toLocalDate(input.startDate ?? "2026-06-01"),
+        endDate: toLocalDate(input.endDate ?? "2026-06-14"),
+        status,
+        committedPoints: input.committedPoints ?? 0,
+    });
+    return { id, name, workspaceId: input.workspaceId, status };
+};
+
+export interface MakeOnCallShiftInput {
+    workspaceId: string;
+    engineerId?: string;
+    createdBy?: string;
+    /** A Monday. Omit for a window centered on today (covers CURDATE() — the "current" shift). */
+    weekStart?: Date;
+}
+
+/**
+ * Insert an `on_call_shifts` row. `engineer_id` + `created_by` are NOT-NULL FKs
+ * to `users.id` (ON DELETE RESTRICT), so an engineer user is made in the same
+ * workspace when omitted, and `created_by` defaults to that engineer. Dates are
+ * LOCAL-midnight Dates (Drizzle `date()` mode "date", matching `makeSprint` +
+ * the serializer's local-component formatting); `week_end` is `week_start + 6`
+ * days (satisfies `ck_on_call_shifts_week` start<=end). When `weekStart` is
+ * omitted the window is centered on today so the row is the CURRENT shift for
+ * GET /on-call/current tests. UNIQUE on (workspace_id, week_start) — reuse a
+ * workspace only with distinct `weekStart` values.
+ */
+export const makeOnCallShift = async (input: MakeOnCallShiftInput) => {
+    const db = getDb();
+    const id = fakeId("ocs");
+    const engineerId =
+        input.engineerId ??
+        (await makeUser({ workspaceId: input.workspaceId })).id;
+    const createdBy = input.createdBy ?? engineerId;
+
+    const addDays = (base: Date, days: number): Date =>
+        new Date(base.getFullYear(), base.getMonth(), base.getDate() + days);
+
+    let weekStart: Date;
+    let weekEnd: Date;
+    if (input.weekStart) {
+        weekStart = input.weekStart;
+        weekEnd = addDays(input.weekStart, 6);
+    } else {
+        const now = new Date();
+        weekStart = addDays(now, -3);
+        weekEnd = addDays(now, 3);
+    }
+
+    await db.insert(onCallShifts).values({
+        id,
+        workspaceId: input.workspaceId,
+        weekStart,
+        weekEnd,
+        engineerId,
+        createdBy,
+    });
+    return {
+        id,
+        workspaceId: input.workspaceId,
+        engineerId,
+        createdBy,
+        weekStart,
+        weekEnd,
+    };
 };

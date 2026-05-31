@@ -8,12 +8,12 @@
 
 | # | Method | Path | Purpose | Auth | Size | Status |
 |---|---|---|---|---|---|---|
-| 1 | GET | `/api/v1/templates` | List templates with optional `?type=` filter | 🔐 | S | ☐ |
-| 2 | GET | `/api/v1/templates/:id` | Read a single template | 🔐 | S | ☐ |
-| 3 | POST | `/api/v1/templates` | Create a new template | 👑 | M | ☐ |
-| 4 | PATCH | `/api/v1/templates/:id` | Update metadata / structure | 👑 | M | ☐ |
-| 5 | DELETE | `/api/v1/templates/:id` | Delete a template (existing spawned tasks unaffected) | 👑 | S | ☐ |
-| 6 | POST | `/api/v1/templates/:id/apply` | Spawn a task + checklist from the template | 🔐 | XL | ☐ |
+| 1 | GET | `/api/v1/templates` | List templates with optional `?type=` filter | 🔐 | S | ✅ |
+| 2 | GET | `/api/v1/templates/:id` | Read a single template | 🔐 | S | ✅ |
+| 3 | POST | `/api/v1/templates` | Create a new template | 👑 | M | ✅ |
+| 4 | PATCH | `/api/v1/templates/:id` | Update metadata / structure | 👑 | M | ✅ |
+| 5 | DELETE | `/api/v1/templates/:id` | Delete a template (existing spawned tasks unaffected) | 👑 | S | ✅ |
+| 6 | POST | `/api/v1/templates/:id/apply` | Spawn a task + checklist from the template | 🔐 | XL | ✅ |
 
 ## Dependencies
 

@@ -22,6 +22,13 @@
       "when": 1779989423969,
       "tag": "0002_add_templates",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1780206116918,
+      "tag": "0003_notifications_prefs_soft_delete",
+      "breakpoints": true
     }
   ]
 }

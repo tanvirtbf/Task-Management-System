@@ -1584,6 +1584,7 @@ Stable string codes — frontend can switch on these. Format: `<domain>.<reason>
 | `task.nesting_too_deep` | 422 | Subtask nesting > 2 levels |
 | `list.not_found` | 404 | |
 | `list.has_open_tasks` | 409 | Cannot delete; tasks still exist |
+| `list.archived` | 409 | Cannot create/apply a task in an archived list |
 | `status.in_use` | 409 | Cannot delete; tasks reference it |
 | `tag.in_use` | 409 | (For hard delete) |
 | `custom_field.unsupported_type` | 422 | Trying to use a non-allowed type |
@@ -1603,6 +1604,7 @@ Stable string codes — frontend can switch on these. Format: `<domain>.<reason>
 | `template.duplicate` | 409 | Template name already exists in workspace |
 | `template.empty_structure` | 422 | Template has no checklist items |
 | `template.invalid_task_type` | 422 | `structure.taskTypeId` not in workspace |
+| `template.invalid_tag` | 422 | `structure.tags[]` contains an id not in this workspace |
 | `health.dependency_down` | 503 | Readiness check failed — see `checks` field |
 | `payload.too_large` | 413 | Body exceeded per-route limit (see §31.4) |
 | `rate.exceeded` | 429 | Per-bucket rate limit |

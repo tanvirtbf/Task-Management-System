@@ -1,6 +1,6 @@
 import { JwtPayload, sign } from "jsonwebtoken";
 import createHttpError from "http-errors";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, count, eq, isNull, lt } from "drizzle-orm";
 import { MySql2Database } from "drizzle-orm/mysql2";
 import { Config } from "../config";
 import * as schema from "../db/schema";
@@ -164,5 +164,31 @@ export class TokenService {
             .update(sessions)
             .set({ revokedAt: new Date() })
             .where(and(eq(sessions.userId, userId), isNull(sessions.revokedAt)));
+    }
+
+    /**
+     * Count sessions whose refresh window expired before `cutoff` — the dry-run
+     * companion to `deleteExpiredBefore` for the §28 session-cleanup job.
+     */
+    async countExpiredBefore(cutoff: Date): Promise<number> {
+        const [row] = await this.db
+            .select({ value: count() })
+            .from(sessions)
+            .where(lt(sessions.expiresAt, cutoff));
+        return row?.value ?? 0;
+    }
+
+    /**
+     * Hard-delete sessions whose refresh window expired before `cutoff` (the §28
+     * session-cleanup job passes NOW() - 30 days). Returns the affected-row
+     * count. A pure `DELETE ... WHERE expires_at < ?` — naturally idempotent (a
+     * re-run with a barely-moved cutoff removes nothing new). Nothing references
+     * `sessions`, so a plain row delete is safe (no cascade concerns).
+     */
+    async deleteExpiredBefore(cutoff: Date): Promise<number> {
+        const [result] = await this.db
+            .delete(sessions)
+            .where(lt(sessions.expiresAt, cutoff));
+        return result.affectedRows;
     }
 }

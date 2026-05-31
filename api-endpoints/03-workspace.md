@@ -8,8 +8,8 @@
 
 | # | Method | Path | Purpose | Auth | Size | Status |
 |---|---|---|---|---|---|---|
-| 1 | GET | `/api/v1/workspace` | Return the current workspace's settings | 🔐 | S | ☐ |
-| 2 | PATCH | `/api/v1/workspace` | Update workspace name / logo / timezone / business hours / etc. | 👑 | S | ☐ |
+| 1 | GET | `/api/v1/workspace` | Return the current workspace's settings | 🔐 | S | ✅ |
+| 2 | PATCH | `/api/v1/workspace` | Update workspace name / logo / timezone / business hours / etc. | 👑 | S | ✅ |
 
 ## Dependencies
 

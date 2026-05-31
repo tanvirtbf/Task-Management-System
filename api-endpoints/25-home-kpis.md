@@ -8,8 +8,8 @@
 
 | # | Method | Path | Purpose | Auth | Size | Status |
 |---|---|---|---|---|---|---|
-| 1 | GET | `/api/v1/home/kpis` | 6 KPI tiles for the home page | 🔐 | L | ☐ |
-| 2 | GET | `/api/v1/home/agenda` | Today's tasks for the agenda card | 🔐 | M | ☐ |
+| 1 | GET | `/api/v1/home/kpis` | 6 KPI tiles for the home page | 🔐 | L | ✅ |
+| 2 | GET | `/api/v1/home/agenda` | Today's tasks for the agenda card | 🔐 | M | ✅ |
 
 ## Dependencies
 

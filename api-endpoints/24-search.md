@@ -8,7 +8,7 @@
 
 | # | Method | Path | Purpose | Auth | Size | Status |
 |---|---|---|---|---|---|---|
-| 1 | GET | `/api/v1/search` | Multi-resource typeahead | 🔐 | L | ☐ |
+| 1 | GET | `/api/v1/search` | Multi-resource typeahead | 🔐 | L | ✅ |
 
 ## Dependencies
 

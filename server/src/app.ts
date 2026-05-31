@@ -21,6 +21,19 @@ import taskDependenciesRouter from "./routes/taskDependencies";
 import customFieldsRouter from "./routes/customFields";
 import formsRouter from "./routes/forms";
 import attachmentsRouter from "./routes/attachments";
+import sprintsRouter from "./routes/sprints";
+import templatesRouter from "./routes/templates";
+import onCallRouter from "./routes/onCall";
+import notificationsRouter from "./routes/notifications";
+import engineeringRouter from "./routes/engineering";
+import searchRouter from "./routes/search";
+import workspaceActivityRouter from "./routes/workspaceActivity";
+import homeRouter from "./routes/home";
+import sseRouter from "./routes/sse";
+import jobsRouter from "./routes/jobs";
+import slaRouter from "./routes/sla";
+import healthRouter from "./routes/health";
+import { metricsMiddleware } from "./observability/metrics";
 
 const app = express();
 
@@ -32,6 +45,11 @@ app.set("trust proxy", 1);
 // including the error handler, sees the same id.
 app.use(requestIdMiddleware);
 app.use(requestLoggerMiddleware);
+
+// §30 metrics — count + time every request (shares the request-id/logger
+// correlation; sits before routing so it measures the whole handler). Feeds
+// `GET /metrics`.
+app.use(metricsMiddleware);
 
 // CORS — allow the frontend(s) defined in .env. `FRONTEND_URL` is the dev
 // app; `CORS_ALLOWED_ORIGINS` is a comma-separated production list.
@@ -59,6 +77,10 @@ app.use(express.json({ limit: "1mb" }));
 app.get("/health", (_req, res) => {
     res.json({ status: "ok", uptime: process.uptime() });
 });
+
+// §30 readiness / version / metrics — also at the app root (outside the v1
+// `apiLimiter`), unauthenticated. Liveness `/health` stays inline above.
+app.use(healthRouter);
 
 // ═════════════════════════════════════════════════════════════════════════════
 // API v1 router. Every endpoint defined in API_DESIGN.md mounts here.
@@ -107,8 +129,49 @@ v1.use(formsRouter);
 // root BEFORE `/tasks` (its 2-segment `GET /tasks/:id/attachments` resolves
 // ahead of the tasks router's `/:id` routes).
 v1.use(attachmentsRouter);
+// §20 Sprints — declares full paths spanning `/sprints`, `/sprints/active`,
+// `/sprints/:id`, `/sprints/:id/start|close|tasks`, and
+// `/sprints/:id/tasks/:taskId`, so it mounts at the v1 root (Engineering-only;
+// same pattern as taskDependenciesRouter / customFieldsRouter).
+v1.use(sprintsRouter);
+// §22 Engineering specials — declares full `/eng/*` paths (`/eng/report-bug`,
+// and later `/eng/home`, `/eng/incidents/:id/postmortem`), so it mounts at the
+// v1 root. No `/eng` prefix overlaps the other routers, so placement is free;
+// grouped here with the other root-mounted full-path routers.
+v1.use(engineeringRouter);
+// §29 SLA management — declares full paths spanning `/sla/breached` and
+// `/tasks/:id/sla`, so it mounts at the v1 root BEFORE `/tasks` (its 2-segment
+// PATCH /tasks/:id/sla resolves ahead of the tasks router's /:id routes).
+v1.use(slaRouter);
 // §11 Task membership — assignees / watchers / tags under the `/tasks` prefix.
 v1.use("/tasks", tasksRouter);
+// §23 Templates — clean `/templates` prefix (no shared path segments with
+// `/tasks`, so mount order relative to it is irrelevant).
+v1.use("/templates", templatesRouter);
+// §21 On-call — weekly engineering rotation; all routes under the single
+// `/on-call` prefix (no shared path segments), so mount order is irrelevant.
+v1.use("/on-call", onCallRouter);
+// §19 Notifications — per-user inbox (read + state-management). Clean
+// `/notifications` prefix (no shared path segments), so mount order is
+// irrelevant. All routes are authenticated and user-scoped.
+v1.use("/notifications", notificationsRouter);
+// §24 Search — clean `/search` prefix (no shared path segments); order irrelevant.
+v1.use("/search", searchRouter);
+// §26 Workspace activity — read-only audit feed under the clean `/activity`
+// prefix (`/activity/recent` + `/activity`); no shared segments, order
+// irrelevant. Authenticated, workspace-scoped.
+v1.use("/activity", workspaceActivityRouter);
+// §25 Home / KPIs — clean `/home` prefix (`/home/kpis`, `/home/agenda`); no
+// shared path segments, so mount order is irrelevant.
+v1.use("/home", homeRouter);
+// §27 SSE — long-lived `text/event-stream` of the caller's notifications under
+// the clean `/stream` prefix (GET /stream/inbox); no shared path segments, so
+// mount order is irrelevant. Cookie-authenticated, user-scoped.
+v1.use("/stream", sseRouter);
+// §28 Background jobs — internal cron-triggered endpoints under the clean
+// `/jobs` prefix, guarded per-route by the `internalAuth` (X-Internal-Token)
+// middleware rather than the user JWT. Mount order irrelevant.
+v1.use("/jobs", jobsRouter);
 // Future feature routers mount the same way:
 //   v1.use("/lists", listRouter);
 //   …

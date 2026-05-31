@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../db/schema";
 import { attachments, tasks } from "../db/schema";
@@ -155,6 +155,86 @@ export class AttachmentsRepo {
             .update(attachments)
             .set({ deletedAt: sql`NOW()` })
             .where(and(eq(attachments.id, id), isNull(attachments.deletedAt)));
+        return result.affectedRows;
+    }
+
+    /**
+     * Every still-`pending` attachment whose signed upload was never finalised
+     * before `olderThan` (sign-time `uploaded_at` < cutoff) — the §28
+     * attachment-janitor's candidate set. GLOBAL (no workspace scope): the job
+     * sweeps every tenant. A `complete` row is never returned.
+     */
+    async findStalePending(olderThan: Date): Promise<AttachmentRecord[]> {
+        return this.db
+            .select(ATTACHMENT_COLUMNS)
+            .from(attachments)
+            .where(
+                and(
+                    eq(attachments.uploadStatus, "pending"),
+                    lt(attachments.uploadedAt, olderThan),
+                ),
+            );
+    }
+
+    /**
+     * Hard-delete a still-`pending` attachment row (§28 attachment-janitor). The
+     * `upload_status='pending'` guard leaves a row that finalised between the
+     * scan and this delete intact (affectedRows=0). A pending row was never
+     * counted in `tasks.attachments_count`, so no counter adjustment is needed.
+     * Returns affectedRows (0 = already gone / finalised — naturally idempotent).
+     */
+    async hardDeletePending(
+        id: string,
+        exec: DbExecutor = this.db,
+    ): Promise<number> {
+        const [result] = await exec
+            .delete(attachments)
+            .where(
+                and(
+                    eq(attachments.id, id),
+                    eq(attachments.uploadStatus, "pending"),
+                ),
+            );
+        return result.affectedRows;
+    }
+
+    /**
+     * Every soft-deleted attachment whose `deleted_at` is older than
+     * `deletedBefore` — the §28 r2-purge candidate set (eligible for permanent
+     * R2 object + row removal). GLOBAL (no workspace scope). Returns
+     * `storageKey` + `thumbnailKey` so the job can delete both R2 objects.
+     */
+    async findPurgeable(deletedBefore: Date): Promise<AttachmentRecord[]> {
+        return this.db
+            .select(ATTACHMENT_COLUMNS)
+            .from(attachments)
+            .where(
+                and(
+                    isNotNull(attachments.deletedAt),
+                    lt(attachments.deletedAt, deletedBefore),
+                ),
+            );
+    }
+
+    /**
+     * Hard-delete a soft-deleted attachment row (§28 r2-purge), guarded on
+     * `deleted_at IS NOT NULL`. The row was already decremented from
+     * `tasks.attachments_count` at soft-delete time and there is no after-delete
+     * trigger, so the counter stays correct. Returns affectedRows (0 = already
+     * purged — naturally idempotent).
+     */
+    async hardDeletePurged(
+        id: string,
+        exec: DbExecutor = this.db,
+    ): Promise<number> {
+        const [result] = await exec
+            .delete(attachments)
+            .where(
+                and(
+                    eq(attachments.id, id),
+                    isNotNull(attachments.deletedAt),
+                ),
+            );
         return result.affectedRows;
     }
 }

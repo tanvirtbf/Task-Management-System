@@ -45,7 +45,7 @@ export const workspaceActivity = mysqlTable(
         ).notNull(),
         entityId: varchar("entity_id", { length: ID_LENGTH }).notNull(),
         action: varchar("action", { length: 60 }).notNull(),
-        context: json("context"),
+        context: json("context").$type<Record<string, unknown> | null>(),
         ipAddress: varchar("ip_address", { length: IP_LENGTH }),
         createdAt: timestamp("created_at").notNull().defaultNow(),
     },

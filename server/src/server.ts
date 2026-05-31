@@ -1,6 +1,7 @@
 import { Config } from "./config";
 import { initDb, closeDb } from "./db/client";
 import logger from "./config/logger";
+import { closeAllSseStreams } from "./services/sseHub";
 
 const startServer = async () => {
     const PORT = Config.PORT;
@@ -20,6 +21,9 @@ const startServer = async () => {
         // Graceful shutdown
         const shutdown = async (signal: string) => {
             logger.info(`Received ${signal}, shutting down gracefully...`);
+            // End long-lived SSE streams first — they never finish on their own,
+            // so `server.close()` would otherwise hang waiting for them.
+            closeAllSseStreams();
             server.close(async () => {
                 await closeDb();
                 process.exit(0);

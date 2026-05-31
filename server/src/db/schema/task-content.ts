@@ -8,6 +8,7 @@ import {
     foreignKey,
     index,
     int,
+    json,
     mysqlEnum,
     mysqlTable,
     text,
@@ -146,7 +147,10 @@ export const attachments = mysqlTable(
         mimeType: varchar("mime_type", { length: 120 })
             .notNull()
             .default("application/octet-stream"),
-        sizeBytes: bigint("size_bytes", { mode: "bigint", unsigned: true }).notNull(),
+        sizeBytes: bigint("size_bytes", {
+            mode: "bigint",
+            unsigned: true,
+        }).notNull(),
         thumbnailKey: varchar("thumbnail_key", { length: URL_LENGTH }),
         uploadedBy: varchar("uploaded_by", { length: ID_LENGTH })
             .notNull()
@@ -165,8 +169,30 @@ export const attachments = mysqlTable(
     }),
 );
 
+// ─── task_postmortems ─ §22 postmortem checklist on a resolved Incident ───────
+// One row per Incident task (PK = task_id). `items` is the checklist
+// label → checked map submitted at POST /eng/incidents/:id/postmortem; "submit"
+// is an upsert. Mirrors `database/schema.sql §33`.
+export const taskPostmortems = mysqlTable("task_postmortems", {
+    taskId: varchar("task_id", { length: ID_LENGTH })
+        .primaryKey()
+        .references(() => tasks.id, {
+            onDelete: "cascade",
+            onUpdate: "cascade",
+        }),
+    items: json("items").notNull(),
+    updatedBy: varchar("updated_by", { length: ID_LENGTH }).references(
+        () => users.id,
+        { onDelete: "set null", onUpdate: "cascade" },
+    ),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+});
+
 export type Comment = typeof comments.$inferSelect;
 export type NewComment = typeof comments.$inferInsert;
+export type TaskPostmortem = typeof taskPostmortems.$inferSelect;
+export type NewTaskPostmortem = typeof taskPostmortems.$inferInsert;
 export type Checklist = typeof checklists.$inferSelect;
 export type NewChecklist = typeof checklists.$inferInsert;
 export type ChecklistItem = typeof checklistItems.$inferSelect;

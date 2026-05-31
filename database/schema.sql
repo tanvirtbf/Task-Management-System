@@ -55,6 +55,7 @@ SET time_zone = '+00:00';
 SET FOREIGN_KEY_CHECKS = 0;
 DROP TABLE IF EXISTS templates;
 DROP TABLE IF EXISTS workspace_activity;
+DROP TABLE IF EXISTS user_notification_prefs;
 DROP TABLE IF EXISTS notifications;
 DROP TABLE IF EXISTS form_submissions;
 DROP TABLE IF EXISTS form_fields;
@@ -952,6 +953,8 @@ CREATE TABLE notifications (
     body           VARCHAR(1000) NULL,
     is_read        BOOLEAN      NOT NULL DEFAULT FALSE,
     snoozed_until  TIMESTAMP    NULL,
+    -- Soft-delete tombstone (§19 #7 — DELETE hides the row from feed/count).
+    deleted_at     TIMESTAMP    NULL,
     -- Track email delivery separately so we know what was emailed.
     email_sent_at  TIMESTAMP    NULL,
     created_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -966,6 +969,28 @@ CREATE TABLE notifications (
     INDEX idx_notifications_user_state (user_id, is_read, created_at DESC),
     -- Snooze worker: find ready notifications
     INDEX idx_notifications_snoozed (snoozed_until)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
+
+
+-- =============================================================================
+-- 29b. user_notification_prefs  (§19 #8/#9 — per-user, per-type delivery prefs)
+-- A MISSING (user_id, type) row means "all channels on" (the spec default); the
+-- API lazily fills defaults on read and upserts only the sent types on write.
+-- =============================================================================
+CREATE TABLE user_notification_prefs (
+    user_id         VARCHAR(64) NOT NULL,
+    type            ENUM('assigned','mentioned','comment','status_change',
+                        'due_soon','overdue','form_submitted',
+                        'automation_failed','pr_review',
+                        'incident_alert') NOT NULL,
+    in_app_enabled  BOOLEAN     NOT NULL DEFAULT TRUE,
+    email_enabled   BOOLEAN     NOT NULL DEFAULT TRUE,
+    updated_at      TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                    ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (user_id, type),
+    CONSTRAINT fk_user_notification_prefs_user FOREIGN KEY (user_id)
+        REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
 
 
@@ -1066,6 +1091,32 @@ CREATE TABLE templates (
         REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     -- Filter by type in the picker ("show me task templates")
     INDEX idx_templates_workspace_type (workspace_id, type)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
+
+
+-- =============================================================================
+-- 33. task_postmortems  (§22 — postmortem checklist on a resolved Incident)
+--
+-- One row per Incident task (PK = task_id). `items` is the checklist
+-- label → checked map (e.g. { "Root cause identified": true, … }) submitted at
+-- POST /api/v1/eng/incidents/:id/postmortem. "Submit" is an UPSERT, so a
+-- re-submit updates the same row (and bumps updated_at / updated_by). Only
+-- allowed on a task whose type is "Incident" and whose status is done/closed —
+-- enforced in the application layer.
+-- =============================================================================
+CREATE TABLE task_postmortems (
+    task_id     VARCHAR(64)  NOT NULL,
+    items       JSON         NOT NULL,
+    updated_by  VARCHAR(64)  NULL,
+    created_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                     ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (task_id),
+    CONSTRAINT fk_task_postmortems_task FOREIGN KEY (task_id)
+        REFERENCES tasks(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_task_postmortems_updated_by FOREIGN KEY (updated_by)
+        REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
 
 
