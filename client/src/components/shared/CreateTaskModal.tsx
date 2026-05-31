@@ -3,7 +3,7 @@ import { Modal, Input, Select, DatePicker, App as AntApp } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import dayjs from "dayjs";
 import { listsApi, tasksApi, usersApi } from "../../http/api";
-import { useSpaceMap } from "../../hooks/useReferenceData";
+import { useSpaceMap, useTaskTypes } from "../../hooks/useReferenceData";
 import { tokens } from "../../theme";
 import { PRIORITY_LABELS } from "../../types";
 import type { Priority, Task } from "../../types";
@@ -29,6 +29,12 @@ export const CreateTaskModal = ({
     const [dueDate, setDueDate] = useState<dayjs.Dayjs | null>(null);
 
     const spaceMap = useSpaceMap();
+    const { data: taskTypes = [] } = useTaskTypes();
+    const [taskTypeId, setTaskTypeId] = useState<string | undefined>(undefined);
+
+    useEffect(() => {
+        if (!taskTypeId && taskTypes.length > 0) setTaskTypeId(taskTypes[0].id);
+    }, [taskTypes, taskTypeId]);
 
     const { data: lists = [] } = useQuery({
         queryKey: ["lists"],
@@ -50,6 +56,7 @@ export const CreateTaskModal = ({
             return tasksApi.create({
                 name: name.trim(),
                 primaryListId: listId,
+                taskTypeId,
                 priority,
                 assignees: assigneeIds,
                 dueDate: dueDate ? dueDate.toISOString() : null,
@@ -121,6 +128,21 @@ export const CreateTaskModal = ({
                         />
                     </div>
                 )}
+                <div>
+                    <Label>Type</Label>
+                    <Select
+                        value={taskTypeId}
+                        onChange={setTaskTypeId}
+                        style={{ width: "100%" }}
+                        placeholder="Select a task type"
+                        showSearch
+                        optionFilterProp="label"
+                        options={taskTypes.map((t) => ({
+                            value: t.id,
+                            label: t.name,
+                        }))}
+                    />
+                </div>
                 <div
                     style={{
                         display: "grid",

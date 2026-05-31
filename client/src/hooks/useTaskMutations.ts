@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { App as AntApp } from "antd";
 import type { Task } from "../types";
 import { tasksApi } from "../http/api";
+import { useTaskTypes } from "./useReferenceData";
 
 /**
  * Centralised mutation hooks for tasks.
@@ -45,10 +46,18 @@ export const useUpdateTask = (listId?: string) => {
 export const useCreateTask = (_listId?: string) => {
     const qc = useQueryClient();
     const { message } = AntApp.useApp();
+    // The backend requires a task_type_id (a freshly-created list has no
+    // default), so quick-add UIs (board / list / calendar) that don't pick a
+    // type fall back to the workspace's first task type here.
+    const { data: taskTypes = [] } = useTaskTypes();
     return useMutation({
         mutationFn: (
             input: Partial<Task> & { name: string; primaryListId: string },
-        ) => tasksApi.create(input),
+        ) =>
+            tasksApi.create({
+                ...input,
+                taskTypeId: input.taskTypeId ?? taskTypes[0]?.id,
+            }),
         onSuccess: (newTask) => {
             qc.invalidateQueries({
                 queryKey: ["tasks-by-list", newTask.primaryListId],
