@@ -1,12 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "antd";
 import { GripVertical, Sparkles } from "lucide-react";
-import { mockApi } from "../../lib/mock-api";
+import { tasksApi } from "../../http/api";
 import { useAuthStore } from "../../stores/auth";
-import { statusesById } from "../../mocks/statuses";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { PriorityFlag } from "../../components/ui/PriorityFlag";
-import { StatusPill } from "../../components/ui/StatusPill";
 import { tokens } from "../../theme";
 
 /**
@@ -17,8 +15,7 @@ export const LineupCard = () => {
     const user = useAuthStore((s) => s.user);
     const { data, isLoading } = useQuery({
         queryKey: ["my-work", user?.id],
-        queryFn: () =>
-            user ? mockApi.tasks.myWork(user.id) : Promise.resolve(null),
+        queryFn: () => tasksApi.myWork(),
         enabled: !!user,
     });
 
@@ -98,7 +95,6 @@ export const LineupCard = () => {
                     />
                 ) : (
                     lineup.map((task, idx) => {
-                        const status = statusesById.get(task.statusId);
                         return (
                             <div
                                 key={task.id}
@@ -151,13 +147,6 @@ export const LineupCard = () => {
                                 >
                                     {task.name}
                                 </div>
-                                {status && (
-                                    <StatusPill
-                                        status={status}
-                                        variant="dot"
-                                        size="sm"
-                                    />
-                                )}
                             </div>
                         );
                     })

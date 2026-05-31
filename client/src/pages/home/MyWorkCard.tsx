@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "antd";
 import { CheckCircle2, CalendarClock } from "lucide-react";
-import { mockApi } from "../../lib/mock-api";
+import { tasksApi } from "../../http/api";
 import { useAuthStore } from "../../stores/auth";
 import type { MyWorkBucket } from "../../types";
 import { TaskRow } from "../../components/task/TaskRow";
@@ -25,8 +25,7 @@ export const MyWorkCard = () => {
 
     const { data, isLoading } = useQuery({
         queryKey: ["my-work", user?.id],
-        queryFn: () =>
-            user ? mockApi.tasks.myWork(user.id) : Promise.resolve(null),
+        queryFn: () => tasksApi.myWork(),
         enabled: !!user,
     });
 

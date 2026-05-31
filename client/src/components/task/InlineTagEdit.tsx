@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Popover, Input } from "antd";
 import { Check, Tag as TagIcon } from "lucide-react";
-import { tagsBySpace, tagsById } from "../../mocks/tags";
+import { useTags, useTagMap } from "../../hooks/useReferenceData";
 import { TagChip } from "../ui/TagChip";
 import { tokens } from "../../theme";
 
@@ -12,14 +12,16 @@ interface InlineTagEditProps {
 }
 
 export const InlineTagEdit = ({
-    spaceId,
     tagIds,
     onChange,
 }: InlineTagEditProps) => {
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState("");
 
-    const available = tagsBySpace(spaceId);
+    // Tags are workspace-wide server-side (no space scoping) — `spaceId` is kept
+    // on the prop for call-site compatibility but ignored.
+    const { data: available = [] } = useTags();
+    const tagMap = useTagMap();
     const filtered = available.filter((t) =>
         t.name.toLowerCase().includes(search.toLowerCase()),
     );
@@ -33,7 +35,7 @@ export const InlineTagEdit = ({
     };
 
     const activeTags = tagIds
-        .map((id) => tagsById.get(id))
+        .map((id) => tagMap.get(id))
         .filter((t): t is NonNullable<typeof t> => !!t);
 
     const content = (

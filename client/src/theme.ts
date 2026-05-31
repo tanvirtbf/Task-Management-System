@@ -148,7 +148,7 @@ export const tokens = {
 } as const;
 
 export const antdTheme: ThemeConfig = {
-    cssVar: true,
+    cssVar: {},
     hashed: false,
     token: {
         colorPrimary: tokens.colors.primary,

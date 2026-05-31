@@ -10,7 +10,7 @@ import {
     EyeOff,
 } from "lucide-react";
 import { useAuthStore } from "../../stores/auth";
-import { users as allUsers } from "../../mocks/users";
+import { useUsers } from "../../hooks/useReferenceData";
 import { tokens } from "../../theme";
 import { PRIORITY_LABELS, type Priority } from "../../types";
 
@@ -72,6 +72,7 @@ export const ListViewToolbar = ({
     onFiltersChange,
 }: ListViewToolbarProps) => {
     const user = useAuthStore((s) => s.user);
+    const { data: allUsers = [] } = useUsers();
 
     const groupItems = [
         { key: "status", label: "Status" },

@@ -3,9 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Skeleton, Select, Button, Tooltip } from "antd";
 import { Link2, ArrowRight, ArrowLeft, X, Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { mockApi } from "../../lib/mock-api";
-import { statusesById } from "../../mocks/statuses";
-import { tasks as allTasks } from "../../mocks/tasks";
+import { dependenciesApi, tasksApi } from "../../http/api";
+import type { FlatDependency } from "../../http/mappers";
 import { tokens } from "../../theme";
 
 interface Props {
@@ -23,12 +22,23 @@ export const DependenciesSection = ({ taskId, listId }: Props) => {
 
     const { data: deps = [], isLoading } = useQuery({
         queryKey: ["deps", taskId],
-        queryFn: () => mockApi.taskDependencies.byTask(taskId),
+        queryFn: () => dependenciesApi.byTask(taskId),
+    });
+
+    // Candidate tasks for the picker = the current list's tasks (cross-list
+    // linking via global search is a P6 enhancement). Fetched only while picking.
+    const { data: listTasks = [] } = useQuery({
+        queryKey: ["tasks-by-list", listId],
+        queryFn: () => tasksApi.listByList(listId),
+        enabled: !!showPicker,
     });
 
     const create = useMutation({
-        mutationFn: (input: { relatedTaskId: string; type: "blocks" }) =>
-            mockApi.taskDependencies.create({ taskId, ...input }),
+        mutationFn: (input: { relatedTaskId: string }) =>
+            dependenciesApi.create({
+                taskId,
+                relatedTaskId: input.relatedTaskId,
+            }),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["deps", taskId] });
             setShowPicker(null);
@@ -37,17 +47,16 @@ export const DependenciesSection = ({ taskId, listId }: Props) => {
     });
 
     const remove = useMutation({
-        mutationFn: (id: string) => mockApi.taskDependencies.delete(id),
+        mutationFn: (id: string) => dependenciesApi.delete(id),
         onSuccess: () => qc.invalidateQueries({ queryKey: ["deps", taskId] }),
     });
 
     const blocks = deps.filter((d) => d.type === "blocks");
-    const blockedBy = deps.filter((d) => d.type === ("blocked_by" as never));
+    const blockedBy = deps.filter((d) => d.type === "blocked_by");
 
-    const candidates = allTasks.filter(
+    const candidates = listTasks.filter(
         (t) =>
             t.id !== taskId &&
-            t.primaryListId &&
             !t.archivedAt &&
             !deps.some((d) => d.otherTaskId === t.id),
     );
@@ -158,7 +167,6 @@ export const DependenciesSection = ({ taskId, listId }: Props) => {
                             pickedTaskId &&
                             create.mutate({
                                 relatedTaskId: pickedTaskId,
-                                type: "blocks",
                             })
                         }
                     >
@@ -190,7 +198,7 @@ const DepGroup = ({
 }: {
     label: string;
     icon: React.ReactNode;
-    items: Array<{ id: string; otherTaskId: string }>;
+    items: FlatDependency[];
     onOpen: (otherTaskId: string) => void;
     onRemove: (id: string) => void;
     warn?: boolean;
@@ -218,9 +226,7 @@ const DepGroup = ({
             }}
         >
             {items.map((d) => {
-                const other = allTasks.find((t) => t.id === d.otherTaskId);
-                if (!other) return null;
-                const status = statusesById.get(other.statusId);
+                const other = d.otherTask;
                 return (
                     <div
                         key={d.id}
@@ -240,7 +246,7 @@ const DepGroup = ({
                                 width: 6,
                                 height: 6,
                                 borderRadius: "50%",
-                                background: status?.color ?? "#94A3B8",
+                                background: "#94A3B8",
                             }}
                         />
                         <button

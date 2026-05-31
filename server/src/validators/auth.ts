@@ -86,6 +86,34 @@ export const resetPasswordValidator = checkSchema({
 });
 
 /**
+ * `POST /api/v1/auth/change-password` (authenticated). The caller proves
+ * possession of the CURRENT password before it can be rotated. `new_password`
+ * is NOT trimmed (whitespace can legitimately be part of a secret); 8–200 chars
+ * mirrors the reset-password rule.
+ */
+export const changePasswordValidator = checkSchema({
+    current_password: {
+        in: ["body"],
+        notEmpty: { errorMessage: "Current password is required" },
+        isString: { errorMessage: "Current password must be a string" },
+        isLength: {
+            options: { min: 1, max: 200 },
+            errorMessage:
+                "Current password must be between 1 and 200 characters",
+        },
+    },
+    new_password: {
+        in: ["body"],
+        notEmpty: { errorMessage: "New password is required" },
+        isString: { errorMessage: "New password must be a string" },
+        isLength: {
+            options: { min: 8, max: 200 },
+            errorMessage: "New password must be between 8 and 200 characters",
+        },
+    },
+});
+
+/**
  * `POST /api/v1/auth/forgot-password`. Email-only — mirrors `loginValidator`'s
  * email rules (trim → notEmpty → isEmail → max 255 → lowercase, never
  * `normalizeEmail`) so the lookup key matches login exactly.

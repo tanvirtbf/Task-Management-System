@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { Modal, Input, Select, DatePicker, App as AntApp } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import dayjs from "dayjs";
-import { mockApi } from "../../lib/mock-api";
-import { spacesById } from "../../mocks/spaces";
+import { listsApi, tasksApi, usersApi } from "../../http/api";
+import { useSpaceMap } from "../../hooks/useReferenceData";
 import { tokens } from "../../theme";
 import { PRIORITY_LABELS } from "../../types";
 import type { Priority, Task } from "../../types";
@@ -28,14 +28,16 @@ export const CreateTaskModal = ({
     const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
     const [dueDate, setDueDate] = useState<dayjs.Dayjs | null>(null);
 
+    const spaceMap = useSpaceMap();
+
     const { data: lists = [] } = useQuery({
         queryKey: ["lists"],
-        queryFn: () => mockApi.lists.listAll(),
+        queryFn: () => listsApi.listAll(),
         enabled: !defaultListId,
     });
     const { data: users = [] } = useQuery({
         queryKey: ["users"],
-        queryFn: () => mockApi.users.list(),
+        queryFn: () => usersApi.list(),
     });
 
     useEffect(() => {
@@ -45,7 +47,7 @@ export const CreateTaskModal = ({
     const create = useMutation({
         mutationFn: () => {
             if (!listId) return Promise.reject(new Error("Pick a list"));
-            return mockApi.tasks.create({
+            return tasksApi.create({
                 name: name.trim(),
                 primaryListId: listId,
                 priority,
@@ -110,7 +112,7 @@ export const CreateTaskModal = ({
                             showSearch
                             optionFilterProp="label"
                             options={lists.map((l) => {
-                                const sp = spacesById.get(l.spaceId);
+                                const sp = spaceMap.get(l.spaceId);
                                 return {
                                     value: l.id,
                                     label: `${sp?.name} / ${l.name}`,

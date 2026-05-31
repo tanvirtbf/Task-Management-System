@@ -12,7 +12,7 @@ import {
     Trash2,
     X,
 } from "lucide-react";
-import { mockApi } from "../../lib/mock-api";
+import { statusesApi, listsApi, usersApi, tagsApi, tasksApi } from "../../http/api";
 import { PRIORITY_LABELS, type Priority } from "../../types";
 import { useBulkUpdateTasks } from "../../hooks/useTaskMutations";
 import { PriorityFlag } from "../ui/PriorityFlag";
@@ -36,21 +36,21 @@ export const BulkActionToolbar = ({
 
     const { data: statuses = [] } = useQuery({
         queryKey: ["statuses", listId],
-        queryFn: () => mockApi.statuses.byList(listId),
+        queryFn: () => statusesApi.byList(listId),
     });
     const { data: list } = useQuery({
         queryKey: ["list", listId],
-        queryFn: () => mockApi.lists.getById(listId),
+        queryFn: () => listsApi.getById(listId),
     });
     const { data: users = [] } = useQuery({
         queryKey: ["users"],
-        queryFn: () => mockApi.users.list(),
+        queryFn: () => usersApi.list(),
     });
     const { data: spaceTags = [] } = useQuery({
         queryKey: ["tags", list?.spaceId],
         queryFn: () =>
             list?.spaceId
-                ? mockApi.tags.bySpace(list.spaceId)
+                ? tagsApi.bySpace(list.spaceId)
                 : Promise.resolve([]),
         enabled: !!list?.spaceId,
     });
@@ -233,7 +233,13 @@ export const BulkActionToolbar = ({
                             open
                             value={null}
                             onChange={(d) => {
-                                handleBulkDueDate(d ? d.toISOString() : null);
+                                handleBulkDueDate(
+                                    d
+                                        ? (
+                                              d as { toISOString: () => string }
+                                          ).toISOString()
+                                        : null,
+                                );
                                 setDatePickerOpen(false);
                             }}
                             popupStyle={{ position: "static" }}
@@ -288,7 +294,7 @@ export const BulkActionToolbar = ({
                 title="Archive selected tasks?"
                 onConfirm={async () => {
                     await Promise.all(
-                        selectedIds.map((id) => mockApi.tasks.archive(id)),
+                        selectedIds.map((id) => tasksApi.archive(id)),
                     );
                     qc.invalidateQueries({
                         queryKey: ["tasks-by-list", listId],
@@ -306,7 +312,7 @@ export const BulkActionToolbar = ({
                 okType="danger"
                 onConfirm={async () => {
                     await Promise.all(
-                        selectedIds.map((id) => mockApi.tasks.delete(id)),
+                        selectedIds.map((id) => tasksApi.delete(id)),
                     );
                     qc.invalidateQueries({
                         queryKey: ["tasks-by-list", listId],

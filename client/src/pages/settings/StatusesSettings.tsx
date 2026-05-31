@@ -1,14 +1,12 @@
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueries } from "@tanstack/react-query";
 import { Alert } from "antd";
-import { mockApi } from "../../lib/mock-api";
+import { listsApi, statusesApi } from "../../http/api";
 import {
     SettingsHeader,
     SettingsSection,
 } from "../../components/settings/SettingsHeader";
-import { lists } from "../../mocks/lists";
-import { spacesById } from "../../mocks/spaces";
-import { statuses as allStatuses } from "../../mocks/statuses";
+import { useSpaceMap } from "../../hooks/useReferenceData";
 import { LoadingState } from "../../components/shared/LoadingState";
 import { tokens } from "../../theme";
 
@@ -27,38 +25,41 @@ const GROUP_COLORS = {
 } as const;
 
 const StatusesSettings = () => {
-    const { data: workspace } = useQuery({
-        queryKey: ["workspace"],
-        queryFn: () => mockApi.workspace.get(),
+    const spaceMap = useSpaceMap();
+
+    const { data: lists = [], isLoading } = useQuery({
+        queryKey: ["lists"],
+        queryFn: () => listsApi.listAll(),
+    });
+
+    // Statuses are per-list (`GET /lists/:listId/statuses`) — fan out one query
+    // per list so this overview can show every list's workflow.
+    const statusQueries = useQueries({
+        queries: lists.map((l) => ({
+            queryKey: ["statuses", l.id],
+            queryFn: () => statusesApi.byList(l.id),
+        })),
     });
 
     const grouped = useMemo(() => {
-        const out = new Map<
-            string,
-            { listName: string; spaceName: string; statuses: typeof allStatuses }
-        >();
-        lists.forEach((l) => {
-            const space = spacesById.get(l.spaceId);
-            out.set(l.id, {
+        return lists
+            .map((l, i) => ({
+                listId: l.id,
                 listName: l.name,
-                spaceName: space?.name ?? "—",
-                statuses: allStatuses
-                    .filter(
-                        (s) => s.scopeType === "list" && s.scopeId === l.id,
-                    )
+                spaceName: spaceMap.get(l.spaceId)?.name ?? "—",
+                statuses: (statusQueries[i]?.data ?? [])
+                    .slice()
                     .sort((a, b) => a.position - b.position),
-            });
-        });
-        return Array.from(out.entries())
-            .filter(([, info]) => info.statuses.length > 0)
-            .sort(([, a], [, b]) =>
+            }))
+            .filter((info) => info.statuses.length > 0)
+            .sort((a, b) =>
                 `${a.spaceName} / ${a.listName}`.localeCompare(
                     `${b.spaceName} / ${b.listName}`,
                 ),
             );
-    }, []);
+    }, [lists, statusQueries, spaceMap]);
 
-    if (!workspace) return <LoadingState />;
+    if (isLoading) return <LoadingState />;
 
     return (
         <div>
@@ -75,9 +76,9 @@ const StatusesSettings = () => {
                 style={{ marginBottom: tokens.spacing[3] }}
             />
 
-            {grouped.map(([listId, info]) => (
+            {grouped.map((info) => (
                 <SettingsSection
-                    key={listId}
+                    key={info.listId}
                     title={`${info.spaceName} / ${info.listName}`}
                 >
                     <div

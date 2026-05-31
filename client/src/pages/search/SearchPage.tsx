@@ -10,10 +10,9 @@ import {
     StickyNote,
     MessageCircle,
     User,
-    Command,
 } from "lucide-react";
-import { mockApi } from "../../lib/mock-api";
-import { listsById } from "../../mocks/lists";
+import { searchApi } from "../../http/api";
+import { useListMap } from "../../hooks/useReferenceData";
 import { tokens } from "../../theme";
 
 type Kind = "task" | "list" | "space" | "note" | "comment" | "user";
@@ -21,7 +20,11 @@ type Kind = "task" | "list" | "space" | "note" | "comment" | "user";
 const KIND_META: Record<
     Kind,
     {
-        icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
+        icon: React.ComponentType<{
+            size?: number;
+            strokeWidth?: number;
+            color?: string;
+        }>;
         color: string;
         label: string;
     }
@@ -48,7 +51,7 @@ const SearchPage = () => {
     const { data, isFetching } = useQuery({
         queryKey: ["search-page", query, filter],
         queryFn: () =>
-            mockApi.search.global({
+            searchApi.search({
                 query,
                 types: filter === "all" ? undefined : [filter],
                 limit: 30,
@@ -406,6 +409,7 @@ const ResultRow = ({
 }) => {
     const meta = KIND_META[kind];
     const Icon = meta.icon;
+    const listMap = useListMap();
     const title =
         kind === "user"
             ? `${entity.firstName} ${entity.lastName}`
@@ -418,7 +422,7 @@ const ResultRow = ({
         kind === "user"
             ? entity.email
             : kind === "task"
-              ? `${entity.customId ?? `#${entity.taskNumber}`} · ${listsById.get(entity.primaryListId ?? "")?.name ?? ""}`
+              ? `${entity.customId ?? `#${entity.taskNumber}`} · ${listMap.get(entity.primaryListId ?? "")?.name ?? ""}`
               : kind === "note"
                 ? (entity.body ?? "").slice(0, 100).replace(/\n/g, " ")
                 : kind === "comment"

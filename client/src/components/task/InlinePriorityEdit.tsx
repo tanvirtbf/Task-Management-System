@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Popover } from "antd";
-import { Check, Flag } from "lucide-react";
+import { Check } from "lucide-react";
 import { PriorityFlag } from "../ui/PriorityFlag";
 import { PRIORITY_LABELS, type Priority } from "../../types";
 import { tokens } from "../../theme";

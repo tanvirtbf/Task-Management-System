@@ -38,6 +38,15 @@ export interface ResetPasswordInput {
     newPassword: string;
 }
 
+export interface ChangePasswordInput {
+    /** The authenticated user (verified JWT `sub` — never client input). */
+    userId: string;
+    /** The caller's current password, re-verified before any write. */
+    currentPassword: string;
+    /** The replacement password (validated 8-200 chars upstream). */
+    newPassword: string;
+}
+
 // One canonical message for every refresh failure path. Sharing the wording
 // across "missing cookie", "bad signature", "session revoked", etc. denies
 // the client a discrimination oracle.
@@ -337,6 +346,42 @@ export class AuthService {
             await this.resetTokens.markConsumed(row.id, tx);
             await this.tokens.revokeAllForUser(row.userId, tx);
         });
+    }
+
+    /**
+     * Change the authenticated user's password. The CURRENT password is
+     * re-verified first, so a stolen ≤15-min access token alone cannot rotate
+     * the credential. The current session is intentionally left intact (no
+     * global sign-out on a self-initiated change — V1 choice); the short-lived
+     * access token expires naturally. `userId` is the verified JWT `sub`, never
+     * client input, so there is no IDOR surface.
+     */
+    async changePassword(input: ChangePasswordInput): Promise<void> {
+        const user = await this.users.findById(input.userId);
+        if (!user) {
+            throw AppError.notFound(
+                "user.not_found",
+                `User ${input.userId} does not exist`,
+            );
+        }
+        const ok = await this.creds.comparePassword(
+            input.currentPassword,
+            user.passwordHash,
+        );
+        if (!ok) {
+            throw AppError.unprocessable(
+                "auth.incorrect_password",
+                "Your current password is incorrect",
+            );
+        }
+        if (input.currentPassword === input.newPassword) {
+            throw AppError.unprocessable(
+                "auth.password_unchanged",
+                "The new password must be different from your current one",
+            );
+        }
+        const passwordHash = await this.creds.hashPassword(input.newPassword);
+        await this.users.updatePassword(input.userId, passwordHash);
     }
 
     /**

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
-import { mockApi } from "../../lib/mock-api";
+import { spacesApi, listsApi } from "../../http/api";
 import { tokens } from "../../theme";
 
 interface BreadcrumbItem {
@@ -18,12 +18,12 @@ export const Breadcrumb = () => {
 
     const { data: space } = useQuery({
         queryKey: ["space", spaceId],
-        queryFn: () => (spaceId ? mockApi.spaces.getById(spaceId) : null),
+        queryFn: () => (spaceId ? spacesApi.getById(spaceId) : null),
         enabled: !!spaceId,
     });
     const { data: list } = useQuery({
         queryKey: ["list", listId],
-        queryFn: () => (listId ? mockApi.lists.getById(listId) : null),
+        queryFn: () => (listId ? listsApi.getById(listId) : null),
         enabled: !!listId,
     });
 

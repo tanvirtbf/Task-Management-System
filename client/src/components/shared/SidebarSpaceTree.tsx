@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, Plus, Star, MoreHorizontal } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Tooltip, Dropdown, Modal, App as AntApp } from "antd";
-import { mockApi } from "../../lib/mock-api";
+import { spacesApi, listsApi, foldersApi } from "../../http/api";
 import { useAuthStore } from "../../stores/auth";
 import { useUiStore } from "../../stores/ui";
 import { tokens } from "../../theme";
@@ -38,7 +38,7 @@ export const SidebarSpaceTree = ({ collapsed, searchQuery = "" }: Props) => {
     const currentUser = useAuthStore((s) => s.user);
     const { data: allSpaces = [] } = useQuery({
         queryKey: ["spaces"],
-        queryFn: () => mockApi.spaces.list(),
+        queryFn: () => spacesApi.list(),
     });
     /** Members and guests only see public spaces. */
     const spaces = allSpaces.filter((s) => {
@@ -50,23 +50,23 @@ export const SidebarSpaceTree = ({ collapsed, searchQuery = "" }: Props) => {
     });
     const { data: folders = [] } = useQuery({
         queryKey: ["folders"],
-        queryFn: () => mockApi.folders.list(),
+        queryFn: () => foldersApi.list(),
     });
     const { data: lists = [] } = useQuery({
         queryKey: ["lists"],
-        queryFn: () => mockApi.lists.listAll(),
+        queryFn: () => listsApi.listAll(),
     });
 
     const renameSpace = useMutation({
         mutationFn: ({ id, name }: { id: string; name: string }) =>
-            mockApi.spaces.update(id, { name }),
+            spacesApi.update(id, { name }),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["spaces"] });
             setRenamingSpace(null);
         },
     });
     const archiveSpace = useMutation({
-        mutationFn: (id: string) => mockApi.spaces.archive(id),
+        mutationFn: (id: string) => spacesApi.archive(id),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["spaces"] });
             message.success("Space archived");
@@ -75,21 +75,21 @@ export const SidebarSpaceTree = ({ collapsed, searchQuery = "" }: Props) => {
 
     const renameList = useMutation({
         mutationFn: ({ id, name }: { id: string; name: string }) =>
-            mockApi.lists.update(id, { name }),
+            listsApi.update(id, { name }),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["lists"] });
             setRenamingList(null);
         },
     });
     const archiveList = useMutation({
-        mutationFn: (id: string) => mockApi.lists.archive(id),
+        mutationFn: (id: string) => listsApi.archive(id),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["lists"] });
             message.success("List archived");
         },
     });
     const deleteList = useMutation({
-        mutationFn: (id: string) => mockApi.lists.delete(id),
+        mutationFn: (id: string) => listsApi.delete(id),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["lists"] });
             message.success("List deleted");

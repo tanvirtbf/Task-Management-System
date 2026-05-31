@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Modal, Input, Select, App as AntApp } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { mockApi } from "../../lib/mock-api";
+import { spacesApi, listsApi } from "../../http/api";
 import { tokens } from "../../theme";
 import type { List } from "../../types";
 
@@ -36,14 +36,14 @@ export const CreateListModal = ({
 
     const { data: spaces = [] } = useQuery({
         queryKey: ["spaces"],
-        queryFn: () => mockApi.spaces.list(),
+        queryFn: () => spacesApi.list(),
         enabled: !defaultSpaceId,
     });
 
     const create = useMutation({
         mutationFn: () =>
             spaceId
-                ? mockApi.lists.create({
+                ? listsApi.create({
                       spaceId,
                       name: name.trim(),
                       color,

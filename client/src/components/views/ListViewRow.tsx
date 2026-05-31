@@ -13,7 +13,6 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { Task } from "../../types";
-import { listsById } from "../../mocks/lists";
 import { InlineNameEdit } from "../task/InlineNameEdit";
 import { InlineStatusEdit } from "../task/InlineStatusEdit";
 import { InlinePriorityEdit } from "../task/InlinePriorityEdit";
@@ -44,7 +43,6 @@ export const ListViewRow = ({
 }: ListViewRowProps) => {
     const navigate = useNavigate();
     const [, setSearchParams] = useSearchParams();
-    const list = listsById.get(task.primaryListId);
     const update = useUpdateTask(listId);
 
     const {

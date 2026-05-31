@@ -4,7 +4,8 @@ import { Link, useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { Mail, Lock } from "lucide-react";
 import { FormCard } from "../../components/ui/FormCard";
-import { mockApi } from "../../lib/mock-api";
+import { authApi } from "../../http/api";
+import { getApiErrorMessage } from "../../http/client";
 import { useAuthStore } from "../../stores/auth";
 import { tokens } from "../../theme";
 
@@ -16,26 +17,19 @@ interface LoginFormValues {
 
 export const LoginPage = () => {
     const navigate = useNavigate();
-    const { setUser, setPendingTwoFactor } = useAuthStore();
+    const { setUser, setAccessToken } = useAuthStore();
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
     const { mutate, isPending } = useMutation({
         mutationFn: (values: LoginFormValues) =>
-            mockApi.auth.login(values.email, values.password),
-        onSuccess: (result, variables) => {
-            if (result.requires2fa) {
-                setPendingTwoFactor({
-                    email: variables.email,
-                    mfaToken: result.mfaToken,
-                });
-                navigate("/login/2fa");
-            } else {
-                setUser(result.user);
-                navigate("/");
-            }
+            authApi.login({ email: values.email, password: values.password }),
+        onSuccess: (result) => {
+            setAccessToken(result.accessToken);
+            setUser(result.user);
+            navigate("/");
         },
-        onError: (err: Error) => {
-            setErrorMessage(err.message || "Something went wrong. Try again.");
+        onError: (err: unknown) => {
+            setErrorMessage(getApiErrorMessage(err));
         },
     });
 
@@ -138,32 +132,6 @@ export const LoginPage = () => {
                     Sign in
                 </Button>
             </Form>
-
-            <div
-                style={{
-                    fontSize: tokens.typography.fontSize.xs,
-                    color: tokens.colors.textMuted,
-                    textAlign: "center",
-                    lineHeight: 1.5,
-                    paddingTop: tokens.spacing[2],
-                    borderTop: `1px solid ${tokens.colors.borderSubtle}`,
-                }}
-            >
-                <div style={{ marginBottom: 6, fontWeight: 500, color: tokens.colors.textSecondary }}>
-                    Demo accounts (any password ≥ 8 chars):
-                </div>
-                <code style={{ fontFamily: tokens.typography.fontFamilyMono }}>
-                    owner@company.local
-                </code>{" "}
-                ·{" "}
-                <code style={{ fontFamily: tokens.typography.fontFamilyMono }}>
-                    admin@company.local
-                </code>{" "}
-                ·{" "}
-                <code style={{ fontFamily: tokens.typography.fontFamilyMono }}>
-                    member@company.local
-                </code>
-            </div>
         </FormCard>
     );
 };

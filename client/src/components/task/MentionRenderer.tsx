@@ -1,4 +1,4 @@
-import { users, usersById } from "../../mocks/users";
+import { useUsers } from "../../hooks/useReferenceData";
 import { tokens } from "../../theme";
 
 /**
@@ -7,7 +7,15 @@ import { tokens } from "../../theme";
  * read view (input still uses a textarea — autocomplete is a V2).
  */
 export const MentionRenderer = ({ body }: { body: string }) => {
+    const { data: users = [] } = useUsers();
     const parts = splitTokens(body);
+    const matchUser = (handle: string) => {
+        const lower = handle.toLowerCase();
+        return (
+            users.find((u) => u.firstName.toLowerCase() === lower) ??
+            users.find((u) => u.id === handle)
+        );
+    };
     return (
         <span style={{ whiteSpace: "pre-wrap" }}>
             {parts.map((p, i) => {
@@ -73,12 +81,4 @@ const splitTokens = (s: string): Part[] => {
     }
     if (last < s.length) out.push({ kind: "text", value: s.slice(last) });
     return out;
-};
-
-const matchUser = (handle: string) => {
-    const lower = handle.toLowerCase();
-    return (
-        users.find((u) => u.firstName.toLowerCase() === lower) ??
-        usersById.get(handle)
-    );
 };

@@ -1,9 +1,7 @@
 import { useState } from "react";
 import { Popover } from "antd";
-import { useQuery } from "@tanstack/react-query";
 import { Check } from "lucide-react";
-import { mockApi } from "../../lib/mock-api";
-import { statusesById } from "../../mocks/statuses";
+import { useStatuses } from "../../hooks/useReferenceData";
 import { StatusPill } from "../ui/StatusPill";
 import { tokens } from "../../theme";
 
@@ -21,12 +19,8 @@ export const InlineStatusEdit = ({
     size = "sm",
 }: InlineStatusEditProps) => {
     const [open, setOpen] = useState(false);
-    const current = statusesById.get(statusId);
-    const { data: options = [] } = useQuery({
-        queryKey: ["statuses", listId],
-        queryFn: () => mockApi.statuses.byList(listId),
-        enabled: open,
-    });
+    const { data: options = [] } = useStatuses(listId);
+    const current = options.find((s) => s.id === statusId);
 
     if (!current) return null;
 

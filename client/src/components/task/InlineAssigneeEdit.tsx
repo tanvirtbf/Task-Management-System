@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Popover, Input } from "antd";
 import { Check, UserPlus } from "lucide-react";
-import { users as allUsers } from "../../mocks/users";
+import { useUsers } from "../../hooks/useReferenceData";
 import { Avatar } from "../ui/Avatar";
 import { AssigneeStack } from "../ui/AssigneeStack";
 import { tokens } from "../../theme";
@@ -19,6 +19,7 @@ export const InlineAssigneeEdit = ({
 }: InlineAssigneeEditProps) => {
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState("");
+    const { data: allUsers = [] } = useUsers();
 
     const assignees = allUsers.filter((u) => assigneeIds.includes(u.id));
     const filtered = allUsers.filter((u) =>

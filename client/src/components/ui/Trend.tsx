@@ -22,7 +22,7 @@ export const Trend = ({
               ? isPositive
               : !isPositive;
 
-    let color = tokens.colors.textMuted;
+    let color: string = tokens.colors.textMuted;
     if (isGood === true) color = tokens.colors.success;
     if (isGood === false) color = tokens.colors.danger;
 

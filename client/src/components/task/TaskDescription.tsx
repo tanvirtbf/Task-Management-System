@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Input } from "antd";
+import { Input, type GetRef } from "antd";
 import { FileText } from "lucide-react";
 import { TiptapEditor, TiptapReadOnly } from "../editor/TiptapEditor";
 import { tokens } from "../../theme";
@@ -18,7 +18,7 @@ export const TaskDescription = ({
 }: TaskDescriptionProps) => {
     const [editing, setEditing] = useState(false);
     const [draft, setDraft] = useState(description ?? "");
-    const ref = useRef<HTMLTextAreaElement>(null);
+    const ref = useRef<GetRef<typeof Input.TextArea>>(null);
 
     useEffect(() => {
         setDraft(description ?? "");

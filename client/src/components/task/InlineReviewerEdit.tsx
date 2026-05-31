@@ -1,7 +1,6 @@
 import { Select } from "antd";
 import { Eye, UserCircle } from "lucide-react";
-import { users } from "../../mocks/users";
-import { usersById } from "../../mocks/users";
+import { useUsers, useUserMap } from "../../hooks/useReferenceData";
 import { Avatar } from "../ui/Avatar";
 import { tokens } from "../../theme";
 
@@ -11,8 +10,10 @@ interface Props {
 }
 
 export const InlineReviewerEdit = ({ reviewerId, onChange }: Props) => {
-    const user = reviewerId ? usersById.get(reviewerId) : null;
-    const active = users.filter((u) => u.status === "active");
+    const { data: allUsers = [] } = useUsers();
+    const userMap = useUserMap();
+    const user = reviewerId ? userMap.get(reviewerId) : null;
+    const active = allUsers.filter((u) => u.status === "active");
 
     return (
         <Select
@@ -42,7 +43,7 @@ export const InlineReviewerEdit = ({ reviewerId, onChange }: Props) => {
                 label: `${u.firstName} ${u.lastName}`,
             }))}
             optionRender={(opt) => {
-                const u = usersById.get(String(opt.value));
+                const u = userMap.get(String(opt.value));
                 if (!u)
                     return (
                         <span

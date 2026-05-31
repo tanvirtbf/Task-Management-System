@@ -10,10 +10,12 @@ import {
     Link2,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { mockApi } from "../../lib/mock-api";
-import { taskTypesById, isDevTaskType } from "../../mocks/task-types";
-import { statusesById } from "../../mocks/statuses";
-import { usersById } from "../../mocks/users";
+import { tasksApi } from "../../http/api";
+import {
+    useStatusMap,
+    useTaskTypeMap,
+    useUserMap,
+} from "../../hooks/useReferenceData";
 import { DynamicIcon } from "../shared/DynamicIcon";
 import { LoadingState } from "../shared/LoadingState";
 import { InlineNameEdit } from "./InlineNameEdit";
@@ -48,20 +50,23 @@ export const TaskDetailDrawer = ({
     const qc = useQueryClient();
     const { message } = AntApp.useApp();
     const update = useUpdateTask(listId);
+    const typeMap = useTaskTypeMap();
+    const userMap = useUserMap();
+    const statusMap = useStatusMap(listId);
 
     const { data: task, isLoading } = useQuery({
         queryKey: ["task", taskId],
         queryFn: () =>
-            taskId ? mockApi.tasks.getById(taskId) : Promise.resolve(null),
+            taskId ? tasksApi.getById(taskId) : Promise.resolve(null),
         enabled: !!taskId,
     });
 
-    const taskType = task ? taskTypesById.get(task.taskTypeId) : null;
-    const creator = task ? usersById.get(task.createdBy) : null;
-    const isDev = task ? isDevTaskType(task.taskTypeId) : false;
+    const taskType = task ? typeMap.get(task.taskTypeId) : null;
+    const creator = task ? userMap.get(task.createdBy) : null;
+    const isDev = taskType?.isDevType ?? false;
     const isBug = task?.taskTypeId === "tt-bug";
     const isIncident = task?.taskTypeId === "tt-incident";
-    const status = task ? statusesById.get(task.statusId) : null;
+    const status = task ? statusMap.get(task.statusId) : null;
     const isIncidentResolved =
         isIncident &&
         (status?.statusGroup === "done" || status?.statusGroup === "closed");
@@ -69,7 +74,7 @@ export const TaskDetailDrawer = ({
     const duplicate = useMutation({
         mutationFn: () => {
             if (!task) return Promise.reject(new Error("No task"));
-            return mockApi.tasks.create({
+            return tasksApi.create({
                 primaryListId: task.primaryListId,
                 name: `${task.name} (copy)`,
                 statusId: task.statusId,
@@ -125,7 +130,7 @@ export const TaskDetailDrawer = ({
             icon: <Archive size={13} strokeWidth={1.75} />,
             onClick: () => {
                 if (task)
-                    mockApi.tasks.archive(task.id).then(() => {
+                    tasksApi.archive(task.id).then(() => {
                         message.success("Task archived");
                         qc.invalidateQueries({
                             queryKey: ["tasks-by-list", listId],
@@ -142,7 +147,7 @@ export const TaskDetailDrawer = ({
             danger: true,
             onClick: () => {
                 if (task)
-                    mockApi.tasks.delete(task.id).then(() => {
+                    tasksApi.delete(task.id).then(() => {
                         message.success("Task deleted");
                         qc.invalidateQueries({
                             queryKey: ["tasks-by-list", listId],

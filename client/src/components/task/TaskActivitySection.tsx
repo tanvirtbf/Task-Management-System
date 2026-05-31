@@ -1,8 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "antd";
 import { Activity } from "lucide-react";
-import { mockApi } from "../../lib/mock-api";
-import { usersById } from "../../mocks/users";
+import { taskActivityApi } from "../../http/api";
 import { Avatar } from "../ui/Avatar";
 import { tokens } from "../../theme";
 
@@ -44,7 +43,7 @@ const verb = (action: string): string => {
 export const TaskActivitySection = ({ taskId }: { taskId: string }) => {
     const { data = [], isLoading } = useQuery({
         queryKey: ["task-activity", taskId],
-        queryFn: () => mockApi.activity.byTask(taskId),
+        queryFn: () => taskActivityApi.byTask(taskId),
     });
 
     return (
@@ -99,7 +98,7 @@ export const TaskActivitySection = ({ taskId }: { taskId: string }) => {
                     }}
                 >
                     {data.map((entry) => {
-                        const actor = usersById.get(entry.actorId);
+                        const actor = entry.actor;
                         return (
                             <div
                                 key={entry.id}

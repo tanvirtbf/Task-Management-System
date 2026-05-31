@@ -6,7 +6,7 @@ import { App as AntApp } from "antd";
 import { Lock, ArrowLeft } from "lucide-react";
 import { FormCard } from "../../components/ui/FormCard";
 import { PasswordStrengthMeter } from "../../components/ui/PasswordStrengthMeter";
-import { mockApi } from "../../lib/mock-api";
+import { authApi } from "../../http/api";
 import { tokens } from "../../theme";
 
 interface FormValues {
@@ -23,7 +23,7 @@ export const ResetPasswordPage = () => {
 
     const { mutate, isPending } = useMutation({
         mutationFn: (values: FormValues) =>
-            mockApi.auth.resetPassword(token ?? "", values.password),
+            authApi.resetPassword(token ?? "", values.password),
         onSuccess: () => {
             message.success("Password updated. Please sign in.");
             navigate("/login");

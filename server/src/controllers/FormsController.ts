@@ -1,4 +1,4 @@
-import type { NextFunction, Response } from "express";
+import type { NextFunction, Request, Response } from "express";
 import type { Logger } from "winston";
 import { matchedData } from "express-validator";
 import { AppError } from "../errors";
@@ -300,6 +300,20 @@ export class FormsController {
                     total_estimate: result.total,
                 },
             });
+        } catch (err) {
+            next(err);
+        }
+    }
+
+    /**
+     * GET /api/v1/public/forms/:slug (🔓). Anonymous render projection — title,
+     * branding, success message, and the visible (non-hidden) fields. No
+     * `req.auth`; the slug is the only input. 404 `form.not_found` if absent.
+     */
+    async publicGet(req: Request, res: Response, next: NextFunction) {
+        try {
+            const form = await this.forms.publicView(req.params.slug);
+            res.status(200).json(form);
         } catch (err) {
             next(err);
         }

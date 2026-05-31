@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Modal, Input, Switch, App as AntApp } from "antd";
 import { Lock } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { mockApi } from "../../lib/mock-api";
+import { spacesApi } from "../../http/api";
 import { DynamicIcon } from "./DynamicIcon";
 import { tokens } from "../../theme";
 import type { Space } from "../../types";
@@ -49,7 +49,7 @@ export const CreateSpaceModal = ({ onClose, onCreated }: Props) => {
 
     const create = useMutation({
         mutationFn: () =>
-            mockApi.spaces.create({
+            spacesApi.create({
                 name: name.trim(),
                 description: description.trim() || undefined,
                 icon,

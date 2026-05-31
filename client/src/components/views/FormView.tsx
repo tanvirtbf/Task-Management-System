@@ -16,7 +16,7 @@ import {
     Trash2,
 } from "lucide-react";
 import { useState } from "react";
-import { mockApi } from "../../lib/mock-api";
+import { formsApi } from "../../http/api";
 import { LoadingState } from "../shared/LoadingState";
 import { tokens } from "../../theme";
 
@@ -33,12 +33,12 @@ export const FormView = ({ listId }: FormViewProps) => {
 
     const { data: forms = [], isLoading } = useQuery({
         queryKey: ["forms-by-list", listId],
-        queryFn: () => mockApi.forms.byList(listId),
+        queryFn: () => formsApi.byList(listId),
     });
 
     const createMutation = useMutation({
         mutationFn: (title: string) =>
-            mockApi.forms.create({ listId, title }),
+            formsApi.create({ listId, title }),
         onSuccess: (form) => {
             qc.invalidateQueries({ queryKey: ["forms-by-list", listId] });
             qc.invalidateQueries({ queryKey: ["forms"] });
@@ -50,7 +50,7 @@ export const FormView = ({ listId }: FormViewProps) => {
     });
 
     const deleteMutation = useMutation({
-        mutationFn: (id: string) => mockApi.forms.delete(id),
+        mutationFn: (id: string) => formsApi.delete(id),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["forms-by-list", listId] });
             qc.invalidateQueries({ queryKey: ["forms"] });

@@ -3,9 +3,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useSearchParams } from "react-router-dom";
 import { MessageSquare, Paperclip, GitBranch } from "lucide-react";
 import type { Task } from "../../types";
-import { usersById } from "../../mocks/users";
-import { tagsById } from "../../mocks/tags";
-import { taskTypesById } from "../../mocks/task-types";
+import { useTagMap, useTaskTypeMap, useUserMap } from "../../hooks/useReferenceData";
 import { AssigneeStack } from "../ui/AssigneeStack";
 import { DueDateBadge } from "../ui/DueDateBadge";
 import { PriorityFlag } from "../ui/PriorityFlag";
@@ -26,6 +24,9 @@ export const BoardCard = ({
     isOverlay = false,
 }: BoardCardProps) => {
     const [, setSearchParams] = useSearchParams();
+    const userMap = useUserMap();
+    const tagMap = useTagMap();
+    const typeMap = useTaskTypeMap();
 
     const {
         attributes,
@@ -42,12 +43,12 @@ export const BoardCard = ({
         opacity: isDragging ? 0.4 : 1,
     };
 
-    const taskType = taskTypesById.get(task.taskTypeId);
+    const taskType = typeMap.get(task.taskTypeId);
     const assignees = task.assignees
-        .map((id) => usersById.get(id))
+        .map((id) => userMap.get(id))
         .filter((u): u is NonNullable<typeof u> => !!u);
     const taskTags = task.tags
-        .map((id) => tagsById.get(id))
+        .map((id) => tagMap.get(id))
         .filter((t): t is NonNullable<typeof t> => !!t);
 
     const openDetail = () => {

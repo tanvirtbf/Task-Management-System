@@ -245,6 +245,17 @@ router.delete(
         controller.deleteField(req as DeleteFieldRequest, res, next),
 );
 
+// ─── GET /api/v1/public/forms/:slug ───────────────────────────────────────────
+// 🔓 PUBLIC — no authentication. Rate-limited per IP (publicFormLimiter). The
+// anonymous render projection (title, branding, success message, visible
+// fields). 404 `form.not_found` if the slug is unknown.
+router.get(
+    "/public/forms/:slug",
+    publicFormLimiter,
+    (req: Request, res: Response, next: NextFunction) =>
+        controller.publicGet(req, res, next),
+);
+
 // ─── POST /api/v1/public/forms/:slug/submit ───────────────────────────────────
 // 🔓 PUBLIC — no authentication. Rate-limited per IP (publicFormLimiter,
 // 30/min). Validates the submitted data against the form's fields, creates a

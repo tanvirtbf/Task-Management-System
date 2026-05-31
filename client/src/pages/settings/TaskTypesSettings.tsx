@@ -10,11 +10,10 @@ import {
 } from "antd";
 import {
     Plus,
-    Hexagon,
     Pencil,
     Trash2,
 } from "lucide-react";
-import { mockApi } from "../../lib/mock-api";
+import { taskTypesApi } from "../../http/api";
 import { DynamicIcon } from "../../components/shared/DynamicIcon";
 import {
     SettingsHeader,
@@ -58,11 +57,11 @@ const TaskTypesSettings = () => {
 
     const { data: taskTypes = [] } = useQuery({
         queryKey: ["task-types"],
-        queryFn: () => mockApi.taskTypes.list(),
+        queryFn: () => taskTypesApi.list(),
     });
 
     const remove = useMutation({
-        mutationFn: (id: string) => mockApi.taskTypes.delete(id),
+        mutationFn: (id: string) => taskTypesApi.delete(id),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["task-types"] });
             message.success("Task type deleted");
@@ -246,14 +245,14 @@ const TaskTypeEditor = ({
     const save = useMutation({
         mutationFn: () =>
             taskType
-                ? mockApi.taskTypes.update(taskType.id, {
+                ? taskTypesApi.update(taskType.id, {
                       name,
                       description,
                       icon,
                       color,
                       isMilestoneType,
                   })
-                : mockApi.taskTypes.create({
+                : taskTypesApi.create({
                       name,
                       description,
                       icon,

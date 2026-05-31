@@ -1,68 +1,24 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
-import { Folder, Sparkles } from "lucide-react";
-import { App as AntApp, Dropdown } from "antd";
-import { mockApi } from "../../lib/mock-api";
+import { Folder } from "lucide-react";
+import { spacesApi, listsApi } from "../../http/api";
 import { DynamicIcon } from "../../components/shared/DynamicIcon";
-import { useAuthStore } from "../../stores/auth";
 import { tokens } from "../../theme";
-
-const CAMPAIGN_TEMPLATES = [
-    "Eid ul-Fitr",
-    "Eid ul-Adha",
-    "Pohela Boishakh",
-    "Durga Puja",
-    "Victory Day",
-    "11.11 Sale",
-    "Black Friday",
-];
 
 const SpacePage = () => {
     const { spaceId } = useParams();
     const navigate = useNavigate();
-    const qc = useQueryClient();
-    const { message } = AntApp.useApp();
-    const user = useAuthStore((s) => s.user);
 
     const { data: space } = useQuery({
         queryKey: ["space", spaceId],
-        queryFn: () => (spaceId ? mockApi.spaces.getById(spaceId) : null),
+        queryFn: () => (spaceId ? spacesApi.getById(spaceId) : null),
         enabled: !!spaceId,
     });
     const { data: lists = [] } = useQuery({
         queryKey: ["lists-by-space", spaceId],
         queryFn: () =>
-            spaceId ? mockApi.lists.listBySpace(spaceId) : Promise.resolve([]),
+            spaceId ? listsApi.listBySpace(spaceId) : Promise.resolve([]),
         enabled: !!spaceId,
-    });
-
-    const campaignList = lists.find(
-        (l) => l.id === "l-campaigns" || l.name.toLowerCase().includes("campaign"),
-    );
-
-    const applyTemplate = useMutation({
-        mutationFn: (templateName: string) => {
-            if (!campaignList || !user) {
-                throw new Error("Campaign list not found");
-            }
-            return mockApi.campaignTemplates.apply({
-                templateName,
-                listId: campaignList.id,
-                createdBy: user.id,
-            });
-        },
-        onSuccess: (task) => {
-            qc.invalidateQueries({
-                queryKey: ["tasks-by-list", campaignList?.id],
-            });
-            message.success(`${task.name} created with 12-step checklist`);
-            if (campaignList) {
-                navigate(
-                    `/s/${campaignList.spaceId}/l/${campaignList.id}?task=${task.id}`,
-                );
-            }
-        },
-        onError: () => message.error("Could not apply template"),
     });
 
     if (!space) {
@@ -133,41 +89,6 @@ const SpacePage = () => {
                         </p>
                     )}
                 </div>
-                {space.id === "sp-mkt" && campaignList && (
-                    <div style={{ marginLeft: "auto" }}>
-                        <Dropdown
-                            menu={{
-                                items: CAMPAIGN_TEMPLATES.map((f) => ({
-                                    key: f,
-                                    label: f,
-                                    onClick: () => applyTemplate.mutate(f),
-                                })),
-                            }}
-                            trigger={["click"]}
-                        >
-                            <button
-                                style={{
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: 6,
-                                    padding: "8px 14px",
-                                    borderRadius: tokens.radius.md,
-                                    background: tokens.colors.primary,
-                                    color: "#fff",
-                                    border: 0,
-                                    cursor: "pointer",
-                                    fontSize: tokens.typography.fontSize.sm,
-                                    fontWeight: 600,
-                                    boxShadow: tokens.shadows.sm,
-                                }}
-                                disabled={applyTemplate.isPending}
-                            >
-                                <Sparkles size={14} strokeWidth={1.75} />
-                                Apply template
-                            </button>
-                        </Dropdown>
-                    </div>
-                )}
             </div>
 
             {/* Lists grid */}

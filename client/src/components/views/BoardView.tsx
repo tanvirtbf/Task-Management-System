@@ -11,11 +11,10 @@ import {
     type DragStartEvent,
 } from "@dnd-kit/core";
 import { LayoutGrid } from "lucide-react";
-import { mockApi } from "../../lib/mock-api";
+import { tasksApi } from "../../http/api";
+import { useStatuses, useUserMap } from "../../hooks/useReferenceData";
 import { useAuthStore } from "../../stores/auth";
 import { useBoardStore } from "../../stores/board";
-import { statusesByList } from "../../mocks/statuses";
-import { usersById } from "../../mocks/users";
 import { useUpdateTask } from "../../hooks/useTaskMutations";
 import { BoardColumn } from "./BoardColumn";
 import { BoardCard } from "./BoardCard";
@@ -23,7 +22,7 @@ import { BoardToolbar } from "./BoardToolbar";
 import { BoardSwimlane } from "./BoardSwimlane";
 import { EmptyState } from "../ui/EmptyState";
 import { tokens } from "../../theme";
-import type { Priority, Task, User } from "../../types";
+import type { Priority, Status, Task, User } from "../../types";
 import { PRIORITY_LABELS } from "../../types";
 
 interface BoardViewProps {
@@ -43,10 +42,11 @@ export const BoardView = ({ listId }: BoardViewProps) => {
 
     const { data: tasks = [], isLoading } = useQuery({
         queryKey: ["tasks-by-list", listId],
-        queryFn: () => mockApi.tasks.listByList(listId),
+        queryFn: () => tasksApi.listByList(listId),
     });
 
-    const statuses = useMemo(() => statusesByList(listId), [listId]);
+    const { data: statuses = [] } = useStatuses(listId);
+    const userMap = useUserMap();
     const update = useUpdateTask(listId);
 
     // Filter tasks: search + me-mode + closed
@@ -138,10 +138,10 @@ export const BoardView = ({ listId }: BoardViewProps) => {
                 label:
                     key === "unassigned"
                         ? "Unassigned"
-                        : usersById.get(key)
-                          ? `${usersById.get(key)!.firstName} ${usersById.get(key)!.lastName}`
+                        : userMap.get(key)
+                          ? `${userMap.get(key)!.firstName} ${userMap.get(key)!.lastName}`
                           : "Unknown",
-                user: key === "unassigned" ? undefined : usersById.get(key),
+                user: key === "unassigned" ? undefined : userMap.get(key),
                 count: ts.length,
                 tasks: ts,
             }));
@@ -165,7 +165,7 @@ export const BoardView = ({ listId }: BoardViewProps) => {
                 }));
         }
         return [];
-    }, [filtered, subgroupBy]);
+    }, [filtered, subgroupBy, userMap]);
 
     if (isLoading) {
         return (
@@ -287,7 +287,7 @@ const BoardColumns = ({
     density,
 }: {
     listId: string;
-    statuses: ReturnType<typeof statusesByList>;
+    statuses: Status[];
     tasks: Task[];
     density: "compact" | "comfortable";
 }) => (

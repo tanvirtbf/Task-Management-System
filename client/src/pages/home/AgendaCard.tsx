@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "antd";
 import { CalendarDays } from "lucide-react";
-import { mockApi } from "../../lib/mock-api";
+import { tasksApi } from "../../http/api";
 import { useAuthStore } from "../../stores/auth";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { tokens } from "../../theme";
@@ -17,8 +17,7 @@ export const AgendaCard = () => {
     const user = useAuthStore((s) => s.user);
     const { data: myWork, isLoading: loadingWork } = useQuery({
         queryKey: ["my-work", user?.id],
-        queryFn: () =>
-            user ? mockApi.tasks.myWork(user.id) : Promise.resolve(null),
+        queryFn: () => tasksApi.myWork(),
         enabled: !!user,
     });
 

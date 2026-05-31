@@ -1,8 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "antd";
 import { Activity } from "lucide-react";
-import { mockApi } from "../../lib/mock-api";
-import { usersById } from "../../mocks/users";
+import { activityApi } from "../../http/api";
 import { Avatar } from "../../components/ui/Avatar";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { tokens } from "../../theme";
@@ -42,7 +41,7 @@ const actionVerb = (action: string): string => {
 export const RecentActivityCard = () => {
     const { data, isLoading } = useQuery({
         queryKey: ["recent-activity"],
-        queryFn: () => mockApi.activity.recent(8),
+        queryFn: () => activityApi.recent(8),
     });
 
     return (
@@ -106,7 +105,7 @@ export const RecentActivityCard = () => {
                         }}
                     >
                         {data.map((entry) => {
-                            const actor = usersById.get(entry.actorId);
+                            const actor = entry.actor;
                             return (
                                 <div
                                     key={entry.id}

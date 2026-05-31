@@ -1,7 +1,7 @@
 import { Bell } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { mockApi } from "../../lib/mock-api";
+import { notificationsApi } from "../../http/api";
 import { useAuthStore } from "../../stores/auth";
 import { tokens } from "../../theme";
 
@@ -10,8 +10,11 @@ export const NotificationBell = () => {
     const user = useAuthStore((s) => s.user);
     const { data: count = 0 } = useQuery({
         queryKey: ["notifications", "unread-count", user?.id],
-        queryFn: () => (user ? mockApi.notifications.unreadCount(user.id) : 0),
+        queryFn: () => notificationsApi.unreadCount(),
         enabled: !!user,
+        // SSE is auth-blocked (EventSource can't send the in-memory Bearer);
+        // poll the badge as the realtime substitute. See FRONTEND_INTEGRATION_PLAN P5.
+        refetchInterval: 60_000,
     });
 
     return (

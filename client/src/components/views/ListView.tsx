@@ -11,9 +11,9 @@ import {
     type DragStartEvent,
 } from "@dnd-kit/core";
 import { ListChecks } from "lucide-react";
-import { mockApi } from "../../lib/mock-api";
+import { tasksApi } from "../../http/api";
+import { useStatuses } from "../../hooks/useReferenceData";
 import { useAuthStore } from "../../stores/auth";
-import { statusesByList } from "../../mocks/statuses";
 import { useMultiSelect } from "../../hooks/useMultiSelect";
 import {
     useArchiveTask,
@@ -54,10 +54,10 @@ export const ListView = ({ listId }: ListViewProps) => {
 
     const { data: tasks = [], isLoading } = useQuery({
         queryKey: ["tasks-by-list", listId],
-        queryFn: () => mockApi.tasks.listByList(listId),
+        queryFn: () => tasksApi.listByList(listId),
     });
 
-    const statuses = useMemo(() => statusesByList(listId), [listId]);
+    const { data: statuses = [] } = useStatuses(listId);
     const update = useUpdateTask(listId);
     const archive = useArchiveTask(listId);
     const del = useDeleteTask(listId);

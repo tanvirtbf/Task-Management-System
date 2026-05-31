@@ -1,11 +1,10 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Modal, Input, Select, Button, App as AntApp } from "antd";
+import { Modal, Input, Select, App as AntApp } from "antd";
 import { Bug } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { mockApi } from "../../lib/mock-api";
+import { engineeringApi } from "../../http/api";
 import { useAuthStore } from "../../stores/auth";
-import { currentOnCallEngineerId } from "../../mocks/on-call";
 import { tokens } from "../../theme";
 
 /**
@@ -28,38 +27,21 @@ export const ReportBugButton = () => {
     const { message } = AntApp.useApp();
 
     const create = useMutation({
-        mutationFn: async () => {
-            const title = steps.split("\n")[0]?.slice(0, 80) || "Bug report";
-            const description = [
-                "## Steps to reproduce",
-                steps || "_not provided_",
-                "",
-                "## What happened",
-                happened || "_not provided_",
-                "",
-                "## Expected behavior",
-                expected || "_not provided_",
-                url ? `\n## URL\n${url}` : "",
-            ].join("\n");
-            return mockApi.tasks.create({
-                primaryListId: "l-bug-triage",
-                name: title,
-                taskTypeId: "tt-bug",
-                description,
-                statusId: "l-bug-triage-s-reported",
-                assignees:
-                    severity === "S0" || severity === "S1"
-                        ? [currentOnCallEngineerId()]
-                        : [],
-                bugSeverity: severity,
-                bugEnvironment: "production",
-                bugReproducibility: "always",
-                reporterTeam: (team as never) ?? "internal",
-            });
-        },
+        // The backend composes the Bug task (Bug Triage list, reported status,
+        // §29 SLA, and S0/S1 on-call auto-assignment) — the FE just sends the
+        // raw fields; title/description are built server-side.
+        mutationFn: () =>
+            engineeringApi.reportBug({
+                steps,
+                happened,
+                expected,
+                severity,
+                reporterTeam: team ?? "internal",
+                url: url || undefined,
+            }),
         onSuccess: (task) => {
             qc.invalidateQueries({
-                queryKey: ["tasks-by-list", "l-bug-triage"],
+                queryKey: ["tasks-by-list", task.primaryListId],
             });
             message.success(`Bug ${task.customId ?? task.id} created`);
             setOpen(false);
@@ -67,7 +49,7 @@ export const ReportBugButton = () => {
             setHappened("");
             setExpected("");
             setUrl("");
-            navigate(`/s/sp-eng/l/l-bug-triage?task=${task.id}`);
+            navigate(`/t/${task.customId ?? task.id}`);
         },
         onError: () => message.error("Could not create bug"),
     });

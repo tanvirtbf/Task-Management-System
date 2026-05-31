@@ -1,23 +1,44 @@
-import { Select } from "antd";
+import { Select, App as AntApp } from "antd";
 import { Shield, Calendar } from "lucide-react";
-import { useState } from "react";
-import { onCallShifts as initialShifts } from "../../mocks/on-call";
-import { users, usersById } from "../../mocks/users";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { onCallApi } from "../../http/api";
+import { useUsers, useUserMap } from "../../hooks/useReferenceData";
 import { Avatar } from "../../components/ui/Avatar";
 import { tokens } from "../../theme";
 
 const OnCallRotationPage = () => {
-    const [shifts, setShifts] = useState(initialShifts);
-    const eligible = users.filter((u) => u.status === "active");
+    const qc = useQueryClient();
+    const { message } = AntApp.useApp();
+    const userMap = useUserMap();
+    const { data: allUsers = [] } = useUsers();
+    const eligible = allUsers.filter((u) => u.status === "active");
+
+    const { data: shifts = [] } = useQuery({
+        queryKey: ["on-call", "schedule"],
+        queryFn: () => onCallApi.schedule(),
+    });
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const updateShift = (shiftId: string, engineerId: string) => {
-        setShifts((prev) =>
-            prev.map((s) => (s.id === shiftId ? { ...s, engineerId } : s)),
-        );
-    };
+    const setShift = useMutation({
+        mutationFn: ({
+            weekStart,
+            engineerId,
+        }: {
+            weekStart: string;
+            engineerId: string;
+        }) => onCallApi.set(weekStart, engineerId),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ["on-call", "schedule"] });
+            qc.invalidateQueries({ queryKey: ["on-call", "current"] });
+            message.success("On-call updated");
+        },
+        onError: () => message.error("Could not update on-call"),
+    });
+
+    const updateShift = (weekStart: string, engineerId: string) =>
+        setShift.mutate({ weekStart, engineerId });
 
     return (
         <div
@@ -72,7 +93,7 @@ const OnCallRotationPage = () => {
                     const isCurrent =
                         monday <= today &&
                         new Date(sunday.setHours(23, 59, 59, 999)) >= today;
-                    const user = usersById.get(shift.engineerId);
+                    const user = shift.engineer;
 
                     return (
                         <div
@@ -136,14 +157,14 @@ const OnCallRotationPage = () => {
                             </div>
                             <Select
                                 value={shift.engineerId}
-                                onChange={(v) => updateShift(shift.id, v)}
+                                onChange={(v) => updateShift(shift.weekStart, v)}
                                 style={{ minWidth: 220 }}
                                 options={eligible.map((u) => ({
                                     value: u.id,
                                     label: `${u.firstName} ${u.lastName}`,
                                 }))}
                                 optionRender={(opt) => {
-                                    const u = usersById.get(String(opt.value));
+                                    const u = userMap.get(String(opt.value));
                                     return (
                                         <span
                                             style={{

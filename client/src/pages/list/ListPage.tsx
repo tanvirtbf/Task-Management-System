@@ -9,9 +9,8 @@ import {
     UserPlus,
 } from "lucide-react";
 import { Button } from "antd";
-import { mockApi } from "../../lib/mock-api";
-import { spacesById } from "../../mocks/spaces";
-import { usersById } from "../../mocks/users";
+import { listsApi, spacesApi, tasksApi } from "../../http/api";
+import { useUserMap } from "../../hooks/useReferenceData";
 import { AssigneeStack } from "../../components/ui/AssigneeStack";
 import { DynamicIcon } from "../../components/shared/DynamicIcon";
 import { InlineNameEdit } from "../../components/task/InlineNameEdit";
@@ -39,23 +38,28 @@ const ListPage = () => {
 
     const { data: list } = useQuery({
         queryKey: ["list", listId],
-        queryFn: () => (listId ? mockApi.lists.getById(listId) : null),
+        queryFn: () => (listId ? listsApi.getById(listId) : null),
         enabled: !!listId,
     });
 
-    const space = spaceId ? spacesById.get(spaceId) : undefined;
+    const { data: space } = useQuery({
+        queryKey: ["space", spaceId],
+        queryFn: () => (spaceId ? spacesApi.getById(spaceId) : null),
+        enabled: !!spaceId,
+    });
 
     const { data: tasks = [] } = useQuery({
         queryKey: ["tasks-by-list", listId],
         queryFn: () =>
-            listId ? mockApi.tasks.listByList(listId) : Promise.resolve([]),
+            listId ? tasksApi.listByList(listId) : Promise.resolve([]),
         enabled: !!listId,
     });
+    const userMap = useUserMap();
     const memberIds = Array.from(
         new Set(tasks.flatMap((t) => t.assignees)),
     ).slice(0, 8);
     const members = memberIds
-        .map((id) => usersById.get(id))
+        .map((id) => userMap.get(id))
         .filter((u): u is NonNullable<typeof u> => !!u);
 
     if (!list || !listId) return null;

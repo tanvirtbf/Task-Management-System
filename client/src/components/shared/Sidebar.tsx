@@ -19,7 +19,7 @@ import {
     X,
 } from "lucide-react";
 import { Dropdown, Input, App as AntApp } from "antd";
-import { mockApi } from "../../lib/mock-api";
+import { workspaceApi, notificationsApi } from "../../http/api";
 import { useUiStore } from "../../stores/ui";
 import { useAuthStore } from "../../stores/auth";
 import { tokens } from "../../theme";
@@ -40,12 +40,13 @@ export const Sidebar = () => {
     const [createSpaceOpen, setCreateSpaceOpen] = useState(false);
     const { data: workspace } = useQuery({
         queryKey: ["workspace"],
-        queryFn: () => mockApi.workspace.get(),
+        queryFn: () => workspaceApi.get(),
     });
     const { data: unreadCount = 0 } = useQuery({
         queryKey: ["notifications", "unread-count", user?.id],
-        queryFn: () => (user ? mockApi.notifications.unreadCount(user.id) : 0),
+        queryFn: () => notificationsApi.unreadCount(),
         enabled: !!user,
+        refetchInterval: 60_000,
     });
 
     const workspaceMenuItems = [

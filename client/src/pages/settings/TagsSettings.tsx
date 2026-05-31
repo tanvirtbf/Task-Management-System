@@ -5,16 +5,14 @@ import {
     Input,
     Modal,
     Popconfirm,
-    Select,
     App as AntApp,
 } from "antd";
 import { Plus, Pencil, Trash2, Search } from "lucide-react";
-import { mockApi } from "../../lib/mock-api";
+import { tagsApi } from "../../http/api";
 import {
     SettingsHeader,
     SettingsSection,
 } from "../../components/settings/SettingsHeader";
-import { spacesById } from "../../mocks/spaces";
 import { tokens } from "../../theme";
 import type { Tag } from "../../types";
 
@@ -35,48 +33,31 @@ const TagsSettings = () => {
     const qc = useQueryClient();
     const { message } = AntApp.useApp();
     const [query, setQuery] = useState("");
-    const [spaceFilter, setSpaceFilter] = useState<string>("all");
     const [editing, setEditing] = useState<Tag | "new" | null>(null);
 
     const { data: tags = [] } = useQuery({
         queryKey: ["tags"],
-        queryFn: () => mockApi.tags.list(),
+        queryFn: () => tagsApi.list(),
     });
 
     const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
-        return tags.filter((t) => {
-            if (spaceFilter !== "all" && t.spaceId !== spaceFilter)
-                return false;
-            if (q && !t.name.toLowerCase().includes(q)) return false;
-            return true;
-        });
-    }, [tags, query, spaceFilter]);
+        return tags.filter((t) => !q || t.name.toLowerCase().includes(q));
+    }, [tags, query]);
 
     const remove = useMutation({
-        mutationFn: (id: string) => mockApi.tags.delete(id),
+        mutationFn: (id: string) => tagsApi.delete(id),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["tags"] });
             message.success("Tag deleted");
         },
     });
 
-    const spaceOptions = useMemo(() => {
-        const ids = Array.from(new Set(tags.map((t) => t.spaceId)));
-        return [
-            { value: "all", label: "All spaces" },
-            ...ids.map((id) => ({
-                value: id,
-                label: spacesById.get(id)?.name ?? id,
-            })),
-        ];
-    }, [tags]);
-
     return (
         <div>
             <SettingsHeader
                 title="Tags"
-                description={`${tags.length} tags across ${new Set(tags.map((t) => t.spaceId)).size} spaces.`}
+                description={`${tags.length} workspace-wide tags.`}
                 actions={
                     <Button
                         type="primary"
@@ -107,12 +88,6 @@ const TagsSettings = () => {
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     style={{ flex: 1 }}
-                />
-                <Select
-                    value={spaceFilter}
-                    onChange={setSpaceFilter}
-                    style={{ width: 200 }}
-                    options={spaceOptions}
                 />
             </div>
 
@@ -211,16 +186,13 @@ const TagEditor = ({
     const qc = useQueryClient();
     const { message } = AntApp.useApp();
     const [name, setName] = useState(tag?.name ?? "");
-    const [spaceId, setSpaceId] = useState(
-        tag?.spaceId ?? Array.from(spacesById.keys())[0],
-    );
     const [color, setColor] = useState(tag?.color ?? TAG_PALETTE[0]);
 
     const save = useMutation({
         mutationFn: () =>
             tag
-                ? mockApi.tags.update(tag.id, { name, color, spaceId })
-                : mockApi.tags.create({ name, color, spaceId }),
+                ? tagsApi.update(tag.id, { name, color })
+                : tagsApi.create({ name, color }),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["tags"] });
             message.success(tag ? "Tag updated" : "Tag created");
@@ -255,18 +227,6 @@ const TagEditor = ({
                         onChange={(e) => setName(e.target.value)}
                         placeholder="e.g. urgent"
                         autoFocus
-                    />
-                </div>
-                <div>
-                    <Label>Space</Label>
-                    <Select
-                        value={spaceId}
-                        onChange={setSpaceId}
-                        style={{ width: "100%" }}
-                        options={Array.from(spacesById.values()).map((s) => ({
-                            value: s.id,
-                            label: s.name,
-                        }))}
                     />
                 </div>
                 <div>

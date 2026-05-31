@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Button, Input, Select, App as AntApp } from "antd";
+import { Button, Input, Select, Modal, App as AntApp } from "antd";
 import { Save, KeyRound } from "lucide-react";
-import { mockApi } from "../../lib/mock-api";
+import { authApi, usersApi } from "../../http/api";
 import { useAuthStore } from "../../stores/auth";
 import {
     SettingsHeader,
@@ -45,7 +45,7 @@ const ProfileSettings = () => {
     const saveProfile = useMutation({
         mutationFn: () =>
             user
-                ? mockApi.users.updateProfile(user.id, {
+                ? usersApi.updateProfile(user.id, {
                       firstName,
                       lastName,
                       email,
@@ -63,6 +63,31 @@ const ProfileSettings = () => {
             );
         },
     });
+
+    const [pwOpen, setPwOpen] = useState(false);
+    const [currentPw, setCurrentPw] = useState("");
+    const [newPw, setNewPw] = useState("");
+    const [confirmPw, setConfirmPw] = useState("");
+
+    const changePw = useMutation({
+        mutationFn: () => authApi.changePassword(currentPw, newPw),
+        onSuccess: () => {
+            message.success("Password changed");
+            setPwOpen(false);
+            setCurrentPw("");
+            setNewPw("");
+            setConfirmPw("");
+        },
+        onError: (err) =>
+            message.error(
+                err instanceof Error
+                    ? err.message
+                    : "Failed to change password",
+            ),
+    });
+
+    const pwValid =
+        currentPw.length > 0 && newPw.length >= 8 && newPw === confirmPw;
 
     if (!user) return <div>Not signed in</div>;
 
@@ -182,10 +207,77 @@ const ProfileSettings = () => {
                 title="Password"
                 description="Change the password used to sign in."
             >
-                <Button icon={<KeyRound size={14} strokeWidth={1.75} />}>
+                <Button
+                    icon={<KeyRound size={14} strokeWidth={1.75} />}
+                    onClick={() => setPwOpen(true)}
+                >
                     Change password
                 </Button>
             </SettingsSection>
+
+            <Modal
+                title="Change password"
+                open={pwOpen}
+                onCancel={() => setPwOpen(false)}
+                onOk={() => changePw.mutate()}
+                okText="Update password"
+                okButtonProps={{
+                    disabled: !pwValid,
+                    loading: changePw.isPending,
+                }}
+                destroyOnClose
+            >
+                <div
+                    style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 12,
+                        marginTop: 12,
+                    }}
+                >
+                    <div>
+                        <label style={{ fontSize: 13, fontWeight: 500 }}>
+                            Current password
+                        </label>
+                        <Input.Password
+                            value={currentPw}
+                            onChange={(e) => setCurrentPw(e.target.value)}
+                            placeholder="Current password"
+                        />
+                    </div>
+                    <div>
+                        <label style={{ fontSize: 13, fontWeight: 500 }}>
+                            New password
+                        </label>
+                        <Input.Password
+                            value={newPw}
+                            onChange={(e) => setNewPw(e.target.value)}
+                            placeholder="At least 8 characters"
+                        />
+                    </div>
+                    <div>
+                        <label style={{ fontSize: 13, fontWeight: 500 }}>
+                            Confirm new password
+                        </label>
+                        <Input.Password
+                            value={confirmPw}
+                            onChange={(e) => setConfirmPw(e.target.value)}
+                            placeholder="Re-type new password"
+                        />
+                        {confirmPw.length > 0 && newPw !== confirmPw && (
+                            <div
+                                style={{
+                                    color: tokens.colors.danger,
+                                    fontSize: 11,
+                                    marginTop: 4,
+                                }}
+                            >
+                                Passwords don't match
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </Modal>
         </div>
     );
 };

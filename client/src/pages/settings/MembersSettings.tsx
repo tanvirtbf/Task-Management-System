@@ -7,7 +7,6 @@ import {
     Tag,
     App as AntApp,
     Modal,
-    Popconfirm,
     Dropdown,
 } from "antd";
 import {
@@ -18,7 +17,7 @@ import {
     UserCheck,
     Mail,
 } from "lucide-react";
-import { mockApi } from "../../lib/mock-api";
+import { usersApi } from "../../http/api";
 import {
     SettingsHeader,
     SettingsSection,
@@ -48,7 +47,7 @@ const MembersSettings = () => {
 
     const { data: users = [] } = useQuery({
         queryKey: ["users"],
-        queryFn: () => mockApi.users.list(),
+        queryFn: () => usersApi.list(),
     });
 
     const filtered = useMemo(() => {
@@ -70,7 +69,7 @@ const MembersSettings = () => {
 
     const updateRole = useMutation({
         mutationFn: ({ id, role }: { id: string; role: Role }) =>
-            mockApi.users.updateRole(id, role),
+            usersApi.updateRole(id, role),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["users"] });
             message.success("Role updated");
@@ -78,7 +77,7 @@ const MembersSettings = () => {
     });
 
     const deactivate = useMutation({
-        mutationFn: (id: string) => mockApi.users.deactivate(id),
+        mutationFn: (id: string) => usersApi.deactivate(id),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["users"] });
             message.success("Member deactivated");
@@ -86,7 +85,7 @@ const MembersSettings = () => {
     });
 
     const reactivate = useMutation({
-        mutationFn: (id: string) => mockApi.users.reactivate(id),
+        mutationFn: (id: string) => usersApi.reactivate(id),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["users"] });
             message.success("Member reactivated");
@@ -343,7 +342,7 @@ const InviteMemberModal = ({ onClose }: { onClose: () => void }) => {
 
     const invite = useMutation({
         mutationFn: () =>
-            mockApi.users.invite({ firstName, lastName, email, role }),
+            usersApi.invite({ firstName, lastName, email, role }),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["users"] });
             message.success(`Invitation sent to ${email}`);

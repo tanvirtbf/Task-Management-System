@@ -2,53 +2,58 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { Alert, Button, Input } from "antd";
-import { CheckCircle2, AlertCircle, ShieldCheck } from "lucide-react";
-import { mockApi } from "../../lib/mock-api";
-import { customFieldsById } from "../../mocks/custom-fields";
-import { CustomFieldRenderer } from "../../components/custom-field/CustomFieldRenderer";
+import { CheckCircle2, AlertCircle } from "lucide-react";
+import {
+    publicFormsApi,
+    type PublicFormField,
+} from "../../http/api";
 import { Logo } from "../../components/ui/Logo";
-import type { ConditionalLogic, FormFieldDef } from "../../types/custom-fields";
 import { tokens } from "../../theme";
 
+/**
+ * Anonymous public form (§18, `GET/POST /public/forms/:slug`). The public
+ * projection carries no auth context and no custom-field type/config, so every
+ * field renders as a plain input: `task_attr` values submit as raw strings,
+ * `custom_field` values submit with the `{text}` envelope (rich custom types —
+ * dropdown/money/date/files — on PUBLIC forms are a documented V1 limitation;
+ * the authenticated app renders them fully).
+ */
 const PublicFormPage = () => {
     const { slug } = useParams();
-    const [values, setValues] = useState<Record<string, unknown>>({});
+    const [values, setValues] = useState<Record<string, string>>({});
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [submitted, setSubmitted] = useState(false);
 
     const { data: form, isLoading } = useQuery({
         queryKey: ["public-form", slug],
         queryFn: () =>
-            slug ? mockApi.forms.getBySlug(slug) : Promise.resolve(null),
+            slug ? publicFormsApi.getBySlug(slug) : Promise.resolve(null),
         enabled: !!slug,
     });
 
+    const fields = useMemo(
+        () =>
+            (form?.fields ?? [])
+                .slice()
+                .sort((a, b) => a.position - b.position),
+        [form],
+    );
+
     const submit = useMutation({
-        mutationFn: () => mockApi.forms.submit(slug!, values),
-        onSuccess: () => {
-            setSubmitted(true);
-            if (form?.settings.redirectUrl) {
-                setTimeout(() => {
-                    if (form.settings.redirectUrl)
-                        window.location.href = form.settings.redirectUrl;
-                }, 1500);
+        mutationFn: () => {
+            const data: Record<string, unknown> = {};
+            for (const f of fields) {
+                const v = values[f.fieldKey];
+                if (v === undefined || v === "") continue;
+                data[f.fieldKey] =
+                    f.fieldKind === "custom_field" ? { text: v } : v;
             }
+            return publicFormsApi.submit(slug!, data);
         },
+        onSuccess: () => setSubmitted(true),
     });
 
-    // Build visible fields based on conditional logic
-    const visibleFields = useMemo(() => {
-        if (!form) return [];
-        return form.fields.filter((f) => {
-            if (f.isHidden) return false;
-            if (!f.conditionalLogic) return true;
-            return evalConditional(f.conditionalLogic, values, form.fields);
-        });
-    }, [form, values]);
-
-    if (isLoading) {
-        return <CenteredMessage>Loading form...</CenteredMessage>;
-    }
+    if (isLoading) return <CenteredMessage>Loading form…</CenteredMessage>;
     if (!form) {
         return (
             <CenteredMessage>
@@ -69,39 +74,17 @@ const PublicFormPage = () => {
         );
     }
 
-    if (!form.settings.submissionOpen) {
-        return (
-            <CenteredMessage>
-                <div
-                    style={{
-                        textAlign: "center",
-                        color: tokens.colors.textMuted,
-                    }}
-                >
-                    <AlertCircle
-                        size={32}
-                        strokeWidth={1.5}
-                        style={{ marginBottom: 8 }}
-                    />
-                    <div>This form is currently not accepting submissions.</div>
-                </div>
-            </CenteredMessage>
-        );
-    }
+    const branding = (form.branding ?? {}) as {
+        primaryColor?: string;
+        hideAppBranding?: boolean;
+    };
+    const primaryColor = branding.primaryColor ?? tokens.colors.primary;
 
     const handleSubmit = () => {
         const newErrors: Record<string, string> = {};
-        for (const field of visibleFields) {
-            if (field.isRequired) {
-                const val = values[field.fieldKey];
-                if (
-                    val === undefined ||
-                    val === null ||
-                    val === "" ||
-                    (Array.isArray(val) && val.length === 0)
-                ) {
-                    newErrors[field.fieldKey] = "This field is required";
-                }
+        for (const f of fields) {
+            if (f.isRequired && !values[f.fieldKey]) {
+                newErrors[f.fieldKey] = "This field is required";
             }
         }
         if (Object.keys(newErrors).length > 0) {
@@ -111,9 +94,6 @@ const PublicFormPage = () => {
         setErrors({});
         submit.mutate();
     };
-
-    const primaryColor = form.branding.primaryColor;
-    const isTwoCol = form.branding.layout === "two_column";
 
     if (submitted) {
         return (
@@ -171,20 +151,9 @@ const PublicFormPage = () => {
                             lineHeight: 1.6,
                         }}
                     >
-                        {form.settings.successMessage ??
+                        {form.successMessage ??
                             "Thanks for your submission. We'll be in touch."}
                     </p>
-                    {form.settings.redirectUrl && (
-                        <div
-                            style={{
-                                marginTop: tokens.spacing[4],
-                                fontSize: 11,
-                                color: tokens.colors.textMuted,
-                            }}
-                        >
-                            Redirecting...
-                        </div>
-                    )}
                 </div>
             </div>
         );
@@ -202,7 +171,7 @@ const PublicFormPage = () => {
         >
             <div
                 style={{
-                    maxWidth: isTwoCol ? 760 : 560,
+                    maxWidth: 560,
                     width: "100%",
                     background: tokens.colors.bgSurface,
                     border: `1px solid ${tokens.colors.border}`,
@@ -254,7 +223,7 @@ const PublicFormPage = () => {
                 {submit.isError && (
                     <Alert
                         type="error"
-                        message="Submission failed. Please try again."
+                        message="Submission failed. Please check your answers and try again."
                         showIcon
                         style={{ marginBottom: tokens.spacing[3] }}
                     />
@@ -262,16 +231,16 @@ const PublicFormPage = () => {
 
                 <div
                     style={{
-                        display: "grid",
-                        gridTemplateColumns: isTwoCol ? "1fr 1fr" : "1fr",
+                        display: "flex",
+                        flexDirection: "column",
                         gap: tokens.spacing[4],
                     }}
                 >
-                    {visibleFields.map((field) => (
+                    {fields.map((field) => (
                         <FormFieldInput
-                            key={field.id}
+                            key={field.fieldKey}
                             field={field}
-                            value={values[field.fieldKey]}
+                            value={values[field.fieldKey] ?? ""}
                             error={errors[field.fieldKey]}
                             onChange={(v) => {
                                 setValues((s) => ({
@@ -290,30 +259,6 @@ const PublicFormPage = () => {
                     ))}
                 </div>
 
-                {form.settings.enableRecaptcha && (
-                    <div
-                        style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                            padding: tokens.spacing[3],
-                            background: tokens.colors.bgMuted,
-                            border: `1px solid ${tokens.colors.borderSubtle}`,
-                            borderRadius: tokens.radius.sm,
-                            marginTop: tokens.spacing[4],
-                            fontSize: 11,
-                            color: tokens.colors.textMuted,
-                        }}
-                    >
-                        <ShieldCheck
-                            size={14}
-                            strokeWidth={1.75}
-                            color={tokens.colors.success}
-                        />
-                        Protected by reCAPTCHA (demo — auto-passes)
-                    </div>
-                )}
-
                 <Button
                     type="primary"
                     size="large"
@@ -330,7 +275,7 @@ const PublicFormPage = () => {
                 </Button>
             </div>
 
-            {!form.branding.hideAppBranding && (
+            {!branding.hideAppBranding && (
                 <div
                     style={{
                         marginTop: tokens.spacing[6],
@@ -355,74 +300,20 @@ const FormFieldInput = ({
     error,
     onChange,
 }: {
-    field: FormFieldDef;
-    value: unknown;
+    field: PublicFormField;
+    value: string;
     error?: string;
-    onChange: (v: unknown) => void;
+    onChange: (v: string) => void;
 }) => {
-    if (field.fieldKind === "task_attr") {
-        // Special handling for task attrs (name, description)
-        return (
-            <div>
-                <label style={labelStyle}>
-                    {field.label}
-                    {field.isRequired && (
-                        <span
-                            style={{
-                                color: tokens.colors.danger,
-                                marginLeft: 2,
-                            }}
-                        >
-                            *
-                        </span>
-                    )}
-                </label>
-                {field.helpText && (
-                    <div
-                        style={{
-                            fontSize: 11,
-                            color: tokens.colors.textMuted,
-                            marginBottom: 4,
-                        }}
-                    >
-                        {field.helpText}
-                    </div>
-                )}
-                <Input
-                    value={String(value ?? "")}
-                    onChange={(e) => onChange(e.target.value)}
-                    placeholder={field.placeholder}
-                    status={error ? "error" : undefined}
-                />
-                {error && <ErrorText error={error} />}
-            </div>
-        );
-    }
-
-    const customField = customFieldsById.get(field.fieldKey);
-    if (!customField) {
-        return (
-            <div
-                style={{
-                    fontSize: 12,
-                    color: tokens.colors.textMuted,
-                }}
-            >
-                Unknown field: {field.fieldKey}
-            </div>
-        );
-    }
-
+    const isLong =
+        field.fieldKind === "task_attr" && field.fieldKey === "description";
     return (
         <div>
             <label style={labelStyle}>
                 {field.label}
                 {field.isRequired && (
                     <span
-                        style={{
-                            color: tokens.colors.danger,
-                            marginLeft: 2,
-                        }}
+                        style={{ color: tokens.colors.danger, marginLeft: 2 }}
                     >
                         *
                     </span>
@@ -439,11 +330,22 @@ const FormFieldInput = ({
                     {field.helpText}
                 </div>
             )}
-            <CustomFieldRenderer
-                field={customField}
-                value={value}
-                onChange={onChange}
-            />
+            {isLong ? (
+                <Input.TextArea
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                    placeholder={field.placeholder ?? undefined}
+                    status={error ? "error" : undefined}
+                    autoSize={{ minRows: 3, maxRows: 8 }}
+                />
+            ) : (
+                <Input
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                    placeholder={field.placeholder ?? undefined}
+                    status={error ? "error" : undefined}
+                />
+            )}
             {error && <ErrorText error={error} />}
         </div>
     );
@@ -474,62 +376,6 @@ const CenteredMessage = ({ children }: { children: React.ReactNode }) => (
         {children}
     </div>
 );
-
-// ─── Conditional logic evaluator ────────────────────────
-function evalConditional(
-    logic: ConditionalLogic,
-    values: Record<string, unknown>,
-    fields: FormFieldDef[],
-): boolean {
-    if (!logic.rules || logic.rules.length === 0) return logic.action === "show";
-
-    const results = logic.rules.map((rule) => {
-        const triggerField = fields.find((f) => f.id === rule.triggerFieldId);
-        if (!triggerField) return false;
-        const value = values[triggerField.fieldKey];
-        return evalOperator(rule.operator, value, rule.value);
-    });
-
-    const passed =
-        logic.logic === "AND"
-            ? results.every(Boolean)
-            : results.some(Boolean);
-
-    return logic.action === "show" ? passed : !passed;
-}
-
-function evalOperator(
-    operator: string,
-    value: unknown,
-    target: unknown,
-): boolean {
-    // Unwrap value envelope
-    const v =
-        value && typeof value === "object" && value !== null
-            ? "option_id" in value
-                ? (value as { option_id?: unknown }).option_id
-                : "text" in value
-                  ? (value as { text?: unknown }).text
-                  : value
-            : value;
-
-    switch (operator) {
-        case "eq":
-            return v === target;
-        case "neq":
-            return v !== target;
-        case "is_empty":
-            return v === undefined || v === null || v === "";
-        case "is_not_empty":
-            return v !== undefined && v !== null && v !== "";
-        case "contains":
-            return typeof v === "string" && v.includes(String(target));
-        case "not_contains":
-            return typeof v === "string" && !v.includes(String(target));
-        default:
-            return false;
-    }
-}
 
 const labelStyle: React.CSSProperties = {
     display: "block",

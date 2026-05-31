@@ -5,8 +5,7 @@ import { DueDateBadge } from "../ui/DueDateBadge";
 import { PriorityFlag } from "../ui/PriorityFlag";
 import { StatusPill } from "../ui/StatusPill";
 import type { Status, Task, User } from "../../types";
-import { usersById } from "../../mocks/users";
-import { statusesById } from "../../mocks/statuses";
+import { useUserMap, useStatusMap } from "../../hooks/useReferenceData";
 import { tokens } from "../../theme";
 
 interface TaskRowProps {
@@ -38,9 +37,11 @@ export const TaskRow = ({
     density = "compact",
 }: TaskRowProps) => {
     const navigate = useNavigate();
-    const status = statusesById.get(task.statusId) as Status | undefined;
+    const userMap = useUserMap();
+    const statusMap = useStatusMap(task.primaryListId);
+    const status = statusMap.get(task.statusId) as Status | undefined;
     const assignees = task.assignees
-        .map((id) => usersById.get(id))
+        .map((id) => userMap.get(id))
         .filter((u): u is User => !!u);
 
     const handleClick = () => {

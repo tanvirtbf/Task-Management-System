@@ -1,13 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { Progress, Select, Empty } from "antd";
 import { Zap, Target, CalendarRange } from "lucide-react";
-import { mockApi } from "../../lib/mock-api";
-import { sprints } from "../../mocks/sprints";
-import { statusesByList } from "../../mocks/statuses";
-import { taskTypesById } from "../../mocks/task-types";
-import { usersById } from "../../mocks/users";
+import { tasksApi, sprintsApi } from "../../http/api";
+import {
+    useStatuses,
+    useTaskTypeMap,
+    useUserMap,
+} from "../../hooks/useReferenceData";
 import { TaskDetailDrawer } from "../../components/task/TaskDetailDrawer";
 import { BugSeverityRail, BugSeverityBadge } from "../../components/task/BugSeverityBadge";
 import { StoryPointsBadge } from "../../components/task/StoryPointsBadge";
@@ -20,17 +21,35 @@ const SPRINT_LIST_ID = "l-sprint";
 const SprintBoardPage = () => {
     const [searchParams, setSearchParams] = useSearchParams();
     const openTaskId = searchParams.get("task");
-    const [sprintId, setSprintId] = useState<string>(
-        sprints.find((s) => s.status === "active")?.id ?? sprints[0]?.id ?? "",
-    );
+    const [sprintId, setSprintId] = useState<string>("");
+    const typeMap = useTaskTypeMap();
+    const userMap = useUserMap();
 
-    const sprint = sprints.find((s) => s.id === sprintId);
-    const statuses = statusesByList(SPRINT_LIST_ID);
-
+    const { data: sprintList = [] } = useQuery({
+        queryKey: ["sprints"],
+        queryFn: () => sprintsApi.list(),
+    });
+    // NOTE: the board's columns + cards still read a fixed `l-sprint` list (the
+    // mock's sprint list). A sprint's tasks span lists with no cross-list
+    // "tasks by sprint" endpoint, so this is seed-dependent — the selector is
+    // real; the board populates only if that list exists. (FRONTEND_INTEGRATION P7)
+    const { data: statuses = [] } = useStatuses(SPRINT_LIST_ID);
     const { data: tasks = [] } = useQuery({
         queryKey: ["tasks-by-list", SPRINT_LIST_ID],
-        queryFn: () => mockApi.tasks.listByList(SPRINT_LIST_ID),
+        queryFn: () => tasksApi.listByList(SPRINT_LIST_ID),
     });
+
+    // Default the selector to the active sprint (or first) once sprints load.
+    useEffect(() => {
+        if (!sprintId && sprintList.length > 0) {
+            setSprintId(
+                sprintList.find((s) => s.status === "active")?.id ??
+                    sprintList[0].id,
+            );
+        }
+    }, [sprintId, sprintList]);
+
+    const sprint = sprintList.find((s) => s.id === sprintId);
 
     const sprintTasks = tasks.filter((t) => t.sprintId === sprintId);
     const tasksByStatus = new Map<string, typeof tasks>();
@@ -120,7 +139,7 @@ const SprintBoardPage = () => {
                         value={sprintId}
                         onChange={setSprintId}
                         style={{ minWidth: 220 }}
-                        options={sprints.map((s) => ({
+                        options={sprintList.map((s) => ({
                             value: s.id,
                             label: `${s.name} ${
                                 s.status === "active"
@@ -277,11 +296,11 @@ const SprintBoardPage = () => {
                                         }}
                                     >
                                         {items.map((t) => {
-                                            const type = taskTypesById.get(
+                                            const type = typeMap.get(
                                                 t.taskTypeId,
                                             );
                                             const assignee = t.assignees[0]
-                                                ? usersById.get(t.assignees[0])
+                                                ? userMap.get(t.assignees[0])
                                                 : null;
                                             return (
                                                 <button

@@ -23,10 +23,10 @@ import {
     RotateCcw,
     MoreHorizontal,
 } from "lucide-react";
-import { mockApi } from "../../lib/mock-api";
+import { notificationsApi } from "../../http/api";
 import { useAuthStore } from "../../stores/auth";
+import { useUserMap } from "../../hooks/useReferenceData";
 import { LoadingState } from "../../components/shared/LoadingState";
-import { usersById } from "../../mocks/users";
 import { tokens } from "../../theme";
 import type { Notification, NotificationType } from "../../types";
 
@@ -91,8 +91,7 @@ const InboxPage = () => {
 
     const { data: notifications = [], isLoading } = useQuery({
         queryKey: ["notifications", user?.id],
-        queryFn: () =>
-            user ? mockApi.notifications.list(user.id) : Promise.resolve([]),
+        queryFn: () => notificationsApi.list(),
         enabled: !!user,
     });
 
@@ -117,7 +116,7 @@ const InboxPage = () => {
     }, [notifications]);
 
     const markAsRead = useMutation({
-        mutationFn: (id: string) => mockApi.notifications.markAsRead(id),
+        mutationFn: (id: string) => notificationsApi.markRead(id),
         onMutate: async (id) => {
             await qc.cancelQueries({ queryKey: ["notifications", user?.id] });
             const prev = qc.getQueryData<Notification[]>([
@@ -145,15 +144,14 @@ const InboxPage = () => {
     });
 
     const markUnread = useMutation({
-        mutationFn: (id: string) => mockApi.notifications.markAsUnread(id),
+        mutationFn: (id: string) => notificationsApi.markUnread(id),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["notifications"] });
         },
     });
 
     const markAll = useMutation({
-        mutationFn: () =>
-            user ? mockApi.notifications.markAllAsRead(user.id) : Promise.reject(),
+        mutationFn: () => notificationsApi.markAllRead(),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["notifications"] });
             message.success("All notifications marked as read");
@@ -162,7 +160,7 @@ const InboxPage = () => {
 
     const snooze = useMutation({
         mutationFn: ({ id, hours }: { id: string; hours: number }) =>
-            mockApi.notifications.snooze(
+            notificationsApi.snooze(
                 id,
                 new Date(Date.now() + hours * 3600_000).toISOString(),
             ),
@@ -173,7 +171,7 @@ const InboxPage = () => {
     });
 
     const archive = useMutation({
-        mutationFn: (id: string) => mockApi.notifications.archive(id),
+        mutationFn: (id: string) => notificationsApi.delete(id),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["notifications"] });
             message.success("Archived");
@@ -407,7 +405,8 @@ const NotificationRow = ({
     onSnooze: (hours: number) => void;
     onArchive: () => void;
 }) => {
-    const actor = n.actorId ? usersById.get(n.actorId) : null;
+    const userMap = useUserMap();
+    const actor = n.actorId ? userMap.get(n.actorId) : null;
     const { icon: Icon, color } = TYPE_ICONS[n.type];
 
     return (

@@ -24,8 +24,8 @@ import {
     Phone,
     Paperclip,
 } from "lucide-react";
-import { mockApi } from "../../lib/mock-api";
-import { spacesById } from "../../mocks";
+import { customFieldsApi, listsApi } from "../../http/api";
+import { useSpaceMap } from "../../hooks/useReferenceData";
 import type {
     CustomField,
     CustomFieldType,
@@ -62,13 +62,15 @@ const CustomFieldsSettings = () => {
 
     const { data: allFields = [], isLoading } = useQuery({
         queryKey: ["custom-fields"],
-        queryFn: () => mockApi.customFields.list(),
+        queryFn: () => customFieldsApi.list(),
     });
 
     const { data: lists = [] } = useQuery({
         queryKey: ["lists"],
-        queryFn: () => mockApi.lists.listAll(),
+        queryFn: () => listsApi.listAll(),
     });
+
+    const spaceMap = useSpaceMap();
 
     // Group fields by list
     const groupedByList = useMemo(() => {
@@ -87,7 +89,7 @@ const CustomFieldsSettings = () => {
     }, [allFields]);
 
     const deleteMutation = useMutation({
-        mutationFn: (id: string) => mockApi.customFields.delete(id),
+        mutationFn: (id: string) => customFieldsApi.delete(id),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["custom-fields"] });
             message.success("Field deleted");
@@ -177,7 +179,7 @@ const CustomFieldsSettings = () => {
                 >
                     {lists.map((list) => {
                         const fields = groupedByList.get(list.id) ?? [];
-                        const space = spacesById.get(list.spaceId);
+                        const space = spaceMap.get(list.spaceId);
                         return (
                             <div
                                 key={list.id}
@@ -407,7 +409,7 @@ const FieldEditModal = ({
 
     const create = useMutation({
         mutationFn: () =>
-            mockApi.customFields.create({
+            customFieldsApi.create({
                 workspaceId: "ws-main",
                 scopeType: "list",
                 scopeId: listId,
@@ -428,7 +430,7 @@ const FieldEditModal = ({
 
     const update = useMutation({
         mutationFn: () =>
-            mockApi.customFields.update(field!.id, {
+            customFieldsApi.update(field!.id, {
                 name,
                 isRequired,
             }),

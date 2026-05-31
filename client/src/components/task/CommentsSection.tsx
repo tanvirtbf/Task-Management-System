@@ -2,9 +2,9 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Skeleton, Button, Input } from "antd";
 import { MessageSquare, Send, Trash2, CornerDownRight } from "lucide-react";
-import { mockApi } from "../../lib/mock-api";
+import { commentsApi } from "../../http/api";
 import { useAuthStore } from "../../stores/auth";
-import { usersById } from "../../mocks/users";
+import { useUserMap } from "../../hooks/useReferenceData";
 import { Avatar } from "../ui/Avatar";
 import { EmptyState } from "../ui/EmptyState";
 import { MentionRenderer } from "./MentionRenderer";
@@ -26,20 +26,19 @@ export const CommentsSection = ({ taskId }: { taskId: string }) => {
     const [replyParent, setReplyParent] = useState<string | null>(null);
     const [replyBody, setReplyBody] = useState("");
     const qc = useQueryClient();
+    const userMap = useUserMap();
 
     const { data: comments = [], isLoading } = useQuery({
         queryKey: ["comments", taskId],
-        queryFn: () => mockApi.comments.byTask(taskId),
+        queryFn: () => commentsApi.byTask(taskId),
     });
 
     const createMutation = useMutation({
         mutationFn: (input: { text: string; parentId?: string | null }) =>
-            mockApi.comments.create(
-                taskId,
-                input.text,
-                user!.id,
-                input.parentId ?? null,
-            ),
+            commentsApi.create(taskId, {
+                body: input.text,
+                parentCommentId: input.parentId ?? null,
+            }),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["comments", taskId] });
             qc.invalidateQueries({ queryKey: ["tasks-by-list"] });
@@ -50,7 +49,7 @@ export const CommentsSection = ({ taskId }: { taskId: string }) => {
     });
 
     const deleteMutation = useMutation({
-        mutationFn: (commentId: string) => mockApi.comments.delete(commentId),
+        mutationFn: (commentId: string) => commentsApi.delete(commentId),
         onSuccess: () =>
             qc.invalidateQueries({ queryKey: ["comments", taskId] }),
     });
@@ -68,7 +67,7 @@ export const CommentsSection = ({ taskId }: { taskId: string }) => {
         c: (typeof comments)[number],
         isReply = false,
     ) => {
-        const author = usersById.get(c.authorId);
+        const author = userMap.get(c.authorId);
         const fullName = author
             ? `${author.firstName} ${author.lastName}`
             : "Unknown";
@@ -238,7 +237,7 @@ export const CommentsSection = ({ taskId }: { taskId: string }) => {
                                         autoFocus
                                         autoSize={{ minRows: 1, maxRows: 4 }}
                                         placeholder={`Reply to ${
-                                            usersById.get(c.authorId)
+                                            userMap.get(c.authorId)
                                                 ?.firstName ?? ""
                                         }… ⌘+Enter`}
                                         onKeyDown={(e) => {

@@ -12,8 +12,8 @@ import {
     File as FileIcon,
 } from "lucide-react";
 import dayjs from "dayjs";
-import { mockApi } from "../../lib/mock-api";
-import { usersById } from "../../mocks/users";
+import { attachmentsApi } from "../../http/api";
+import { useUserMap } from "../../hooks/useReferenceData";
 import { tokens } from "../../theme";
 import type { Attachment } from "../../types/extras";
 
@@ -50,24 +50,11 @@ export const AttachmentsSection = ({ taskId }: Props) => {
 
     const { data: attachments = [] } = useQuery({
         queryKey: ["attachments", taskId],
-        queryFn: () => mockApi.attachments.byTask(taskId),
+        queryFn: () => attachmentsApi.byTask(taskId),
     });
 
     const upload = useMutation({
-        mutationFn: (file: File) => {
-            // In real backend this would PUT the bytes. Here we record metadata.
-            const thumb = file.type.startsWith("image/")
-                ? URL.createObjectURL(file)
-                : undefined;
-            return mockApi.attachments.upload({
-                taskId,
-                name: file.name,
-                type: file.type || "application/octet-stream",
-                size: file.size,
-                url: URL.createObjectURL(file),
-                thumbnailUrl: thumb,
-            });
-        },
+        mutationFn: (file: File) => attachmentsApi.upload(taskId, file),
         onSuccess: (att) => {
             qc.invalidateQueries({ queryKey: ["attachments", taskId] });
             qc.invalidateQueries({ queryKey: ["task", taskId] });
@@ -76,7 +63,7 @@ export const AttachmentsSection = ({ taskId }: Props) => {
     });
 
     const remove = useMutation({
-        mutationFn: (id: string) => mockApi.attachments.delete(id),
+        mutationFn: (id: string) => attachmentsApi.delete(id),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["attachments", taskId] });
             qc.invalidateQueries({ queryKey: ["task", taskId] });
@@ -208,7 +195,8 @@ const AttachmentCard = ({
     onDelete: () => void;
 }) => {
     const Icon = ICON_BY_TYPE(a.type);
-    const uploader = usersById.get(a.uploadedBy);
+    const userMap = useUserMap();
+    const uploader = userMap.get(a.uploadedBy);
     const isImage = a.type.startsWith("image/");
 
     return (

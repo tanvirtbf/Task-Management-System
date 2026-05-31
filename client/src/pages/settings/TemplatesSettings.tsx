@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, App as AntApp, Modal, Input, Select, Popconfirm } from "antd";
 import { LayoutTemplate, Plus, Trash2, Edit3 } from "lucide-react";
-import { mockApi } from "../../lib/mock-api";
+import { templatesApi } from "../../http/api";
+import { useTaskTypes } from "../../hooks/useReferenceData";
 import { DynamicIcon } from "../../components/shared/DynamicIcon";
 import { tokens } from "../../theme";
 import type { Template, TemplateChecklistItem } from "../../types/template";
@@ -15,7 +16,7 @@ const TemplatesSettings = () => {
 
     const { data: templates = [], isLoading } = useQuery({
         queryKey: ["templates", "all"],
-        queryFn: () => mockApi.templates.list(),
+        queryFn: () => templatesApi.list(),
     });
 
     return (
@@ -78,6 +79,7 @@ const TemplatesSettings = () => {
                             template={tpl}
                             onEdit={() => setEditing(tpl)}
                             onDelete={async () => {
+                                await templatesApi.delete(tpl.id);
                                 message.success(
                                     `Template "${tpl.name}" deleted`,
                                 );
@@ -234,22 +236,47 @@ const TemplateEditor = ({
     onClose: () => void;
     onSaved: () => void;
 }) => {
+    const { message } = AntApp.useApp();
+    const { data: taskTypes = [] } = useTaskTypes();
     const [name, setName] = useState(template?.name ?? "");
     const [description, setDescription] = useState(template?.description ?? "");
     const [taskTypeId, setTaskTypeId] = useState(
-        template?.structure.taskTypeId ?? "tt-task",
+        template?.structure.taskTypeId ?? "",
     );
     const [items, setItems] = useState<TemplateChecklistItem[]>(
         template?.structure.checklistItems ?? [{ text: "" }],
     );
+
+    const save = useMutation({
+        mutationFn: () => {
+            const structure = {
+                ...(taskTypeId ? { taskTypeId } : {}),
+                checklistItems: items.filter((it) => it.text.trim()),
+            };
+            const body = {
+                name: name.trim(),
+                description: description.trim() || undefined,
+                structure,
+            };
+            return template
+                ? templatesApi.update(template.id, body)
+                : templatesApi.create({ type: "task", ...body });
+        },
+        onSuccess: onSaved,
+        onError: () => message.error("Failed to save template"),
+    });
 
     return (
         <Modal
             title={template ? "Edit template" : "New template"}
             open={open}
             onCancel={onClose}
-            onOk={onSaved}
+            onOk={() => save.mutate()}
             okText={template ? "Save" : "Create"}
+            okButtonProps={{
+                disabled: !name.trim(),
+                loading: save.isPending,
+            }}
             width={640}
             destroyOnClose
         >
@@ -283,17 +310,14 @@ const TemplateEditor = ({
                 <div>
                     <Label>Task type</Label>
                     <Select
-                        value={taskTypeId}
+                        value={taskTypeId || undefined}
                         onChange={setTaskTypeId}
                         style={{ width: "100%" }}
-                        options={[
-                            { value: "tt-task", label: "Task" },
-                            { value: "tt-campaign", label: "Campaign" },
-                            { value: "tt-product", label: "Product" },
-                            { value: "tt-incident", label: "Incident" },
-                            { value: "tt-feature", label: "Feature" },
-                            { value: "tt-bug", label: "Bug" },
-                        ]}
+                        placeholder="Select a task type"
+                        options={taskTypes.map((tt) => ({
+                            value: tt.id,
+                            label: tt.name,
+                        }))}
                     />
                 </div>
 

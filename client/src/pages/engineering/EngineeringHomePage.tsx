@@ -2,12 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Skeleton, Tag } from "antd";
 import { Bug, Eye, AlertOctagon, Sparkles, Zap, Code, Shield, GitPullRequest } from "lucide-react";
-import { mockApi } from "../../lib/mock-api";
+import { engineeringApi } from "../../http/api";
 import { useAuthStore } from "../../stores/auth";
-import { activeSprint } from "../../mocks/sprints";
-import { currentOnCallEngineerId } from "../../mocks/on-call";
-import { usersById } from "../../mocks/users";
-import { statusesByList } from "../../mocks/statuses";
 import { Avatar } from "../../components/ui/Avatar";
 import { BugSeverityBadge } from "../../components/task/BugSeverityBadge";
 import { StoryPointsBadge } from "../../components/task/StoryPointsBadge";
@@ -16,69 +12,17 @@ import { tokens } from "../../theme";
 const EngineeringHomePage = () => {
     const user = useAuthStore((s) => s.user);
     const navigate = useNavigate();
-    const sprint = activeSprint();
-    const onCallId = currentOnCallEngineerId();
-    const onCall = usersById.get(onCallId);
-
-    const { data: bugTriage = [], isLoading: bugsLoading } = useQuery({
-        queryKey: ["tasks-by-list", "l-bug-triage"],
-        queryFn: () => mockApi.tasks.listByList("l-bug-triage"),
-    });
-    const { data: sprintTasks = [], isLoading: sprintLoading } = useQuery({
-        queryKey: ["tasks-by-list", "l-sprint"],
-        queryFn: () => mockApi.tasks.listByList("l-sprint"),
-    });
-    const { data: incidents = [] } = useQuery({
-        queryKey: ["tasks-by-list", "l-incidents"],
-        queryFn: () => mockApi.tasks.listByList("l-incidents"),
+    // One rollup call replaces the old 3 hardcoded-list fetches + mock derivations.
+    const { data: home, isLoading } = useQuery({
+        queryKey: ["eng-home"],
+        queryFn: () => engineeringApi.home(),
     });
 
-    const bugStatuses = statusesByList("l-bug-triage");
-    const openBugStatuses = new Set(
-        bugStatuses
-            .filter((s) => s.statusGroup !== "done" && s.statusGroup !== "closed")
-            .map((s) => s.id),
-    );
-
-    const openBugs = bugTriage.filter((t) => openBugStatuses.has(t.statusId));
-    const mySprintTasks = user
-        ? sprintTasks.filter(
-              (t) =>
-                  (t.assignees.includes(user.id) ||
-                      t.reviewerId === user.id) &&
-                  t.sprintId === sprint?.id,
-          )
-        : [];
-    const prsAwaitingMe = user
-        ? sprintTasks
-              .concat(bugTriage)
-              .filter(
-                  (t) =>
-                      t.reviewerId === user.id &&
-                      t.prStatus === "open",
-              )
-        : [];
-    const stale = sprintTasks
-        .concat(bugTriage)
-        .filter((t) => {
-            const days =
-                (Date.now() - new Date(t.updatedAt).getTime()) /
-                (1000 * 60 * 60 * 24);
-            const status = statusesByList(t.primaryListId).find(
-                (s) => s.id === t.statusId,
-            );
-            return (
-                days > 14 &&
-                status?.statusGroup !== "done" &&
-                status?.statusGroup !== "closed"
-            );
-        })
-        .slice(0, 6);
-
-    const openIncidents = incidents.filter((i) => {
-        const s = statusesByList("l-incidents").find((x) => x.id === i.statusId);
-        return s?.statusGroup !== "done" && s?.statusGroup !== "closed";
-    });
+    const onCall = home?.currentOnCall ?? null;
+    const openBugs = home?.openBugs.top ?? [];
+    const mySprintTasks = home?.mySprintTasks ?? [];
+    const prsAwaitingMe = home?.prsAwaitingMe ?? [];
+    const stale = home?.staleTickets ?? [];
 
     return (
         <div
@@ -188,7 +132,7 @@ const EngineeringHomePage = () => {
             >
                 <KpiTile
                     label="Open bugs"
-                    value={openBugs.length}
+                    value={home?.openBugs.count ?? 0}
                     icon={Bug}
                     color="#E11D48"
                     onClick={() => navigate("/s/sp-eng/l/l-bug-triage")}
@@ -208,7 +152,7 @@ const EngineeringHomePage = () => {
                 />
                 <KpiTile
                     label="Open incidents"
-                    value={openIncidents.length}
+                    value={home?.openIncidents.count ?? 0}
                     icon={AlertOctagon}
                     color="#DC2626"
                     onClick={() => navigate("/s/sp-eng/l/l-incidents")}
@@ -236,7 +180,7 @@ const EngineeringHomePage = () => {
                     title="Open bugs (top 6)"
                     onSeeAll={() => navigate("/s/sp-eng/l/l-bug-triage")}
                 >
-                    {bugsLoading ? (
+                    {isLoading ? (
                         <Skeleton active paragraph={{ rows: 4 }} />
                     ) : openBugs.length === 0 ? (
                         <Empty />
@@ -301,7 +245,7 @@ const EngineeringHomePage = () => {
                     title="My sprint tasks"
                     onSeeAll={() => navigate("/eng/sprint")}
                 >
-                    {sprintLoading ? (
+                    {isLoading ? (
                         <Skeleton active paragraph={{ rows: 4 }} />
                     ) : mySprintTasks.length === 0 ? (
                         <Empty />

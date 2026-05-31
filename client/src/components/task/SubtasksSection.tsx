@@ -3,9 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Input, Button, Skeleton, Progress } from "antd";
 import { ListTree, Plus, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { mockApi } from "../../lib/mock-api";
-import { statusesById } from "../../mocks/statuses";
-import { usersById } from "../../mocks/users";
+import { tasksApi } from "../../http/api";
+import { useStatusMap, useUserMap } from "../../hooks/useReferenceData";
 import { Avatar } from "../ui/Avatar";
 import { tokens } from "../../theme";
 import type { Task } from "../../types";
@@ -19,15 +18,17 @@ export const SubtasksSection = ({ task }: Props) => {
     const navigate = useNavigate();
     const [showInput, setShowInput] = useState(false);
     const [draft, setDraft] = useState("");
+    const statusMap = useStatusMap(task.primaryListId);
+    const userMap = useUserMap();
 
     const { data: subtasks = [], isLoading } = useQuery({
         queryKey: ["subtasks", task.id],
-        queryFn: () => mockApi.tasks.subtasks(task.id),
+        queryFn: () => tasksApi.subtasks(task.id),
     });
 
     const create = useMutation({
         mutationFn: (name: string) =>
-            mockApi.tasks.create({
+            tasksApi.create({
                 primaryListId: task.primaryListId,
                 name,
                 parentTaskId: task.id,
@@ -51,7 +52,7 @@ export const SubtasksSection = ({ task }: Props) => {
 
     const total = subtasks.length;
     const done = subtasks.filter((s) => {
-        const status = statusesById.get(s.statusId);
+        const status = statusMap.get(s.statusId);
         return (
             status?.statusGroup === "done" || status?.statusGroup === "closed"
         );
@@ -119,9 +120,9 @@ export const SubtasksSection = ({ task }: Props) => {
                     }}
                 >
                     {subtasks.map((s) => {
-                        const status = statusesById.get(s.statusId);
+                        const status = statusMap.get(s.statusId);
                         const assignee = s.assignees[0]
-                            ? usersById.get(s.assignees[0])
+                            ? userMap.get(s.assignees[0])
                             : null;
                         const isDone =
                             status?.statusGroup === "done" ||

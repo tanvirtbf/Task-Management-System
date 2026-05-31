@@ -70,7 +70,8 @@ Build these as thin per-resource functions on top of R1:
 
 > Legend per phase: **Goal · Depends-on · Backend endpoints · Files to touch · Steps · Acceptance · Risks/notes.**
 
-### ▶ P0 — Foundation (HARD GATE — blocks everything)
+### ✅ P0 — Foundation (HARD GATE — blocks everything) — DONE
+**Status:** ✅ DONE (2026-05-31).
 **Goal:** Stand up the real transport + auth so a single authenticated call works end-to-end. No feature wiring yet.
 **Depends-on:** nothing.
 **Endpoints (proving harness):** `POST /auth/login`, `GET /auth/me`, `POST /auth/refresh`, `POST /auth/logout`.
@@ -86,7 +87,8 @@ Build these as thin per-resource functions on top of R1:
 **Acceptance:** a throwaway authenticated `GET /auth/me` returns a camelCase user readable as `user.firstName`; a 401 triggers **exactly one** refresh that retries with the **new** token; browser reload preserves the session via `/auth/me`; `baseURL` resolves under `/api/v1`; CORS works.
 **Risks:** confirm the running port before writing `.env`; the attachment presigned-PUT (P3) and SSE (P5) paths **bypass** this interceptor stack — handle separately.
 
-### ▶ P1 — Auth + Hierarchy + Tasks (the smallest working product)
+### ✅ P1 — Auth + Hierarchy + Tasks (the smallest working product) — DONE
+**Status:** ✅ DONE (2026-05-31) — all listed files + the R8 sync-import sub-components (BoardCard/ListViewRow/ListViewToolbar/InlineStatusEdit/InlineAssigneeEdit/BulkActionToolbar/Breadcrumb/SidebarFavorites/Create{List,Space,Task}Modal) wired; `setCurrentUser` removed from auth store. Build: 68 tsc errors (69 baseline −1, zero new in touched files), `vite build` ✓ exit 0. **DEFERRED:** R4 ETag/If-Match (step 4) — `PATCH /tasks/:id` is last-write-wins for now (no 409 `task.conflict` handling yet).
 **Goal:** Prove the whole pipe with the core vertical: log in → see real workspace/spaces/lists → open a list → real tasks in List/Board/Calendar → create/update a task that persists across reload.
 **Depends-on:** P0.
 **Endpoints:** `POST /auth/login`, `GET /auth/me`, `POST /auth/logout`, `GET /workspace`, `GET /spaces`, `GET /spaces/:spaceId/lists`, `GET /lists`, `GET /lists/:id`, `GET /lists/:listId/statuses`, `GET /lists/:listId/tasks`, `GET /tasks/:id`, `POST /tasks`, `PATCH /tasks/:id` (ETag/If-Match), `POST /tasks/:id/archive`, `DELETE /tasks/:id` (soft by default; `?hard=true` admin), `POST /tasks/bulk`, `GET /tasks/my-work`.
@@ -100,7 +102,8 @@ Build these as thin per-resource functions on top of R1:
 **Acceptance:** log in with a real account; sidebar shows real workspace+spaces+lists; open a list → tasks render in all three views with correct statuses; create a task persists and appears after refetch; drag a card persists `status_id` and survives reload; logout calls `POST /auth/logout`.
 **Risks:** **reference-data-before-tasks** — a task's `status_id`/`assignee_ids` are real ids absent from static mock maps; fetch statuses/task-types/users live here or accept mismatches.
 
-### ▶ P2 — Settings + Members + Reference CRUD
+### ✅ P2 — Settings + Members + Reference CRUD — DONE
+**Status:** ✅ DONE (2026-05-31) — all 8 settings pages wired; `http/api.ts` gained users/task-types/tags/custom-fields/statuses CRUD + a new templates namespace; `client.ts` got a `skipDecamelize` flag for the verbatim-camelCase `Template.structure`; TagsSettings' space-UX was stripped (tags are workspace-wide). `TaskType` gained `isDevType?`/`position?`. Build: 61 tsc errors (P1 baseline −7, zero new in touched files), `vite build` ✓ exit 0. ProfileSettings password-change stays disabled (`POST /users/me/change-password` has no backend).
 **Goal:** Admin/settings screens on real data.
 **Depends-on:** P0, P1.
 **Endpoints:** `GET/POST /users`, `POST /users/invite`, `PATCH /users/:id`, `PATCH /users/:id/role`, `POST /users/:id/deactivate|reactivate`; `GET/POST/PATCH/DELETE /task-types`; `GET/POST/PATCH/DELETE /tags`; `GET/POST/PATCH/DELETE /custom-fields`; `GET/PATCH /workspace`; `GET /templates`, `POST /templates/:id/apply`, `POST/PATCH/DELETE /templates`.
@@ -109,7 +112,8 @@ Build these as thin per-resource functions on top of R1:
 **Acceptance:** invite a member (201); change role; deactivate/reactivate; CRUD a task-type/tag/custom-field reflected in the task drawer; workspace settings persist; apply a template spawns a task.
 **Gaps:** `POST /users/me/change-password` **missing** → keep ProfileSettings password change mocked/disabled; `AcceptInvitation` can be pre-wired but not tested (no backend route — see §5).
 
-### ▶ P3 — Task Detail Sub-resources
+### ✅ P3 — Task Detail Sub-resources — DONE
+**Status:** ✅ DONE (2026-05-31). **P3a:** activity, subtasks, dependencies (flatten {blocks,blocked_by} + `listByList` candidates), membership deltas (assignee/tag via `useTaskMembership` — PATCH can't carry them), drawer + properties-panel sync-map→hook conversions. **P3b:** AttachmentsSection 3-step presigned R2 upload (sign → raw-`fetch` PUT to R2 → finalize) + CustomFieldsList real defs & value set/clear (`PUT/DELETE /tasks/:id/custom-fields/:fieldId`); `client.ts` got an `OPAQUE_VALUE_KEYS` skip so `config`/`custom_field_values` blobs stay verbatim-snake for the field renderers. Build: 60 tsc errors, `vite build` ✓. NEW api: `taskActivityApi`, `dependenciesApi`, `attachmentsApi`, tasksApi membership + custom-field values. ⚠️ Attachments need R2 configured (dev stub → PUT fails); the `files` custom-field type is `{attachments}` (FE) vs `{file_ids}` (BE) — follow-up. Comments §14 + Checklists §15 stay mock (no backend → P8).
 **Goal:** The task drawer on real data (except comments/checklists).
 **Depends-on:** P0, P1, P2 (task-types/users/custom-field defs).
 **Endpoints:** `GET /tasks/:id/activity`; `POST/DELETE /tasks/:id/assignees(/:userId)|/watchers/self|/tags(/:tagId)`; `GET /tasks/:id/dependencies`, `POST/DELETE /task-dependencies`; `GET /tasks/:id/attachments`, `POST /uploads/sign` → client PUT to R2 → `POST /attachments/:id/finalize`, `DELETE /attachments/:id`; `PUT/DELETE /tasks/:id/custom-fields/:fieldId`.
@@ -117,7 +121,8 @@ Build these as thin per-resource functions on top of R1:
 **Steps:** wire activity (unwrap `.data`, map `actor`), membership mutations (204; invalidate `['task',id]`), dependencies (**flatten** `{blocks,blocked_by}` mapper; candidate picker uses `GET /search`, not `allTasks`), **rewrite AttachmentsSection** to the 3-step presigned flow (field renames `type↔mime_type`, `size↔size_bytes`; the PUT-to-R2 is **not JSON** and bypasses interceptors), custom-field set/clear (`PUT` returns full Task → bumps ETag). **CommentsSection + ChecklistsSection stay on `mockApi` behind a feature flag** (no backend — see P8). Convert drawer `usersById`/`statusesById`/`taskTypesById` sync imports to cache selectors.
 **Acceptance:** open a task → real activity; add/remove assignee/tag/watcher persists + writes activity; add/remove dependency (cycle → 422); upload via sign→PUT→finalize + download 302; set/clear custom-field bumps ETag; comments/checklists still work via mock with no console errors.
 
-### ▶ P4 — Forms
+### ◐ P4 — Forms (admin side DONE; public-intake render blocked by backend gap)
+**Status:** ◐ ADMIN DONE (2026-05-31) — `formsApi` (list/byList/get/create/update/delete/addField/updateField/deleteField/reorderFields/submissions); FormsListPage, FormView, FormBuilderPage wired. FormBuilder Save now does a real field-diff (metadata PATCH + per-field POST/PATCH/DELETE + reorder — the form PATCH ignores `fields`). Build: 57 tsc errors (P3b −3, fixed pre-existing FormBuilder errors), `vite build` ✓. ⚠️ **PublicFormPage STAYS MOCK** — backend has NO `GET /public/forms/:slug` render route (only the submit). Backend must add it (serializer `toPublicForm` exists) before the anonymous form can render/submit against the real API.
 **Goal:** Form builder + public intake on real data.
 **Depends-on:** P0, P1, P2 (lists, custom-fields).
 **Endpoints:** `GET /forms`, `GET /lists/:listId/forms`, `POST /forms`, `GET/PATCH/DELETE /forms/:id`, `POST /forms/:id/fields`, `PATCH /forms/:id/fields/reorder`, `PATCH/DELETE /form-fields/:id`, `GET /forms/:id/submissions`, `GET /public/forms/:slug` *(render — see gap)*, `POST /public/forms/:slug/submit`.
@@ -126,7 +131,8 @@ Build these as thin per-resource functions on top of R1:
 **Acceptance:** create a form; add/reorder/delete fields via real endpoints; view submissions; public visitor loads + submits → creates a task; 429 shows a friendly message.
 **Gap:** `GET /public/forms/:slug` render route may be **missing** (only submit exists; controller/serializer reportedly present — thin binding task). Coordinate with backend (§5).
 
-### ▶ P5 — Notifications + Realtime
+### ◐ P5 — Notifications + Realtime (inbox/bell DONE; live SSE push blocked by auth model)
+**Status:** ◐ CORE DONE (2026-05-31) — `notificationsApi` (list/unreadCount/markRead/markUnread/markAllRead/snooze/delete + prefs); InboxPage, NotificationBell, Sidebar wired (R7 — no userId arg, JWT-scoped); `mapNotification` (inject userId, body null→undefined). Build: 57 tsc errors, `vite build` ✓. ⚠️ **SSE NOT wired** — `EventSource` can't authenticate: the backend wants Bearer-or-`accessToken`-cookie, but our access token is in-memory (Bearer) and no `accessToken` cookie is set → `/stream/inbox` 401s. Shipped a `refetchInterval:60s` polling substitute on the unread-count. True push needs a backend `?access_token=` query-param option on the stream (or an accessToken cookie). Prefs has no FE UI (api ready).
 **Goal:** Inbox + bell on real data, with live push.
 **Depends-on:** P0, P1.
 **Endpoints:** `GET /notifications`, `GET /notifications/unread-count`, `POST /notifications/mark-all-read`, `GET/PUT /notifications/preferences`, `POST /notifications/:id/read|unread|snooze`, `DELETE /notifications/:id`, `GET /stream/inbox` (SSE).
@@ -135,7 +141,8 @@ Build these as thin per-resource functions on top of R1:
 **Acceptance:** inbox lists real notifications (cursor-paginated, unread-first); state mutations persist; bell shows real unread-count (JWT-derived, no `userId` param); another user's action pushes a live notification without manual refetch.
 **Note:** snooze re-surfacing depends on the §28 snooze-wake job — known limitation.
 
-### ▶ P6 — Home / KPIs / Search / Activity
+### ✅ P6 — Home / KPIs / Search / Activity — DONE
+**Status:** ✅ DONE (2026-05-31) — `homeApi.kpis` (bare camelCase, R1-skipped), `activityApi.recent` (actor-hydrated `{data}`), `searchApi.search` (bare multi-bucket, `notes:[]` normalised since backend omits it). WIRED: KpiRow, MyWork/Agenda/Lineup cards (all `tasks.myWork()`), RecentActivityCard (`entry.actor`), SearchPage (listsById→useListMap; fixed 2 pre-existing errors). Build: 55 tsc (P5 −2), `vite build` ✓. ⚠️ LineupCard dropped per-task status pill (cross-list myWork tasks; no all-statuses endpoint); search `notes` always empty (no backend).
 **Goal:** Dashboard + global search on real data.
 **Depends-on:** P0, P1.
 **Endpoints:** `GET /home/kpis` *(camelCase — skip R1)*, `GET /home/agenda` (bare array), `GET /tasks/my-work`, `GET /search`, `GET /activity/recent`, `GET /activity`.
@@ -143,7 +150,8 @@ Build these as thin per-resource functions on top of R1:
 **Steps:** wire KPI tiles (whitelist `/home/kpis` from case-conversion), agenda + my-work (Task mapper; JWT-derived), search (**bare multi-bucket object**; drop the `notes` bucket — no backend), recent/full activity. `LineupCard` + `RecentActivityCard` currently bypass `mockApi` — convert to queries here.
 **Acceptance:** home shows real KPIs + agenda + my-work + recent activity (no `userId` param); global search returns real tasks/lists/spaces/users (notes/comments buckets may be empty).
 
-### ▶ P7 — Engineering tier
+### ✅ P7 — Engineering tier — DONE
+**Status:** ✅ DONE (2026-05-31). **P7a:** `sprintsApi`/`onCallApi`/`engineeringApi` + `mapOnCallShift` (on-call wire hydrates `engineer`); ReportBugButton (backend composes the Bug task), OnCallBadge (onCallApi.current), SprintBoardPage selector. **P7b:** EngineeringHomePage → one `GET /eng/home` rollup; OnCallRotationPage → full React-Query rewrite (`onCallApi.schedule` + `set` mutation — survives reload). Build: 54 tsc, `vite build` ✓. ⚠️ SprintBoard board reads a fixed `l-sprint` list (no cross-list tasks-by-sprint endpoint); OnCallRotation shows only assigned weeks. **🎉 P0–P7 = every FE screen wired to the real API.**
 **Goal:** Sprints, on-call, eng-home on real data.
 **Depends-on:** P0, P1, P2.
 **Endpoints:** `GET /sprints`, `GET /sprints/active`, `GET /sprints/:id`, `POST /sprints`, `PATCH /sprints/:id`, `POST /sprints/:id/start|close`, `POST/DELETE /sprints/:id/tasks(/:taskId)`; `GET /on-call/current`, `GET /on-call/schedule`, `PUT/DELETE /on-call/:weekStart`; `GET /eng/home`, `POST /eng/report-bug`, `POST /eng/incidents/:id/postmortem`.
@@ -151,10 +159,11 @@ Build these as thin per-resource functions on top of R1:
 **Steps:** create `useSprints`/`useSprints('active')` hooks (no FE namespace exists — `sprints` is a direct mock import; **bare array**); **fully rewrite `OnCallRotationPage`** (no React Query today — all local state, lost on reload) using the **OnCallShift** mapper; convert `activeSprint()`/`currentOnCallEngineerId()`/`sprintsById` sync imports; `EngineeringHome` → `GET /eng/home` + `GET /on-call/current`.
 **Acceptance:** sprint selector loads from `GET /sprints`+`/active`; start/close + attach/detach tasks persist; on-call edits `PUT /on-call/:weekStart` survive reload; report-bug creates a task; eng-home shows real rollups.
 
-### ▶ P8 — (Optional, build-then-wire) Comments §14 + Checklists §15
-**Goal:** Build the two missing backend subsystems (tables exist; no route/controller/service/repo), then wire `CommentsSection`/`ChecklistsSection` off the mock.
-**Depends-on:** the API_DEVELOPMENT_PROMPTS.md 4-prompt cycle for each new endpoint (this is a *backend* build, then a thin FE swap).
-**Note:** until built, both sections stay mocked (P3 flag). The `POST /templates/:id/apply` checklist step and `campaignTemplates.apply` 12-item checklist remain dead paths until §15 lands.
+### ✅ P8 — DONE — Comments §14 + Checklists §15 (built + wired)
+**Built backend-from-scratch + FE-wired (2026-05-31).** §14 (4 ep: `GET`/`POST /tasks/:id/comments`, `PATCH`/`DELETE /comments/:id` — 1-level threading, 15-min edit window, @mention→notification, #TASK-ID→cross-task activity, soft-delete) and §15 (9 ep: checklists + checklist-items CRUD + `/items/bulk` `{texts}` + `/toggle`). Both routers mount at the v1 ROOT before `/tasks`; server `tsc` clean. `CommentsSection`/`ChecklistsSection` swapped off mock → new `commentsApi`/`checklistsApi`.
+
+### ✅ Local-run completion pass — DONE — app runs on the real backend
+Made the whole project locally testable: **(1)** fixed the critical `server/.env` mismatch (`PORT` 3000→**5501**, `FRONTEND_URL`→**http://localhost:5173** for CORS — client calls :5501, Vite serves :5173); **(2)** built the two FE-facing backend gaps — `POST /auth/change-password` + `GET /public/forms/:slug`; **(3)** took the last auth/public pages off mock (Forgot/Reset→`authApi`, Profile→change-password modal, PublicFormPage→`publicFormsApi`). Run steps + seeded login in **`LOCAL_RUN_GUIDE.md`**. Remaining V1 gaps (prod-build tsc on the dead mock layer, invite-accept page, SSE push, cross-list sprint board, files custom-field shape) are documented there — none block `npm run dev` local testing.
 
 ---
 

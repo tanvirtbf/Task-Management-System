@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { ArrowLeft, Mail, CheckCircle2 } from "lucide-react";
 import { FormCard } from "../../components/ui/FormCard";
-import { mockApi } from "../../lib/mock-api";
+import { authApi } from "../../http/api";
 import { tokens } from "../../theme";
 
 export const ForgotPasswordPage = () => {
@@ -12,7 +12,7 @@ export const ForgotPasswordPage = () => {
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
     const { mutate, isPending } = useMutation({
-        mutationFn: (email: string) => mockApi.auth.forgotPassword(email),
+        mutationFn: (email: string) => authApi.forgotPassword(email),
         onSuccess: (_data, email) => setSubmittedEmail(email),
         onError: (err: Error) => setErrorMessage(err.message),
     });

@@ -1,6 +1,7 @@
 import type { NextFunction, Response } from "express";
 import type { Logger } from "winston";
 import { AuthService } from "../services/AuthService";
+import type { AuthRequest } from "../types";
 import type {
     ForgotPasswordRequest,
     LoginRequest,
@@ -185,6 +186,30 @@ export class AuthController {
 
             this.logger.info("auth.reset_password.ok", {
                 requestId: req.requestId,
+            });
+
+            res.sendStatus(204);
+        } catch (err) {
+            next(err);
+        }
+    }
+
+    async changePassword(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            const { current_password, new_password } = req.body as {
+                current_password: string;
+                new_password: string;
+            };
+
+            await this.authService.changePassword({
+                userId: req.auth.sub,
+                currentPassword: current_password,
+                newPassword: new_password,
+            });
+
+            this.logger.info("auth.change_password.ok", {
+                requestId: req.requestId,
+                userId: req.auth.sub,
             });
 
             res.sendStatus(204);

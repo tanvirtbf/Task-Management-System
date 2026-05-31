@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Skeleton, Checkbox, Progress } from "antd";
 import { ChevronDown, ChevronRight, ListChecks, Plus, Trash2 } from "lucide-react";
-import { mockApi } from "../../lib/mock-api";
+import { checklistsApi } from "../../http/api";
 import { tokens } from "../../theme";
 import type { Checklist } from "../../types/extras";
 
@@ -18,11 +18,11 @@ export const ChecklistsSection = ({ taskId }: ChecklistsSectionProps) => {
 
     const { data: checklists = [], isLoading } = useQuery({
         queryKey: ["checklists", taskId],
-        queryFn: () => mockApi.checklists.byTask(taskId),
+        queryFn: () => checklistsApi.byTask(taskId),
     });
 
     const createChecklist = useMutation({
-        mutationFn: (name: string) => mockApi.checklists.create(taskId, name),
+        mutationFn: (name: string) => checklistsApi.create(taskId, name),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["checklists", taskId] });
             setNewName("");
@@ -174,13 +174,13 @@ const ChecklistView = ({
         qc.invalidateQueries({ queryKey: ["checklists", taskId] });
 
     const toggle = useMutation({
-        mutationFn: (id: string) => mockApi.checklists.toggleItem(id),
+        mutationFn: (id: string) => checklistsApi.toggleItem(id),
         onSuccess: invalidate,
     });
 
     const addItem = useMutation({
         mutationFn: (text: string) =>
-            mockApi.checklists.addItem(checklist.id, text),
+            checklistsApi.addItem(checklist.id, text),
         onSuccess: () => {
             invalidate();
             setItemText("");
@@ -189,7 +189,7 @@ const ChecklistView = ({
     });
 
     const deleteList = useMutation({
-        mutationFn: () => mockApi.checklists.deleteChecklist(checklist.id),
+        mutationFn: () => checklistsApi.deleteChecklist(checklist.id),
         onSuccess: invalidate,
     });
 

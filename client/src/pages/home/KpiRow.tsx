@@ -1,13 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "antd";
-import { mockApi } from "../../lib/mock-api";
+import { homeApi } from "../../http/api";
 import { tokens } from "../../theme";
 import { KpiCard } from "./KpiCard";
 
 export const KpiRow = () => {
     const { data, isLoading } = useQuery({
         queryKey: ["home", "kpis"],
-        queryFn: () => mockApi.home.kpis(),
+        queryFn: () => homeApi.kpis(),
     });
 
     if (isLoading || !data) {

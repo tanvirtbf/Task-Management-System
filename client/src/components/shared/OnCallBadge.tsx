@@ -1,14 +1,17 @@
 import { Tooltip } from "antd";
 import { Shield } from "lucide-react";
-import { currentOnCallEngineerId } from "../../mocks/on-call";
-import { usersById } from "../../mocks/users";
+import { useQuery } from "@tanstack/react-query";
+import { onCallApi } from "../../http/api";
 import { tokens } from "../../theme";
 import { useNavigate } from "react-router-dom";
 
 export const OnCallBadge = () => {
     const navigate = useNavigate();
-    const engineerId = currentOnCallEngineerId();
-    const engineer = usersById.get(engineerId);
+    const { data: shift } = useQuery({
+        queryKey: ["on-call", "current"],
+        queryFn: () => onCallApi.current(),
+    });
+    const engineer = shift?.engineer;
 
     if (!engineer) return null;
 

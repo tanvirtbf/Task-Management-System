@@ -10,7 +10,7 @@ import {
 } from "antd";
 import dayjs from "dayjs";
 import { Save } from "lucide-react";
-import { mockApi } from "../../lib/mock-api";
+import { workspaceApi } from "../../http/api";
 import {
     SettingsHeader,
     SettingsSection,
@@ -46,7 +46,7 @@ const WorkspaceSettings = () => {
     const { message } = AntApp.useApp();
     const { data: ws } = useQuery({
         queryKey: ["workspace"],
-        queryFn: () => mockApi.workspace.get(),
+        queryFn: () => workspaceApi.get(),
     });
 
     const [draft, setDraft] = useState<Workspace | null>(null);
@@ -58,7 +58,7 @@ const WorkspaceSettings = () => {
     const save = useMutation({
         mutationFn: () =>
             draft
-                ? mockApi.workspace.update({
+                ? workspaceApi.update({
                       name: draft.name,
                       settings: draft.settings,
                   })

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Star } from "lucide-react";
-import { mockApi } from "../../lib/mock-api";
+import { listsApi } from "../../http/api";
 import { useUiStore } from "../../stores/ui";
 import { tokens } from "../../theme";
 
@@ -18,7 +18,7 @@ export const SidebarFavorites = () => {
 
     const { data: lists = [] } = useQuery({
         queryKey: ["lists"],
-        queryFn: () => mockApi.lists.listAll(),
+        queryFn: () => listsApi.listAll(),
     });
 
     const favorites = lists.filter((l) => favoriteIds.includes(l.id));

@@ -21,6 +21,8 @@ import taskDependenciesRouter from "./routes/taskDependencies";
 import customFieldsRouter from "./routes/customFields";
 import formsRouter from "./routes/forms";
 import attachmentsRouter from "./routes/attachments";
+import commentsRouter from "./routes/comments";
+import checklistsRouter from "./routes/checklists";
 import sprintsRouter from "./routes/sprints";
 import templatesRouter from "./routes/templates";
 import onCallRouter from "./routes/onCall";
@@ -143,6 +145,14 @@ v1.use(engineeringRouter);
 // `/tasks/:id/sla`, so it mounts at the v1 root BEFORE `/tasks` (its 2-segment
 // PATCH /tasks/:id/sla resolves ahead of the tasks router's /:id routes).
 v1.use(slaRouter);
+// §14 Comments — full paths spanning `/tasks/:id/comments` + `/comments/:id`, so
+// it mounts at the v1 root BEFORE `/tasks` (the 3-segment comments path resolves
+// ahead of the tasks router's `/:id` routes).
+v1.use(commentsRouter);
+// §15 Checklists — full paths spanning `/tasks/:id/checklists`, `/checklists/:id`,
+// and `/checklist-items/:id`, so it mounts at the v1 root BEFORE `/tasks` (the
+// 3-segment `/tasks/:id/checklists` resolves ahead of the tasks router's /:id).
+v1.use(checklistsRouter);
 // §11 Task membership — assignees / watchers / tags under the `/tasks` prefix.
 v1.use("/tasks", tasksRouter);
 // §23 Templates — clean `/templates` prefix (no shared path segments with

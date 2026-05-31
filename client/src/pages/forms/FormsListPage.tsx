@@ -9,8 +9,8 @@ import {
     Edit3,
     Copy,
 } from "lucide-react";
-import { mockApi } from "../../lib/mock-api";
-import { listsById } from "../../mocks";
+import { formsApi } from "../../http/api";
+import { useListMap } from "../../hooks/useReferenceData";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { LoadingState } from "../../components/shared/LoadingState";
 import { tokens } from "../../theme";
@@ -18,9 +18,10 @@ import { tokens } from "../../theme";
 const FormsListPage = () => {
     const navigate = useNavigate();
     const { message } = AntApp.useApp();
+    const listMap = useListMap();
     const { data: forms = [], isLoading } = useQuery({
         queryKey: ["forms"],
-        queryFn: () => mockApi.forms.list(),
+        queryFn: () => formsApi.list(),
     });
 
     return (
@@ -92,7 +93,7 @@ const FormsListPage = () => {
                     }}
                 >
                     {forms.map((form) => {
-                        const list = listsById.get(form.listId);
+                        const list = listMap.get(form.listId);
                         return (
                             <div
                                 key={form.id}

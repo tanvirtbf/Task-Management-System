@@ -15,11 +15,13 @@ import logger from "../config/logger";
 import { authStrictLimiter } from "../middlewares/rateLimit";
 import { validate } from "../middlewares/validate";
 import {
+    changePasswordValidator,
     forgotPasswordValidator,
     loginValidator,
     resetPasswordValidator,
 } from "../validators/auth";
 import authenticate from "../middlewares/authenticate";
+import type { AuthRequest } from "../types";
 import type {
     ForgotPasswordRequest,
     LoginRequest,
@@ -128,6 +130,18 @@ router.get(
     authenticate,
     (req: Request, res: Response, next: NextFunction) =>
         authController.me(req as MeRequest, res, next),
+);
+
+// ─── POST /api/v1/auth/change-password ───────────────────────────────────────
+// Authenticated — rotate the caller's OWN password after re-verifying the
+// current one (204). Other sessions stay valid (V1 — no forced global sign-out).
+router.post(
+    "/change-password",
+    authenticate,
+    changePasswordValidator,
+    validate,
+    (req: Request, res: Response, next: NextFunction) =>
+        authController.changePassword(req as AuthRequest, res, next),
 );
 
 export default router;

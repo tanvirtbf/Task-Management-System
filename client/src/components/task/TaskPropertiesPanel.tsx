@@ -1,6 +1,6 @@
 import { Tooltip } from "antd";
 import { Clock, Timer, Eye, Calendar as CalIcon, Flag, Zap, GitPullRequest, Repeat } from "lucide-react";
-import { useUpdateTask } from "../../hooks/useTaskMutations";
+import { useUpdateTask, useTaskMembership } from "../../hooks/useTaskMutations";
 import { InlineAssigneeEdit } from "./InlineAssigneeEdit";
 import { InlineDateEdit } from "./InlineDateEdit";
 import { InlinePriorityEdit } from "./InlinePriorityEdit";
@@ -10,10 +10,10 @@ import { InlineReviewerEdit } from "./InlineReviewerEdit";
 import { InlineStoryPointsEdit } from "./InlineStoryPointsEdit";
 import { BugSeverityBadge } from "./BugSeverityBadge";
 import { RecurrenceConfig } from "./RecurrenceConfig";
+import { useQuery } from "@tanstack/react-query";
 import type { Task } from "../../types";
-import { listsById } from "../../mocks/lists";
-import { sprintsById } from "../../mocks/sprints";
-import { isDevTaskType } from "../../mocks/task-types";
+import { sprintsApi } from "../../http/api";
+import { useListMap, useTaskTypeMap } from "../../hooks/useReferenceData";
 import { tokens } from "../../theme";
 
 const formatSeconds = (s: number) => {
@@ -25,11 +25,20 @@ const formatSeconds = (s: number) => {
 };
 
 export const TaskPropertiesPanel = ({ task }: { task: Task }) => {
-    const list = listsById.get(task.primaryListId);
+    const listMap = useListMap();
+    const typeMap = useTaskTypeMap();
+    const { setAssignees, setTags } = useTaskMembership(task);
+    const list = listMap.get(task.primaryListId);
     const update = useUpdateTask(task.primaryListId);
-    const isDev = isDevTaskType(task.taskTypeId);
+    const isDev = typeMap.get(task.taskTypeId)?.isDevType ?? false;
     const isBug = task.taskTypeId === "tt-bug";
-    const sprint = task.sprintId ? sprintsById.get(task.sprintId) : null;
+    const { data: sprints = [] } = useQuery({
+        queryKey: ["sprints"],
+        queryFn: () => sprintsApi.list(),
+    });
+    const sprint = task.sprintId
+        ? (sprints.find((s) => s.id === task.sprintId) ?? null)
+        : null;
 
     return (
         <div
@@ -86,9 +95,7 @@ export const TaskPropertiesPanel = ({ task }: { task: Task }) => {
             <PropValue>
                 <InlineAssigneeEdit
                     assigneeIds={task.assignees}
-                    onChange={(assignees) =>
-                        update.mutate({ id: task.id, patch: { assignees } })
-                    }
+                    onChange={(assignees) => setAssignees.mutate(assignees)}
                 />
             </PropValue>
 
@@ -222,9 +229,7 @@ export const TaskPropertiesPanel = ({ task }: { task: Task }) => {
                     <InlineTagEdit
                         spaceId={list.spaceId}
                         tagIds={task.tags}
-                        onChange={(tags) =>
-                            update.mutate({ id: task.id, patch: { tags } })
-                        }
+                        onChange={(tags) => setTags.mutate(tags)}
                     />
                 )}
             </PropValue>

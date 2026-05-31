@@ -1,8 +1,8 @@
 import { useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { mockApi } from "../../lib/mock-api";
-import { listsById } from "../../mocks/lists";
+import { tasksApi } from "../../http/api";
+import { useListMap } from "../../hooks/useReferenceData";
 import { tokens } from "../../theme";
 
 /**
@@ -14,18 +14,19 @@ import { tokens } from "../../theme";
 const TaskRedirect = () => {
     const { taskKey } = useParams();
     const navigate = useNavigate();
+    const listMap = useListMap();
 
     const { data: task, isError } = useQuery({
         queryKey: ["task", taskKey],
         queryFn: () =>
-            taskKey ? mockApi.tasks.getById(taskKey) : Promise.resolve(null),
+            taskKey ? tasksApi.getById(taskKey) : Promise.resolve(null),
         enabled: !!taskKey,
         retry: false,
     });
 
     useEffect(() => {
         if (!task) return;
-        const list = listsById.get(task.primaryListId);
+        const list = listMap.get(task.primaryListId);
         if (list) {
             navigate(`/s/${list.spaceId}/l/${list.id}?task=${task.id}`, {
                 replace: true,
@@ -33,7 +34,7 @@ const TaskRedirect = () => {
         } else {
             navigate("/", { replace: true });
         }
-    }, [task, navigate]);
+    }, [task, navigate, listMap]);
 
     return (
         <div

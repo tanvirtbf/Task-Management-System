@@ -132,6 +132,10 @@ export interface TaskType {
     color: string;
     isMilestoneType: boolean;
     isSystem: boolean;
+    /** Engineering-tier flag (wire `is_dev_type`); optional on legacy mock data. */
+    isDevType?: boolean;
+    /** Display order from the API; optional on legacy mock data. */
+    position?: number;
 }
 
 export interface Tag {
@@ -302,8 +306,15 @@ export interface ActivityLogEntry {
 
 export interface AuthState {
     user: User | null;
+    /** In-memory access token — NEVER persisted; repopulated on load via /auth/me. */
+    accessToken: string | null;
+    /** True until the initial /auth/me bootstrap resolves (guards show a spinner). */
+    bootstrapping: boolean;
     setUser: (user: User | null) => void;
+    setAccessToken: (token: string | null) => void;
     logout: () => void;
+    /** Revalidate a (possibly cookie-only) session on app load. */
+    bootstrap: () => Promise<void>;
     pendingTwoFactor: PendingTwoFactor | null;
     setPendingTwoFactor: (pending: PendingTwoFactor | null) => void;
 }
@@ -322,6 +333,13 @@ export type ApiResult<T> = ApiSuccess<T> | ApiError;
 export type LoginResult =
     | { requires2fa: true; mfaToken: string }
     | { requires2fa: false; user: User };
+
+/** Real backend `POST /auth/login` response (camelCase after the adapter). */
+export interface LoginResponse {
+    accessToken: string;
+    expiresIn: number;
+    user: User;
+}
 
 // ============================================================
 // Home / dashboard aggregations

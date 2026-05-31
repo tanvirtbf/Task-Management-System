@@ -12,7 +12,6 @@ import {
 } from "antd";
 import {
     ArrowLeft,
-    Plus,
     Trash2,
     GripVertical,
     Eye,
@@ -36,15 +35,13 @@ import {
     useSensors,
     type DragEndEvent,
 } from "@dnd-kit/core";
-import { mockApi } from "../../lib/mock-api";
-import { customFieldsByList } from "../../mocks/custom-fields";
-import { listsById } from "../../mocks/lists";
+import { formsApi, customFieldsApi } from "../../http/api";
+import { useListMap } from "../../hooks/useReferenceData";
 import type {
     CustomFieldType,
     Form,
     FormFieldDef,
 } from "../../types/custom-fields";
-import { CustomFieldRenderer } from "../../components/custom-field/CustomFieldRenderer";
 import { tokens } from "../../theme";
 
 const TYPE_ICONS: Record<CustomFieldType, React.ReactNode> = {
@@ -67,17 +64,15 @@ const FormBuilderPage = () => {
     const { data: form, isLoading } = useQuery({
         queryKey: ["form", formId],
         queryFn: () =>
-            formId ? mockApi.forms.getById(formId) : Promise.resolve(null),
+            formId ? formsApi.getById(formId) : Promise.resolve(null),
         enabled: !!formId,
     });
 
-    const updateMutation = useMutation({
-        mutationFn: (patch: Partial<Form>) =>
-            mockApi.forms.update(formId!, patch),
-        onSuccess: () => {
-            qc.invalidateQueries({ queryKey: ["form", formId] });
-        },
-        onError: () => message.error("Save failed"),
+    const listMap = useListMap();
+    const { data: availableCustomFields = [] } = useQuery({
+        queryKey: ["custom-fields-by-list", form?.listId],
+        queryFn: () => customFieldsApi.byList(form!.listId),
+        enabled: !!form?.listId,
     });
 
     const [draft, setDraft] = useState<Form | null>(null);
@@ -85,6 +80,62 @@ const FormBuilderPage = () => {
     useEffect(() => {
         if (form) setDraft(form);
     }, [form]);
+
+    // Save = metadata PATCH (NOT `fields`) + a per-field diff against the server
+    // form — the form PATCH ignores `fields`; fields live behind their own
+    // endpoints. New fields carry temp ids (`ff-…`); a final reorder pins order.
+    const save = useMutation({
+        mutationFn: async () => {
+            if (!form || !draft) return;
+            await formsApi.update(form.id, {
+                title: draft.title,
+                description: draft.description,
+                branding: draft.branding,
+                settings: draft.settings,
+            });
+            const origIds = new Set(form.fields.map((f) => f.id));
+            const nextIds = new Set(draft.fields.map((f) => f.id));
+            for (const f of form.fields) {
+                if (!nextIds.has(f.id)) await formsApi.deleteField(f.id);
+            }
+            const finalIds: string[] = [];
+            for (let i = 0; i < draft.fields.length; i++) {
+                const f = draft.fields[i];
+                const body = {
+                    label: f.label,
+                    isRequired: f.isRequired,
+                    isHidden: f.isHidden,
+                    placeholder: f.placeholder,
+                    helpText: f.helpText,
+                    defaultValue: f.defaultValue,
+                };
+                if (origIds.has(f.id)) {
+                    await formsApi.updateField(f.id, body);
+                    finalIds.push(f.id);
+                } else {
+                    const created = await formsApi.addField(form.id, {
+                        ...body,
+                        fieldKind: f.fieldKind,
+                        fieldKey: f.fieldKey,
+                        position: i,
+                    });
+                    finalIds.push(created.id);
+                }
+            }
+            if (finalIds.length > 1) {
+                await formsApi.reorderFields(
+                    form.id,
+                    finalIds.map((id, i) => ({ id, position: i })),
+                );
+            }
+        },
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ["form", formId] });
+            qc.invalidateQueries({ queryKey: ["forms"] });
+            message.success("Form saved");
+        },
+        onError: () => message.error("Save failed"),
+    });
 
     const sensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -96,20 +147,10 @@ const FormBuilderPage = () => {
         );
     }
 
-    const list = listsById.get(form.listId);
-    const availableCustomFields = customFieldsByList(form.listId);
+    const list = listMap.get(form.listId);
     const usedFieldKeys = new Set(draft.fields.map((f) => f.fieldKey));
 
-    const handleSave = () => {
-        updateMutation.mutate({
-            title: draft.title,
-            description: draft.description,
-            fields: draft.fields,
-            branding: draft.branding,
-            settings: draft.settings,
-        });
-        message.success("Form saved");
-    };
+    const handleSave = () => save.mutate();
 
     const handleDragEnd = (event: DragEndEvent) => {
         const { active, over } = event;
@@ -154,7 +195,7 @@ const FormBuilderPage = () => {
 
     const selectedField =
         selectedFieldId !== null
-            ? draft.fields.find((f) => f.id === selectedFieldId)
+            ? (draft.fields.find((f) => f.id === selectedFieldId) ?? null)
             : null;
 
     return (
@@ -221,7 +262,7 @@ const FormBuilderPage = () => {
                     size="small"
                     type="primary"
                     onClick={handleSave}
-                    loading={updateMutation.isPending}
+                    loading={save.isPending}
                 >
                     Save
                 </Button>

@@ -7,11 +7,10 @@ import {
     useSensors,
     type DragEndEvent,
 } from "@dnd-kit/core";
-import { mockApi } from "../../lib/mock-api";
+import { tasksApi } from "../../http/api";
 import { useAuthStore } from "../../stores/auth";
 import { useUpdateTask, useCreateTask } from "../../hooks/useTaskMutations";
-import { workspace } from "../../mocks/workspace";
-import { statusesById } from "../../mocks/statuses";
+import { useStatusMap, useWorkspace } from "../../hooks/useReferenceData";
 import {
     addDays,
     addMonths,
@@ -22,7 +21,7 @@ import {
 } from "../../lib/date-utils";
 import { App as AntApp, Modal, Input } from "antd";
 import { tokens } from "../../theme";
-import type { Status, Task } from "../../types";
+import type { Task } from "../../types";
 import { CalendarToolbar, type CalendarMode } from "./CalendarToolbar";
 import { CalendarMonthGrid } from "./CalendarMonthGrid";
 import { CalendarUnscheduledPanel } from "./CalendarUnscheduledPanel";
@@ -48,25 +47,18 @@ export const CalendarView = ({ listId }: CalendarViewProps) => {
 
     const { data: tasks = [] } = useQuery({
         queryKey: ["tasks-by-list", listId],
-        queryFn: () => mockApi.tasks.listByList(listId),
+        queryFn: () => tasksApi.listByList(listId),
     });
 
-    // Build status map
-    const statusMap = useMemo(() => {
-        const m = new Map<string, Status>();
-        for (const t of tasks) {
-            const s = statusesById.get(t.statusId);
-            if (s) m.set(s.id, s);
-        }
-        return m;
-    }, [tasks]);
+    const { data: ws } = useWorkspace();
+    const statusMap = useStatusMap(listId);
 
     // Filter tasks
     const filteredTasks = useMemo(() => {
         let result = tasks;
         if (!showClosedTasks) {
             result = result.filter((t) => {
-                const s = statusesById.get(t.statusId);
+                const s = statusMap.get(t.statusId);
                 return s?.statusGroup !== "closed";
             });
         }
@@ -82,7 +74,7 @@ export const CalendarView = ({ listId }: CalendarViewProps) => {
             );
         }
         return result;
-    }, [tasks, showClosedTasks, meMode, search, user]);
+    }, [tasks, showClosedTasks, meMode, search, user, statusMap]);
 
     // Group filteredTasks by day
     const { tasksByDay, unscheduledTasks } = useMemo(() => {
@@ -203,7 +195,7 @@ export const CalendarView = ({ listId }: CalendarViewProps) => {
                             anchor={anchor}
                             tasksByDay={tasksByDay}
                             statusMap={statusMap}
-                            weekStartsOn={workspace.settings.weekStartsOn}
+                            weekStartsOn={ws?.settings.weekStartsOn ?? 0}
                             onCellClick={handleCellClick}
                         />
                     ) : (

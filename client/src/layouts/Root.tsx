@@ -1,10 +1,19 @@
+import { useEffect } from "react";
 import { Outlet } from "react-router-dom";
+import { useAuthStore } from "../stores/auth";
 
 /**
- * Root layout. In mock mode, auth state is hydrated from localStorage
- * by Zustand persist — no /auth/self fetch needed. Phase 12 will add
- * a global error boundary here.
+ * Root layout. On app load it revalidates the session via GET /auth/me — the
+ * axios interceptor refreshes from the `bb_refresh` cookie when the in-memory
+ * access token is gone after a reload. The route guards (RequireAuth /
+ * RequireGuest) show a spinner until `bootstrapping` resolves.
  */
-const Root = () => <Outlet />;
+const Root = () => {
+    useEffect(() => {
+        void useAuthStore.getState().bootstrap();
+    }, []);
+
+    return <Outlet />;
+};
 
 export default Root;

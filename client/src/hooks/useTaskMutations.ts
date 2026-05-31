@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { App as AntApp } from "antd";
 import type { Task } from "../types";
-import { mockApi } from "../lib/mock-api";
+import { tasksApi } from "../http/api";
 
 /**
  * Centralised mutation hooks for tasks.
@@ -12,7 +12,7 @@ export const useUpdateTask = (listId?: string) => {
     const { message } = AntApp.useApp();
     return useMutation({
         mutationFn: ({ id, patch }: { id: string; patch: Partial<Task> }) =>
-            mockApi.tasks.update(id, patch),
+            tasksApi.update(id, patch),
         onMutate: async ({ id, patch }) => {
             const keys = [["tasks-by-list", listId], ["task", id]];
             for (const key of keys) {
@@ -29,7 +29,7 @@ export const useUpdateTask = (listId?: string) => {
             );
             return { prev };
         },
-        onError: (err, _input, ctx) => {
+        onError: (_err, _input, ctx) => {
             if (ctx?.prev) {
                 qc.setQueryData(["tasks-by-list", listId], ctx.prev);
             }
@@ -42,13 +42,13 @@ export const useUpdateTask = (listId?: string) => {
     });
 };
 
-export const useCreateTask = (listId?: string) => {
+export const useCreateTask = (_listId?: string) => {
     const qc = useQueryClient();
     const { message } = AntApp.useApp();
     return useMutation({
         mutationFn: (
             input: Partial<Task> & { name: string; primaryListId: string },
-        ) => mockApi.tasks.create(input),
+        ) => tasksApi.create(input),
         onSuccess: (newTask) => {
             qc.invalidateQueries({
                 queryKey: ["tasks-by-list", newTask.primaryListId],
@@ -70,7 +70,7 @@ export const useBulkUpdateTasks = (listId?: string) => {
         }: {
             ids: string[];
             patch: Partial<Task>;
-        }) => mockApi.tasks.bulkUpdate(ids, patch),
+        }) => tasksApi.bulkUpdate(ids, patch),
         onSuccess: (updated) => {
             qc.invalidateQueries({ queryKey: ["tasks-by-list", listId] });
             message.success(`Updated ${updated.length} tasks`);
@@ -83,7 +83,7 @@ export const useArchiveTask = (listId?: string) => {
     const qc = useQueryClient();
     const { message } = AntApp.useApp();
     return useMutation({
-        mutationFn: (id: string) => mockApi.tasks.archive(id),
+        mutationFn: (id: string) => tasksApi.archive(id),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["tasks-by-list", listId] });
             message.success("Task archived");
@@ -95,10 +95,50 @@ export const useDeleteTask = (listId?: string) => {
     const qc = useQueryClient();
     const { message } = AntApp.useApp();
     return useMutation({
-        mutationFn: (id: string) => mockApi.tasks.delete(id),
+        mutationFn: (id: string) => tasksApi.delete(id),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["tasks-by-list", listId] });
             message.success("Task deleted");
         },
     });
+};
+
+/**
+ * Assignee/tag changes go through the §11 membership DELTA endpoints (the task
+ * PATCH does NOT accept `assignees`/`tags`). Each setter diffs the submitted
+ * `next[]` against the task's current array and fires the add/remove calls, then
+ * refreshes the task + its list.
+ */
+export const useTaskMembership = (task: Task) => {
+    const qc = useQueryClient();
+    const { message } = AntApp.useApp();
+    const invalidate = () => {
+        qc.invalidateQueries({ queryKey: ["task", task.id] });
+        qc.invalidateQueries({
+            queryKey: ["tasks-by-list", task.primaryListId],
+        });
+    };
+    const setAssignees = useMutation({
+        mutationFn: async (next: string[]) => {
+            const cur = task.assignees;
+            const added = next.filter((id) => !cur.includes(id));
+            const removed = cur.filter((id) => !next.includes(id));
+            if (added.length) await tasksApi.addAssignees(task.id, added);
+            for (const id of removed) await tasksApi.removeAssignee(task.id, id);
+        },
+        onSuccess: invalidate,
+        onError: () => message.error("Could not update assignees"),
+    });
+    const setTags = useMutation({
+        mutationFn: async (next: string[]) => {
+            const cur = task.tags;
+            const added = next.filter((id) => !cur.includes(id));
+            const removed = cur.filter((id) => !next.includes(id));
+            if (added.length) await tasksApi.addTags(task.id, added);
+            for (const id of removed) await tasksApi.removeTag(task.id, id);
+        },
+        onSuccess: invalidate,
+        onError: () => message.error("Could not update tags"),
+    });
+    return { setAssignees, setTags };
 };
