@@ -8,6 +8,10 @@ import { SprintsService } from "../services/SprintsService";
 import { SprintsRepo } from "../repositories/SprintsRepo";
 import { WorkspaceActivityRepo } from "../repositories/WorkspaceActivityRepo";
 import { TaskActivityRepo } from "../repositories/TaskActivityRepo";
+import { ListsRepo } from "../repositories/ListsRepo";
+import { TasksRepo } from "../repositories/TasksRepo";
+import { TasksService } from "../services/TasksService";
+import type { AuthRequest } from "../types";
 import { getDb } from "../db/client";
 import logger from "../config/logger";
 import authenticate from "../middlewares/authenticate";
@@ -61,6 +65,8 @@ const service = new SprintsService(
     logger,
 );
 const controller = new SprintsController(service, logger);
+// Read-side service for the cross-list sprint task board (GET /sprints/:id/tasks).
+const tasksReadService = new TasksService(new ListsRepo(db), new TasksRepo(db));
 
 // #1 — GET /api/v1/sprints (🔐) — all sprints, optional ?status= filter.
 router.get(
@@ -89,6 +95,28 @@ router.get(
     validate,
     (req: Request, res: Response, next: NextFunction) =>
         controller.getById(req as GetSprintRequest, res, next),
+);
+
+// GET /api/v1/sprints/:id/tasks (🔐) — the sprint's tasks across ALL lists
+// (a sprint spans lists). Bare hydrated WireTask[]; empty array if none.
+router.get(
+    "/sprints/:id/tasks",
+    authenticate,
+    sprintIdParamValidator,
+    validate,
+    async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const r = req as AuthRequest;
+            const data = await tasksReadService.listBySprint({
+                sprintId: r.params.id,
+                workspaceId: r.auth.workspaceId,
+                role: r.auth.role,
+            });
+            res.status(200).json(data);
+        } catch (err) {
+            next(err);
+        }
+    },
 );
 
 // #4 — POST /api/v1/sprints (👑) — create a planned sprint.

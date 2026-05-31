@@ -25,7 +25,7 @@ export const useUiStore = create<UiState>()(
                     set({ sidebarCollapsed: !get().sidebarCollapsed }),
                 setSidebarCollapsed: (v) => set({ sidebarCollapsed: v }),
 
-                expandedIds: ["sp-ops"],
+                expandedIds: [],
                 toggleExpanded: (id) => {
                     const ids = get().expandedIds;
                     set({

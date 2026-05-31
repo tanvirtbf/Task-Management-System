@@ -64,8 +64,8 @@ export const TaskDetailDrawer = ({
     const taskType = task ? typeMap.get(task.taskTypeId) : null;
     const creator = task ? userMap.get(task.createdBy) : null;
     const isDev = taskType?.isDevType ?? false;
-    const isBug = task?.taskTypeId === "tt-bug";
-    const isIncident = task?.taskTypeId === "tt-incident";
+    const isBug = taskType?.name.toLowerCase() === "bug";
+    const isIncident = taskType?.name.toLowerCase() === "incident";
     const status = task ? statusMap.get(task.statusId) : null;
     const isIncidentResolved =
         isIncident &&

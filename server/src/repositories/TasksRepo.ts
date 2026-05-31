@@ -391,6 +391,27 @@ export class TasksRepo {
     }
 
     /**
+     * Every non-archived task in `workspaceId` attached to `sprintId`, across
+     * lists (a sprint's tasks span lists). Powers `GET /sprints/:id/tasks`.
+     */
+    async findBySprintInWorkspace(
+        sprintId: string,
+        workspaceId: string,
+    ): Promise<TaskRow[]> {
+        return this.db
+            .select()
+            .from(tasks)
+            .where(
+                and(
+                    eq(tasks.workspaceId, workspaceId),
+                    eq(tasks.sprintId, sprintId),
+                    isNull(tasks.archivedAt),
+                ),
+            )
+            .orderBy(asc(tasks.internalId));
+    }
+
+    /**
      * Apply one scalar column patch to many tasks in a single UPDATE (#10 bulk).
      * `updated_at` is included by the caller so the ETag bumps even when only
      * side tables change. NEVER pass a counter column or `parent_task_id`.

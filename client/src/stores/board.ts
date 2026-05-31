@@ -35,12 +35,7 @@ export const useBoardStore = create<BoardState>()(
     devtools(
         persist(
             (set, get) => ({
-                wipLimits: {
-                    // Demo defaults for Facebook Orders to showcase WIP visualization
-                    "l-fb-orders:l-fb-orders-s-confirmed": 8,
-                    "l-fb-orders:l-fb-orders-s-packed": 5,
-                    "l-fb-orders:l-fb-orders-s-courier": 6,
-                },
+                wipLimits: {},
                 setWipLimit: (listId, statusId, limit) => {
                     const key = `${listId}:${statusId}`;
                     set((s) => ({

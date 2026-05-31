@@ -808,6 +808,9 @@ export const sprintsApi = {
     removeTask: async (id: string, taskId: string): Promise<void> => {
         await api.delete(`/sprints/${id}/tasks/${taskId}`);
     },
+    // §20 — the sprint's tasks across ALL lists (cross-list). Bare WireTask[].
+    tasks: async (id: string): Promise<Task[]> =>
+        (await api.get<WireTask[]>(`/sprints/${id}/tasks`)).data.map(mapTask),
 };
 
 // ─── On-call (§21) ─ current = bare shift|null; schedule = {data}; engineer mapped ─

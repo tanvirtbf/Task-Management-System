@@ -204,6 +204,41 @@ export class TasksService {
             }),
         );
     }
+
+    /**
+     * Every task attached to `sprintId` in the caller's workspace, across lists,
+     * fully hydrated (same batched hydration as `listByList`). Powers
+     * `GET /sprints/:id/tasks` (the sprint board). A missing/empty sprint yields
+     * an empty array — the board renders "no tasks", never a 404.
+     */
+    async listBySprint(input: {
+        sprintId: string;
+        workspaceId: string;
+        role: Role;
+    }): Promise<WireTask[]> {
+        const rows = await this.tasksRepo.findBySprintInWorkspace(
+            input.sprintId,
+            input.workspaceId,
+        );
+        if (rows.length === 0) return [];
+        const ids = rows.map((row) => row.id);
+        const redactGuest = input.role === Roles.GUEST;
+        const [assignees, watchers, tags, customFieldValues] =
+            await Promise.all([
+                this.tasksRepo.assigneesByTask(ids),
+                this.tasksRepo.watchersByTask(ids),
+                this.tasksRepo.tagsByTask(ids),
+                this.tasksRepo.customFieldValuesByTask(ids, redactGuest),
+            ]);
+        return rows.map((row) =>
+            toWireTask(row, {
+                assignees: assignees.get(row.id) ?? [],
+                watchers: watchers.get(row.id) ?? [],
+                tags: tags.get(row.id) ?? [],
+                customFieldValues: customFieldValues.get(row.id) ?? {},
+            }),
+        );
+    }
 }
 
 /**

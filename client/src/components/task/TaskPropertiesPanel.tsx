@@ -31,7 +31,7 @@ export const TaskPropertiesPanel = ({ task }: { task: Task }) => {
     const list = listMap.get(task.primaryListId);
     const update = useUpdateTask(task.primaryListId);
     const isDev = typeMap.get(task.taskTypeId)?.isDevType ?? false;
-    const isBug = task.taskTypeId === "tt-bug";
+    const isBug = typeMap.get(task.taskTypeId)?.name.toLowerCase() === "bug";
     const { data: sprints = [] } = useQuery({
         queryKey: ["sprints"],
         queryFn: () => sprintsApi.list(),

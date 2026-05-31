@@ -1,22 +1,19 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { Progress, Select, Empty } from "antd";
+import { Select, Empty } from "antd";
 import { Zap, Target, CalendarRange } from "lucide-react";
-import { tasksApi, sprintsApi } from "../../http/api";
-import {
-    useStatuses,
-    useTaskTypeMap,
-    useUserMap,
-} from "../../hooks/useReferenceData";
+import { sprintsApi } from "../../http/api";
+import { useTaskTypeMap, useUserMap } from "../../hooks/useReferenceData";
 import { TaskDetailDrawer } from "../../components/task/TaskDetailDrawer";
-import { BugSeverityRail, BugSeverityBadge } from "../../components/task/BugSeverityBadge";
+import {
+    BugSeverityRail,
+    BugSeverityBadge,
+} from "../../components/task/BugSeverityBadge";
 import { StoryPointsBadge } from "../../components/task/StoryPointsBadge";
 import { Avatar } from "../../components/ui/Avatar";
 import { DynamicIcon } from "../../components/shared/DynamicIcon";
 import { tokens } from "../../theme";
-
-const SPRINT_LIST_ID = "l-sprint";
 
 const SprintBoardPage = () => {
     const [searchParams, setSearchParams] = useSearchParams();
@@ -29,14 +26,13 @@ const SprintBoardPage = () => {
         queryKey: ["sprints"],
         queryFn: () => sprintsApi.list(),
     });
-    // NOTE: the board's columns + cards still read a fixed `l-sprint` list (the
-    // mock's sprint list). A sprint's tasks span lists with no cross-list
-    // "tasks by sprint" endpoint, so this is seed-dependent — the selector is
-    // real; the board populates only if that list exists. (FRONTEND_INTEGRATION P7)
-    const { data: statuses = [] } = useStatuses(SPRINT_LIST_ID);
-    const { data: tasks = [] } = useQuery({
-        queryKey: ["tasks-by-list", SPRINT_LIST_ID],
-        queryFn: () => tasksApi.listByList(SPRINT_LIST_ID),
+    // A sprint's tasks span lists — fetched cross-list via GET /sprints/:id/tasks
+    // (each task's status pill is resolved in its detail drawer).
+    const { data: sprintTasks = [] } = useQuery({
+        queryKey: ["sprint-tasks", sprintId],
+        queryFn: () =>
+            sprintId ? sprintsApi.tasks(sprintId) : Promise.resolve([]),
+        enabled: !!sprintId,
     });
 
     // Default the selector to the active sprint (or first) once sprints load.
@@ -50,33 +46,19 @@ const SprintBoardPage = () => {
     }, [sprintId, sprintList]);
 
     const sprint = sprintList.find((s) => s.id === sprintId);
-
-    const sprintTasks = tasks.filter((t) => t.sprintId === sprintId);
-    const tasksByStatus = new Map<string, typeof tasks>();
-    for (const s of statuses) tasksByStatus.set(s.id, []);
-    for (const t of sprintTasks) {
-        tasksByStatus.get(t.statusId)?.push(t);
-    }
-
     const totalPoints = sprintTasks.reduce(
         (acc, t) => acc + (t.storyPoints ?? 0),
         0,
     );
-    const donePoints = sprintTasks
-        .filter((t) => {
-            const s = statuses.find((x) => x.id === t.statusId);
-            return s?.statusGroup === "done" || s?.statusGroup === "closed";
-        })
-        .reduce((acc, t) => acc + (t.storyPoints ?? 0), 0);
-
     const committedPoints = sprint?.committedPoints ?? 0;
-    const percent =
-        committedPoints > 0
-            ? Math.min(100, Math.round((donePoints / committedPoints) * 100))
-            : 0;
+    const openTask = sprintTasks.find(
+        (t) => t.id === openTaskId || t.customId === openTaskId,
+    );
 
     return (
-        <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+        <div
+            style={{ display: "flex", flexDirection: "column", height: "100%" }}
+        >
             {/* Sprint header */}
             <div
                 style={{
@@ -119,7 +101,7 @@ const SprintBoardPage = () => {
                         >
                             Sprint Board
                         </h1>
-                        {sprint && (
+                        {sprint?.goal && (
                             <div
                                 style={{
                                     fontSize: tokens.typography.fontSize.sm,
@@ -136,8 +118,9 @@ const SprintBoardPage = () => {
                         )}
                     </div>
                     <Select
-                        value={sprintId}
+                        value={sprintId || undefined}
                         onChange={setSprintId}
+                        placeholder="Select a sprint"
                         style={{ minWidth: 220 }}
                         options={sprintList.map((s) => ({
                             value: s.id,
@@ -175,38 +158,24 @@ const SprintBoardPage = () => {
                         </span>
                         <span
                             style={{
-                                flex: 1,
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 6,
+                                fontFamily: tokens.typography.fontFamilyMono,
+                                fontWeight: 700,
+                                color: tokens.colors.textPrimary,
                             }}
                         >
-                            <span
-                                style={{
-                                    fontFamily:
-                                        tokens.typography.fontFamilyMono,
-                                    fontWeight: 700,
-                                    color: tokens.colors.textPrimary,
-                                }}
-                            >
-                                {donePoints}/{committedPoints} pts
-                            </span>
-                            <span style={{ color: tokens.colors.textMuted }}>
-                                done · {totalPoints} pts planned
-                            </span>
-                            <Progress
-                                percent={percent}
-                                size="small"
-                                strokeColor={tokens.colors.success}
-                                style={{ flex: 1, margin: 0, marginLeft: 12 }}
-                                showInfo={false}
-                            />
+                            {sprintTasks.length} tasks · {totalPoints} pts
                         </span>
+                        {committedPoints > 0 && (
+                            <span style={{ color: tokens.colors.textMuted }}>
+                                {committedPoints} pts committed
+                            </span>
+                        )}
                     </div>
                 )}
             </div>
 
-            {/* Kanban board */}
+            {/* Sprint tasks — cross-list, so a flat grid (status pill lives in the
+                detail drawer; cross-list kanban-by-status is not well-defined). */}
             <div
                 style={{
                     flex: 1,
@@ -217,11 +186,13 @@ const SprintBoardPage = () => {
                 {sprintTasks.length === 0 ? (
                     <Empty
                         description={
-                            sprint?.status === "planned"
-                                ? "Plan tasks into this sprint from the Backlog."
-                                : sprint?.status === "closed"
-                                  ? "This sprint is closed."
-                                  : "No tasks in this sprint yet."
+                            !sprint
+                                ? "Select a sprint to see its tasks."
+                                : sprint.status === "planned"
+                                  ? "Plan tasks into this sprint."
+                                  : sprint.status === "closed"
+                                    ? "This sprint is closed."
+                                    : "No tasks in this sprint yet."
                         }
                         style={{ marginTop: 60 }}
                     />
@@ -229,213 +200,116 @@ const SprintBoardPage = () => {
                     <div
                         style={{
                             display: "grid",
-                            gridAutoFlow: "column",
-                            gridAutoColumns: "minmax(260px, 1fr)",
+                            gridTemplateColumns:
+                                "repeat(auto-fill, minmax(280px, 1fr))",
                             gap: tokens.spacing[3],
                         }}
                     >
-                        {statuses.map((s) => {
-                            const items = tasksByStatus.get(s.id) ?? [];
+                        {sprintTasks.map((t) => {
+                            const type = typeMap.get(t.taskTypeId);
+                            const assignee = t.assignees[0]
+                                ? userMap.get(t.assignees[0])
+                                : null;
                             return (
-                                <div
-                                    key={s.id}
+                                <button
+                                    key={t.id}
+                                    onClick={() => {
+                                        const next = new URLSearchParams(
+                                            searchParams,
+                                        );
+                                        next.set("task", t.id);
+                                        setSearchParams(next, { replace: true });
+                                    }}
                                     style={{
-                                        background: tokens.colors.bgPage,
+                                        position: "relative",
+                                        background: tokens.colors.bgSurface,
+                                        border: `1px solid ${tokens.colors.border}`,
                                         borderRadius: tokens.radius.md,
-                                        padding: tokens.spacing[2],
+                                        padding: "8px 10px 8px 12px",
+                                        cursor: "pointer",
+                                        textAlign: "left",
                                         display: "flex",
                                         flexDirection: "column",
-                                        minHeight: 200,
+                                        gap: 6,
                                     }}
                                 >
+                                    <BugSeverityRail severity={t.bugSeverity} />
                                     <div
                                         style={{
                                             display: "flex",
                                             alignItems: "center",
                                             gap: 6,
-                                            padding: "6px 6px 10px",
+                                            fontSize: 11,
+                                            color: tokens.colors.textMuted,
+                                            fontFamily:
+                                                tokens.typography.fontFamilyMono,
                                         }}
                                     >
-                                        <span
-                                            style={{
-                                                width: 8,
-                                                height: 8,
-                                                borderRadius: "50%",
-                                                background: s.color,
-                                            }}
+                                        {type && (
+                                            <DynamicIcon
+                                                name={type.icon}
+                                                size={11}
+                                                strokeWidth={1.75}
+                                                color={type.color}
+                                            />
+                                        )}
+                                        {t.customId ?? `T-${t.taskNumber}`}
+                                        <BugSeverityBadge
+                                            severity={t.bugSeverity}
+                                            compact
                                         />
-                                        <span
-                                            style={{
-                                                fontSize: 11,
-                                                fontWeight: 700,
-                                                color: tokens.colors.textPrimary,
-                                                textTransform: "uppercase",
-                                                letterSpacing: "0.05em",
-                                            }}
-                                        >
-                                            {s.name}
-                                        </span>
-                                        <span
-                                            style={{
-                                                marginLeft: "auto",
-                                                fontSize: 11,
-                                                color: tokens.colors.textMuted,
-                                                fontFamily:
-                                                    tokens.typography
-                                                        .fontFamilyMono,
-                                            }}
-                                        >
-                                            {items.length}
-                                        </span>
+                                    </div>
+                                    <div
+                                        style={{
+                                            fontSize:
+                                                tokens.typography.fontSize.sm,
+                                            color: tokens.colors.textPrimary,
+                                            lineHeight: 1.35,
+                                        }}
+                                    >
+                                        {t.name}
                                     </div>
                                     <div
                                         style={{
                                             display: "flex",
-                                            flexDirection: "column",
+                                            alignItems: "center",
                                             gap: 6,
+                                            marginTop: 2,
                                         }}
                                     >
-                                        {items.map((t) => {
-                                            const type = typeMap.get(
-                                                t.taskTypeId,
-                                            );
-                                            const assignee = t.assignees[0]
-                                                ? userMap.get(t.assignees[0])
-                                                : null;
-                                            return (
-                                                <button
-                                                    key={t.id}
-                                                    onClick={() => {
-                                                        const next =
-                                                            new URLSearchParams(
-                                                                searchParams,
-                                                            );
-                                                        next.set("task", t.id);
-                                                        setSearchParams(next, {
-                                                            replace: true,
-                                                        });
-                                                    }}
-                                                    style={{
-                                                        position: "relative",
-                                                        background:
-                                                            tokens.colors.bgSurface,
-                                                        border: `1px solid ${tokens.colors.border}`,
-                                                        borderRadius:
-                                                            tokens.radius.md,
-                                                        padding:
-                                                            "8px 10px 8px 12px",
-                                                        cursor: "pointer",
-                                                        textAlign: "left",
-                                                        display: "flex",
-                                                        flexDirection: "column",
-                                                        gap: 6,
-                                                    }}
-                                                >
-                                                    <BugSeverityRail
-                                                        severity={t.bugSeverity}
-                                                    />
-                                                    <div
-                                                        style={{
-                                                            display: "flex",
-                                                            alignItems:
-                                                                "center",
-                                                            gap: 6,
-                                                            fontSize: 11,
-                                                            color: tokens.colors
-                                                                .textMuted,
-                                                            fontFamily:
-                                                                tokens.typography
-                                                                    .fontFamilyMono,
-                                                        }}
-                                                    >
-                                                        {type && (
-                                                            <DynamicIcon
-                                                                name={type.icon}
-                                                                size={11}
-                                                                strokeWidth={1.75}
-                                                                color={
-                                                                    type.color
-                                                                }
-                                                            />
-                                                        )}
-                                                        {t.customId ??
-                                                            `T-${t.taskNumber}`}
-                                                        <BugSeverityBadge
-                                                            severity={t.bugSeverity}
-                                                            compact
-                                                        />
-                                                    </div>
-                                                    <div
-                                                        style={{
-                                                            fontSize:
-                                                                tokens.typography
-                                                                    .fontSize.sm,
-                                                            color: tokens.colors
-                                                                .textPrimary,
-                                                            lineHeight: 1.35,
-                                                        }}
-                                                    >
-                                                        {t.name}
-                                                    </div>
-                                                    <div
-                                                        style={{
-                                                            display: "flex",
-                                                            alignItems:
-                                                                "center",
-                                                            gap: 6,
-                                                            marginTop: 2,
-                                                        }}
-                                                    >
-                                                        <StoryPointsBadge
-                                                            points={
-                                                                t.storyPoints
-                                                            }
-                                                        />
-                                                        {t.prStatus && (
-                                                            <span
-                                                                style={{
-                                                                    fontSize: 10,
-                                                                    fontWeight: 700,
-                                                                    color:
-                                                                        t.prStatus ===
-                                                                        "merged"
-                                                                            ? "#8B5CF6"
-                                                                            : t.prStatus ===
-                                                                                "open"
-                                                                              ? "#10B981"
-                                                                              : "#94A3B8",
-                                                                    background:
-                                                                        "rgba(0,0,0,0.04)",
-                                                                    padding: "1px 5px",
-                                                                    borderRadius: 3,
-                                                                }}
-                                                            >
-                                                                PR{" "}
-                                                                {t.prStatus.toUpperCase()}
-                                                            </span>
-                                                        )}
-                                                        <div
-                                                            style={{
-                                                                marginLeft:
-                                                                    "auto",
-                                                            }}
-                                                        >
-                                                            {assignee && (
-                                                                <Avatar
-                                                                    name={`${assignee.firstName} ${assignee.lastName}`}
-                                                                    src={
-                                                                        assignee.avatarUrl
-                                                                    }
-                                                                    size={20}
-                                                                />
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </button>
-                                            );
-                                        })}
+                                        <StoryPointsBadge points={t.storyPoints} />
+                                        {t.prStatus && (
+                                            <span
+                                                style={{
+                                                    fontSize: 10,
+                                                    fontWeight: 700,
+                                                    color:
+                                                        t.prStatus === "merged"
+                                                            ? "#8B5CF6"
+                                                            : t.prStatus ===
+                                                                "open"
+                                                              ? "#10B981"
+                                                              : "#94A3B8",
+                                                    background:
+                                                        "rgba(0,0,0,0.04)",
+                                                    padding: "1px 5px",
+                                                    borderRadius: 3,
+                                                }}
+                                            >
+                                                PR {t.prStatus.toUpperCase()}
+                                            </span>
+                                        )}
+                                        <div style={{ marginLeft: "auto" }}>
+                                            {assignee && (
+                                                <Avatar
+                                                    name={`${assignee.firstName} ${assignee.lastName}`}
+                                                    src={assignee.avatarUrl}
+                                                    size={20}
+                                                />
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
+                                </button>
                             );
                         })}
                     </div>
@@ -444,7 +318,7 @@ const SprintBoardPage = () => {
 
             <TaskDetailDrawer
                 taskId={openTaskId}
-                listId={SPRINT_LIST_ID}
+                listId={openTask?.primaryListId ?? ""}
                 onClose={() => {
                     const next = new URLSearchParams(searchParams);
                     next.delete("task");

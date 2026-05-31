@@ -51,7 +51,10 @@ export const ReportBugButton = () => {
             setUrl("");
             navigate(`/t/${task.customId ?? task.id}`);
         },
-        onError: () => message.error("Could not create bug"),
+        onError: (err) =>
+            message.error(
+                err instanceof Error ? err.message : "Could not create bug",
+            ),
     });
 
     return (

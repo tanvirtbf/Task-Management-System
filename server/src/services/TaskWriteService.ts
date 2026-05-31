@@ -296,13 +296,22 @@ export class TaskWriteService {
             );
         }
 
-        // 2. Resolve + validate the task type (body, else the list default).
-        const taskTypeId = input.taskTypeId ?? list.defaultTaskTypeId;
+        // 2. Resolve the task type: explicit body value → the list's default →
+        //    fall back to ANY task type in the workspace. The fallback keeps
+        //    creation from dead-ending when a list has no default (e.g. public
+        //    form submits, quick-adds); only a workspace with ZERO task types 422s.
+        let taskTypeId = input.taskTypeId ?? list.defaultTaskTypeId ?? undefined;
+        if (!taskTypeId) {
+            const [fallback] = await this.taskTypes.listByWorkspace(
+                input.workspaceId,
+            );
+            taskTypeId = fallback?.id;
+        }
         if (!taskTypeId) {
             throw AppError.unprocessable(
                 "task.invalid_task_type",
-                "A task_type_id is required (the list has no default task type)",
-                [{ field: "task_type_id", issue: "is required" }],
+                "This workspace has no task types; create one before adding tasks",
+                [{ field: "task_type_id", issue: "no task type available" }],
             );
         }
         const taskType = await this.taskTypes.findByIdInWorkspace(

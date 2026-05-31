@@ -143,7 +143,7 @@ export const RecentActivityCard = () => {
                                         </span>{" "}
                                         {actionVerb(entry.action)}{" "}
                                         <span style={{ fontWeight: 500 }}>
-                                            {entry.context.taskName ?? "an item"}
+                                            {entry.context?.taskName ?? "an item"}
                                         </span>
                                         <div
                                             style={{
@@ -153,7 +153,7 @@ export const RecentActivityCard = () => {
                                             }}
                                         >
                                             {timeAgo(entry.createdAt)}
-                                            {entry.context.listName &&
+                                            {entry.context?.listName &&
                                                 ` · in ${entry.context.listName}`}
                                         </div>
                                     </div>
