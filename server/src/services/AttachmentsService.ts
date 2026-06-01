@@ -158,6 +158,86 @@ export class AttachmentsService {
     }
 
     /**
+     * PROXIED upload: the server receives the file bytes and PUTs them to R2
+     * itself, then creates a COMPLETE attachment row in one go. This avoids the
+     * browser PUT-ing cross-origin to R2 (which needs bucket CORS that internal
+     * buckets often lack — the actual cause of "uploads don't work" in dev/prod).
+     * Same guards as `signUpload`, but the size check uses the REAL byte length.
+     */
+    async uploadDirect(input: {
+        workspaceId: string;
+        uploaderId: string;
+        role: Role;
+        taskId: string;
+        filename: string;
+        mimeType: string;
+        body: Buffer;
+    }): Promise<WireAttachment> {
+        const task = await this.tasksRepo.findByIdOrCustomIdInWorkspace(
+            input.taskId,
+            input.workspaceId,
+        );
+        if (!task) {
+            throw AppError.notFound(
+                "task.not_found",
+                `Task ${input.taskId} does not exist`,
+            );
+        }
+        if (input.role === Roles.GUEST) {
+            throw AppError.forbidden(
+                "auth.forbidden",
+                "Guests cannot upload attachments",
+            );
+        }
+        if (input.body.length > MAX_ATTACHMENT_BYTES) {
+            throw new AppError(
+                413,
+                "attachment.too_large",
+                `File exceeds the ${Math.floor(MAX_ATTACHMENT_BYTES / (1024 * 1024))} MB limit`,
+            );
+        }
+        if (!isMimeAllowed(input.mimeType)) {
+            throw new AppError(
+                415,
+                "attachment.mime_not_allowed",
+                `File type "${input.mimeType}" is not permitted`,
+            );
+        }
+
+        const id = fakeId("att");
+        const storageKey = this.r2.buildKey(
+            input.workspaceId,
+            id,
+            extForMime(input.mimeType),
+        );
+        const size = BigInt(input.body.length);
+
+        await this.attachments.createPending({
+            id,
+            taskId: task.id,
+            name: input.filename,
+            storageKey,
+            mimeType: input.mimeType,
+            sizeBytes: size,
+            uploadedBy: input.uploaderId,
+        });
+        await this.r2.putObject(storageKey, input.body, input.mimeType);
+        await this.attachments.markComplete(id, {
+            thumbnailKey: null,
+            sizeBytes: size,
+        });
+
+        const updated = await this.attachments.findByIdInWorkspace(
+            id,
+            input.workspaceId,
+        );
+        if (!updated) {
+            throw AppError.internal("Attachment not found after upload");
+        }
+        return this.hydrate(updated);
+    }
+
+    /**
      * Mark an upload complete after R2 confirms the object landed.
      *
      * Resolves the attachment in the caller's workspace (`404 attachment.not_found`

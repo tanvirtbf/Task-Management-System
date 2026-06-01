@@ -30,6 +30,7 @@ const mockFetch = (body: ReadableStream<Uint8Array>, status = 200): void => {
         ok: status >= 200 && status < 300,
         status,
         body,
+        headers: { get: () => null }, // real fetch always supplies a Headers
         json: () => Promise.resolve({}),
     }) as unknown as typeof fetch;
 };

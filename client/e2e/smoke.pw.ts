@@ -119,15 +119,9 @@ test("create-task flow works in the browser (regression of the fixed bug)", asyn
     // 1. Create a space via the sidebar "+" (button title contains "space",
     //    case-insensitive) or a "New space" affordance.
     const spaceName = "PW Space " + Date.now().toString().slice(-5);
-    const addSpace = page
-        .getByRole("button", { name: /space/i })
-        .first();
-    await addSpace.click({ timeout: 8000 });
-    await page.getByRole("textbox").first().fill(spaceName);
-    await page
-        .getByRole("button", { name: /create|save|add/i })
-        .first()
-        .click();
+    await page.getByLabel("New space").first().click({ timeout: 8000 });
+    await page.getByPlaceholder("e.g. Marketing").fill(spaceName);
+    await page.getByRole("button", { name: "Create space" }).click();
 
     // 2. Expect the space to appear somewhere (sidebar / heading).
     await expect(page.getByText(spaceName).first()).toBeVisible({

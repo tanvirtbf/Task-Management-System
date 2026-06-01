@@ -438,51 +438,32 @@ export const dependenciesApi = {
     },
 };
 
-// ─── Attachments (§16) ─ 3-step presigned upload; bare Attachment[] list ──────
-interface WireSignResult {
-    attachmentId: string;
-    uploadUrl: string;
-    fields: Record<string, string>;
-    expiresIn: number;
-}
+// ─── Attachments (§16) ─ proxied upload (browser → our API → R2); bare list ───
 export const attachmentsApi = {
     byTask: async (taskId: string): Promise<Attachment[]> =>
         (
             await api.get<WireAttachment[]>(`/tasks/${taskId}/attachments`)
         ).data.map(mapAttachment),
     /**
-     * sign → PUT the bytes straight to R2 (raw `fetch`, NOT the `api` instance:
-     * no Bearer, no JSON, no interceptors) → finalize. `storage_key` is
-     * server-owned so finalize needs no body. Requires Cloudflare R2 configured
-     * server-side; in the dev no-R2 stub the signed URL is fake and the PUT fails.
+     * Proxied upload: the browser POSTs the raw file bytes to OUR API (with the
+     * Bearer token) and the server uploads to R2 server-side. This avoids the
+     * browser PUT-ing cross-origin to R2, which needs a bucket CORS policy the
+     * dev/internal bucket lacks (the cause of "uploads don't work"). The
+     * sign→PUT→finalize endpoints remain server-side for direct-to-R2 clients.
      */
     upload: async (taskId: string, file: File): Promise<Attachment> => {
         const mimeType = file.type || "application/octet-stream";
-        const sign = (
-            await api.post<WireSignResult>("/uploads/sign", {
-                scopeType: "task",
-                scopeId: taskId,
-                filename: file.name,
-                mimeType,
-                sizeBytes: file.size,
-            })
-        ).data;
-        const put = await fetch(sign.uploadUrl, {
-            method: "PUT",
-            body: file,
-            headers: { "Content-Type": mimeType },
-        });
-        if (!put.ok) {
-            throw new Error(`Upload to storage failed (${put.status})`);
-        }
-        return mapAttachment(
-            (
-                await api.post<WireAttachment>(
-                    `/attachments/${sign.attachmentId}/finalize`,
-                    {},
-                )
-            ).data,
+        const res = await api.post<WireAttachment>(
+            `/tasks/${taskId}/attachments`,
+            file,
+            {
+                headers: {
+                    "Content-Type": mimeType,
+                    "X-Filename": encodeURIComponent(file.name),
+                },
+            },
         );
+        return mapAttachment(res.data);
     },
     delete: async (id: string): Promise<void> => {
         await api.delete(`/attachments/${id}`);

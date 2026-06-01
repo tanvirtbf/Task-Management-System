@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import dayjs from "dayjs";
 import { attachmentsApi } from "../../http/api";
+import { getApiErrorMessage } from "../../http/client";
 import { useUserMap } from "../../hooks/useReferenceData";
 import { tokens } from "../../theme";
 import type { Attachment } from "../../types/extras";
@@ -60,6 +61,8 @@ export const AttachmentsSection = ({ taskId }: Props) => {
             qc.invalidateQueries({ queryKey: ["task", taskId] });
             message.success(`"${att.name}" uploaded`);
         },
+        onError: (err) =>
+            message.error(getApiErrorMessage(err) || "Upload failed"),
     });
 
     const remove = useMutation({
@@ -200,10 +203,13 @@ const AttachmentCard = ({
     const isImage = a.type.startsWith("image/");
 
     return (
-        <a
-            href={a.url}
-            target="_blank"
-            rel="noreferrer"
+        // A <div> (not <a>) so the inner Download/Delete <a>/<button> aren't
+        // nested in an anchor (invalid HTML → React hydration error). Clicking
+        // the card opens the file in a new tab.
+        <div
+            role="button"
+            tabIndex={0}
+            onClick={() => window.open(a.url, "_blank", "noopener,noreferrer")}
             style={{
                 position: "relative",
                 background: tokens.colors.bgSurface,
@@ -250,6 +256,7 @@ const AttachmentCard = ({
                         }}
                     />
                 ) : (
+                    // eslint-disable-next-line react-hooks/static-components -- ICON_BY_TYPE returns a stable lucide component (a lookup, not a render-created component)
                     <Icon size={28} strokeWidth={1.5} />
                 )}
             </div>
@@ -329,7 +336,7 @@ const AttachmentCard = ({
                     </button>
                 </Popconfirm>
             </div>
-        </a>
+        </div>
     );
 };
 

@@ -119,6 +119,27 @@ export class R2Service {
         };
     }
 
+    /**
+     * Upload bytes to R2 directly (server-side) — backs the PROXIED upload so the
+     * browser never has to PUT cross-origin to R2 (which needs a bucket CORS
+     * policy the dev/internal bucket usually lacks). No-op under the stub.
+     */
+    async putObject(
+        key: string,
+        body: Buffer,
+        contentType: string,
+    ): Promise<void> {
+        if (this.isStub) return;
+        await this.client!.send(
+            new PutObjectCommand({
+                Bucket: this.bucket,
+                Key: key,
+                Body: body,
+                ContentType: contentType,
+            }),
+        );
+    }
+
     /** A short-lived signed GET URL — backs `Attachment.url` + the download 302. */
     async presignGet(
         key: string,

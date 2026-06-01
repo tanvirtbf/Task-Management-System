@@ -106,4 +106,18 @@ router.get(
         attachmentsController.listByTask(req as AuthRequest, res, next),
 );
 
+// ─── POST /api/v1/tasks/:id/attachments ────────────────────────────────────────
+// 🔐 PROXIED upload: the browser sends the raw file bytes to OUR server (so it
+// never PUTs cross-origin to R2, which needs bucket CORS the dev bucket lacks);
+// the server uploads to R2 itself. `express.raw` captures the body as a Buffer
+// (the app-level express.json skips it — its Content-Type is the file's MIME,
+// not application/json). filename via `X-Filename` header.
+router.post(
+    "/tasks/:id/attachments",
+    authenticate,
+    express.raw({ type: () => true, limit: "30mb" }),
+    (req: Request, res: Response, next: NextFunction) =>
+        attachmentsController.upload(req as AuthRequest, res, next),
+);
+
 export default router;

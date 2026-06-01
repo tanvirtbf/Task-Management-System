@@ -1,6 +1,7 @@
 import type { NextFunction, Response } from "express";
 import type { Logger } from "winston";
 import { AttachmentsService } from "../services/AttachmentsService";
+import { AppError } from "../errors";
 import type { AuthRequest } from "../types";
 import type {
     FinalizeRequest,
@@ -47,6 +48,54 @@ export class AttachmentsController {
                 fields: result.fields,
                 expires_in: result.expiresIn,
             });
+        } catch (err) {
+            next(err);
+        }
+    }
+
+    /**
+     * POST /api/v1/tasks/:id/attachments — PROXIED upload. The raw file bytes are
+     * the request body (parsed by `express.raw`); the filename comes from the
+     * `X-Filename` header and the MIME from `Content-Type`. The server uploads to
+     * R2 itself. 🔐 any member. Returns 201 with the full `Attachment`.
+     */
+    async upload(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            const body: unknown = req.body;
+            if (!Buffer.isBuffer(body) || body.length === 0) {
+                throw AppError.badRequest(
+                    "attachment.empty",
+                    "No file data was received",
+                );
+            }
+            const contentType = req.headers["content-type"];
+            const mimeType =
+                (typeof contentType === "string"
+                    ? contentType.split(";")[0]?.trim()
+                    : "") || "application/octet-stream";
+            const rawName = req.headers["x-filename"];
+            const filename =
+                typeof rawName === "string" && rawName
+                    ? decodeURIComponent(rawName)
+                    : "file";
+
+            const attachment = await this.service.uploadDirect({
+                workspaceId: req.auth.workspaceId,
+                uploaderId: req.auth.sub,
+                role: req.auth.role,
+                taskId: req.params.id,
+                filename,
+                mimeType,
+                body,
+            });
+
+            this.logger.info("attachments.upload.ok", {
+                requestId: req.requestId,
+                workspaceId: req.auth.workspaceId,
+                attachmentId: attachment.id,
+            });
+
+            res.status(201).json(attachment);
         } catch (err) {
             next(err);
         }

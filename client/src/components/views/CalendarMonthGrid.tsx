@@ -126,6 +126,7 @@ const DayCell = ({
         <div
             ref={setNodeRef}
             onClick={onClick}
+            data-testid={`day-${dayKey(day)}`}
             style={{
                 padding: 4,
                 borderRight: `1px solid ${tokens.colors.borderSubtle}`,

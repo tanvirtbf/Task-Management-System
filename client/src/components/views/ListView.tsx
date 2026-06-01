@@ -229,13 +229,7 @@ export const ListView = ({ listId }: ListViewProps) => {
                     gap: tokens.spacing[3],
                 }}
             >
-                {!hasAnyTasks ? (
-                    <EmptyState
-                        icon={ListChecks}
-                        title="No tasks yet"
-                        description="Create your first task by typing in the inputs below each status."
-                    />
-                ) : !hasFilteredTasks ? (
+                {hasAnyTasks && !hasFilteredTasks ? (
                     <EmptyState
                         icon={ListChecks}
                         title="No tasks match your filters"
@@ -248,6 +242,20 @@ export const ListView = ({ listId }: ListViewProps) => {
                         onDragStart={handleDragStart}
                         onDragEnd={handleDragEnd}
                     >
+                        {/* Empty list: still render the status groups so the
+                            quick-add inputs are available (the prompt below). */}
+                        {!hasAnyTasks && (
+                            <div
+                                style={{
+                                    padding: "0 12px 4px",
+                                    color: tokens.colors.textMuted,
+                                    fontSize: tokens.typography.fontSize.sm,
+                                }}
+                            >
+                                No tasks yet — add your first one in any status
+                                below.
+                            </div>
+                        )}
                         {grouped
                             .filter((g) => g.tasks.length > 0 || groupBy === "status")
                             .map(({ status, tasks: groupTasks }) =>
