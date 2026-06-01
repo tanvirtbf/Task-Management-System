@@ -133,17 +133,44 @@ export const mapTask = (w: WireTask): Task => {
  * `recurrence_*`). Returns a camelCase object — the request interceptor
  * decamelizes it on the way out.
  */
+/**
+ * Normalise a task date field to the bare `YYYY-MM-DD` the backend DATE columns
+ * (start_date / due_date / recurrence_ends_at) require — the strict
+ * `isDate({ format: "YYYY-MM-DD" })` validators reject a full ISO datetime
+ * (which is what AntD DatePicker `.toISOString()` and `new Date().toISOString()`
+ * produce), so calendar create/reschedule, inline date edits, the create-task
+ * modal, bulk due-date and recurrence-end all 422'd without this.
+ *
+ * Uses LOCAL date components (not the UTC ISO prefix) so a midnight-local date
+ * in a positive-offset timezone (e.g. Asia/Dhaka, +6) is NOT shifted to the
+ * previous day. `null` passes through (clears the date); `undefined` is left
+ * untouched (field not being changed).
+ */
+const toDateOnly = (v: unknown): unknown => {
+    if (typeof v !== "string" || v === "") return v;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v; // already date-only
+    const d = new Date(v);
+    if (Number.isNaN(d.getTime())) return v; // not a parseable date — leave as-is
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+};
+
 export const taskToWire = (
     patch: Partial<Task>,
 ): Record<string, unknown> => {
     const { customFields, recurrence, ...rest } = patch;
     const out: Record<string, unknown> = { ...rest };
+    // DATE columns: hand the backend bare YYYY-MM-DD, never a full ISO datetime.
+    if ("dueDate" in out) out.dueDate = toDateOnly(out.dueDate);
+    if ("startDate" in out) out.startDate = toDateOnly(out.startDate);
     if (customFields !== undefined) out.customFieldValues = customFields;
     if (recurrence !== undefined) {
         out.recurrencePattern = recurrence?.pattern ?? "none";
         out.recurrenceDays =
             recurrence?.daysOfWeek?.map(dayIndexToName) ?? null;
-        out.recurrenceEndsAt = recurrence?.endsAt ?? null;
+        out.recurrenceEndsAt = toDateOnly(recurrence?.endsAt ?? null);
     }
     return out;
 };

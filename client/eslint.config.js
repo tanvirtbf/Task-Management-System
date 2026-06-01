@@ -19,5 +19,18 @@ export default defineConfig([
             ecmaVersion: 2020,
             globals: globals.browser,
         },
+        rules: {
+            // Honour the `_`-prefix convention used across the codebase to mark
+            // intentionally-unused bindings (destructure-to-drop, ignored args,
+            // caught errors) — e.g. `const { workspaceId: _workspaceId, ...rest }`.
+            "@typescript-eslint/no-unused-vars": [
+                "error",
+                {
+                    argsIgnorePattern: "^_",
+                    varsIgnorePattern: "^_",
+                    caughtErrorsIgnorePattern: "^_",
+                },
+            ],
+        },
     },
 ]);
