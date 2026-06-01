@@ -1121,6 +1121,50 @@ CREATE TABLE task_postmortems (
 
 
 -- =============================================================================
+-- 34. chat_conversations  (AI Help Assistant — one help-chat thread per row)
+--
+-- See AI_ASSISTANT_PLAN.md (Phase 6). Owned by a user within a workspace; a
+-- user only ever reads their own conversations. `title` is derived from the
+-- first question. The turns live in chat_messages.
+-- =============================================================================
+CREATE TABLE chat_conversations (
+    id           VARCHAR(64)  NOT NULL,
+    workspace_id VARCHAR(64)  NOT NULL,
+    user_id      VARCHAR(64)  NOT NULL,
+    title        VARCHAR(200) NOT NULL,
+    created_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at   TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                      ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    CONSTRAINT fk_chat_conversations_workspace FOREIGN KEY (workspace_id)
+        REFERENCES workspaces(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_chat_conversations_user FOREIGN KEY (user_id)
+        REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    INDEX idx_chat_conversations_user_time (user_id, updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
+
+
+-- =============================================================================
+-- 35. chat_messages  (AI Help Assistant — user/assistant turns in a thread)
+-- =============================================================================
+CREATE TABLE chat_messages (
+    id              VARCHAR(64)              NOT NULL,
+    internal_id     BIGINT UNSIGNED          NOT NULL AUTO_INCREMENT,
+    conversation_id VARCHAR(64)              NOT NULL,
+    role            ENUM('user','assistant') NOT NULL,
+    content         MEDIUMTEXT               NOT NULL,
+    created_at      TIMESTAMP                NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_chat_messages_internal_id (internal_id),
+    CONSTRAINT fk_chat_messages_conversation FOREIGN KEY (conversation_id)
+        REFERENCES chat_conversations(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    INDEX idx_chat_messages_conversation_time (conversation_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
+
+
+-- =============================================================================
 -- OPTIONAL: counter-maintenance triggers
 -- These keep `tasks.comments_count`, `tasks.attachments_count`,
 -- `tasks.subtasks_count`, `tasks.subtasks_completed` and `forms.submission_count`

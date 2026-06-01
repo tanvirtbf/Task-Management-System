@@ -2,6 +2,7 @@ import { Outlet } from "react-router-dom";
 import { Sidebar } from "../components/shared/Sidebar";
 import { Topbar } from "../components/shared/Topbar";
 import { OfflineIndicator } from "../components/shared/OfflineIndicator";
+import { AssistantWidget } from "../components/assistant/AssistantWidget";
 import { tokens } from "../theme";
 
 /**
@@ -38,6 +39,7 @@ const AppShell = () => (
             </main>
         </div>
         <OfflineIndicator />
+        <AssistantWidget />
     </div>
 );
 

@@ -55,6 +55,11 @@ const {
     CLOUDFLARE_R2_BUCKET,
     CLOUDFLARE_R2_PUBLIC_URL,
     R2_SIGNED_URL_TTL,
+
+    // OpenAI — powers the in-app AI Help Assistant (server-side only).
+    OPENAI_API_KEY,
+    OPENAI_MODEL,
+    OPENAI_MAX_OUTPUT_TOKENS,
 } = process.env;
 
 export const Config = {
@@ -101,4 +106,11 @@ export const Config = {
     CLOUDFLARE_R2_BUCKET,
     CLOUDFLARE_R2_PUBLIC_URL,
     R2_SIGNED_URL_TTL,
+
+    // OpenAI (AI Help Assistant). The API key is a SERVER-ONLY secret — never
+    // sent to the client. Model defaults to the cheap, fast, Bangla-capable
+    // `gpt-4o-mini`; override with OPENAI_MODEL (e.g. gpt-4o for higher quality).
+    OPENAI_API_KEY,
+    OPENAI_MODEL: OPENAI_MODEL ?? "gpt-4o-mini",
+    OPENAI_MAX_OUTPUT_TOKENS: OPENAI_MAX_OUTPUT_TOKENS ?? "800",
 };

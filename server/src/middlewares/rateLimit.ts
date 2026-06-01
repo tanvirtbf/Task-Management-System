@@ -82,6 +82,22 @@ export const publicFormLimiter = isTest
           handler,
       });
 
+// `/api/v1/assistant/chat` — 20/min/user (AI cost guard; OpenAI calls cost money)
+export const assistantLimiter = isTest
+    ? noop
+    : rateLimit({
+          windowMs: 60 * 1000,
+          limit: 20,
+          standardHeaders: true,
+          legacyHeaders: false,
+          keyGenerator: (req: Request) => {
+              const auth = (req as Request & { auth?: { sub?: string } }).auth;
+              if (auth?.sub) return `u:${auth.sub}`;
+              return ipKeyGenerator(req.ip ?? "unknown");
+          },
+          handler,
+      });
+
 // `/api/v1/uploads/sign` — 60/min/user
 export const uploadSignLimiter = isTest
     ? noop

@@ -122,8 +122,10 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 });
 
 // A single in-flight refresh shared by all 401s (no thundering herd).
+// Exported so non-axios callers (e.g. the assistant's fetch-based SSE stream in
+// `http/assistant.ts`) can reuse the same refresh-once flow.
 let refreshInFlight: Promise<void> | null = null;
-const refreshAccessToken = (): Promise<void> => {
+export const refreshAccessToken = (): Promise<void> => {
     if (!refreshInFlight) {
         // Raw axios (NOT `api`) so this call skips the interceptor stack: no
         // Bearer (the cookie authenticates it), no camelize (read snake here),

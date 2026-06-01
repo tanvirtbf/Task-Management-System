@@ -29,6 +29,13 @@
       "when": 1780206116918,
       "tag": "0003_notifications_prefs_soft_delete",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1780292160462,
+      "tag": "0004_chat",
+      "breakpoints": true
     }
   ]
 }

@@ -35,6 +35,7 @@ import sseRouter from "./routes/sse";
 import jobsRouter from "./routes/jobs";
 import slaRouter from "./routes/sla";
 import healthRouter from "./routes/health";
+import assistantRouter from "./routes/assistant";
 import { metricsMiddleware } from "./observability/metrics";
 
 const app = express();
@@ -174,6 +175,10 @@ v1.use("/activity", workspaceActivityRouter);
 // §25 Home / KPIs — clean `/home` prefix (`/home/kpis`, `/home/agenda`); no
 // shared path segments, so mount order is irrelevant.
 v1.use("/home", homeRouter);
+// AI Help Assistant — clean `/assistant` prefix (POST /assistant/chat); no
+// shared path segments, so mount order is irrelevant. Authenticated; has its
+// own rate-limit bucket (assistantLimiter, 20/min/user) applied in the route.
+v1.use("/assistant", assistantRouter);
 // §27 SSE — long-lived `text/event-stream` of the caller's notifications under
 // the clean `/stream` prefix (GET /stream/inbox); no shared path segments, so
 // mount order is irrelevant. Cookie-authenticated, user-scoped.

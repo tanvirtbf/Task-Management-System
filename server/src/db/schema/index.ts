@@ -36,5 +36,6 @@ export * from "./forms";
 export * from "./notifications";
 export * from "./audit";
 export * from "./templates";
+export * from "./chat";
 export * from "./views";
 export * from "./relations";
