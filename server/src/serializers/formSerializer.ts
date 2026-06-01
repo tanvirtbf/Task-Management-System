@@ -88,6 +88,20 @@ export const toWireFormSubmission = (
     submitted_at: s.submittedAt.toISOString(),
 });
 
+/** A dropdown option exposed on a public form (no internal field id). */
+export interface PublicFormFieldOption {
+    id: string;
+    label: string;
+    color: string;
+}
+
+/** Curated, public-safe slice of a custom field's `config` (no secrets). */
+export interface PublicFormFieldConfig {
+    currency?: string;
+    precision?: number;
+    include_time?: boolean;
+}
+
 /** A public-form field — no internal `id`, hidden fields are omitted upstream. */
 export interface PublicFormField {
     field_kind: FormFieldRow["fieldKind"];
@@ -98,6 +112,22 @@ export interface PublicFormField {
     is_required: boolean;
     default_value: unknown;
     position: number;
+    /**
+     * Enrichment so the ANONYMOUS page can render the right control and submit
+     * the right value envelope. `null` for `task_attr` fields (rendered as plain
+     * text). For `custom_field`: the field's type (text/phone/money/date/
+     * dropdown/files), its dropdown `options`, and a curated `config`.
+     */
+    value_type: string | null;
+    options: PublicFormFieldOption[] | null;
+    config: PublicFormFieldConfig | null;
+}
+
+/** Per-field-key enrichment the service passes into `toPublicForm`. */
+export interface PublicFormEnrichment {
+    typeByKey: Map<string, string>;
+    configByKey: Map<string, Record<string, unknown>>;
+    optionsByKey: Map<string, PublicFormFieldOption[]>;
 }
 
 export interface PublicForm {
@@ -109,12 +139,30 @@ export interface PublicForm {
     fields: PublicFormField[];
 }
 
+const curateConfig = (
+    raw: Record<string, unknown> | undefined,
+): PublicFormFieldConfig | null => {
+    if (!raw) return null;
+    const c: PublicFormFieldConfig = {};
+    if (typeof raw.currency === "string") c.currency = raw.currency;
+    if (typeof raw.precision === "number") c.precision = raw.precision;
+    if (typeof raw.include_time === "boolean") c.include_time = raw.include_time;
+    return Object.keys(c).length > 0 ? c : null;
+};
+
 /**
  * Public-safe projection (§18 GET /public/forms/:slug): omits internal ids
  * (form id, list id, field ids), `is_public`, `submission_count`, and all of
  * `settings` except `success_message`. Hidden fields are dropped entirely.
+ * `enrich` (optional) carries per-custom-field type/options/config so the
+ * anonymous page can render typed controls (dropdown, date, money) and submit
+ * the matching value envelope.
  */
-export const toPublicForm = (f: FormRow, fields: FormFieldRow[]): PublicForm => {
+export const toPublicForm = (
+    f: FormRow,
+    fields: FormFieldRow[],
+    enrich?: PublicFormEnrichment,
+): PublicForm => {
     const settings = (f.settings ?? {}) as { success_message?: unknown };
     const successMessage =
         typeof settings.success_message === "string"
@@ -128,15 +176,31 @@ export const toPublicForm = (f: FormRow, fields: FormFieldRow[]): PublicForm => 
         success_message: successMessage,
         fields: fields
             .filter((x) => !x.isHidden)
-            .map((x) => ({
-                field_kind: x.fieldKind,
-                field_key: x.fieldKey,
-                label: x.label,
-                help_text: x.helpText,
-                placeholder: x.placeholder,
-                is_required: x.isRequired,
-                default_value: x.defaultValue ?? null,
-                position: x.position,
-            })),
+            .map((x) => {
+                const isCustom = x.fieldKind === "custom_field";
+                const valueType = isCustom
+                    ? (enrich?.typeByKey.get(x.fieldKey) ?? null)
+                    : null;
+                const options =
+                    valueType === "dropdown"
+                        ? (enrich?.optionsByKey.get(x.fieldKey) ?? [])
+                        : null;
+                const config = isCustom
+                    ? curateConfig(enrich?.configByKey.get(x.fieldKey))
+                    : null;
+                return {
+                    field_kind: x.fieldKind,
+                    field_key: x.fieldKey,
+                    label: x.label,
+                    help_text: x.helpText,
+                    placeholder: x.placeholder,
+                    is_required: x.isRequired,
+                    default_value: x.defaultValue ?? null,
+                    position: x.position,
+                    value_type: valueType,
+                    options,
+                    config,
+                };
+            }),
     };
 };

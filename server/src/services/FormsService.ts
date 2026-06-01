@@ -462,8 +462,56 @@ export class FormsService {
         if (!resolved) {
             throw AppError.notFound("form.not_found", "Form not found");
         }
-        const fields = await this.fields.listByForm(resolved.form.id);
-        return toPublicForm(resolved.form, fields);
+        const { form, workspaceId } = resolved;
+        const fields = await this.fields.listByForm(form.id);
+
+        // Enrich custom_field fields with their type / config / dropdown options
+        // so the anonymous page renders the right control and submits the
+        // matching value envelope (text→{text}, date→{date}, dropdown→
+        // {option_id}, money→{amount,currency}). task_attr fields stay plain.
+        const typeByKey = new Map<string, string>();
+        const configByKey = new Map<string, Record<string, unknown>>();
+        const cfKeys = [
+            ...new Set(
+                fields
+                    .filter((f) => f.fieldKind === "custom_field" && !f.isHidden)
+                    .map((f) => f.fieldKey),
+            ),
+        ];
+        for (const key of cfKeys) {
+            const cf = await this.customFields.findByIdInWorkspace(
+                key,
+                workspaceId,
+            );
+            if (cf) {
+                typeByKey.set(key, cf.type);
+                configByKey.set(
+                    key,
+                    (cf.config ?? {}) as Record<string, unknown>,
+                );
+            }
+        }
+        const dropdownKeys = cfKeys.filter(
+            (k) => typeByKey.get(k) === "dropdown",
+        );
+        const rawOptions =
+            await this.customFields.optionsByFieldIds(dropdownKeys);
+        const optionsByKey = new Map<
+            string,
+            { id: string; label: string; color: string }[]
+        >();
+        for (const [k, opts] of rawOptions) {
+            optionsByKey.set(
+                k,
+                opts.map((o) => ({ id: o.id, label: o.label, color: o.color })),
+            );
+        }
+
+        return toPublicForm(form, fields, {
+            typeByKey,
+            configByKey,
+            optionsByKey,
+        });
     }
 
     /**

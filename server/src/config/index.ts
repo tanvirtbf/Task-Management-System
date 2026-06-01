@@ -42,6 +42,14 @@ const {
     EMAIL_FROM,
     EMAIL_FROM_NAME,
 
+    // Laravel-style MAIL_* names (what ops set in .env). Preferred over SMTP_*.
+    MAIL_HOST,
+    MAIL_PORT,
+    MAIL_USERNAME,
+    MAIL_PASSWORD,
+    MAIL_FROM_ADDRESS,
+    MAIL_FROM_NAME,
+
     FRONTEND_URL,
     API_URL,
     CORS_ALLOWED_ORIGINS,
@@ -84,12 +92,13 @@ export const Config = {
     ACCESS_TOKEN_TTL,
     REFRESH_TOKEN_TTL,
 
-    SMTP_HOST,
-    SMTP_PORT,
-    SMTP_USER,
-    SMTP_PASS,
-    EMAIL_FROM,
-    EMAIL_FROM_NAME,
+    // Mailer — prefer MAIL_* (set in .env); fall back to legacy SMTP_*/EMAIL_*.
+    SMTP_HOST: MAIL_HOST ?? SMTP_HOST,
+    SMTP_PORT: MAIL_PORT ?? SMTP_PORT,
+    SMTP_USER: MAIL_USERNAME ?? SMTP_USER,
+    SMTP_PASS: MAIL_PASSWORD ?? SMTP_PASS,
+    EMAIL_FROM: MAIL_FROM_ADDRESS ?? EMAIL_FROM,
+    EMAIL_FROM_NAME: MAIL_FROM_NAME ?? EMAIL_FROM_NAME,
 
     FRONTEND_URL,
     API_URL,

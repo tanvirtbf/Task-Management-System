@@ -516,6 +516,11 @@ export const commentsApi = {
 // branding + visible fields). Custom-field type/config is NOT exposed to
 // anonymous callers, so the page renders custom fields as plain inputs and
 // submits them with the `{text}` envelope (rich types are a V1 limitation).
+export interface PublicFormFieldOption {
+    id: string;
+    label: string;
+    color: string;
+}
 export interface PublicFormField {
     fieldKind: "task_attr" | "custom_field";
     fieldKey: string;
@@ -525,6 +530,15 @@ export interface PublicFormField {
     isRequired: boolean;
     defaultValue: unknown;
     position: number;
+    // Enrichment (snake→camel by the interceptor): lets the page render typed
+    // controls + submit the matching envelope. null for task_attr fields.
+    valueType: string | null;
+    options: PublicFormFieldOption[] | null;
+    config: {
+        currency?: string;
+        precision?: number;
+        includeTime?: boolean;
+    } | null;
 }
 export interface PublicFormView {
     title: string;
@@ -550,7 +564,16 @@ export const publicFormsApi = {
                 submissionId: string;
                 taskId: string | null;
                 message: string;
-            }>(`/public/forms/${slug}/submit`, { data })
+            }>(
+                `/public/forms/${slug}/submit`,
+                { data },
+                // `data` is keyed by custom-field IDs (e.g. "cf-HLT7KEK-…"); the
+                // recursive decamelize would mangle those keys (every capital →
+                // "_x"), so the backend couldn't resolve the field. The value
+                // envelopes ({text}/{date}/{option_id}/{amount,currency}) are
+                // already snake-case on the wire, so skipping is safe.
+                { skipDecamelize: true },
+            )
         ).data,
 };
 

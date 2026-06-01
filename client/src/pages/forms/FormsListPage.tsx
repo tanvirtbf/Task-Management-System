@@ -1,6 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Button, App as AntApp } from "antd";
+import { Button, App as AntApp, Modal, Input, Select } from "antd";
 import {
     FileText,
     Plus,
@@ -17,11 +18,37 @@ import { tokens } from "../../theme";
 
 const FormsListPage = () => {
     const navigate = useNavigate();
+    const qc = useQueryClient();
     const { message } = AntApp.useApp();
     const listMap = useListMap();
+    const lists = Array.from(listMap.values());
+    const [creating, setCreating] = useState(false);
+    const [draftTitle, setDraftTitle] = useState("");
+    const [draftListId, setDraftListId] = useState<string | undefined>(
+        undefined,
+    );
     const { data: forms = [], isLoading } = useQuery({
         queryKey: ["forms"],
         queryFn: () => formsApi.list(),
+    });
+
+    const createForm = useMutation({
+        mutationFn: () =>
+            formsApi.create({
+                listId: draftListId as string,
+                title: draftTitle.trim(),
+            }),
+        onSuccess: (form) => {
+            qc.invalidateQueries({ queryKey: ["forms"] });
+            qc.invalidateQueries({
+                queryKey: ["forms-by-list", form.listId],
+            });
+            setCreating(false);
+            setDraftTitle("");
+            setDraftListId(undefined);
+            navigate(`/forms/${form.id}/edit`);
+        },
+        onError: () => message.error("Could not create form"),
     });
 
     return (
@@ -65,11 +92,7 @@ const FormsListPage = () => {
                 <Button
                     type="primary"
                     icon={<Plus size={14} strokeWidth={2} />}
-                    onClick={() => {
-                        message.info(
-                            "Click an existing form to open the builder (new-from-scratch flow in Phase 12 polish).",
-                        );
-                    }}
+                    onClick={() => setCreating(true)}
                 >
                     New form
                 </Button>
@@ -280,8 +303,74 @@ const FormsListPage = () => {
                     })}
                 </div>
             )}
+
+            <Modal
+                open={creating}
+                title="New form"
+                onCancel={() => {
+                    setCreating(false);
+                    setDraftTitle("");
+                    setDraftListId(undefined);
+                }}
+                onOk={() => createForm.mutate()}
+                okText="Create form"
+                okButtonProps={{
+                    disabled: !draftTitle.trim() || !draftListId,
+                }}
+                confirmLoading={createForm.isPending}
+                width={460}
+            >
+                <div
+                    style={{
+                        paddingTop: tokens.spacing[3],
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: tokens.spacing[4],
+                    }}
+                >
+                    <div>
+                        <label style={modalLabelStyle}>Form title</label>
+                        <Input
+                            value={draftTitle}
+                            onChange={(e) => setDraftTitle(e.target.value)}
+                            placeholder="e.g. Order intake form"
+                            autoFocus
+                            onPressEnter={() => {
+                                if (draftTitle.trim() && draftListId)
+                                    createForm.mutate();
+                            }}
+                        />
+                    </div>
+                    <div>
+                        <label style={modalLabelStyle}>
+                            Submissions create tasks in
+                        </label>
+                        <Select
+                            value={draftListId}
+                            onChange={(v) => setDraftListId(v)}
+                            placeholder="Select a list…"
+                            showSearch
+                            optionFilterProp="label"
+                            style={{ width: "100%" }}
+                            options={lists.map((l) => ({
+                                value: l.id,
+                                label: l.name,
+                            }))}
+                            notFoundContent="No lists yet — create a list first"
+                        />
+                    </div>
+                </div>
+            </Modal>
         </div>
     );
+};
+
+const modalLabelStyle: React.CSSProperties = {
+    display: "block",
+    fontSize: 13,
+    fontWeight: 500,
+    marginBottom: 4,
+    color: tokens.colors.textSecondary,
 };
 
 export default FormsListPage;

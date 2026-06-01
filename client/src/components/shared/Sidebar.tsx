@@ -200,19 +200,29 @@ export const Sidebar = () => {
                 )}
             </div>
 
-            {/* Scrollable middle */}
+            {/* Scrollable middle. The scroll lives on THIS box (flex:1 +
+                minHeight:0 + overflowY:auto). The content sits in an INNER
+                flex-column so its items keep their natural height and the area
+                SCROLLS when long — instead of the flex children shrinking
+                (squishing) to fit, which is what happened before. */}
             <div
+                data-testid="sidebar-scroll"
                 style={{
                     flex: 1,
+                    minHeight: 0,
                     overflowY: "auto",
                     padding: sidebarCollapsed
                         ? `${tokens.spacing[2]}px 0`
                         : `${tokens.spacing[2]}px ${tokens.spacing[2]}px`,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 2,
                 }}
             >
+                <div
+                    style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 2,
+                    }}
+                >
                 {sidebarCollapsed ? (
                     <CollapsedQuickLinks unreadCount={unreadCount} />
                 ) : (
@@ -310,6 +320,7 @@ export const Sidebar = () => {
                         />
                     </>
                 )}
+                </div>
             </div>
 
             {/* Bottom pinned */}
