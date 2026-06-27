@@ -3,7 +3,9 @@ import type { Logger } from "winston";
 import { AuthService } from "../services/AuthService";
 import type { AuthRequest } from "../types";
 import type {
+    AcceptInvitationRequest,
     ForgotPasswordRequest,
+    GetInvitationRequest,
     LoginRequest,
     LogoutAllRequest,
     LogoutRequest,
@@ -235,6 +237,57 @@ export class AuthController {
             });
 
             res.status(200).json(toWireUser(user));
+        } catch (err) {
+            next(err);
+        }
+    }
+
+    async getInvitation(
+        req: GetInvitationRequest,
+        res: Response,
+        next: NextFunction,
+    ) {
+        try {
+            const detail = await this.authService.getInvitation(
+                req.params.token,
+            );
+            res.status(200).json({
+                email: detail.email,
+                role: detail.role,
+                workspace_name: detail.workspaceName,
+            });
+        } catch (err) {
+            next(err);
+        }
+    }
+
+    async acceptInvitation(
+        req: AcceptInvitationRequest,
+        res: Response,
+        next: NextFunction,
+    ) {
+        try {
+            const { token, password } = req.body;
+
+            const result = await this.authService.acceptInvitation({
+                token,
+                password,
+                userAgent: req.headers["user-agent"],
+                ipAddress: req.ip,
+            });
+
+            this.setRefreshCookie(res, result.refreshToken);
+
+            this.logger.info("auth.accept_invitation.ok", {
+                requestId: req.requestId,
+                userId: result.user.id,
+            });
+
+            res.status(200).json({
+                access_token: result.accessToken,
+                expires_in: ACCESS_TOKEN_TTL_SECONDS,
+                user: toWireUser(result.user),
+            });
         } catch (err) {
             next(err);
         }

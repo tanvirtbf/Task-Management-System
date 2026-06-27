@@ -1,15 +1,36 @@
+import { eq } from "drizzle-orm";
 import { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../db/schema";
-import { invitations } from "../db/schema";
+import { invitations, workspaces } from "../db/schema";
 import type { DbExecutor } from "./types";
 
 /**
  * Data access for the `invitations` table (§2 invitation flow / §4 invite).
  *
- * Owns the Drizzle writes; services compose them with the matching `users` and
- * `workspace_activity` rows inside one transaction. Only `sha256(token)` is ever
- * stored in `token_hash` — the raw token lives only in the emailed link.
+ * Owns the Drizzle writes; services compose them with the matching `users` rows
+ * inside one transaction. Only `sha256(token)` is ever stored in `token_hash` —
+ * the raw token lives only in the emailed link.
  */
+
+/** Row the accept flow locks + validates — the token is the capability. */
+export interface InvitationRow {
+    id: string;
+    workspaceId: string;
+    email: string;
+    role: "admin" | "member" | "guest";
+    expiresAt: Date;
+    acceptedAt: Date | null;
+}
+
+/** Public-facing invitation summary for the accept landing page. */
+export interface InvitationDetail {
+    email: string;
+    role: "admin" | "member" | "guest";
+    expiresAt: Date;
+    acceptedAt: Date | null;
+    workspaceName: string;
+}
+
 export class InvitationsRepo {
     constructor(private db: MySql2Database<typeof schema>) {}
 
@@ -24,5 +45,64 @@ export class InvitationsRepo {
         exec: DbExecutor = this.db,
     ): Promise<void> {
         await exec.insert(invitations).values(values);
+    }
+
+    /**
+     * Look up an invitation by its `sha256` token hash and take a `FOR UPDATE`
+     * row lock so concurrent accepts of the same token serialize (a replay sees
+     * `accepted_at` already set). Must run inside a transaction; pass `exec`.
+     */
+    async findByTokenHashForUpdate(
+        tokenHash: string,
+        exec: DbExecutor,
+    ): Promise<InvitationRow | null> {
+        const [row] = await exec
+            .select({
+                id: invitations.id,
+                workspaceId: invitations.workspaceId,
+                email: invitations.email,
+                role: invitations.role,
+                expiresAt: invitations.expiresAt,
+                acceptedAt: invitations.acceptedAt,
+            })
+            .from(invitations)
+            .where(eq(invitations.tokenHash, tokenHash))
+            .limit(1)
+            .for("update");
+        return row ?? null;
+    }
+
+    /**
+     * Read-only invitation summary (joined to the workspace name) for the public
+     * accept landing page. No lock — the page only displays who is invited.
+     */
+    async findDetailByTokenHash(
+        tokenHash: string,
+    ): Promise<InvitationDetail | null> {
+        const [row] = await this.db
+            .select({
+                email: invitations.email,
+                role: invitations.role,
+                expiresAt: invitations.expiresAt,
+                acceptedAt: invitations.acceptedAt,
+                workspaceName: workspaces.name,
+            })
+            .from(invitations)
+            .innerJoin(workspaces, eq(invitations.workspaceId, workspaces.id))
+            .where(eq(invitations.tokenHash, tokenHash))
+            .limit(1);
+        return row ?? null;
+    }
+
+    /** Mark an invitation accepted (single-use): stamp `accepted_at` + `accepted_by`. */
+    async markAccepted(
+        id: string,
+        acceptedBy: string,
+        exec: DbExecutor = this.db,
+    ): Promise<void> {
+        await exec
+            .update(invitations)
+            .set({ acceptedAt: new Date(), acceptedBy })
+            .where(eq(invitations.id, id));
     }
 }

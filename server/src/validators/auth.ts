@@ -145,3 +145,46 @@ export const forgotPasswordValidator = checkSchema({
         },
     },
 });
+
+/**
+ * `POST /api/v1/auth/accept-invitation`. The emailed invitation token is the
+ * capability; `password` is the new account's first password — NOT trimmed
+ * (whitespace can be part of a secret), 8–200 chars mirroring reset-password.
+ */
+export const acceptInvitationValidator = checkSchema({
+    token: {
+        in: ["body"],
+        notEmpty: { errorMessage: "Invitation token is required" },
+        isString: { errorMessage: "Invitation token must be a string" },
+        isLength: {
+            options: { max: 512 },
+            errorMessage: "Invitation token is too long (max 512 chars)",
+        },
+    },
+    password: {
+        in: ["body"],
+        notEmpty: { errorMessage: "Password is required" },
+        isString: { errorMessage: "Password must be a string" },
+        isLength: {
+            options: { min: 8, max: 200 },
+            errorMessage: "Password must be between 8 and 200 characters",
+        },
+    },
+});
+
+/**
+ * `GET /api/v1/auth/invitation/:token`. Bounds the path token defensively (it is
+ * hashed before lookup; an over-long value can never match a stored 64-char
+ * hash, but cap it so the route never builds a needless query).
+ */
+export const invitationTokenValidator = checkSchema({
+    token: {
+        in: ["params"],
+        notEmpty: { errorMessage: "Invitation token is required" },
+        isString: { errorMessage: "Invitation token must be a string" },
+        isLength: {
+            options: { max: 512 },
+            errorMessage: "Invitation token is too long (max 512 chars)",
+        },
+    },
+});

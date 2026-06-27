@@ -293,6 +293,13 @@ describe("POST /api/v1/auth/forgot-password", () => {
             const email = "dup@two-workspaces.test";
             const first = await makeUser({ workspaceId: wsA.id, email });
             await makeUser({ workspaceId: wsB.id, email });
+            // `created_at` is second-precision, so two same-second inserts can
+            // tie and make "oldest" ambiguous. Pin `first` unambiguously older so
+            // the test deterministically exercises the oldest-account-wins rule.
+            await getDb()
+                .update(users)
+                .set({ createdAt: new Date(Date.now() - 60_000) })
+                .where(eq(users.id, first.id));
 
             const res = await post({ email });
 
@@ -348,8 +355,14 @@ describe("POST /api/v1/auth/forgot-password", () => {
         });
 
         it("accepts a long-but-valid email (just under the 255-char cap)", async () => {
-            // 241-char local part + "@example.test" (13) = 254 chars, ≤ 255.
-            const email = `${"a".repeat(241)}@example.test`;
+            // RFC-valid email near the 255-char cap: a 64-char local part (the
+            // RFC 5321 max) + a multi-label domain whose every label is ≤63
+            // chars. Total = 64 + 1 + 187 = 252 ≤ 255. (A >64-char local part is
+            // RFC-INVALID and is correctly rejected by `isEmail`, so the prior
+            // 241-char-local address was never a legitimate 202 case.)
+            const local = "a".repeat(64);
+            const domain = `${"b".repeat(63)}.${"c".repeat(63)}.${"d".repeat(54)}.test`;
+            const email = `${local}@${domain}`;
             const u = await makeUser({ email });
 
             const res = await post({ email });

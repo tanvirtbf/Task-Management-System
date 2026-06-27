@@ -9,21 +9,26 @@ import { TokenService } from "../services/TokenService";
 import { CredentialService } from "../services/CredentialService";
 import { UsersRepo } from "../repositories/UsersRepo";
 import { PasswordResetTokensRepo } from "../repositories/PasswordResetTokensRepo";
+import { InvitationsRepo } from "../repositories/InvitationsRepo";
 import { MailService } from "../services/MailService";
 import { getDb } from "../db/client";
 import logger from "../config/logger";
 import { authStrictLimiter } from "../middlewares/rateLimit";
 import { validate } from "../middlewares/validate";
 import {
+    acceptInvitationValidator,
     changePasswordValidator,
     forgotPasswordValidator,
+    invitationTokenValidator,
     loginValidator,
     resetPasswordValidator,
 } from "../validators/auth";
 import authenticate from "../middlewares/authenticate";
 import type { AuthRequest } from "../types";
 import type {
+    AcceptInvitationRequest,
     ForgotPasswordRequest,
+    GetInvitationRequest,
     LoginRequest,
     LogoutAllRequest,
     LogoutRequest,
@@ -40,6 +45,7 @@ const router = express.Router();
 const db = getDb();
 const usersRepo = new UsersRepo(db);
 const passwordResetTokensRepo = new PasswordResetTokensRepo(db);
+const invitationsRepo = new InvitationsRepo(db);
 const tokens = new TokenService(db);
 const creds = new CredentialService();
 const mailService = new MailService(logger);
@@ -49,6 +55,7 @@ const authService = new AuthService(
     creds,
     usersRepo,
     passwordResetTokensRepo,
+    invitationsRepo,
     mailService,
     logger,
 );
@@ -142,6 +149,37 @@ router.post(
     validate,
     (req: Request, res: Response, next: NextFunction) =>
         authController.changePassword(req as AuthRequest, res, next),
+);
+
+// ─── GET /api/v1/auth/invitation/:token ──────────────────────────────────────
+// Public — the emailed token is the input. Returns a small summary (email,
+// role, workspace name) so the accept page can show who is being invited; a
+// missing / already-accepted / expired token is a clear 404 / 409 / 410.
+router.get(
+    "/invitation/:token",
+    invitationTokenValidator,
+    validate,
+    (req: Request, res: Response, next: NextFunction) =>
+        authController.getInvitation(req as GetInvitationRequest, res, next),
+);
+
+// ─── POST /api/v1/auth/accept-invitation ─────────────────────────────────────
+// Public — the emailed token is the credential (there is no prior session). It
+// sets the invited user's first password, flips them to `active`, consumes the
+// invitation, and auto-logs-them-in (sets the `bb_refresh` cookie + returns an
+// access token, exactly like /login). `authStrictLimiter` (5/min/IP) bounds
+// brute force as on login / reset-password.
+router.post(
+    "/accept-invitation",
+    authStrictLimiter,
+    acceptInvitationValidator,
+    validate,
+    (req: Request, res: Response, next: NextFunction) =>
+        authController.acceptInvitation(
+            req as AcceptInvitationRequest,
+            res,
+            next,
+        ),
 );
 
 export default router;

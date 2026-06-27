@@ -87,6 +87,29 @@ export const authApi = {
     resetPassword: async (token: string, newPassword: string): Promise<void> => {
         await api.post("/auth/reset-password", { token, newPassword });
     },
+    // Public invitation summary for the accept landing page (email/role/workspace).
+    invitationDetails: async (
+        token: string,
+    ): Promise<{ email: string; role: string; workspaceName: string }> =>
+        (
+            await api.get<{
+                email: string;
+                role: string;
+                workspaceName: string;
+            }>(`/auth/invitation/${encodeURIComponent(token)}`)
+        ).data,
+    // Public — the emailed token is the credential. Sets the first password,
+    // activates the account, and auto-logs-in (returns LoginResponse like /login).
+    acceptInvitation: async (
+        token: string,
+        password: string,
+    ): Promise<LoginResponse> =>
+        (
+            await api.post<LoginResponse>("/auth/accept-invitation", {
+                token,
+                password,
+            })
+        ).data,
 };
 
 // ─── Workspace (§3) ─ FLAT wire ↔ nested FE settings; bare object ─────────────

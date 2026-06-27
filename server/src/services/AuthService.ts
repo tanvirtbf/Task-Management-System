@@ -9,6 +9,7 @@ import { TokenService } from "./TokenService";
 import { CredentialService } from "./CredentialService";
 import { UsersRepo, type UserRecord } from "../repositories/UsersRepo";
 import { PasswordResetTokensRepo } from "../repositories/PasswordResetTokensRepo";
+import { InvitationsRepo } from "../repositories/InvitationsRepo";
 import { MailService } from "./MailService";
 
 export interface LoginInput {
@@ -58,6 +59,16 @@ const invalidRefresh = () =>
 // Password-reset tokens are short-lived per database/schema.sql §4 ("≤ 30 min").
 const RESET_TOKEN_TTL_MS = 30 * 60 * 1000;
 
+/** mysql2 transient lock errors worth retrying a transaction on. */
+const isRetryableTxError = (err: unknown): boolean => {
+    const e = err as { errno?: number } | null;
+    return e?.errno === 1213 || e?.errno === 1205; // ER_LOCK_DEADLOCK / ER_LOCK_WAIT_TIMEOUT
+};
+
+// A forgot-password DELETE+INSERT pair can deadlock under concurrent requests
+// for the same user — bound the retry the same way OnCallService does.
+const MAX_FORGOT_TX_ATTEMPTS = 3;
+
 export class AuthService {
     constructor(
         private db: MySql2Database<typeof schema>,
@@ -65,6 +76,7 @@ export class AuthService {
         private creds: CredentialService,
         private users: UsersRepo,
         private resetTokens: PasswordResetTokensRepo,
+        private invitations: InvitationsRepo,
         private mailer: MailService,
         private logger: Logger,
     ) {}
@@ -430,18 +442,58 @@ export class AuthService {
 
         // Invalidate-prior + insert-new in one transaction: only the newest
         // link is ever live, with no window where the user has zero tokens.
-        await this.db.transaction(async (tx) => {
-            await this.resetTokens.deleteActiveForUser(user.id, tx);
-            await this.resetTokens.create(
-                {
-                    id: fakeId("prt"),
-                    userId: user.id,
-                    tokenHash: sha256(rawToken),
-                    expiresAt,
-                },
-                tx,
-            );
-        });
+        //
+        // The DELETE (a `user_id` range) + INSERT pair can deadlock when several
+        // forgot-password requests for the SAME user race — each holds a gap lock
+        // the other's insert needs (ER_LOCK_DEADLOCK 1213). A victim transaction
+        // is rolled back cleanly, so a bounded retry turns the transient lock
+        // error into the same 202 the caller expects (mirrors OnCallService's
+        // tx-retry). `rawToken` is fixed across attempts so the emailed link
+        // stays valid; each attempt mints a fresh row id.
+        let lastErr: unknown;
+        for (let attempt = 0; attempt < MAX_FORGOT_TX_ATTEMPTS; attempt++) {
+            try {
+                await this.db.transaction(async (tx) => {
+                    // Serialize concurrent forgot-password for the SAME user by
+                    // taking the user-row lock FIRST (lock-ordering). Without it,
+                    // parallel DELETE+INSERT pairs deadlock on the
+                    // password_reset_tokens `user_id` gap locks (ER_LOCK_DEADLOCK
+                    // 1213) and can exhaust the retry; queuing every request on the
+                    // single users row removes the lock cycle. The retry below
+                    // stays as a defensive backstop.
+                    await this.users.findByIdForUpdate(
+                        user.id,
+                        user.workspaceId,
+                        tx,
+                    );
+                    await this.resetTokens.deleteActiveForUser(user.id, tx);
+                    await this.resetTokens.create(
+                        {
+                            id: fakeId("prt"),
+                            userId: user.id,
+                            tokenHash: sha256(rawToken),
+                            expiresAt,
+                        },
+                        tx,
+                    );
+                });
+                lastErr = undefined;
+                break;
+            } catch (err) {
+                if (isRetryableTxError(err)) {
+                    lastErr = err;
+                    continue;
+                }
+                throw err;
+            }
+        }
+        if (lastErr) {
+            throw lastErr instanceof Error
+                ? lastErr
+                : AppError.internal(
+                      "Password reset token persist failed after retries",
+                  );
+        }
 
         // Send AFTER commit so SMTP latency never holds the transaction open. A
         // transport failure must not turn a committed token into a 5xx (the user
@@ -455,6 +507,156 @@ export class AuthService {
                 userId: user.id,
                 error: err instanceof Error ? err.message : String(err),
             });
+        }
+    }
+
+    /**
+     * Public invitation summary for the accept landing page (`GET
+     * /api/v1/auth/invitation/:token`). The raw token is hashed before lookup;
+     * only a still-pending, unexpired invitation resolves — otherwise a clear
+     * 404 / 409 / 410 so the page can explain why the link won't work. No token
+     * or hash is ever returned.
+     */
+    async getInvitation(token: string): Promise<{
+        email: string;
+        role: "admin" | "member" | "guest";
+        workspaceName: string;
+    }> {
+        const detail = await this.invitations.findDetailByTokenHash(
+            sha256(token),
+        );
+        this.assertInvitationUsable(detail);
+        return {
+            email: detail.email,
+            role: detail.role,
+            workspaceName: detail.workspaceName,
+        };
+    }
+
+    /**
+     * Accept an invitation (`POST /api/v1/auth/accept-invitation`). The emailed
+     * token is the capability — there is no prior session. In ONE transaction it
+     * locks the invitation, sets the invited user's first password (bcrypt),
+     * flips their status `invited → active`, and stamps the invitation
+     * `accepted_at` / `accepted_by` (single-use). The user is then
+     * auto-logged-in (a fresh session + token pair, exactly like `/auth/login`),
+     * so the caller lands straight in the app. The invitation row itself is the
+     * audit record (`accepted_by` = the user's own id), so no extra
+     * `workspace_activity` row is written.
+     */
+    async acceptInvitation(input: {
+        token: string;
+        password: string;
+        userAgent?: string;
+        ipAddress?: string;
+    }): Promise<LoginResult> {
+        const tokenHash = sha256(input.token);
+        // Hash the password BEFORE the transaction so the ~100 ms bcrypt work
+        // never holds the invitation row lock.
+        const passwordHash = await this.creds.hashPassword(input.password);
+
+        const accepted = await this.db.transaction(async (tx) => {
+            const invitation = await this.invitations.findByTokenHashForUpdate(
+                tokenHash,
+                tx,
+            );
+            this.assertInvitationUsable(invitation);
+
+            // The invited user row was created alongside the invitation (same
+            // workspace + email). Lock it so a concurrent deactivate / role
+            // change serializes with the accept.
+            const user = await this.users.findByWorkspaceEmailForUpdate(
+                invitation.workspaceId,
+                invitation.email,
+                tx,
+            );
+            if (!user) {
+                // The invite flow always creates the matching user row — its
+                // absence is a data-integrity fault, not a client error.
+                throw AppError.internal(
+                    "Invited user row is missing for this invitation",
+                );
+            }
+            if (user.status !== "invited") {
+                // Already accepted (active) or since deactivated — not (re)acceptable.
+                throw AppError.conflict(
+                    "invitation.already_accepted",
+                    "This invitation has already been accepted",
+                );
+            }
+
+            await this.users.updatePassword(user.id, passwordHash, tx);
+            await this.users.update(user.id, { status: "active" }, tx);
+            await this.invitations.markAccepted(invitation.id, user.id, tx);
+
+            return {
+                userId: user.id,
+                role: user.role,
+                workspaceId: invitation.workspaceId,
+            };
+        });
+
+        // Auto-login OUTSIDE the transaction (mirrors `/auth/login`, which
+        // persists the session without a transaction). The committed state above
+        // is the source of truth; a failed session insert just means the user
+        // signs in manually with the password they just set.
+        const sessionId = fakeId("ses");
+        const payload: JwtPayload = {
+            sub: accepted.userId,
+            role: accepted.role,
+            workspaceId: accepted.workspaceId,
+        };
+        const accessToken = this.tokens.generateAccessToken({
+            ...payload,
+            id: sessionId,
+        });
+        const refreshToken = this.tokens.generateRefreshToken({
+            ...payload,
+            id: sessionId,
+        });
+        await this.tokens.persistSession({
+            id: sessionId,
+            userId: accepted.userId,
+            refreshToken,
+            userAgent: input.userAgent,
+            ipAddress: input.ipAddress,
+        });
+
+        const user = await this.users.findById(accepted.userId);
+        if (!user) {
+            throw AppError.internal("Accepted user could not be loaded");
+        }
+        return { user, accessToken, refreshToken, sessionId };
+    }
+
+    /**
+     * Shared invitation precondition check for both the read and the accept.
+     * Narrows `detail` to non-null on success; otherwise throws the clear,
+     * client-facing reason (missing → 404, already accepted → 409, expired →
+     * 410). The token holder legitimately owns the link, so — unlike
+     * password-reset — distinct codes are a UX win, not an enumeration risk.
+     */
+    private assertInvitationUsable<
+        T extends { expiresAt: Date; acceptedAt: Date | null },
+    >(detail: T | null): asserts detail is T {
+        if (!detail) {
+            throw AppError.notFound(
+                "invitation.not_found",
+                "This invitation link is not valid",
+            );
+        }
+        if (detail.acceptedAt) {
+            throw AppError.conflict(
+                "invitation.already_accepted",
+                "This invitation has already been accepted",
+            );
+        }
+        if (detail.expiresAt.getTime() <= Date.now()) {
+            throw new AppError(
+                410,
+                "invitation.expired",
+                "This invitation link has expired",
+            );
         }
     }
 }

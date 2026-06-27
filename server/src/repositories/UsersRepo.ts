@@ -102,10 +102,12 @@ export class UsersRepo {
             .from(users)
             .where(eq(users.email, email))
             // Deterministic tie-break for the edge case of duplicate emails
-            // across workspaces — oldest account wins. The application layer
-            // is meant to keep emails globally unique (Open Question #4); this
-            // ordering just makes the V1 fallback predictable.
-            .orderBy(asc(users.createdAt))
+            // across workspaces — oldest account wins, with `id` as a final
+            // tie-break so the result is stable even when two rows share the
+            // same second-precision created_at. The application layer is meant
+            // to keep emails globally unique (Open Question #4); this ordering
+            // just makes the V1 fallback predictable.
+            .orderBy(asc(users.createdAt), asc(users.id))
             .limit(1);
         return row ?? null;
     }
@@ -206,6 +208,33 @@ export class UsersRepo {
             .from(users)
             .where(
                 and(eq(users.id, userId), eq(users.workspaceId, workspaceId)),
+            )
+            .limit(1)
+            .for("update");
+        return row ?? null;
+    }
+
+    /**
+     * Workspace+email lookup that takes a `FOR UPDATE` row lock — used by the
+     * invitation-accept flow to atomically flip the invited user to `active`.
+     * Must run inside a transaction (pass `exec`). `(workspace_id, email)` is
+     * UNIQUE so this resolves at most one row; returns the minimal shape the
+     * accept flow needs to validate status and mint the session.
+     */
+    async findByWorkspaceEmailForUpdate(
+        workspaceId: string,
+        email: string,
+        exec: DbExecutor,
+    ): Promise<{ id: string; role: Role; status: UserStatus } | null> {
+        const [row] = await exec
+            .select({
+                id: users.id,
+                role: users.role,
+                status: users.status,
+            })
+            .from(users)
+            .where(
+                and(eq(users.workspaceId, workspaceId), eq(users.email, email)),
             )
             .limit(1)
             .for("update");

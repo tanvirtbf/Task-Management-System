@@ -64,3 +64,16 @@ export type LogoutAllRequest = AuthRequest;
  * `AuthRequest` for typing parallelism with the other §2 request shapes.
  */
 export type MeRequest = AuthRequest;
+
+export interface AcceptInvitationRequestBody {
+    token: string;
+    password: string;
+}
+
+/** `POST /api/v1/auth/accept-invitation` — public; the token is the credential. */
+export interface AcceptInvitationRequest extends Request {
+    body: AcceptInvitationRequestBody;
+}
+
+/** `GET /api/v1/auth/invitation/:token` — public; the path token is the input. */
+export type GetInvitationRequest = Request;
