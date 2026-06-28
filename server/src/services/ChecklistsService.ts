@@ -7,6 +7,7 @@ import {
     type ChecklistRow,
 } from "../repositories/ChecklistsRepo";
 import { TasksRepo } from "../repositories/TasksRepo";
+import { UsersRepo } from "../repositories/UsersRepo";
 import { TaskActivityRepo } from "../repositories/TaskActivityRepo";
 import {
     toWireChecklist,
@@ -75,6 +76,7 @@ export class ChecklistsService {
         private db: MySql2Database<typeof schema>,
         private checklists: ChecklistsRepo,
         private tasks: TasksRepo,
+        private users: UsersRepo,
         private activity: TaskActivityRepo,
     ) {}
 
@@ -141,6 +143,18 @@ export class ChecklistsService {
             input.checklistId,
             input.workspaceId,
         );
+        // Validate the optional assignee (active workspace member) + parent (an
+        // item in THIS checklist) BEFORE the insert, so an invalid id is a clean
+        // 422 rather than an unhandled FK 500 / a cross-tenant write.
+        if (input.assigneeId != null) {
+            await this.assertAssigneeInWorkspace(
+                input.assigneeId,
+                input.workspaceId,
+            );
+        }
+        if (input.parentItemId != null) {
+            await this.assertParentInChecklist(input.parentItemId, checklist.id);
+        }
         const created = await this.db.transaction(async (tx) => {
             const position =
                 input.position ??
@@ -190,6 +204,14 @@ export class ChecklistsService {
             input.id,
             input.workspaceId,
         );
+        // A non-null assignee must be an active workspace member (a null clears
+        // it). Validated before the write → 422, never a cross-tenant assign.
+        if (input.assigneeId != null) {
+            await this.assertAssigneeInWorkspace(
+                input.assigneeId,
+                input.workspaceId,
+            );
+        }
         const patch: {
             text?: string;
             assigneeId?: string | null;
@@ -344,5 +366,57 @@ export class ChecklistsService {
             );
         }
         return { item, checklist };
+    }
+
+    /**
+     * 422 `checklist_item.invalid_assignee` unless `userId` is an ACTIVE member
+     * of the workspace — mirrors §11 task-assignee validation
+     * (`findActiveIdsInWorkspace`), so a checklist item can never be assigned to
+     * a non-existent user (which would FK-500) or a cross-tenant user.
+     */
+    private async assertAssigneeInWorkspace(
+        userId: string,
+        workspaceId: string,
+    ): Promise<void> {
+        const valid = await this.users.findActiveIdsInWorkspace(
+            [userId],
+            workspaceId,
+        );
+        if (!valid.has(userId)) {
+            throw AppError.unprocessable(
+                "checklist_item.invalid_assignee",
+                "assignee_id is not an active member of this workspace",
+                [
+                    {
+                        field: "assignee_id",
+                        issue: `${userId} is not an active member of this workspace`,
+                    },
+                ],
+            );
+        }
+    }
+
+    /**
+     * 422 `checklist_item.invalid_parent` unless `parentItemId` is an existing
+     * item IN THE SAME checklist — a sub-item cannot point at a non-existent item
+     * (FK-500) or an item in another checklist / workspace.
+     */
+    private async assertParentInChecklist(
+        parentItemId: string,
+        checklistId: string,
+    ): Promise<void> {
+        const parent = await this.checklists.findItemById(parentItemId);
+        if (!parent || parent.checklistId !== checklistId) {
+            throw AppError.unprocessable(
+                "checklist_item.invalid_parent",
+                "parent_item_id must be an item in the same checklist",
+                [
+                    {
+                        field: "parent_item_id",
+                        issue: "is not an item in this checklist",
+                    },
+                ],
+            );
+        }
     }
 }

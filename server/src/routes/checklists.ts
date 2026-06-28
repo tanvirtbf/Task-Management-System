@@ -7,6 +7,7 @@ import { ChecklistsController } from "../controllers/ChecklistsController";
 import { ChecklistsService } from "../services/ChecklistsService";
 import { ChecklistsRepo } from "../repositories/ChecklistsRepo";
 import { TasksRepo } from "../repositories/TasksRepo";
+import { UsersRepo } from "../repositories/UsersRepo";
 import { TaskActivityRepo } from "../repositories/TaskActivityRepo";
 import { getDb } from "../db/client";
 import logger from "../config/logger";
@@ -44,11 +45,13 @@ const router = express.Router();
 const db = getDb();
 const checklistsRepo = new ChecklistsRepo(db);
 const tasksRepo = new TasksRepo(db);
+const usersRepo = new UsersRepo(db);
 const activityRepo = new TaskActivityRepo(db);
 const service = new ChecklistsService(
     db,
     checklistsRepo,
     tasksRepo,
+    usersRepo,
     activityRepo,
 );
 const controller = new ChecklistsController(service, logger);

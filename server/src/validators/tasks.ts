@@ -1,4 +1,4 @@
-import { checkSchema } from "express-validator";
+import { checkSchema, type Meta } from "express-validator";
 import {
     bugEnvironments,
     bugReproducibilities,
@@ -24,6 +24,22 @@ const PRIORITY_VALUES = ["0", "1", "2", "3", "4"];
 
 /** Optional + null-allowed (a nullable field may be omitted or sent as null). */
 const optNullable = { options: { nullable: true } };
+
+/**
+ * Reject a repeated query key. `?limit=1&limit=2` arrives as an array, which the
+ * element-wise `isInt`/`isIn`/`isDate` validators pass — then the array reaches
+ * the service as a scalar filter. Mirrors the §4 users-list `notRepeated` guard;
+ * applied to the non-string query params (the string filters already reject an
+ * array via `isString`).
+ */
+const notRepeated = (field: string) => ({
+    options: (_value: unknown, { req }: Meta): boolean => {
+        if (Array.isArray(req.query?.[field])) {
+            throw new Error(`${field} must not be repeated`);
+        }
+        return true;
+    },
+});
 
 /**
  * Build a custom validator asserting every member of a comma-separated value is
@@ -558,6 +574,7 @@ export const listTasksValidator = checkSchema({
     include_archived: {
         in: ["query"],
         optional: true,
+        custom: notRepeated("include_archived"),
         isIn: {
             options: [["true", "false"]],
             errorMessage: "include_archived must be true or false",
@@ -566,6 +583,7 @@ export const listTasksValidator = checkSchema({
     include_subtasks: {
         in: ["query"],
         optional: true,
+        custom: notRepeated("include_subtasks"),
         isIn: {
             options: [["true", "false"]],
             errorMessage: "include_subtasks must be true or false",
@@ -580,6 +598,7 @@ export const listTasksValidator = checkSchema({
     limit: {
         in: ["query"],
         optional: true,
+        custom: notRepeated("limit"),
         isInt: {
             options: { min: 1 },
             errorMessage: "limit must be a positive integer",

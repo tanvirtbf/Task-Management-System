@@ -453,11 +453,33 @@ describe("POST /api/v1/tasks", () => {
             expect(res.body.error.code).toBe("task.invalid_task_type");
         });
 
-        it("422 task.invalid_task_type when omitted and the list has no default", async () => {
+        it("falls back to a workspace task type when omitted and the list has no default (201)", async () => {
+            // seed()'s workspace has one task type (ctx.taskType) and the list
+            // carries no default — the create flow DELIBERATELY falls back to a
+            // workspace task type rather than dead-ending (quick-adds / form
+            // submits), so this is a 201, not a 422.
             const ctx = await seed();
             const res = await ctx.client
                 .post(PATH)
                 .send({ primary_list_id: ctx.list.id, name: "x" });
+            expect(res.status).toBe(201);
+            expect(res.body.task_type_id).toBe(ctx.taskType.id);
+        });
+
+        it("422 task.invalid_task_type when omitted, no list default, and the workspace has NO task types", async () => {
+            // A workspace with a list + status but ZERO task types — nothing to
+            // fall back to, so creation is refused (the only path that 422s).
+            const ws = await makeWorkspace();
+            const user = await makeUser({ workspaceId: ws.id, role: "member" });
+            const client = await makeLoggedInClient(user);
+            const list = await makeList({
+                workspaceId: ws.id,
+                createdBy: user.id,
+            });
+            await makeStatus({ scopeId: list.id, statusGroup: "not_started" });
+            const res = await client
+                .post(PATH)
+                .send({ primary_list_id: list.id, name: "x" });
             expect(res.status).toBe(422);
             expect(res.body.error.code).toBe("task.invalid_task_type");
         });
