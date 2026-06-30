@@ -429,6 +429,19 @@ export class TaskWriteService {
             }
         }
 
+        // 5c. Date ordering — start must not be after due. The HTTP task
+        //     validator checks each date's FORMAT but not their order, and the
+        //     public form submit path skips that validator entirely; the
+        //     `ck_tasks_dates` CHECK would otherwise surface as a raw 500. Both
+        //     values are canonical YYYY-MM-DD here, so a lexical compare is safe.
+        if (input.startDate && input.dueDate && input.startDate > input.dueDate) {
+            throw AppError.unprocessable(
+                "task.invalid_date_range",
+                "start_date must not be after due_date",
+                [{ field: "start_date", issue: "must be on or before due_date" }],
+            );
+        }
+
         // 6. Bug severity default + SLA + completed_at.
         const isBug = taskType.name.trim().toLowerCase() === "bug";
         const bugSeverity =

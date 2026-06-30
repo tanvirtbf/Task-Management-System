@@ -59,6 +59,56 @@ const slugify = (title: string): string => {
     return base.length > 0 ? base : "form";
 };
 
+/** A real `YYYY-MM-DD` calendar date — correct format AND no month/day overflow. */
+const isValidYmd = (s: string): boolean => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+    if (!m) return false;
+    const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+    const dt = new Date(y, mo - 1, d);
+    return (
+        dt.getFullYear() === y && dt.getMonth() === mo - 1 && dt.getDate() === d
+    );
+};
+
+/**
+ * Validate (and coerce) a submitted `task_attr` value against the same rules the
+ * HTTP task validator enforces — which the PUBLIC submit path bypasses, so
+ * without this an out-of-range priority trips the `ck_tasks_priority` CHECK
+ * (raw 500) and a malformed date is silently stored corrupt. Returns the
+ * normalised value, or an `issue` string for a 422. `name`/`description` are
+ * free text.
+ */
+const normalizeTaskAttr = (
+    key: string,
+    value: unknown,
+): { value: unknown; issue?: string } => {
+    switch (key) {
+        case "priority": {
+            const n =
+                typeof value === "number"
+                    ? value
+                    : typeof value === "string"
+                      ? Number(value.trim())
+                      : NaN;
+            return Number.isInteger(n) && n >= 0 && n <= 4
+                ? { value: n }
+                : { value, issue: "priority must be an integer 0–4" };
+        }
+        case "due_date":
+        case "start_date":
+            return typeof value === "string" && isValidYmd(value)
+                ? { value }
+                : { value, issue: "must be a YYYY-MM-DD date" };
+        case "name":
+            // tasks.name is VARCHAR(500); a longer value 500s on insert.
+            return typeof value !== "string" || value.length <= 500
+                ? { value }
+                : { value, issue: "name must be at most 500 characters" };
+        default:
+            return { value };
+    }
+};
+
 export interface CreateFormInput {
     workspaceId: string;
     actorId: string;
@@ -564,7 +614,12 @@ export class FormsService {
             if (value === null || value === undefined) continue;
 
             if (field.fieldKind === "task_attr") {
-                taskAttrs[field.fieldKey] = value;
+                const norm = normalizeTaskAttr(field.fieldKey, value);
+                if (norm.issue) {
+                    details.push({ field: field.fieldKey, issue: norm.issue });
+                    continue;
+                }
+                taskAttrs[field.fieldKey] = norm.value;
             } else {
                 const cf = await this.customFields.findByIdInWorkspace(
                     field.fieldKey,
