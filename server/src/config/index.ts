@@ -68,6 +68,9 @@ const {
     OPENAI_API_KEY,
     OPENAI_MODEL,
     OPENAI_MAX_OUTPUT_TOKENS,
+
+    // Encryption — for PII at rest (form submissions, etc.)
+    ENCRYPTION_KEY,
 } = process.env;
 
 export const Config = {
@@ -122,4 +125,7 @@ export const Config = {
     OPENAI_API_KEY,
     OPENAI_MODEL: OPENAI_MODEL ?? "gpt-4o-mini",
     OPENAI_MAX_OUTPUT_TOKENS: OPENAI_MAX_OUTPUT_TOKENS ?? "800",
+
+    // Encryption key (256-bit hex) for at-rest PII encryption
+    ENCRYPTION_KEY: ENCRYPTION_KEY ?? "",
 };
