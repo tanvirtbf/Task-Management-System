@@ -53,4 +53,21 @@ export class FormSubmissionsRepo {
             .where(eq(formSubmissions.formId, formId));
         return row?.value ?? 0;
     }
+
+    /** Count submissions expired before a cutoff timestamp (90-day retention job). */
+    async countExpiredBefore(cutoff: Date): Promise<number> {
+        const [row] = await this.db
+            .select({ value: count() })
+            .from(formSubmissions)
+            .where(lt(formSubmissions.expiresAt, cutoff));
+        return row?.value ?? 0;
+    }
+
+    /** Hard-delete submissions expired before a cutoff timestamp. Returns count deleted. */
+    async deleteExpiredBefore(cutoff: Date): Promise<number> {
+        const result = await this.db
+            .delete(formSubmissions)
+            .where(lt(formSubmissions.expiresAt, cutoff));
+        return result[0]?.affectedRows ?? 0;
+    }
 }

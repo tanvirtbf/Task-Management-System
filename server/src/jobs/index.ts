@@ -3,6 +3,7 @@ import { attachmentJanitor } from "./attachmentJanitor";
 import { r2Purge } from "./r2Purge";
 import { sessionCleanup } from "./sessionCleanup";
 import { snoozeWake } from "./snoozeWake";
+import { formSubmissionExpiry } from "./formSubmissionExpiry";
 import type { JobContext, JobRunResult } from "./types";
 
 /**
@@ -15,6 +16,7 @@ const JOBS = {
     "attachment-janitor": attachmentJanitor,
     "r2-purge": r2Purge,
     "snooze-wake": snoozeWake,
+    "form-submission-expiry": formSubmissionExpiry,
 } as const;
 
 export type JobName = keyof typeof JOBS;

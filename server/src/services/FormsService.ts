@@ -678,6 +678,9 @@ export class FormsService {
         const submissionId = fakeId("fsub");
         const submitterEmail =
             typeof input.data.email === "string" ? input.data.email : null;
+        const now = new Date();
+        const expiresAt = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000); // 90 days
+        const encryptedData = encryptJSON(input.data);
         await this.db.transaction(async (tx) => {
             for (const cv of cfValues) {
                 await this.customFields.upsertValue(
@@ -695,7 +698,9 @@ export class FormsService {
                     taskId: task.id,
                     submitterEmail,
                     submitterIp: input.ip,
-                    data: input.data,
+                    data: encryptedData as any,
+                    encryptedAt: now,
+                    expiresAt,
                 },
                 tx,
             );
