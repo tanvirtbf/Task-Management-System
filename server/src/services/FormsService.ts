@@ -4,6 +4,7 @@ import * as schema from "../db/schema";
 import type { Form, FormField, NewForm, NewFormField } from "../db/schema";
 import { AppError, type ErrorDetail } from "../errors";
 import { fakeId, randomToken } from "../utils";
+import { encryptJSON } from "../utils/encryption";
 import { Roles } from "../constants";
 import type { FormsRepo } from "../repositories/FormsRepo";
 import type { FormFieldsRepo } from "../repositories/FormFieldsRepo";

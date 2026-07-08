@@ -111,6 +111,8 @@ export const formSubmissions = mysqlTable(
         submitterEmail: varchar("submitter_email", { length: EMAIL_LENGTH }),
         submitterIp: varchar("submitter_ip", { length: IP_LENGTH }),
         data: json("data").notNull(),
+        encryptedAt: timestamp("encrypted_at"),
+        expiresAt: timestamp("expires_at"),
         submittedAt: timestamp("submitted_at").notNull().defaultNow(),
     },
     (t) => ({
@@ -128,6 +130,7 @@ export const formSubmissions = mysqlTable(
             t.formId,
             t.submittedAt,
         ),
+        expiresAtIdx: index("idx_form_submissions_expires_at").on(t.expiresAt),
     }),
 );
 
