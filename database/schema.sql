@@ -1337,17 +1337,17 @@ CREATE OR REPLACE VIEW v_active_sprint AS
 CREATE OR REPLACE VIEW v_current_on_call AS
     SELECT s.*
       FROM on_call_shifts s
-     WHERE CURDATE() BETWEEN s.week_start AND s.week_end;
+     WHERE UTC_DATE() BETWEEN s.week_start AND s.week_end;
 
 -- Tasks whose SLA window passed without completion — drives the red flag in
 -- the CS team UI and the on-call paging job for engineering S0/S1 bugs.
 CREATE OR REPLACE VIEW v_breached_sla AS
     SELECT t.id, t.workspace_id, t.primary_list_id, t.custom_id, t.name,
            t.task_type_id, t.sla_due_at,
-           TIMESTAMPDIFF(MINUTE, t.sla_due_at, NOW()) AS minutes_breached
+           TIMESTAMPDIFF(MINUTE, t.sla_due_at, UTC_TIMESTAMP()) AS minutes_breached
       FROM tasks t
      WHERE t.sla_due_at IS NOT NULL
-       AND t.sla_due_at < NOW()
+       AND t.sla_due_at < UTC_TIMESTAMP()
        AND t.completed_at IS NULL
        AND t.archived_at IS NULL;
 

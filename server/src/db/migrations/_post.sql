@@ -53,7 +53,7 @@ CREATE TRIGGER trg_attachments_after_insert
 AFTER INSERT ON attachments
 FOR EACH ROW
 BEGIN
-    IF NEW.deleted_at IS NULL THEN
+    IF NEW.deleted_at IS NULL AND NEW.upload_status = 'complete' THEN
         UPDATE tasks SET attachments_count = attachments_count + 1 WHERE id = NEW.task_id;
     END IF;
 END$$
@@ -62,9 +62,13 @@ CREATE TRIGGER trg_attachments_after_update
 AFTER UPDATE ON attachments
 FOR EACH ROW
 BEGIN
-    IF OLD.deleted_at IS NULL AND NEW.deleted_at IS NOT NULL THEN
+    -- Decrement if: was complete+not-deleted, now deleted OR status changed from complete
+    IF (OLD.deleted_at IS NULL AND OLD.upload_status = 'complete') AND
+       (NEW.deleted_at IS NOT NULL OR NEW.upload_status != 'complete') THEN
         UPDATE tasks SET attachments_count = GREATEST(attachments_count - 1, 0) WHERE id = NEW.task_id;
-    ELSEIF OLD.deleted_at IS NOT NULL AND NEW.deleted_at IS NULL THEN
+    -- Increment if: was not-complete/deleted, now complete+not-deleted
+    ELSEIF (OLD.deleted_at IS NOT NULL OR OLD.upload_status != 'complete') AND
+           (NEW.deleted_at IS NULL AND NEW.upload_status = 'complete') THEN
         UPDATE tasks SET attachments_count = attachments_count + 1 WHERE id = NEW.task_id;
     END IF;
 END$$
@@ -137,14 +141,14 @@ CREATE OR REPLACE VIEW v_active_sprint AS
 
 CREATE OR REPLACE VIEW v_current_on_call AS
     SELECT s.* FROM on_call_shifts s
-     WHERE CURDATE() BETWEEN s.week_start AND s.week_end;
+     WHERE UTC_DATE() BETWEEN s.week_start AND s.week_end;
 
 CREATE OR REPLACE VIEW v_breached_sla AS
     SELECT t.id, t.workspace_id, t.primary_list_id, t.custom_id, t.name,
            t.task_type_id, t.sla_due_at,
-           TIMESTAMPDIFF(MINUTE, t.sla_due_at, NOW()) AS minutes_breached
+           TIMESTAMPDIFF(MINUTE, t.sla_due_at, UTC_TIMESTAMP()) AS minutes_breached
       FROM tasks t
      WHERE t.sla_due_at IS NOT NULL
-       AND t.sla_due_at < NOW()
+       AND t.sla_due_at < UTC_TIMESTAMP()
        AND t.completed_at IS NULL
        AND t.archived_at IS NULL;

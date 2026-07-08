@@ -13,6 +13,7 @@ import {
     Quote,
     Link2,
 } from "lucide-react";
+import DOMPurify from "dompurify";
 import { tokens } from "../../theme";
 
 interface Props {
@@ -246,14 +247,20 @@ export const TiptapEditor = ({
 /**
  * Read-only renderer for displaying TipTap HTML output without editor chrome.
  */
-export const TiptapReadOnly = ({ html }: { html: string }) => (
-    <div
-        className="tiptap-readonly"
-        dangerouslySetInnerHTML={{ __html: html }}
-        style={{
-            fontSize: tokens.typography.fontSize.sm,
-            lineHeight: 1.5,
-            color: tokens.colors.textPrimary,
-        }}
-    />
-);
+export const TiptapReadOnly = ({ html }: { html: string }) => {
+    const sanitized = DOMPurify.sanitize(html, {
+        ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'p', 'br', 'a', 'h1', 'h2', 'h3', 'ul', 'ol', 'li', 'blockquote', 'code', 'pre'],
+        ALLOWED_ATTR: ['href', 'title', 'target'],
+    });
+    return (
+        <div
+            className="tiptap-readonly"
+            dangerouslySetInnerHTML={{ __html: sanitized }}
+            style={{
+                fontSize: tokens.typography.fontSize.sm,
+                lineHeight: 1.5,
+                color: tokens.colors.textPrimary,
+            }}
+        />
+    );
+};

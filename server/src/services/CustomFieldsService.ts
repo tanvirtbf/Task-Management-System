@@ -1,6 +1,8 @@
 import { MySql2Database } from "drizzle-orm/mysql2";
+import { and, eq } from "drizzle-orm";
 import * as schema from "../db/schema";
 import { AppError, type ErrorDetail } from "../errors";
+import { tasks } from "../db/schema";
 import { Roles, type Role } from "../constants";
 import {
     CustomFieldsRepo,
@@ -313,6 +315,26 @@ export class CustomFieldsService {
             );
         }
 
+        // Extra guard: if the field is list-scoped, ensure the task belongs to that list
+        if (field.scopeType === "list") {
+            const [row] = await this.db
+                .select({ primaryListId: tasks.primaryListId })
+                .from(tasks)
+                .where(
+                    and(
+                        eq(tasks.id, task.id),
+                        eq(tasks.primaryListId, field.scopeId!),
+                    ),
+                )
+                .limit(1);
+            if (!row) {
+                throw AppError.notFound(
+                    "custom_field.not_found",
+                    `Custom field ${input.fieldId} is not applicable to this task`,
+                );
+            }
+        }
+
         // Validate the value envelope against the field's type (incl. dropdown
         // option existence + files attachment ownership). Throws 422 on mismatch.
         const normalized = await this.normalizeValue(
@@ -379,6 +401,26 @@ export class CustomFieldsService {
                 "custom_field.not_found",
                 `Custom field ${input.fieldId} does not exist`,
             );
+        }
+
+        // Extra guard: if the field is list-scoped, ensure the task belongs to that list
+        if (field.scopeType === "list") {
+            const [row] = await this.db
+                .select({ primaryListId: tasks.primaryListId })
+                .from(tasks)
+                .where(
+                    and(
+                        eq(tasks.id, task.id),
+                        eq(tasks.primaryListId, field.scopeId!),
+                    ),
+                )
+                .limit(1);
+            if (!row) {
+                throw AppError.notFound(
+                    "custom_field.not_found",
+                    `Custom field ${input.fieldId} is not applicable to this task`,
+                );
+            }
         }
 
         await this.db.transaction(async (tx) => {
