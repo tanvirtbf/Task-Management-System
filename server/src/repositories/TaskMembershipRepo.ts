@@ -189,4 +189,95 @@ export class TaskMembershipRepo {
                 ),
             );
     }
+
+    // ─── Bulk operations (multiple tasks at once) ─────────────────────────────
+
+    /** Add assignees to multiple tasks in one query (avoid N+1 in bulk updates). */
+    async addAssigneesBulk(
+        taskIds: string[],
+        userIds: string[],
+        assignedBy: string,
+        exec: DbExecutor = this.db,
+    ): Promise<void> {
+        if (taskIds.length === 0 || userIds.length === 0) return;
+        const values = taskIds.flatMap((taskId) =>
+            userIds.map((userId) => ({ taskId, userId, assignedBy })),
+        );
+        await exec
+            .insert(taskAssignees)
+            .values(values)
+            .onDuplicateKeyUpdate({
+                set: { assignedBy: sql`${taskAssignees.assignedBy}` },
+            });
+    }
+
+    /** Add watchers to multiple tasks in one query (avoid N+1 in bulk updates). */
+    async addWatchersBulk(
+        taskIds: string[],
+        userIds: string[],
+        exec: DbExecutor = this.db,
+    ): Promise<void> {
+        if (taskIds.length === 0 || userIds.length === 0) return;
+        const values = taskIds.flatMap((taskId) =>
+            userIds.map((userId) => ({ taskId, userId })),
+        );
+        await exec
+            .insert(taskWatchers)
+            .values(values)
+            .onDuplicateKeyUpdate({
+                set: { startedAt: sql`${taskWatchers.startedAt}` },
+            });
+    }
+
+    /** Add tags to multiple tasks in one query (avoid N+1 in bulk updates). */
+    async addTagsBulk(
+        taskIds: string[],
+        tagIds: string[],
+        exec: DbExecutor = this.db,
+    ): Promise<void> {
+        if (taskIds.length === 0 || tagIds.length === 0) return;
+        const values = taskIds.flatMap((taskId) =>
+            tagIds.map((tagId) => ({ taskId, tagId })),
+        );
+        await exec
+            .insert(taskTags)
+            .values(values)
+            .onDuplicateKeyUpdate({
+                set: { addedAt: sql`${taskTags.addedAt}` },
+            });
+    }
+
+    /** Remove assignees from multiple tasks in one query (avoid N+1 in bulk updates). */
+    async removeAssigneesBulk(
+        taskIds: string[],
+        userIds: string[],
+        exec: DbExecutor = this.db,
+    ): Promise<void> {
+        if (taskIds.length === 0 || userIds.length === 0) return;
+        await exec
+            .delete(taskAssignees)
+            .where(
+                and(
+                    inArray(taskAssignees.taskId, taskIds),
+                    inArray(taskAssignees.userId, userIds),
+                ),
+            );
+    }
+
+    /** Remove tags from multiple tasks in one query (avoid N+1 in bulk updates). */
+    async removeTagsBulk(
+        taskIds: string[],
+        tagIds: string[],
+        exec: DbExecutor = this.db,
+    ): Promise<void> {
+        if (taskIds.length === 0 || tagIds.length === 0) return;
+        await exec
+            .delete(taskTags)
+            .where(
+                and(
+                    inArray(taskTags.taskId, taskIds),
+                    inArray(taskTags.tagId, tagIds),
+                ),
+            );
+    }
 }

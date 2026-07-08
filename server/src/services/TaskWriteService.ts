@@ -1099,31 +1099,29 @@ export class TaskWriteService {
             dbPatch.completedAt = DONE_GROUPS.has(newGroup) ? now : null;
         }
 
-        // 4. Atomic write.
+        // 4. Atomic write (batched: bulk operations instead of per-task loop).
         try {
             await this.db.transaction(async (tx) => {
                 await this.tasks.updateMany(ids, dbPatch, tx);
-                for (const id of ids) {
-                    if (assigneeAdd.length > 0) {
-                        await this.membership.addAssignees(
-                            id,
-                            assigneeAdd,
-                            input.actorId,
-                            tx,
-                        );
-                        await this.membership.addWatchers(id, assigneeAdd, tx);
-                    }
-                    if (assigneeRemove.length > 0)
-                        await this.membership.removeAssignees(
-                            id,
-                            assigneeRemove,
-                            tx,
-                        );
-                    if (tagAdd.length > 0)
-                        await this.membership.addTags(id, tagAdd, tx);
-                    if (tagRemove.length > 0)
-                        await this.membership.removeTags(id, tagRemove, tx);
+                if (assigneeAdd.length > 0) {
+                    await this.membership.addAssigneesBulk(
+                        ids,
+                        assigneeAdd,
+                        input.actorId,
+                        tx,
+                    );
+                    await this.membership.addWatchersBulk(ids, assigneeAdd, tx);
                 }
+                if (assigneeRemove.length > 0)
+                    await this.membership.removeAssigneesBulk(
+                        ids,
+                        assigneeRemove,
+                        tx,
+                    );
+                if (tagAdd.length > 0)
+                    await this.membership.addTagsBulk(ids, tagAdd, tx);
+                if (tagRemove.length > 0)
+                    await this.membership.removeTagsBulk(ids, tagRemove, tx);
                 await this.activity.recordMany(
                     ids.map((id) => ({
                         taskId: id,
