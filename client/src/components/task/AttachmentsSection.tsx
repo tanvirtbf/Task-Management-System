@@ -209,6 +209,7 @@ const AttachmentCard = ({
         <div
             role="button"
             tabIndex={0}
+            aria-label={`Open attachment ${a.name}`}
             onClick={() => window.open(a.url, "_blank", "noopener,noreferrer")}
             style={{
                 position: "relative",

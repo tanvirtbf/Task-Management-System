@@ -1,8 +1,8 @@
 import { JwtPayload, sign } from "jsonwebtoken";
-import createHttpError from "http-errors";
 import { and, count, eq, isNull, lt } from "drizzle-orm";
 import { MySql2Database } from "drizzle-orm/mysql2";
 import { Config } from "../config";
+import { AppError } from "../errors";
 import * as schema from "../db/schema";
 import { sessions } from "../db/schema";
 import { fakeId, sha256 } from "../utils";
@@ -13,7 +13,7 @@ export class TokenService {
 
     generateAccessToken(payload: JwtPayload) {
         if (!Config.ACCESS_TOKEN_SECRET) {
-            throw createHttpError(500, "Access token secret not configured");
+            throw new AppError(500, "auth.token_config_missing", "Access token secret not configured");
         }
         return sign(payload, Config.ACCESS_TOKEN_SECRET, {
             algorithm: "HS256",
@@ -24,7 +24,7 @@ export class TokenService {
 
     generateRefreshToken(payload: JwtPayload & { id: string }) {
         if (!Config.REFRESH_TOKEN_SECRET) {
-            throw createHttpError(500, "Refresh token secret not configured");
+            throw new AppError(500, "auth.token_config_missing", "Refresh token secret not configured");
         }
         return sign(payload, Config.REFRESH_TOKEN_SECRET, {
             algorithm: "HS256",

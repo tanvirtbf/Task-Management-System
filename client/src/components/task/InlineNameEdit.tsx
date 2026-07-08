@@ -89,6 +89,7 @@ export const InlineNameEdit = ({
         <span
             role="button"
             tabIndex={0}
+            aria-label="Edit task name"
             onClick={(e) => {
                 e.stopPropagation();
                 setEditing(true);

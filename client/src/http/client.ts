@@ -35,7 +35,13 @@ declare module "axios" {
  *        request_id}}` envelope for friendly UI messages.
  */
 
-const BASE_URL: string = import.meta.env.VITE_BACKEND_API_URL;
+// An explicit VITE_BACKEND_API_URL wins (e.g. a production API). Otherwise the
+// API host is derived from whatever host the page was opened on — so the SAME
+// running app works on localhost AND from another device on the LAN
+// (open http://<your-lan-ip>:5173 → API calls go to http://<your-lan-ip>:5501).
+const BASE_URL: string =
+    import.meta.env.VITE_BACKEND_API_URL?.trim() ||
+    `${window.location.protocol}//${window.location.hostname}:5501/api/v1`;
 
 // ─── case transforms ──────────────────────────────────────────────────────────
 const toCamel = (s: string): string =>

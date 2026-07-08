@@ -65,9 +65,22 @@ if (Config.CORS_ALLOWED_ORIGINS) {
         ),
     );
 }
+// Allow the configured origins PLUS any localhost / private-LAN origin on any
+// port, so another device on the same Wi-Fi (e.g. http://192.168.1.50:5173) can
+// use the app without per-IP config. Only loopback + RFC-1918 private ranges are
+// reflected — never an arbitrary public site.
+const LAN_ORIGIN =
+    /^https?:\/\/(localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$/i;
 app.use(
     cors({
-        origin: corsOrigins.length > 0 ? corsOrigins : true,
+        origin: (origin, cb) => {
+            // No Origin header → same-origin / curl / server-to-server.
+            if (!origin) return cb(null, true);
+            if (corsOrigins.includes(origin) || LAN_ORIGIN.test(origin)) {
+                return cb(null, true);
+            }
+            cb(new Error(`Origin ${origin} not allowed by CORS`));
+        },
         credentials: true,
     }),
 );

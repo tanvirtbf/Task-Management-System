@@ -299,9 +299,10 @@ export class AuthController {
      * exactly one place.
      */
     private setRefreshCookie(res: Response, refreshToken: string) {
+        const isSecure = process.env.NODE_ENV === "prod" || process.env.FORCE_SECURE === "true";
         res.cookie(REFRESH_COOKIE_NAME, refreshToken, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === "prod",
+            secure: isSecure,
             sameSite: "strict",
             path: REFRESH_COOKIE_PATH,
             maxAge: REFRESH_COOKIE_MAX_AGE_MS,
@@ -313,9 +314,10 @@ export class AuthController {
      * attributes (especially `Path`) or the browser will keep the cookie.
      */
     private clearRefreshCookie(res: Response) {
+        const isSecure = process.env.NODE_ENV === "prod" || process.env.FORCE_SECURE === "true";
         res.clearCookie(REFRESH_COOKIE_NAME, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === "prod",
+            secure: isSecure,
             sameSite: "strict",
             path: REFRESH_COOKIE_PATH,
         });

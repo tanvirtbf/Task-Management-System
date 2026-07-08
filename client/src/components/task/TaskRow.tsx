@@ -55,6 +55,7 @@ export const TaskRow = ({
         <div
             role="button"
             tabIndex={0}
+            aria-label={`Open task: ${task.name}`}
             onClick={handleClick}
             onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {

@@ -113,3 +113,15 @@ export const uploadSignLimiter = isTest
           },
           handler,
       });
+
+// `/auth/invitation/:token` — 5/min/IP (prevent brute-force enumeration)
+export const invitationLimiter = isTest
+    ? noop
+    : rateLimit({
+          windowMs: 60 * 1000,
+          limit: 5,
+          standardHeaders: true,
+          legacyHeaders: false,
+          keyGenerator: (req: Request) => ipKeyGenerator(req.ip ?? "unknown"),
+          handler: authRateLimitHandler,
+      });

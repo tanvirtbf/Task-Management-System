@@ -13,7 +13,7 @@ import { InvitationsRepo } from "../repositories/InvitationsRepo";
 import { MailService } from "../services/MailService";
 import { getDb } from "../db/client";
 import logger from "../config/logger";
-import { authStrictLimiter } from "../middlewares/rateLimit";
+import { authStrictLimiter, invitationLimiter } from "../middlewares/rateLimit";
 import { validate } from "../middlewares/validate";
 import {
     acceptInvitationValidator,
@@ -155,8 +155,10 @@ router.post(
 // Public — the emailed token is the input. Returns a small summary (email,
 // role, workspace name) so the accept page can show who is being invited; a
 // missing / already-accepted / expired token is a clear 404 / 409 / 410.
+// Rate-limited (5/min/IP) to prevent brute-force token enumeration.
 router.get(
     "/invitation/:token",
+    invitationLimiter,
     invitationTokenValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
