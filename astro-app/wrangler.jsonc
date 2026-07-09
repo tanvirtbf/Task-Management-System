@@ -1,0 +1,24 @@
+{
+    "$schema": "node_modules/wrangler/config-schema.json",
+    "name": "beautybooth-tasks",
+    "compatibility_date": "2025-10-01",
+    // nodejs_compat: the backend uses node:crypto (JWT, token hashing,
+    // AES-256-GCM form encryption), Buffer, and process.env (auto-populated
+    // from vars/secrets at this compat date).
+    "compatibility_flags": ["nodejs_compat"],
+    "main": "./dist/_worker.js/index.js",
+    "assets": {
+        "binding": "ASSETS",
+        "directory": "./dist"
+    },
+    "observability": {
+        "enabled": true
+    },
+    // Non-secret runtime vars. Secrets (TURSO_AUTH_TOKEN, token secrets, mail,
+    // R2, OpenAI, encryption key) are set via `wrangler secret bulk` — see
+    // scripts/make-secrets.mjs output. Local dev reads .dev.vars instead.
+    "vars": {
+        "NODE_ENV": "prod",
+        "LOG_LEVEL": "info"
+    }
+}
