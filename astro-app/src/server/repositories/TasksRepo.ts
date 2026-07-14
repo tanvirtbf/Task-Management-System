@@ -57,6 +57,20 @@ export class TasksRepo {
     constructor(private db: MySql2Database<typeof schema>) {}
 
     /**
+     * The workspace's IANA timezone — used to derive "today" in the workspace's
+     * zone instead of the server clock (which is UTC on the deployed worker and
+     * would shift Due-Today / agenda / my-work buckets for Dhaka users; P35-1).
+     */
+    async workspaceTimezone(workspaceId: string): Promise<string> {
+        const rows = await this.db
+            .select({ timezone: schema.workspaces.timezone })
+            .from(schema.workspaces)
+            .where(eq(schema.workspaces.id, workspaceId))
+            .limit(1);
+        return rows[0]?.timezone ?? "Asia/Dhaka";
+    }
+
+    /**
      * Fetch the task header scoped to the caller's workspace. Returns `null`
      * when the task does not exist OR belongs to another workspace — the
      * caller renders both as `task.not_found` so a cross-tenant id is not an

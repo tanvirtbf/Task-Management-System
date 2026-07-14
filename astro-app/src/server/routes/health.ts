@@ -7,6 +7,7 @@ import { sql } from "drizzle-orm";
 import pkg from "../../../package.json";
 import { getDb } from "../db/client";
 import { renderProm } from "../observability/metrics";
+import internalAuth from "../middlewares/internalAuth";
 
 /**
  * §30 Health & diagnostics — unauthenticated probes for k8s / load balancers /
@@ -93,8 +94,10 @@ router.get("/health/version", (_req: Request, res: Response) => {
 });
 
 // ─── GET /metrics ────────────────────────────────────────────────────────────
-// Prometheus scrape endpoint (text exposition format v0.0.4).
-router.get("/metrics", (_req: Request, res: Response) => {
+// Prometheus scrape endpoint (text exposition format v0.0.4). Guarded by
+// internalAuth (X-Internal-Token) so the route names + traffic counts are not
+// public — the scraper must send the internal token (P46-2).
+router.get("/metrics", internalAuth, (_req: Request, res: Response) => {
     res.setHeader("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
     res.status(200).send(renderProm());
 });

@@ -30,6 +30,20 @@ const ymd = (d: Date): string => {
     return `${y}-${m}-${day}`;
 };
 
+/**
+ * `YYYY-MM-DD` for `epochMs` in the given IANA timezone (P35-1). The deployed
+ * worker's clock is UTC, so `ymd(new Date())` would shift "today" for Dhaka
+ * users between 00:00–06:00; deriving it from the workspace tz fixes that.
+ * Falls back to the server-local date if the tz string is invalid.
+ */
+const dateInTz = (epochMs: number, tz: string): string => {
+    try {
+        return new Date(epochMs).toLocaleDateString("en-CA", { timeZone: tz });
+    } catch {
+        return ymd(new Date(epochMs));
+    }
+};
+
 /** Fixed trend metadata — V1 computes no trend (mock parity: 0 / flat / false). */
 const buildKpi = (
     label: string,
@@ -62,7 +76,9 @@ export class HomeService {
         for (let i = SPARKLINE_DAYS - 1; i >= 0; i--) {
             days.push(ymd(new Date(now.getTime() - i * DAY_MS)));
         }
-        const today = days[days.length - 1];
+        // "today" in the workspace timezone, not the UTC server clock (P35-1).
+        const tz = await this.tasksRepo.workspaceTimezone(workspaceId);
+        const today = dateInTz(Date.now(), tz);
 
         const [
             myRows,
@@ -123,7 +139,12 @@ export class HomeService {
         role: Role,
         date?: string,
     ): Promise<WireTask[]> {
-        const targetDate = date ?? ymd(new Date());
+        const targetDate =
+            date ??
+            dateInTz(
+                Date.now(),
+                await this.tasksRepo.workspaceTimezone(workspaceId),
+            );
         const rows = await this.homeRepo.agendaTasks(
             workspaceId,
             userId,

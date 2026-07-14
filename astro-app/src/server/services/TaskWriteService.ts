@@ -112,6 +112,15 @@ const ymd = (d: Date): string => {
     return `${y}-${m}-${day}`;
 };
 
+/** `YYYY-MM-DD` for `epochMs` in the given IANA timezone (P35-1 — see HomeService). */
+const dateInTz = (epochMs: number, tz: string): string => {
+    try {
+        return new Date(epochMs).toLocaleDateString("en-CA", { timeZone: tz });
+    } catch {
+        return ymd(new Date(epochMs));
+    }
+};
+
 export type MyWorkBucket =
     | "today"
     | "overdue"
@@ -1002,8 +1011,10 @@ export class TaskWriteService {
                 customFieldValues: customFieldValues.get(t.id) ?? {},
             });
 
-        const today = ymd(new Date());
-        const in7 = ymd(new Date(Date.now() + 7 * DAY_MS));
+        // "today" / +7d in the workspace timezone, not the UTC server clock (P35-1).
+        const tz = await this.tasks.workspaceTimezone(input.workspaceId);
+        const today = dateInTz(Date.now(), tz);
+        const in7 = dateInTz(Date.now() + 7 * DAY_MS, tz);
         const buckets: Record<MyWorkBucket, WireTask[]> = {
             today: [],
             overdue: [],

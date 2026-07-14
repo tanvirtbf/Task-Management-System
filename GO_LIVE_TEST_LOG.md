@@ -1051,3 +1051,21 @@ Auth journeys, shell/navigation (20 routes), task views (List/Board/Calendar inc
 **Fix inventory verified intact (source + behavioral):** P0-1 jwt default-import, P39 shim expose:true + parseByteLimit, P46-1 health/ready 2500ms, P25-1 decryptSubmissionData, P38 form-expiry route + `src/worker.ts` scheduled() + wrangler crons.
 
 **GO-LIVE VERDICT:** FUNCTIONALLY GREEN — ~1690 checks across 48 phases, 9 code bugs fixed, zero regressions, XSS/injection/IDOR/isolation all safe. **NOT yet safe to declare live** until the deploy + cleanup blockers are closed (see the go-live readiness report). Blockers: (1) rotate git-tracked secrets + rewrite history [blocks deploy]; (2) deploy the scheduler + fixes (health/ready P46-1; **fix+deploy tz P35-1** — still unfixed in code) so cron runs + readiness passes + day-boundaries are correct; (3) clean demo data + demo accounts off prod (P46-3, known-password owner live). Plus MEDIUM product decisions (notification-prefs honesty P32-C/D/E, SSE-vs-polling P45-1) and LOW cosmetic items (P40-1/P41-1/P44-1/P27-1) for the user to resolve. Security hardening (P39-3 headers, P46-2 /metrics) recommended.
+
+---
+
+## EMAIL VERIFICATION + DEPLOY #3 — ✅ ALL EMAIL CONFIRMED WORKING ON LIVE PROD
+**Date:** 2026-07-14 · **Trigger:** user — "email related sob kaj perfectly work kore … then live kore den". **Live URL:** beautybooth-tasks.tanver018765.workers.dev
+
+**Backend transactional email (password-reset + invitation) — PROVEN on prod:**
+- Direct Mailtrap REST API, PRIMARY token (`info@beautybooth.com.bd`) → HTTP 200 + `message_ids` — a real test email delivered to beautyboothai@gmail.com. ✅
+- Live-prod app path: `POST /api/v1/auth/forgot-password` (farhana@beautybooth.com.bd) → worker log `mail.sent` + Mailtrap `messageId` captured via `wrangler tail` (×2 runs). Confirms the deployed worker's real `MAIL_FROM_ADDRESS` is a verified sender and the full app→Mailtrap path works. ✅
+- Invitation email shares the identical `MailService.send()` path → same proven mechanism. ✅
+
+**Members-page "Send email" button — FIXED + VERIFIED on prod:** was `mailto:` (needs a desktop mail app; Gmail/webmail users got a blank/no result). Now `window.open('mail.google.com/mail/?view=cm&fs=1&to=<email>')`. **Browser-tested on live prod:** login → Settings→Members → row "…" → "Send email" → new tab opened at `mail.google.com/mail/u/0/?fs=1&to=mehedi@beautybooth.com.bd&tf=cm` (Gmail compose, recipient pre-filled). ✅
+
+**2 non-blocking notes:** (1) user's FALLBACK Mailtrap token (`beautyboothbd.com`) is invalid (401) — but app uses only the single primary token → zero live impact. (2) demo `owner@company.local` can't receive mail (Mailtrap rejects the fake `.local` TLD, send throws) — forgot-password stays enumeration-safe 202; real domains send fine. Both are data/backup notes, not email-system bugs.
+
+**DEPLOY #3 = Version `f6cf5510-c8f1-4558-a719-8cc51607e781`** — `npm run build` (clean, exit 0) + `wrangler deploy`. Ships the Gmail-compose button. Post-deploy: `/health`→200, `/health/ready`→200 (P46-1 holding), members page→200, crons redeployed. Backend/mail code byte-identical to deploy #2 (only `MembersSettings.tsx` changed). **No regressions.**
+
+**STILL OPEN for real go-live (unchanged, user's call):** P46-3 demo-owner known-password on public prod (HIGH); git-tracked secrets rotation; product decisions.

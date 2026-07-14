@@ -290,8 +290,18 @@ const MemberRow = ({
                         key: "email",
                         icon: <Mail size={13} strokeWidth={1.75} />,
                         label: "Send email",
+                        // Open Gmail's compose window addressed to the member. A plain
+                        // `mailto:` only works when the OS has a default desktop mail app
+                        // configured — webmail (Gmail) users get nothing. This opens a real
+                        // compose window that works for a Gmail / Google Workspace org.
                         onClick: () =>
-                            window.open(`mailto:${user.email}`, "_blank"),
+                            window.open(
+                                `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(
+                                    user.email,
+                                )}`,
+                                "_blank",
+                                "noopener",
+                            ),
                     },
                     { type: "divider" as const },
                     user.status === "deactivated"
