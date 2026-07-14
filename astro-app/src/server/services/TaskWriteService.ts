@@ -489,7 +489,13 @@ export class TaskWriteService {
                         statusId: status.id,
                         priority: input.priority ?? 0,
                         taskTypeId,
-                        // parent set AFTER insert (error-1442 workaround); depth ok now.
+                        // Set parent_task_id in the INSERT so `trg_subtasks_after_insert`
+                        // bumps the parent's `subtasks_count`. On libSQL this is safe —
+                        // the trigger UPDATEs a DIFFERENT tasks row (the parent), which
+                        // SQLite permits (MySQL's error 1442 does not apply here). The
+                        // old insert-then-setParent workaround left the counter at 0.
+                        // (seed-demo.ts inserts parent_task_id the same way.)
+                        parentTaskId: input.parentTaskId ?? null,
                         nestingDepth,
                         isMilestone: input.isMilestone ?? false,
                         startDate: toLocalDate(input.startDate),
@@ -522,15 +528,6 @@ export class TaskWriteService {
                         createdBy: input.actorId,
                     };
                     await this.tasks.insert(row, tx);
-
-                    if (input.parentTaskId) {
-                        await this.tasks.setParent(
-                            taskId,
-                            input.parentTaskId,
-                            nestingDepth,
-                            tx,
-                        );
-                    }
 
                     if (assignees.length > 0) {
                         await this.membership.addAssignees(
@@ -722,6 +719,22 @@ export class TaskWriteService {
                     `A task with custom_id ${p.customId} already exists`,
                 );
             }
+        }
+
+        // Date ordering — start must not be after due, checked against the MERGED
+        // pair (a PATCH may change only one of the two), mirroring create()'s guard
+        // so the `ck_tasks_dates` CHECK can never surface as a raw 500. Both stored
+        // and incoming dates are canonical YYYY-MM-DD (or null), so a lexical
+        // compare is correct.
+        const effStart =
+            p.startDate !== undefined ? p.startDate : current.startDate;
+        const effDue = p.dueDate !== undefined ? p.dueDate : current.dueDate;
+        if (effStart && effDue && effStart > effDue) {
+            throw AppError.unprocessable(
+                "task.invalid_date_range",
+                "start_date must not be after due_date",
+                [{ field: "start_date", issue: "must be on or before due_date" }],
+            );
         }
 
         // ─── Build the column patch ──────────────────────────────────────────

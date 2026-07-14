@@ -1,4 +1,7 @@
-import { verify, type JwtPayload } from "jsonwebtoken";
+// jsonwebtoken is CJS; default-import + destructure so Vite dev (strict ESM
+// interop) and the Workers build both resolve it.
+import jsonwebtoken, { type JwtPayload } from "jsonwebtoken";
+const { verify } = jsonwebtoken;
 import type { Logger } from "winston";
 import { MySql2Database } from "../db/client";
 import { Config } from "../config";

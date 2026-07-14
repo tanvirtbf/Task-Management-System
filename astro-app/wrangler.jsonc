@@ -14,6 +14,12 @@
     "observability": {
         "enabled": true
     },
+    // §28 background-job scheduler. Cadence mirrors src/worker.ts CRON_JOBS
+    // (keep both in sync): 5-min snooze-wake, hourly session-cleanup +
+    // attachment-janitor, daily 03:00 UTC r2-purge + form-submission-expiry.
+    "triggers": {
+        "crons": ["*/5 * * * *", "0 * * * *", "0 3 * * *"]
+    },
     // Non-secret runtime vars. Secrets (TURSO_AUTH_TOKEN, token secrets, mail,
     // R2, OpenAI, encryption key) are set via `wrangler secret bulk` — see
     // scripts/make-secrets.mjs output. Local dev reads .dev.vars instead.

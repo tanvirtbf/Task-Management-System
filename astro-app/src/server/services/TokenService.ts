@@ -1,4 +1,7 @@
-import { JwtPayload, sign } from "jsonwebtoken";
+// jsonwebtoken is CJS; default-import + destructure so Vite dev (strict ESM
+// interop) and the Workers build both resolve it.
+import jsonwebtoken, { type JwtPayload } from "jsonwebtoken";
+const { sign } = jsonwebtoken;
 import { and, count, eq, isNull, lt } from "drizzle-orm";
 import { MySql2Database } from "../db/client";
 import { Config } from "../config";

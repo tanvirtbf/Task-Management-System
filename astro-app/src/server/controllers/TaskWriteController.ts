@@ -18,6 +18,36 @@ import type {
  * `ETag` header (the task's `updated_at`, per Appendix A) so clients can echo it
  * in `If-Match` on the next PATCH.
  */
+
+/**
+ * PATCH keys the validator marks `optNullable` — a `null` value CLEARS the field.
+ * express-validator's `optional({ nullable: true })` drops explicitly-null values
+ * from `matchedData`, so `update()` re-reads these nulls from the raw body (null
+ * needs no sanitization) to honour a clear. Keep in sync with `updateTaskValidator`.
+ */
+const NULLABLE_PATCH_KEYS = [
+    "description",
+    "custom_id",
+    "start_date",
+    "due_date",
+    "recurrence_days",
+    "recurrence_ends_at",
+    "time_estimate_seconds",
+    "sprint_id",
+    "story_points",
+    "reviewer_id",
+    "branch_name",
+    "pr_url",
+    "pr_status",
+    "bug_severity",
+    "bug_reproducibility",
+    "bug_environment",
+    "bug_browser",
+    "reporter_team",
+    "deployed_at",
+    "rollback_reason",
+] as const;
+
 export class TaskWriteController {
     constructor(
         private writes: TaskWriteService,
@@ -103,6 +133,18 @@ export class TaskWriteController {
             const b = matchedData(req, {
                 locations: ["body"],
             }) as Partial<UpdateTaskBody>;
+
+            // express-validator's optional({nullable:true}) DROPS explicitly-null
+            // values, so clearing a nullable field (e.g. `due_date: null`) would
+            // otherwise arrive as an empty patch → "provide at least one field".
+            // Re-add those nulls from the raw body (null needs no sanitization) so a
+            // field can be cleared via PATCH, matching the validator's intent.
+            const rawBody = (req.body ?? {}) as Record<string, unknown>;
+            for (const key of NULLABLE_PATCH_KEYS) {
+                if (rawBody[key] === null && !(key in b)) {
+                    (b as Record<string, unknown>)[key] = null;
+                }
+            }
 
             const fields = Object.keys(b);
             if (fields.length === 0) {

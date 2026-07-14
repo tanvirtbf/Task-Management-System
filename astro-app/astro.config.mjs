@@ -10,6 +10,11 @@ export default defineConfig({
     adapter: cloudflare({
         imageService: "passthrough",
         platformProxy: { enabled: true },
+        // Custom worker entry adds a `scheduled` handler (Cron Triggers →
+        // §28 background jobs) on top of the adapter's default `fetch`.
+        workerEntryPoint: {
+            path: "src/worker.ts",
+        },
     }),
     integrations: [react()],
     security: {

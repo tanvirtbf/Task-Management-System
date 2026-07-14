@@ -199,10 +199,11 @@ export class TasksRepo {
      * column set (`id`, `workspaceId`, `primaryListId`, `taskNumber`, `statusId`,
      * `taskTypeId`, `name`, …); `internal_id` auto-increments and the counter
      * columns (`subtasks_count`, `comments_count`, …) keep their `0` default —
-     * their triggers own them, the app never writes them. NOTE: never insert with
-     * `parentTaskId` set — the AFTER INSERT counter trigger UPDATEs `tasks` and
-     * MySQL rejects that (error 1442); set the parent via a follow-up UPDATE.
-     * Takes an optional `exec` so the insert composes in the create transaction.
+     * their triggers own them, the app never writes them. A subtask is inserted
+     * WITH `parent_task_id` set so `trg_subtasks_after_insert` bumps the parent's
+     * `subtasks_count`; on libSQL the trigger's UPDATE of a different `tasks` row
+     * is permitted (MySQL's error 1442 does not apply). Takes an optional `exec`
+     * so the insert composes in the create transaction.
      */
     async insert(
         values: typeof tasks.$inferInsert,
@@ -212,30 +213,11 @@ export class TasksRepo {
     }
 
     /**
-     * Set `parent_task_id` (+ `nesting_depth`) on an already-inserted row. Split
-     * from `insert` to dodge the error-1442 trigger trap: an AFTER UPDATE that
-     * does not change `status_id` leaves the subtask-counter trigger's inner
-     * UPDATE un-fired, so this UPDATE is safe (the parent's `subtasks_count` is
-     * not auto-incremented — a known pre-existing schema-trigger limitation).
-     */
-    async setParent(
-        taskId: string,
-        parentTaskId: string,
-        nestingDepth: number,
-        exec: DbExecutor = this.db,
-    ): Promise<void> {
-        await exec
-            .update(tasks)
-            .set({ parentTaskId, nestingDepth })
-            .where(eq(tasks.id, taskId));
-    }
-
-    /**
      * Apply a partial column update by primary key (#5 PATCH / #10 bulk). Only
      * the supplied (whitelisted) columns are written; `updated_at` auto-bumps via
-     * `onUpdateNow` (the ETag). NEVER pass a counter column or `parent_task_id`
-     * here (the latter would fire the error-1442 trigger if status also changed —
-     * use `setParent` with status untouched). Takes an optional `exec`.
+     * `onUpdateNow` (the ETag). NEVER pass a counter column (`subtasks_count`, …)
+     * or `parent_task_id` here — the counter columns are trigger-owned, and
+     * re-parenting is not a supported scalar edit. Takes an optional `exec`.
      */
     async update(
         taskId: string,

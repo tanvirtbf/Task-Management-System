@@ -21,6 +21,11 @@ router.post(
 );
 router.post("/r2-purge", internalAuth, controller.run("r2-purge"));
 router.post("/snooze-wake", internalAuth, controller.run("snooze-wake"));
+router.post(
+    "/form-submission-expiry",
+    internalAuth,
+    controller.run("form-submission-expiry"),
+);
 // recurrence-spawn, email-digest, and sla-breach-scan routes are registered
 // here as each job is built.
 

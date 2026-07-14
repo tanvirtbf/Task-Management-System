@@ -51,12 +51,18 @@ const pingDb = async (timeoutMs: number): Promise<boolean> => {
 
 // ─── GET /health/ready ───────────────────────────────────────────────────────
 // Readiness — the process can serve traffic only if its dependencies are
-// reachable. Pings the DB within 500ms; Redis is not integrated yet (it would be
+// reachable. Pings the DB within 2500ms; Redis is not integrated yet (it would be
 // pinged here too once it is). 200 when ready, 503 otherwise.
+//
+// NOTE: the timeout was 500ms, which is too tight for the production Turso
+// round-trip (CF edge → Turso cloud over HTTP, cold, is 500-900ms) — it made
+// /health/ready return a persistent 503 false-negative on prod while real
+// queries (login etc.) succeeded, tripping any uptime monitor / LB health check.
+// 2500ms still bounds the probe but tolerates real prod DB latency. (P46-1)
 router.get(
     "/health/ready",
     (_req: Request, res: Response, next: NextFunction) => {
-        pingDb(500)
+        pingDb(2500)
             .then((dbOk) => {
                 if (dbOk) {
                     res.status(200).json({

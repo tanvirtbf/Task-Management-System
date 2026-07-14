@@ -5,3 +5,4 @@ dist/
 .dev.vars
 secrets.json
 *.log
+.dev.vars.*

@@ -4,7 +4,7 @@ import * as schema from "../db/schema";
 import type { Form, FormField, NewForm, NewFormField } from "../db/schema";
 import { AppError, type ErrorDetail } from "../errors";
 import { fakeId, randomToken } from "../utils";
-import { encryptJSON } from "../utils/encryption";
+import { encryptJSON, decryptJSON } from "../utils/encryption";
 import { Roles } from "../constants";
 import type { FormsRepo } from "../repositories/FormsRepo";
 import type { FormFieldsRepo } from "../repositories/FormFieldsRepo";
@@ -56,6 +56,22 @@ const isDuplicateKeyError = (err: unknown): boolean => {
         (typeof e?.message === "string" &&
             e.message.includes("UNIQUE constraint failed"))
     );
+};
+
+/**
+ * Decrypt a stored `form_submissions.data` value for the authorized reader.
+ * The value is the `encryptJSON` envelope string (a `text({mode:"json"})` column,
+ * so a driver may hand it back as a string OR a parsed object — normalise both).
+ * Fails SAFE: a decrypt error returns `null` (never leaks ciphertext, never 500s).
+ */
+const decryptSubmissionData = (raw: unknown): unknown => {
+    if (raw == null) return null;
+    const enc = typeof raw === "string" ? raw : JSON.stringify(raw);
+    try {
+        return decryptJSON(enc);
+    } catch {
+        return null;
+    }
 };
 
 const slugify = (title: string): string => {
@@ -506,7 +522,14 @@ export class FormsService {
         const nextCursor =
             hasMore && last ? encodeCursor(last.internalId) : null;
         return {
-            data: page.map(toWireFormSubmission),
+            // Submissions are encrypted at rest (PII); decrypt for the authorized
+            // reader. Without this the admin view would show raw ciphertext.
+            data: page.map((row) =>
+                toWireFormSubmission({
+                    ...row,
+                    data: decryptSubmissionData(row.data),
+                }),
+            ),
             nextCursor,
             hasMore,
             total,

@@ -852,8 +852,19 @@ export class ShimApplication extends ShimRouter {
 }
 
 /* ─── module surface (mirrors `import express from "express"`) ───────────── */
+/** Parse a body-parser-style size limit ("1mb", "500kb", "100kb", "512b") to bytes. */
+const parseByteLimit = (limit?: string): number => {
+    if (!limit) return 100 * 1024; // body-parser json default
+    const m = /^(\d+(?:\.\d+)?)\s*(b|kb|mb|gb)?$/i.exec(limit.trim());
+    if (!m) return 100 * 1024;
+    const unit = (m[2] ?? "b").toLowerCase();
+    const mult =
+        unit === "gb" ? 1024 ** 3 : unit === "mb" ? 1024 ** 2 : unit === "kb" ? 1024 : 1;
+    return Math.floor(parseFloat(m[1]) * mult);
+};
+
 const jsonMiddleware =
-    (_opts?: { limit?: string }): RequestHandler =>
+    (opts?: { limit?: string }): RequestHandler =>
     (req: any, _res: any, next: NextFunction) => {
         // body-parser semantics: `_body` marks an ACTUAL parse; on skip the
         // body defaults to {} but a later parser (express.raw) may still run.
@@ -864,18 +875,38 @@ const jsonMiddleware =
             req.body ??= {};
             return next();
         }
+        // Honour the configured size limit (body-parser → 413). `expose` is set so
+        // the app's errorHandler surfaces it as a clean 413 rather than a 500.
+        const size = req._rawBodyBytes?.byteLength ?? Buffer.byteLength(raw);
+        if (size > parseByteLimit(opts?.limit)) {
+            const err = new Error("request entity too large") as Error & {
+                status?: number;
+                statusCode?: number;
+                type?: string;
+                expose?: boolean;
+            };
+            err.status = err.statusCode = 413;
+            err.type = "entity.too.large";
+            err.expose = true;
+            return next(err);
+        }
         try {
             req.body = JSON.parse(raw);
             req._body = true;
             next();
         } catch {
+            // body-parser sets `expose: true` on a 400 parse failure so it is
+            // surfaced to the client; without it the errorHandler treats the
+            // error as unknown and renders a 500 for malformed JSON.
             const err = new Error("Invalid JSON body") as Error & {
                 status?: number;
                 statusCode?: number;
                 type?: string;
+                expose?: boolean;
             };
             err.status = err.statusCode = 400;
             err.type = "entity.parse.failed";
+            err.expose = true;
             next(err);
         }
     };
