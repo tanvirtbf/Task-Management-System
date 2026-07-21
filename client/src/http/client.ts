@@ -39,7 +39,7 @@ declare module "axios" {
 // API host is derived from whatever host the page was opened on — so the SAME
 // running app works on localhost AND from another device on the LAN
 // (open http://<your-lan-ip>:5173 → API calls go to http://<your-lan-ip>:5501).
-const BASE_URL: string =
+export const BASE_URL: string =
     import.meta.env.VITE_BACKEND_API_URL?.trim() ||
     `${window.location.protocol}//${window.location.hostname}:5501/api/v1`;
 

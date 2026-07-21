@@ -12,6 +12,12 @@ import logger from "../config/logger";
  */
 const run = async (): Promise<void> => {
     logger.info("openai.ping.start", { model: ASSISTANT_MODEL });
+    if (!openai) {
+        logger.error("openai.ping.failed", {
+            error: "OpenAI client not configured (set OPENAI_API_KEY)",
+        });
+        process.exit(1);
+    }
     try {
         const res = await openai.chat.completions.create({
             model: ASSISTANT_MODEL,

@@ -15,6 +15,11 @@ import { AppError } from "../errors";
  */
 
 const isTest = process.env.NODE_ENV === "test";
+// Rate limiting is bypassed under the test runner, and via an explicit opt-in
+// escape hatch (`DISABLE_RATE_LIMIT=1`) used by local browser-E2E runs — those
+// log in many times per minute from one IP and would otherwise trip the
+// 5/min auth bucket. NEVER set this in production.
+const rateLimitOff = isTest || process.env.DISABLE_RATE_LIMIT === "1";
 
 const handler = (_req: Request, _res: unknown, next: (err: AppError) => void) =>
     next(AppError.rateLimited());
@@ -43,7 +48,7 @@ export const _internal = { authRateLimitHandler };
 const noop = (_req: Request, _res: Response, next: NextFunction) => next();
 
 // `/auth/login`, `/auth/forgot-password` — 5/min/IP
-export const authStrictLimiter = isTest
+export const authStrictLimiter = rateLimitOff
     ? noop
     : rateLimit({
           windowMs: 60 * 1000,
@@ -55,7 +60,7 @@ export const authStrictLimiter = isTest
       });
 
 // `/api/v1/*` authenticated calls — 600/min/user (fallback to IP if no user yet)
-export const apiLimiter = isTest
+export const apiLimiter = rateLimitOff
     ? noop
     : rateLimit({
           windowMs: 60 * 1000,
@@ -71,7 +76,7 @@ export const apiLimiter = isTest
       });
 
 // `/api/v1/public/forms/:slug/submit` — 30/min/IP
-export const publicFormLimiter = isTest
+export const publicFormLimiter = rateLimitOff
     ? noop
     : rateLimit({
           windowMs: 60 * 1000,
@@ -83,7 +88,7 @@ export const publicFormLimiter = isTest
       });
 
 // `/api/v1/assistant/chat` — 20/min/user (AI cost guard; OpenAI calls cost money)
-export const assistantLimiter = isTest
+export const assistantLimiter = rateLimitOff
     ? noop
     : rateLimit({
           windowMs: 60 * 1000,
@@ -99,7 +104,7 @@ export const assistantLimiter = isTest
       });
 
 // `/api/v1/uploads/sign` — 60/min/user
-export const uploadSignLimiter = isTest
+export const uploadSignLimiter = rateLimitOff
     ? noop
     : rateLimit({
           windowMs: 60 * 1000,
@@ -115,7 +120,7 @@ export const uploadSignLimiter = isTest
       });
 
 // `/auth/invitation/:token` — 5/min/IP (prevent brute-force enumeration)
-export const invitationLimiter = isTest
+export const invitationLimiter = rateLimitOff
     ? noop
     : rateLimit({
           windowMs: 60 * 1000,

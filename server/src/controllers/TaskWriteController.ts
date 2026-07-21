@@ -18,6 +18,37 @@ import type {
  * `ETag` header (the task's `updated_at`, per Appendix A) so clients can echo it
  * in `If-Match` on the next PATCH.
  */
+
+/**
+ * Genuinely-nullable `tasks` columns a client may CLEAR via `PATCH { field: null }`.
+ * `matchedData` silently drops explicit-null optional fields, so without this a
+ * null-only clear (e.g. `{ due_date: null }`) reads as an empty body → 422. We
+ * re-include only these (never NOT-NULL columns like name/status_id/priority,
+ * which must not be nulled) — snake_case body keys, verified against the schema.
+ */
+const NULLABLE_TASK_PATCH_FIELDS = [
+    "custom_id",
+    "description",
+    "start_date",
+    "due_date",
+    "recurrence_days",
+    "recurrence_ends_at",
+    "time_estimate_seconds",
+    "sprint_id",
+    "story_points",
+    "reviewer_id",
+    "branch_name",
+    "pr_url",
+    "pr_status",
+    "bug_severity",
+    "bug_reproducibility",
+    "bug_environment",
+    "bug_browser",
+    "reporter_team",
+    "deployed_at",
+    "rollback_reason",
+] as const;
+
 export class TaskWriteController {
     constructor(
         private writes: TaskWriteService,
@@ -103,6 +134,17 @@ export class TaskWriteController {
             const b = matchedData(req, {
                 locations: ["body"],
             }) as Partial<UpdateTaskBody>;
+
+            // `matchedData` drops explicit-null optional fields, so a PATCH that
+            // CLEARS a nullable column would look empty. Re-include the nulls the
+            // client actually sent (restricted to genuinely-nullable columns) so
+            // e.g. `{ due_date: null }` clears the due date instead of 422-ing.
+            const rawBody = (req.body ?? {}) as Record<string, unknown>;
+            for (const k of NULLABLE_TASK_PATCH_FIELDS) {
+                if (rawBody[k] === null && !(k in b)) {
+                    (b as Record<string, unknown>)[k] = null;
+                }
+            }
 
             const fields = Object.keys(b);
             if (fields.length === 0) {

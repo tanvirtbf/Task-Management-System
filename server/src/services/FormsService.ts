@@ -4,7 +4,7 @@ import * as schema from "../db/schema";
 import type { Form, FormField, NewForm, NewFormField } from "../db/schema";
 import { AppError, type ErrorDetail } from "../errors";
 import { fakeId, randomToken } from "../utils";
-import { encryptJSON } from "../utils/encryption";
+import { encryptJSON, decryptJSON } from "../utils/encryption";
 import { Roles } from "../constants";
 import type { FormsRepo } from "../repositories/FormsRepo";
 import type { FormFieldsRepo } from "../repositories/FormFieldsRepo";
@@ -58,6 +58,45 @@ const slugify = (title: string): string => {
         .replace(/^-+|-+$/g, "")
         .slice(0, 80);
     return base.length > 0 ? base : "form";
+};
+
+/**
+ * Decrypt a stored submission `data` for admin display. New rows store an
+ * AES-256-GCM envelope `{ ciphertext, iv, authTag }`; legacy rows (created
+ * before encryption) store the raw submitted object. Detect + decrypt only the
+ * envelope shape; on any failure (legacy plaintext, wrong key, corrupt) return
+ * the stored value unchanged so a single bad row never 500s the whole page.
+ */
+const decryptSubmissionData = (data: unknown): unknown => {
+    // The JSON `data` column may surface as a STRING (mysql2 default) or a parsed
+    // object depending on the driver — normalize to the envelope string so the
+    // `{ciphertext,iv,authTag}` shape can be detected and decrypted.
+    let envStr: string;
+    if (typeof data === "string") envStr = data;
+    else if (data !== null && typeof data === "object" && !Array.isArray(data))
+        envStr = JSON.stringify(data);
+    else return data;
+
+    let env: unknown;
+    try {
+        env = JSON.parse(envStr);
+    } catch {
+        return data; // not JSON → legacy/raw, pass through
+    }
+    if (
+        env !== null &&
+        typeof env === "object" &&
+        "ciphertext" in env &&
+        "iv" in env &&
+        "authTag" in env
+    ) {
+        try {
+            return decryptJSON(envStr);
+        } catch {
+            return data; // wrong key / corrupt → never 500 the page
+        }
+    }
+    return data; // legacy plaintext
 };
 
 /** A real `YYYY-MM-DD` calendar date — correct format AND no month/day overflow. */
@@ -499,7 +538,15 @@ export class FormsService {
         const nextCursor =
             hasMore && last ? encodeCursor(last.internalId) : null;
         return {
-            data: page.map(toWireFormSubmission),
+            // Decrypt each submission's `data` for admin display (it is stored
+            // AES-256-GCM encrypted). Legacy plaintext rows and any undecryptable
+            // row pass through unchanged — one bad row never 500s the page.
+            data: page.map((row) =>
+                toWireFormSubmission({
+                    ...row,
+                    data: decryptSubmissionData(row.data),
+                }),
+            ),
             nextCursor,
             hasMore,
             total,

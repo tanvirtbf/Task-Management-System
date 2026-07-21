@@ -74,6 +74,7 @@ test("login succeeds + session survives a reload", async ({ page }) => {
 test("authenticated route sweep — every page renders, no console errors", async ({
     page,
 }) => {
+    test.setTimeout(90_000); // 16-route sweep with per-route settle needs headroom
     await login(page);
     const perRoute: Record<string, string[]> = {};
 
@@ -87,7 +88,11 @@ test("authenticated route sweep — every page renders, no console errors", asyn
         page.on("pageerror", onPageErr);
 
         await page.goto(route);
-        await page.waitForLoadState("networkidle").catch(() => {});
+        // networkidle never settles on pages holding a persistent connection
+        // (SSE /stream/inbox + the 60s notification poll), so cap the wait —
+        // otherwise 16 routes × ~30s each blows the test budget. `load` (from
+        // goto) + a short settle is enough for a render/console smoke check.
+        await page.waitForLoadState("networkidle", { timeout: 1500 }).catch(() => {});
         await page.waitForTimeout(700);
 
         if (new URL(page.url()).pathname.includes("/login")) {

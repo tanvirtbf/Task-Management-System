@@ -6,7 +6,10 @@ import tseslint from "typescript-eslint";
 import { defineConfig, globalIgnores } from "eslint/config";
 
 export default defineConfig([
-    globalIgnores(["dist"]),
+    // `dist` is build output; `src/mocks` + `src/lib/mock-api.ts` are the dead
+    // legacy mock layer — excluded from the tsconfig build (never imported by any
+    // live screen), so exclude them from lint too for consistency.
+    globalIgnores(["dist", "src/mocks", "src/lib/mock-api.ts"]),
     {
         files: ["**/*.{ts,tsx}"],
         extends: [

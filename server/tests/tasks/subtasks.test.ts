@@ -17,12 +17,13 @@ import type { Role } from "../../src/constants";
  * children as a bare `Task[]`. Built already (TasksController.getSubtasks);
  * this suite is the Prompt-4 coverage it was missing.
  *
- * Subtasks are created with the documented workaround for the schema-trigger
- * bug (MySQL 1442): a task cannot be INSERTed with `parent_task_id` set (the
- * AFTER INSERT counter trigger UPDATEs `tasks`), so we insert top-level then
- * UPDATE `parent_task_id`+`nesting_depth` (status unchanged → the AFTER UPDATE
- * trigger's inner UPDATE is skipped). `subtasks_count` therefore stays 0 — a
- * known pre-existing schema limitation, irrelevant to this read endpoint.
+ * These tests insert top-level then UPDATE `parent_task_id`+`nesting_depth`
+ * (a harmless legacy workaround). As of 2026-07-14 the MySQL-incompatible
+ * subtask counter triggers were REMOVED (a `tasks` trigger cannot UPDATE
+ * `tasks` — error 1442 — which crashed subtask status changes), so the direct
+ * path also works now. `subtasks_count`/`subtasks_completed` keep their 0
+ * default (accurate app-side maintenance is a tracked gate follow-up) —
+ * irrelevant to this read endpoint.
  *
  * N/A categories (documented): pagination (bare array, no envelope); body
  * validation (only the :id param + include_archived query); conflict/idempotency.

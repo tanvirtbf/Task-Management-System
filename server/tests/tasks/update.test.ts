@@ -18,8 +18,14 @@ import type { Role } from "../../src/constants";
 /**
  * Tests for `PATCH /api/v1/tasks/:id` (§10 #5) — partial scalar update + ETag.
  *
- * N/A categories (documented): pagination; null-to-clear of nullable fields
- * (V1 validator treats null as "not provided" — fields can be set, not cleared).
+ * N/A categories (documented): pagination.
+ *
+ * Null-to-clear of nullable fields IS supported (2026-07-14 fix): a PATCH like
+ * `{ due_date: null }` clears the column (the controller re-includes explicit
+ * nulls that `matchedData` drops, restricted to genuinely-nullable columns) —
+ * this matches the client's date-picker `allowClear`. Partial date-order is
+ * also guard-checked against the stored counterpart (start>due → 422, not a raw
+ * `ck_tasks_dates` 500).
  */
 
 jest.setTimeout(30_000);

@@ -10,7 +10,10 @@ vi.mock("../stores/auth", () => ({
         }),
     },
 }));
-vi.mock("./client", () => ({ refreshAccessToken: vi.fn() }));
+vi.mock("./client", () => ({
+    refreshAccessToken: vi.fn(),
+    BASE_URL: "http://localhost:5501/api/v1",
+}));
 
 import { streamChat } from "./assistant";
 

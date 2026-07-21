@@ -125,6 +125,11 @@ export class TasksController {
                 taskId: task.id,
             });
 
+            // Same ETag contract as create/PATCH (TaskWriteController): the
+            // task's `updated_at`, so a client can GET → echo it in `If-Match`
+            // on the next PATCH. Without this, Express's default weak
+            // content-hash ETag leaks through and never matches If-Match.
+            res.setHeader("ETag", task.updated_at);
             res.status(200).json(task);
         } catch (err) {
             next(err);

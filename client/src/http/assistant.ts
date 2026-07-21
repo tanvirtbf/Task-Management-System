@@ -1,5 +1,5 @@
 import { useAuthStore } from "../stores/auth";
-import { refreshAccessToken } from "./client";
+import { BASE_URL, refreshAccessToken } from "./client";
 
 /**
  * Streaming client for the AI Help Assistant (see AI_ASSISTANT_PLAN.md, Phase 4).
@@ -9,7 +9,10 @@ import { refreshAccessToken } from "./client";
  * `data: [DONE]`). It reuses the same Bearer token + 401→refresh-once flow.
  */
 
-const BASE_URL: string = import.meta.env.VITE_BACKEND_API_URL;
+// KI-5 fix: reuse client.ts's BASE_URL (env override → else derive
+// `http://<host>:5501/api/v1`). Previously read VITE_BACKEND_API_URL directly,
+// so an empty .env made `BASE_URL` undefined and the widget POSTed to the Vite
+// origin (:5173) instead of the backend — broken locally.
 
 export interface ChatTurn {
     role: "user" | "assistant";

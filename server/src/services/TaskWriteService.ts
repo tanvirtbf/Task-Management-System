@@ -705,6 +705,30 @@ export class TaskWriteService {
             }
         }
 
+        // Date ordering on PATCH is partial-aware: a change to only start OR only
+        // due must still respect start <= due against the STORED counterpart, else
+        // the `ck_tasks_dates` CHECK surfaces as a raw 500. Patch values are
+        // canonical YYYY-MM-DD; stored values are Dates → normalize via `ymd`.
+        const effStart =
+            p.startDate !== undefined
+                ? p.startDate
+                : current.startDate
+                  ? ymd(current.startDate)
+                  : null;
+        const effDue =
+            p.dueDate !== undefined
+                ? p.dueDate
+                : current.dueDate
+                  ? ymd(current.dueDate)
+                  : null;
+        if (effStart && effDue && effStart > effDue) {
+            throw AppError.unprocessable(
+                "task.invalid_date_range",
+                "start_date must not be after due_date",
+                [{ field: "start_date", issue: "must be on or before due_date" }],
+            );
+        }
+
         // ─── Build the column patch ──────────────────────────────────────────
         const dbPatch: Partial<NewTask> = {};
         if (p.name !== undefined) dbPatch.name = p.name;

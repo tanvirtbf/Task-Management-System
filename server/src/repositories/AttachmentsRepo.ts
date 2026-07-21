@@ -141,11 +141,16 @@ export class AttachmentsRepo {
     }
 
     /**
-     * Soft-delete: set `deleted_at = NOW()` only if not already deleted. Returns
-     * the affected-row count — `0` means a concurrent delete already won, which
-     * the caller renders as `404`. The NULL→non-NULL transition fires the
-     * after_update trigger, decrementing `tasks.attachments_count` for a complete
-     * row (a pending row was never counted, so nothing to decrement).
+     * Soft-delete: set `deleted_at = UTC_TIMESTAMP()` only if not already
+     * deleted. Returns the affected-row count — `0` means a concurrent delete
+     * already won, which the caller renders as `404`. The NULL→non-NULL
+     * transition fires the after_update trigger, decrementing
+     * `tasks.attachments_count` for a complete row (a pending row was never
+     * counted, so nothing to decrement).
+     *
+     * KI-2 fix (2026-07-14): use `UTC_TIMESTAMP()` not `NOW()` — every other
+     * timestamp is stored UTC, and the r2-purge cutoff is a UTC JS Date, so a
+     * local (Dhaka, +6h) `deleted_at` would skew the 7-day purge window.
      */
     async softDelete(
         id: string,
@@ -153,7 +158,7 @@ export class AttachmentsRepo {
     ): Promise<number> {
         const [result] = await exec
             .update(attachments)
-            .set({ deletedAt: sql`NOW()` })
+            .set({ deletedAt: sql`UTC_TIMESTAMP()` })
             .where(and(eq(attachments.id, id), isNull(attachments.deletedAt)));
         return result.affectedRows;
     }

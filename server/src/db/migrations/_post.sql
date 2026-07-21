@@ -73,38 +73,10 @@ BEGIN
     END IF;
 END$$
 
-CREATE TRIGGER trg_subtasks_after_insert
-AFTER INSERT ON tasks
-FOR EACH ROW
-BEGIN
-    IF NEW.parent_task_id IS NOT NULL THEN
-        UPDATE tasks SET subtasks_count = subtasks_count + 1 WHERE id = NEW.parent_task_id;
-    END IF;
-END$$
-
-CREATE TRIGGER trg_subtasks_after_update
-AFTER UPDATE ON tasks
-FOR EACH ROW
-BEGIN
-    IF NEW.parent_task_id IS NOT NULL AND OLD.status_id <> NEW.status_id THEN
-        UPDATE tasks p
-           JOIN statuses s_old ON s_old.id = OLD.status_id
-           JOIN statuses s_new ON s_new.id = NEW.status_id
-           SET p.subtasks_completed = p.subtasks_completed
-               + CASE WHEN s_new.status_group IN ('done','closed') THEN 1 ELSE 0 END
-               - CASE WHEN s_old.status_group IN ('done','closed') THEN 1 ELSE 0 END
-         WHERE p.id = NEW.parent_task_id;
-    END IF;
-END$$
-
-CREATE TRIGGER trg_subtasks_after_delete
-AFTER DELETE ON tasks
-FOR EACH ROW
-BEGIN
-    IF OLD.parent_task_id IS NOT NULL THEN
-        UPDATE tasks SET subtasks_count = GREATEST(subtasks_count - 1, 0) WHERE id = OLD.parent_task_id;
-    END IF;
-END$$
+-- Subtask counters: NO triggers — MySQL forbids a `tasks` trigger from updating
+-- `tasks` (error 1442), which crashed every subtask status change (500). Removed
+-- 2026-07-14; counters stay 0 until app-side maintenance is added (gate item).
+-- Kept in sync with database/schema.sql.
 
 CREATE TRIGGER trg_form_submissions_after_insert
 AFTER INSERT ON form_submissions

@@ -8,10 +8,12 @@ import { Avatar } from "../../components/ui/Avatar";
 import { BugSeverityBadge } from "../../components/task/BugSeverityBadge";
 import { StoryPointsBadge } from "../../components/task/StoryPointsBadge";
 import { tokens } from "../../theme";
+import { useListMap } from "../../hooks/useReferenceData";
 
 const EngineeringHomePage = () => {
     const user = useAuthStore((s) => s.user);
     const navigate = useNavigate();
+    const listMap = useListMap();
     // One rollup call replaces the old 3 hardcoded-list fetches + mock derivations.
     const { data: home, isLoading } = useQuery({
         queryKey: ["eng-home"],
@@ -20,9 +22,21 @@ const EngineeringHomePage = () => {
 
     const onCall = home?.currentOnCall ?? null;
     const openBugs = home?.openBugs.top ?? [];
+    const openIncidents = home?.openIncidents.top ?? [];
     const mySprintTasks = home?.mySprintTasks ?? [];
     const prsAwaitingMe = home?.prsAwaitingMe ?? [];
     const stale = home?.staleTickets ?? [];
+
+    // KI-13 fix: the eng dashboard used to link to hardcoded seed ids
+    // (`sp-eng`/`l-bug-triage`/`l-incidents`/`l-sprint`) that don't exist in a
+    // real workspace. Resolve the actual list from a representative task instead,
+    // and open individual tasks through the canonical `/t/:id` redirect.
+    const goToList = (task?: { primaryListId: string }) => {
+        const list = task && listMap.get(task.primaryListId);
+        if (list) navigate(`/s/${list.spaceId}/l/${list.id}`);
+    };
+    const goToTask = (t: { id: string; customId?: string }) =>
+        navigate(`/t/${t.customId ?? t.id}`);
 
     return (
         <div
@@ -135,7 +149,7 @@ const EngineeringHomePage = () => {
                     value={home?.openBugs.count ?? 0}
                     icon={Bug}
                     color="#E11D48"
-                    onClick={() => navigate("/s/sp-eng/l/l-bug-triage")}
+                    onClick={() => goToList(openBugs[0])}
                 />
                 <KpiTile
                     label="In sprint (mine)"
@@ -155,7 +169,7 @@ const EngineeringHomePage = () => {
                     value={home?.openIncidents.count ?? 0}
                     icon={AlertOctagon}
                     color="#DC2626"
-                    onClick={() => navigate("/s/sp-eng/l/l-incidents")}
+                    onClick={() => goToList(openIncidents[0])}
                 />
                 <KpiTile
                     label="Stale tickets"
@@ -178,7 +192,7 @@ const EngineeringHomePage = () => {
                     icon={Bug}
                     color="#E11D48"
                     title="Open bugs (top 6)"
-                    onSeeAll={() => navigate("/s/sp-eng/l/l-bug-triage")}
+                    onSeeAll={() => goToList(openBugs[0])}
                 >
                     {isLoading ? (
                         <Skeleton active paragraph={{ rows: 4 }} />
@@ -188,11 +202,7 @@ const EngineeringHomePage = () => {
                         openBugs.slice(0, 6).map((t) => (
                             <button
                                 key={t.id}
-                                onClick={() =>
-                                    navigate(
-                                        `/s/sp-eng/l/l-bug-triage?task=${t.id}`,
-                                    )
-                                }
+                                onClick={() => goToTask(t)}
                                 style={rowBtn}
                             >
                                 <span
@@ -255,11 +265,7 @@ const EngineeringHomePage = () => {
                             return (
                                 <button
                                     key={t.id}
-                                    onClick={() =>
-                                        navigate(
-                                            `/s/sp-eng/l/l-sprint?task=${t.id}`,
-                                        )
-                                    }
+                                    onClick={() => goToTask(t)}
                                     style={rowBtn}
                                 >
                                     <span

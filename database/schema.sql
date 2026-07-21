@@ -919,9 +919,16 @@ CREATE TABLE form_submissions (
     task_id         VARCHAR(64)  NULL,
     submitter_email VARCHAR(255) NULL,
     submitter_ip    VARCHAR(45)  NULL,
-    -- Raw submitted values; the conversion to a Task uses this + form_fields.
+    -- Submitted values, AES-256-GCM encrypted at rest: `data` holds a JSON
+    -- { ciphertext, iv, authTag } (PII-at-rest protection, §P1-02). Legacy rows
+    -- created before encryption hold the raw object; the read path detects and
+    -- decrypts only the encrypted shape.
     data            JSON         NOT NULL,
     submitted_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    -- Encryption + 90-day PII retention (migration 0005 — folded here so
+    -- `db:setup` provisions them; the retention job deletes `expires_at < now`).
+    encrypted_at    TIMESTAMP    NULL DEFAULT NULL,
+    expires_at      TIMESTAMP    NULL DEFAULT NULL,
 
     PRIMARY KEY (id),
     UNIQUE KEY uq_form_submissions_internal_id (internal_id),
@@ -929,7 +936,8 @@ CREATE TABLE form_submissions (
         REFERENCES forms(id) ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT fk_form_submissions_task FOREIGN KEY (task_id)
         REFERENCES tasks(id) ON DELETE SET NULL ON UPDATE CASCADE,
-    INDEX idx_form_submissions_form_time (form_id, submitted_at DESC)
+    INDEX idx_form_submissions_form_time (form_id, submitted_at DESC),
+    INDEX idx_form_submissions_expires_at (expires_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
 
 
@@ -1249,45 +1257,15 @@ BEGIN
     END IF;
 END$$
 
-CREATE TRIGGER trg_subtasks_after_insert
-AFTER INSERT ON tasks
-FOR EACH ROW
-BEGIN
-    IF NEW.parent_task_id IS NOT NULL THEN
-        UPDATE tasks
-           SET subtasks_count = subtasks_count + 1
-         WHERE id = NEW.parent_task_id;
-    END IF;
-END$$
-
-CREATE TRIGGER trg_subtasks_after_update
-AFTER UPDATE ON tasks
-FOR EACH ROW
-BEGIN
-    -- A subtask just transitioned to a done/closed group → increment parent's
-    -- completed counter. We detect via status_id change + new status_group
-    -- being terminal. Looking up the status group requires a SELECT.
-    IF NEW.parent_task_id IS NOT NULL AND OLD.status_id <> NEW.status_id THEN
-        UPDATE tasks p
-           JOIN statuses s_old ON s_old.id = OLD.status_id
-           JOIN statuses s_new ON s_new.id = NEW.status_id
-           SET p.subtasks_completed = p.subtasks_completed
-               + CASE WHEN s_new.status_group IN ('done','closed') THEN 1 ELSE 0 END
-               - CASE WHEN s_old.status_group IN ('done','closed') THEN 1 ELSE 0 END
-         WHERE p.id = NEW.parent_task_id;
-    END IF;
-END$$
-
-CREATE TRIGGER trg_subtasks_after_delete
-AFTER DELETE ON tasks
-FOR EACH ROW
-BEGIN
-    IF OLD.parent_task_id IS NOT NULL THEN
-        UPDATE tasks
-           SET subtasks_count = GREATEST(subtasks_count - 1, 0)
-         WHERE id = OLD.parent_task_id;
-    END IF;
-END$$
+-- Subtask counters (subtasks_count / subtasks_completed): NO triggers.
+-- MySQL forbids a trigger on `tasks` from modifying `tasks` (error 1442
+-- "Can't update table in stored function/trigger…"), so the former
+-- trg_subtasks_after_{insert,update,delete} triggers could not maintain these
+-- counters AND actively crashed every subtask status change with a raw 500.
+-- Removed 2026-07-14. The counters keep their 0 default; accurate maintenance
+-- must be done app-side (recompute on subtask create / status-change / delete)
+-- — tracked as a gate follow-up. (In the SQLite port these triggers were legal;
+-- MySQL is stricter.)
 
 CREATE TRIGGER trg_form_submissions_after_insert
 AFTER INSERT ON form_submissions

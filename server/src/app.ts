@@ -82,6 +82,12 @@ app.use(
             cb(new Error(`Origin ${origin} not allowed by CORS`));
         },
         credentials: true,
+        // Custom response headers JS must read cross-origin. The assistant
+        // streaming client reads `X-Conversation-Id` to keep multi-turn chats on
+        // one server-side conversation; without exposing it, the browser hides
+        // the header (5173→5501 is cross-origin) and every message forks a new
+        // conversation.
+        exposedHeaders: ["X-Conversation-Id"],
     }),
 );
 
