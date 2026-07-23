@@ -73,11 +73,17 @@ export class AttachmentsController {
                 (typeof contentType === "string"
                     ? contentType.split(";")[0]?.trim()
                     : "") || "application/octet-stream";
+            // Gap-scan M5: a malformed `%` in X-Filename throws URIError →
+            // used to 500. Fall back to the raw header, then to "file".
             const rawName = req.headers["x-filename"];
-            const filename =
-                typeof rawName === "string" && rawName
-                    ? decodeURIComponent(rawName)
-                    : "file";
+            let filename = "file";
+            if (typeof rawName === "string" && rawName) {
+                try {
+                    filename = decodeURIComponent(rawName);
+                } catch {
+                    filename = rawName;
+                }
+            }
 
             const attachment = await this.service.uploadDirect({
                 workspaceId: req.auth.workspaceId,
@@ -176,6 +182,14 @@ export class AttachmentsController {
                 id: req.params.id,
                 workspaceId: req.auth.workspaceId,
             });
+            // Gap-scan M11: XHR callers can't usefully follow a cross-origin
+            // 302 (no Location access, no Bearer on the hop) — `?json=1`
+            // hands them the fresh signed URL as a body instead. Plain
+            // browser navigations keep the 302.
+            if (req.query.json === "1") {
+                res.status(200).json({ url });
+                return;
+            }
             res.redirect(302, url);
         } catch (err) {
             next(err);

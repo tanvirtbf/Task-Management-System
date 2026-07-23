@@ -8,7 +8,7 @@ import {
     MoreHorizontal,
     UserPlus,
 } from "lucide-react";
-import { Button } from "antd";
+import { Alert, Button } from "antd";
 import { listsApi, spacesApi, tasksApi } from "../../http/api";
 import { useUserMap } from "../../hooks/useReferenceData";
 import { AssigneeStack } from "../../components/ui/AssigneeStack";
@@ -36,7 +36,11 @@ const ListPage = () => {
     // Default view is "list"; URL `:viewId` (e.g., "board") overrides
     const currentView = viewId ?? "list";
 
-    const { data: list } = useQuery({
+    const {
+        data: list,
+        isError: listError,
+        refetch: refetchList,
+    } = useQuery({
         queryKey: ["list", listId],
         queryFn: () => (listId ? listsApi.getById(listId) : null),
         enabled: !!listId,
@@ -48,7 +52,11 @@ const ListPage = () => {
         enabled: !!spaceId,
     });
 
-    const { data: tasks = [] } = useQuery({
+    const {
+        data: tasks = [],
+        isError: tasksError,
+        refetch: refetchTasks,
+    } = useQuery({
         queryKey: ["tasks-by-list", listId],
         queryFn: () =>
             listId ? tasksApi.listByList(listId) : Promise.resolve([]),
@@ -62,6 +70,36 @@ const ListPage = () => {
         .map((id) => userMap.get(id))
         .filter((u): u is NonNullable<typeof u> => !!u);
 
+    // M9: a failed load must SAY so — this page used to render blank.
+    if (listError || tasksError) {
+        return (
+            <div
+                style={{
+                    padding: tokens.spacing[6],
+                    maxWidth: 560,
+                    margin: "0 auto",
+                }}
+            >
+                <Alert
+                    type="error"
+                    showIcon
+                    message="Couldn't load this list"
+                    description="Check your connection and try again."
+                    action={
+                        <Button
+                            size="small"
+                            onClick={() => {
+                                void refetchList();
+                                void refetchTasks();
+                            }}
+                        >
+                            Retry
+                        </Button>
+                    }
+                />
+            </div>
+        );
+    }
     if (!list || !listId) return null;
 
     const renderView = () => {

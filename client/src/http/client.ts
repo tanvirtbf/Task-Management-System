@@ -96,7 +96,9 @@ export const decamelizeKeys = (input: unknown): unknown =>
  * are safe (camelizing already-camel keys is a no-op); the REQUEST side opts out
  * of decamelize via the `skipDecamelize` config flag (see `templatesApi`).
  */
-const SKIP_CAMELIZE_URLS = ["/home/kpis"];
+// `/postmortem`: its `items` map is keyed by human labels ("Timeline
+// reconstructed") — case-transforming those keys would corrupt them (H5).
+const SKIP_CAMELIZE_URLS = ["/home/kpis", "/postmortem"];
 
 // ─── axios instance ───────────────────────────────────────────────────────────
 export const api = axios.create({
@@ -167,14 +169,30 @@ api.interceptors.response.use(
             | (InternalAxiosRequestConfig & { _retry?: boolean })
             | undefined;
 
-        if (error.response?.status === 401 && original && !original._retry) {
+        // Gap-scan H4: never refresh-retry the auth endpoints themselves. A
+        // wrong-password 401 from /auth/login is THE answer (surface it —
+        // don't morph it into a refresh error, double-POST the credentials,
+        // or nuke the session of a still-signed-in user).
+        const url = original?.url ?? "";
+        const isAuthAttempt =
+            url.includes("/auth/login") ||
+            url.includes("/auth/refresh") ||
+            url.includes("/auth/2fa");
+
+        if (
+            error.response?.status === 401 &&
+            original &&
+            !original._retry &&
+            !isAuthAttempt
+        ) {
             original._retry = true;
             try {
                 await refreshAccessToken();
                 // Retry once — the request interceptor re-attaches the NEW token.
                 return await api.request(original);
             } catch (refreshErr) {
-                useAuthStore.getState().logout();
+                // Session already dead server-side — local purge only.
+                useAuthStore.getState().logout({ revoke: false });
                 return Promise.reject(refreshErr);
             }
         }

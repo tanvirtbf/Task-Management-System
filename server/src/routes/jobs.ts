@@ -21,6 +21,20 @@ router.post(
 );
 router.post("/r2-purge", internalAuth, controller.run("r2-purge"));
 router.post("/snooze-wake", internalAuth, controller.run("snooze-wake"));
+// Dept Review V1 — weekly HR reports (registry AND route together; the
+// form-submission-expiry route omission is not repeated here).
+router.post(
+    "/department-report",
+    internalAuth,
+    controller.run("department-report"),
+);
+// Gap-scan M2: this job was registered but never routed — the 90-day
+// encrypted-PII purge could not run under the documented curl-cron setup.
+router.post(
+    "/form-submission-expiry",
+    internalAuth,
+    controller.run("form-submission-expiry"),
+);
 // recurrence-spawn, email-digest, and sla-breach-scan routes are registered
 // here as each job is built.
 

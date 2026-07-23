@@ -1,10 +1,8 @@
 import type { NextFunction, Response } from "express";
 import type { Logger } from "winston";
-import { SpacesService } from "../services/SpacesService";
-import type {
-    SpaceRecord,
-    SpaceUpdateFields,
-} from "../repositories/SpacesRepo";
+import { SpacesService, type SpaceWithHead } from "../services/SpacesService";
+import type { SpaceUpdateFields } from "../repositories/SpacesRepo";
+import { toWireUser, type WireUser } from "../serializers/userSerializer";
 import type {
     CreateSpaceRequest,
     GetSpaceRequest,
@@ -35,19 +33,25 @@ interface WireSpace {
     icon: string;
     color: string;
     is_private: boolean;
+    /** Dept Review V1 — department head id (null = none assigned). */
+    head_user_id: string | null;
+    /** Dept Review V1 — hydrated head user (batched in the service, anti-N+1). */
+    head: WireUser | null;
     position: number;
     archived_at: string | null;
     created_by: string;
     created_at: string;
 }
 
-const toWireSpace = (s: SpaceRecord): WireSpace => ({
+const toWireSpace = (s: SpaceWithHead): WireSpace => ({
     id: s.id,
     name: s.name,
     description: s.description,
     icon: s.icon,
     color: s.color,
     is_private: s.isPrivate,
+    head_user_id: s.headUserId,
+    head: s.head ? toWireUser(s.head) : null,
     position: s.position,
     archived_at: s.archivedAt ? s.archivedAt.toISOString() : null,
     created_by: s.createdBy,
@@ -197,6 +201,8 @@ export class SpacesController {
             if (body.is_private !== undefined)
                 fields.isPrivate = body.is_private;
             if (body.position !== undefined) fields.position = body.position;
+            if (body.head_user_id !== undefined)
+                fields.headUserId = body.head_user_id;
 
             const space = await this.spacesService.update({
                 spaceId,

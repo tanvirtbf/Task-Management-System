@@ -20,6 +20,18 @@ import { TaskTypesRepo } from "../repositories/TaskTypesRepo";
 import { TagsRepo } from "../repositories/TagsRepo";
 import { TaskWriteService } from "../services/TaskWriteService";
 import { TaskWriteController } from "../controllers/TaskWriteController";
+import { SpacesRepo } from "../repositories/SpacesRepo";
+import { ReviewsRepo } from "../repositories/ReviewsRepo";
+import { ReviewsService } from "../services/ReviewsService";
+import { ReviewsController } from "../controllers/ReviewsController";
+import {
+    createReviewValidator,
+    listReviewsValidator,
+} from "../validators/reviews";
+import type {
+    CreateReviewRequest,
+    ListReviewsRequest,
+} from "../types/reviews";
 import { getDb } from "../db/client";
 import logger from "../config/logger";
 import { validate } from "../middlewares/validate";
@@ -65,6 +77,20 @@ const membershipRepo = new TaskMembershipRepo(db);
 const activityRepo = new TaskActivityRepo(db);
 const notificationsRepo = new NotificationsRepo(db);
 const tagsRepo = new TagsRepo(db);
+// Dept Review V1 (A-4) — review write path.
+const spacesRepo = new SpacesRepo(db);
+const reviewsRepo = new ReviewsRepo(db);
+const reviewsService = new ReviewsService(
+    db,
+    spacesRepo,
+    tasksRepo,
+    reviewsRepo,
+    activityRepo,
+    notificationsRepo,
+    usersRepo,
+    logger,
+);
+const reviewsController = new ReviewsController(reviewsService, logger);
 const membershipService = new TaskMembershipService(
     db,
     tasksRepo,
@@ -227,6 +253,21 @@ router.delete(
 // 🔐 Any member. The caller's task dashboard: today / overdue / next / unscheduled
 // / done buckets (or one via `?bucket=`). A LITERAL path — MUST be declared
 // before the catch-all `GET /:id` so it isn't captured as id="my-work".
+// ─── POST /api/v1/tasks/:id/review ───────────────────────────────────────────
+// Dept Review V1 (A-4). Authenticated; head-of-the-task's-space or owner/admin
+// (enforced service-level → 403 review.not_head). `:id` accepts id or
+// custom_id. 409 review.not_completed unless the task sits in a done-group
+// status (re-checked under the task row lock); 409 task.archived /
+// space.archived per the guard chain.
+router.post(
+    "/:id/review",
+    authenticate,
+    createReviewValidator,
+    validate,
+    (req: Request, res: Response, next: NextFunction) =>
+        reviewsController.create(req as CreateReviewRequest, res, next),
+);
+
 router.get(
     "/my-work",
     authenticate,
@@ -276,6 +317,19 @@ router.get(
 // object (404 `task.not_found` if absent or in another workspace). Registered
 // after the literal-segment routes above; future literals (`/my-work`, `/bulk`)
 // MUST be declared before this catch-all `:id`.
+// ─── GET /api/v1/tasks/:id/reviews ───────────────────────────────────────────
+// Dept Review V1 (A-5). Review history, newest-first, reviewers hydrated.
+// Readable by owner/admin, the space's head, and the task's assignees
+// (service-enforced → 403 review.forbidden). `:id` accepts id or custom_id.
+router.get(
+    "/:id/reviews",
+    authenticate,
+    listReviewsValidator,
+    validate,
+    (req: Request, res: Response, next: NextFunction) =>
+        reviewsController.listForTask(req as ListReviewsRequest, res, next),
+);
+
 router.get(
     "/:id",
     authenticate,

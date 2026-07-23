@@ -40,6 +40,7 @@ import {
     prStatuses,
     recurrencePatterns,
     reporterTeams,
+    reviewStatuses,
     weekDays,
 } from "./_shared";
 import { workspaces, users } from "./auth";
@@ -95,6 +96,13 @@ export const tasks = mysqlTable(
         startDate: date("start_date"),
         dueDate: date("due_date"),
         completedAt: timestamp("completed_at"),
+
+        // ─── Dept Review V1 — current review state (denorm; app-maintained in
+        // the same tx as the task_reviews insert — NO triggers). reviewedAt is
+        // app-written UTC. Cleared whenever the task leaves a done group. ─────
+        reviewStatus: mysqlEnum("review_status", reviewStatuses),
+        reviewedAt: timestamp("reviewed_at"),
+        reviewedBy: varchar("reviewed_by", { length: ID_LENGTH }),
 
         // ─── SLA (P0) ────────────────────────────────────────────────────────
         slaDueAt: timestamp("sla_due_at"),
@@ -174,6 +182,13 @@ export const tasks = mysqlTable(
             columns: [t.reviewerId],
             foreignColumns: [users.id],
             name: "fk_tasks_reviewer",
+        })
+            .onDelete("set null")
+            .onUpdate("cascade"),
+        reviewedByFk: foreignKey({
+            columns: [t.reviewedBy],
+            foreignColumns: [users.id],
+            name: "fk_tasks_reviewed_by",
         })
             .onDelete("set null")
             .onUpdate("cascade"),

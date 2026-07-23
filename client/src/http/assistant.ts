@@ -81,7 +81,8 @@ export async function streamChat(params: StreamChatParams): Promise<void> {
         try {
             await refreshAccessToken();
         } catch {
-            useAuthStore.getState().logout();
+            // Refresh failed — the session is gone; purge locally only.
+            useAuthStore.getState().logout({ revoke: false });
             throw new Error("Your session has expired. Please sign in again.");
         }
         res = await postChat(body, useAuthStore.getState().accessToken, signal);

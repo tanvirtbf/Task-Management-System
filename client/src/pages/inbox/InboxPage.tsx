@@ -22,6 +22,10 @@ import {
     FileText,
     RotateCcw,
     MoreHorizontal,
+    GitPullRequest,
+    Siren,
+    ClipboardCheck,
+    BarChart3,
 } from "lucide-react";
 import { notificationsApi } from "../../http/api";
 import { useAuthStore } from "../../stores/auth";
@@ -30,10 +34,12 @@ import { LoadingState } from "../../components/shared/LoadingState";
 import { tokens } from "../../theme";
 import type { Notification, NotificationType } from "../../types";
 
-const TYPE_ICONS: Record<
-    NotificationType,
-    { icon: React.ComponentType<{ size?: number; strokeWidth?: number }>; color: string }
-> = {
+interface TypeMeta {
+    icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
+    color: string;
+}
+
+const TYPE_ICONS: Record<NotificationType, TypeMeta> = {
     assigned: { icon: UserPlus, color: "#4F46E5" },
     mentioned: { icon: AtSign, color: "#EC4899" },
     comment: { icon: MessageCircle, color: "#06B6D4" },
@@ -42,8 +48,23 @@ const TYPE_ICONS: Record<
     overdue: { icon: AlertTriangle, color: "#E11D48" },
     form_submitted: { icon: FileText, color: "#8B5CF6" },
     automation_failed: { icon: Zap, color: "#E11D48" },
-    reminder_due: { icon: Clock, color: "#F59E0B" },
+    pr_review: { icon: GitPullRequest, color: "#06B6D4" },
+    incident_alert: { icon: Siren, color: "#E11D48" },
+    task_reviewed: { icon: ClipboardCheck, color: "#10B981" },
+    report_ready: { icon: BarChart3, color: "#8B5CF6" },
 };
+
+/**
+ * B-1 hardening: an UNKNOWN/future server type must NEVER crash the inbox —
+ * the old direct `TYPE_ICONS[n.type]` destructure took down the whole app via
+ * the root ErrorBoundary. The Record above keeps compile-time exhaustiveness
+ * for known types; this lookup adds the permanent runtime fallback.
+ */
+const typeMetaOf = (type: string): TypeMeta =>
+    (TYPE_ICONS as Partial<Record<string, TypeMeta>>)[type] ?? {
+        icon: Inbox,
+        color: "#94A3B8",
+    };
 
 type FilterKey = "all" | "unread" | "mentions" | "assigned";
 
@@ -181,6 +202,8 @@ const InboxPage = () => {
     const handleClick = (n: Notification) => {
         if (!n.isRead) markAsRead.mutate(n.id);
         if (n.entityType === "task") navigate(`/t/${n.entityId}`);
+        // Dept Review V1 — report_ready deep-links to the report detail.
+        if (n.entityType === "report") navigate(`/reports/${n.entityId}`);
     };
 
     if (!user) return <div>Not signed in</div>;
@@ -407,7 +430,7 @@ const NotificationRow = ({
 }) => {
     const userMap = useUserMap();
     const actor = n.actorId ? userMap.get(n.actorId) : null;
-    const { icon: Icon, color } = TYPE_ICONS[n.type];
+    const { icon: Icon, color } = typeMetaOf(n.type);
 
     return (
         <div

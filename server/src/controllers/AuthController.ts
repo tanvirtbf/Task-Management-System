@@ -1,5 +1,6 @@
 import type { NextFunction, Response } from "express";
 import type { Logger } from "winston";
+import { Config } from "../config";
 import { AuthService } from "../services/AuthService";
 import type { AuthRequest } from "../types";
 import type {
@@ -299,7 +300,9 @@ export class AuthController {
      * exactly one place.
      */
     private setRefreshCookie(res: Response, refreshToken: string) {
-        const isSecure = process.env.NODE_ENV === "prod" || process.env.FORCE_SECURE === "true";
+        // M4: IS_PROD covers prod AND production; FORCE_SECURE=true is the
+        // documented override for TLS-terminating proxies in other envs.
+        const isSecure = Config.IS_PROD || process.env.FORCE_SECURE === "true";
         res.cookie(REFRESH_COOKIE_NAME, refreshToken, {
             httpOnly: true,
             secure: isSecure,
@@ -314,7 +317,9 @@ export class AuthController {
      * attributes (especially `Path`) or the browser will keep the cookie.
      */
     private clearRefreshCookie(res: Response) {
-        const isSecure = process.env.NODE_ENV === "prod" || process.env.FORCE_SECURE === "true";
+        // M4: IS_PROD covers prod AND production; FORCE_SECURE=true is the
+        // documented override for TLS-terminating proxies in other envs.
+        const isSecure = Config.IS_PROD || process.env.FORCE_SECURE === "true";
         res.clearCookie(REFRESH_COOKIE_NAME, {
             httpOnly: true,
             secure: isSecure,

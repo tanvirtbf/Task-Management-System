@@ -191,3 +191,22 @@ describe("GET /api/v1/attachments/:id/download", () => {
         });
     });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+describe("?json=1 variant (gap-scan M11 — XHR-friendly fresh URL)", () => {
+    it("200 { url } with the same fresh signed URL semantics", async () => {
+        const { client, insertAtt } = await seed();
+        const id = await insertAtt();
+        const res = await client.get(`${PATH(id)}?json=1`);
+        expect(res.status).toBe(200);
+        expect(res.body.url).toContain("https://r2.fake/get/");
+        expect(res.body.url).toContain("?sig=");
+    });
+
+    it("plain requests still get the 302 (backward compatible)", async () => {
+        const { client, insertAtt } = await seed();
+        const id = await insertAtt();
+        const res = await client.get(PATH(id));
+        expect(res.status).toBe(302);
+    });
+});

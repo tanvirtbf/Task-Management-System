@@ -1613,6 +1613,56 @@ Stable string codes — frontend can switch on these. Format: `<domain>.<reason>
 
 ---
 
+## 33. Department review & weekly HR reports <a id="36-dept-review"></a>
+
+**ADDENDUM (Dept Review V1, 2026-07-22 — built per `DEPARTMENT_REVIEW_PLAN.md` v1.1).** Spaces double as departments: `spaces.head_user_id` names one head per space, the head reviews the department's DONE tasks (approve / flag + note), and a weekly report per department lands with HR (owner/admin) every Monday 09:00 Dhaka — plus on-demand. Done-ness authority is the LIVE `statuses.status_group ∈ {done, closed}`; department membership is DERIVED from task assignees (zero setup). Wire timestamps are UTC; week keys are Dhaka-calendar Mondays (`YYYY-MM-DD`).
+
+### Head assignment
+`PATCH /api/v1/spaces/:id` accepts `head_user_id: string | null` (👑 owner/admin). The head must be an ACTIVE non-guest member of the workspace, else **422 `space.head_invalid`**. Every space read (single + list) now carries `head_user_id` and a hydrated `head: User | null`. Deactivating a user clears their headships in the same transaction; `DELETE /spaces/:id` is refused with **409 `space.has_reports`** while department reports exist.
+
+### POST `/api/v1/tasks/:id/review`
+Head-or-👑 records a verdict on a DONE task in their department.
+
+**Body** — `{ "status": "approved" | "flagged", "note": "≤500 chars, optional" }`
+**200 OK** — the created `TaskReview` (append-only history; the task's `review_status / reviewed_at / reviewed_by` denorm updates in-tx). Assignees are notified (`task_reviewed`, self-review skipped); flag notes travel in the notification body.
+Errors: `review.not_head` 403, `space.archived` 409, `review.task_not_done` 409, `task.not_found` 404. Leaving the done group (single PATCH, bulk, or a status-group regroup) RESETS the review trio; regrouping a status that is in use is refused **409 `status.in_use`**.
+
+### GET `/api/v1/tasks/:id/reviews`
+Review history, newest-first (≤100), reviewer-hydrated. Readable by 👑, the space head, and the task's assignees — else **403 `review.forbidden`**. Bare `{data}` envelope.
+
+### GET `/api/v1/spaces/:id/review-summary`
+Head-or-👑 dashboard rollup: `{ members: [{ user, assigned_open, done_unreviewed, approved, flagged, overdue_now, last_activity_at }], totals }` — per-assignee rows (Unassigned last), task-level deduped totals.
+
+### GET `/api/v1/spaces/:id/review-queue?bucket=…`
+Head-or-👑 work queue. `bucket` REQUIRED ∈ `needs_review | flagged | overdue | due_today`; cursor-paginated `{data, pagination}` of task rows (review trio + `parent_task` breadcrumb + assignees).
+
+### GET `/api/v1/reports`
+Report inbox, `{data, pagination}` — composite keyset (week DESC, id DESC), `?space_id=` filter. 👑 sees every department; a head sees reports where they are the CURRENT head or the stored SNAPSHOT head; everyone else gets an empty list (no error).
+List rows carry a `totals` PREVIEW only (no full payload).
+
+### GET `/api/v1/reports/:id`
+Full report: `week_start/week_end`, snapshot `head_user_id` + hydrated `head`, `head_note`, `generated_by/at`, `acknowledged_by/at`, and the frozen §payload — `{ members: [{ user, assigned_open, completed, completed_late, overdue_now, approved, flagged, flags[] }], totals, head_accountability: { reviews_done, self_reviewed, done_unreviewed_at_generation }, prev_week }`. Unprivileged readers get **403 `report.forbidden`**; cross-workspace is always **404 `report.not_found`**.
+
+### POST `/api/v1/reports/generate`
+On-demand (re)generate — CURRENT head or 👑, rate-limited 10/min/user.
+
+**Body** — `{ "space_id": "…", "week_start": "YYYY-MM-DD (optional, a PAST Dhaka Monday)" }` — default = last completed week.
+**200 OK** — the full report. Upsert on `(space_id, week_start)`: regeneration refreshes ONLY `payload/generated_*` + the head snapshot — `head_note`, `acknowledged_*` and the notification claim survive, so nobody is re-notified. Errors: `report.invalid_week` 422, `space.archived` 409, `report.forbidden` 403.
+
+### PATCH `/api/v1/reports/:id`
+`{ "head_note": "≤1000 chars" | null }` — the stored SNAPSHOT head ONLY (even admins are refused **403 `report.forbidden`**; a successor head reads but cannot edit a predecessor's report).
+
+### POST `/api/v1/reports/:id/ack`
+👑 owner/admin "Mark seen". Idempotent 200 — the FIRST acknowledger's identity + instant stick forever. A regenerate AFTER an ack is surfaced to clients via `generated_at > acknowledged_at` ("Updated after ack").
+
+### Weekly job — `department-report`
+Registered in the jobs registry + `POST /api/v1/jobs/department-report` (token-gated) + `npm run job -- department-report [--dry-run]`. External cron fires Monday 09:00 Dhaka; generates last completed week for every LIVE space (headless spaces included), self-heals one missed week, skips windows with zero activity, and fans out `report_ready` to active admins + the head exactly ONCE per (space, week) via an atomic `notified_at` claim.
+
+### Notifications & error codes added
+Notification types `task_reviewed` and `report_ready` (both ENUMs: `notifications.type` + `user_notification_prefs.type`), entity type `report`. New codes: `space.head_invalid` 422, `space.has_reports` 409, `review.not_head` 403, `review.forbidden` 403, `review.task_not_done` 409, `report.not_found` 404, `report.forbidden` 403, `report.invalid_week` 422 (plus reuse of `space.archived` 409, `status.in_use` 409).
+
+---
+
 ## Appendix A — Type reference (TypeScript shapes)
 
 These are the canonical wire formats. Keep them in `client/src/types/` and `server/src/types/` in sync.

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     Button,
@@ -11,6 +11,7 @@ import {
 import dayjs from "dayjs";
 import { Save } from "lucide-react";
 import { workspaceApi } from "../../http/api";
+import { getApiErrorMessage } from "../../http/client";
 import {
     SettingsHeader,
     SettingsSection,
@@ -51,9 +52,13 @@ const WorkspaceSettings = () => {
 
     const [draft, setDraft] = useState<Workspace | null>(null);
 
-    useEffect(() => {
-        if (ws) setDraft(JSON.parse(JSON.stringify(ws)));
-    }, [ws]);
+    // Re-seed the editable draft whenever a fresh workspace arrives (initial
+    // load + post-save refetch) — adjust-during-render, not an effect.
+    const [seededFrom, setSeededFrom] = useState<Workspace | null>(null);
+    if (ws && ws !== seededFrom) {
+        setSeededFrom(ws);
+        setDraft(JSON.parse(JSON.stringify(ws)) as Workspace);
+    }
 
     const save = useMutation({
         mutationFn: () =>
@@ -67,6 +72,7 @@ const WorkspaceSettings = () => {
             qc.invalidateQueries({ queryKey: ["workspace"] });
             message.success("Workspace saved");
         },
+        onError: (err) => message.error(getApiErrorMessage(err)),
     });
 
     if (!draft || !ws) return <LoadingState />;

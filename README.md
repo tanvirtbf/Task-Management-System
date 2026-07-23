@@ -165,3 +165,12 @@ All endpoints are prefixed with `/api/v1`.
 - Add user assignment dropdown (needs `/users` listing endpoint)
 - Add file attachments (Cloudflare R2 — same setup as ecommerce when needed)
 - Add tests (jest + supertest backend, vitest frontend)
+
+## Department review & weekly HR reports (added 2026-07)
+
+Every Space doubles as a **department** with one **Head** (`spaces.head_user_id`). The head reviews the department's completed tasks (approve / flag + note) from the **`/dept`** dashboard; a weekly per-department report (member matrix, totals + deltas, flags, head note) is generated automatically every **Monday 09:00 Dhaka** (job `department-report`) and lands in the HR inbox at **`/reports`** with a `report_ready` notification. HR marks reports **Seen**; heads can regenerate and attach a note.
+
+- API reference: `API_DESIGN.md` §33 · Plan/log: `DEPARTMENT_REVIEW_PLAN.md`, `DEPT_REVIEW_LOG.md`
+- Schema upgrades (additive): `database/upgrades/001–003` (see its `README.md` tracker)
+- Run + job wiring: `LOCAL_RUN_GUIDE.md` §4 step 7, §9
+- E2E: `client/e2e/dept-review.pw.ts` · Server tests: `server/tests/dept-review/` (14 suites)

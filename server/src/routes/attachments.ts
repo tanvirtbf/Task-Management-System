@@ -115,6 +115,7 @@ router.get(
 router.post(
     "/tasks/:id/attachments",
     authenticate,
+    uploadSignLimiter, // M5: the byte-carrying route needs the 60/min/user cap too
     express.raw({ type: () => true, limit: "30mb" }),
     (req: Request, res: Response, next: NextFunction) =>
         attachmentsController.upload(req as AuthRequest, res, next),

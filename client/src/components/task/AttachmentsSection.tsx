@@ -201,6 +201,18 @@ const AttachmentCard = ({
     const userMap = useUserMap();
     const uploader = userMap.get(a.uploadedBy);
     const isImage = a.type.startsWith("image/");
+    const { message } = AntApp.useApp();
+
+    // Gap-scan M11: the cached `a.url` is a 5-minute signed GET — mint a
+    // fresh one at CLICK time or links die while the drawer sits open.
+    const openFresh = async () => {
+        try {
+            const url = await attachmentsApi.freshUrl(a.id);
+            window.open(url, "_blank", "noopener,noreferrer");
+        } catch (err) {
+            message.error(getApiErrorMessage(err));
+        }
+    };
 
     return (
         // A <div> (not <a>) so the inner Download/Delete <a>/<button> aren't
@@ -210,7 +222,7 @@ const AttachmentCard = ({
             role="button"
             tabIndex={0}
             aria-label={`Open attachment ${a.name}`}
-            onClick={() => window.open(a.url, "_blank", "noopener,noreferrer")}
+            onClick={() => void openFresh()}
             style={{
                 position: "relative",
                 background: tokens.colors.bgSurface,
@@ -312,16 +324,17 @@ const AttachmentCard = ({
                     gap: 2,
                 }}
             >
-                <a
-                    href={a.url}
-                    download={a.name}
+                <button
                     aria-label="Download"
                     title="Download"
                     style={overlayBtnStyle}
-                    onClick={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        void openFresh();
+                    }}
                 >
                     <Download size={11} strokeWidth={1.75} />
-                </a>
+                </button>
                 <Popconfirm
                     title={`Delete "${a.name}"?`}
                     okType="danger"

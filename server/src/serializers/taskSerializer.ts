@@ -28,6 +28,11 @@ export interface WireTask {
     start_date: string | null;
     due_date: string | null;
     completed_at: string | null;
+    /** Dept Review V1 — current review verdict (denorm trio; null until the
+     *  space's head reviews a completed task; auto-reset on reopen). */
+    review_status: "approved" | "flagged" | null;
+    reviewed_at: string | null;
+    reviewed_by: string | null;
     sla_due_at: string | null;
     recurrence_pattern: string;
     recurrence_days: string[] | null;
@@ -105,6 +110,9 @@ export const toWireTask = (t: TaskRow, h: TaskHydration): WireTask => ({
     start_date: toWireDate(t.startDate),
     due_date: toWireDate(t.dueDate),
     completed_at: toWireTimestamp(t.completedAt),
+    review_status: t.reviewStatus,
+    reviewed_at: toWireTimestamp(t.reviewedAt),
+    reviewed_by: t.reviewedBy,
     sla_due_at: toWireTimestamp(t.slaDueAt),
     recurrence_pattern: t.recurrencePattern,
     recurrence_days:

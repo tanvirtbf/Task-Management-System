@@ -376,6 +376,24 @@ export class UsersRepo {
     }
 
     /**
+     * Active owner/admin ids of a workspace — the `report_ready` fan-out set
+     * (Dept Review V1 P20, D-1). The caller dedupes the head into this set.
+     */
+    async findActiveAdminIds(workspaceId: string): Promise<string[]> {
+        const rows = await this.db
+            .select({ id: users.id })
+            .from(users)
+            .where(
+                and(
+                    eq(users.workspaceId, workspaceId),
+                    eq(users.status, "active"),
+                    inArray(users.role, ["owner", "admin"]),
+                ),
+            );
+        return rows.map((r) => r.id);
+    }
+
+    /**
      * Workspace-scoped, filtered page of users for `GET /api/v1/users`.
      *
      * Keyset pagination on the primary key `id` ASC — `users` has no

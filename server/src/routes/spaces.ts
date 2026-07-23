@@ -8,6 +8,21 @@ import { SpacesService } from "../services/SpacesService";
 import { SpacesRepo } from "../repositories/SpacesRepo";
 import { ListsRepo } from "../repositories/ListsRepo";
 import { WorkspaceActivityRepo } from "../repositories/WorkspaceActivityRepo";
+import { UsersRepo } from "../repositories/UsersRepo";
+import { TasksRepo } from "../repositories/TasksRepo";
+import { ReviewsRepo } from "../repositories/ReviewsRepo";
+import { TaskActivityRepo } from "../repositories/TaskActivityRepo";
+import { NotificationsRepo } from "../repositories/NotificationsRepo";
+import { ReviewsService } from "../services/ReviewsService";
+import { ReviewsController } from "../controllers/ReviewsController";
+import {
+    reviewQueueValidator,
+    reviewSummaryValidator,
+} from "../validators/reviews";
+import type {
+    ReviewQueueRequest,
+    ReviewSummaryRequest,
+} from "../types/reviews";
 import { getDb } from "../db/client";
 import logger from "../config/logger";
 import authenticate from "../middlewares/authenticate";
@@ -38,14 +53,32 @@ const db = getDb();
 const spacesRepo = new SpacesRepo(db);
 const listsRepo = new ListsRepo(db);
 const workspaceActivityRepo = new WorkspaceActivityRepo(db);
+const usersRepo = new UsersRepo(db);
 const spacesService = new SpacesService(
     db,
     spacesRepo,
     listsRepo,
     workspaceActivityRepo,
+    usersRepo,
     logger,
 );
 const spacesController = new SpacesController(spacesService, logger);
+// Dept Review V1 (A-2/A-3) — summary + queue live under /spaces/:id/*.
+const tasksRepo = new TasksRepo(db);
+const reviewsRepo = new ReviewsRepo(db);
+const taskActivityRepo = new TaskActivityRepo(db);
+const notificationsRepo = new NotificationsRepo(db);
+const reviewsService = new ReviewsService(
+    db,
+    spacesRepo,
+    tasksRepo,
+    reviewsRepo,
+    taskActivityRepo,
+    notificationsRepo,
+    usersRepo,
+    logger,
+);
+const reviewsController = new ReviewsController(reviewsService, logger);
 
 // ─── GET /api/v1/spaces ────────────────────────────────────────────────────
 // Authenticated — any role may list the workspace's spaces (only create /
@@ -72,6 +105,31 @@ router.post(
     validate,
     (req: Request, res: Response, next: NextFunction) =>
         spacesController.create(req as CreateSpaceRequest, res, next),
+);
+
+// ─── GET /api/v1/spaces/:id/review-summary ───────────────────────────────────
+// Dept Review V1 (A-2). Per-member rollup + task-level totals for the head's
+// /dept dashboard. Head-of-space or owner/admin — enforced service-level
+// (403 review.not_head; archived space 409; foreign id 404).
+router.get(
+    "/:id/review-summary",
+    authenticate,
+    reviewSummaryValidator,
+    validate,
+    (req: Request, res: Response, next: NextFunction) =>
+        reviewsController.summary(req as ReviewSummaryRequest, res, next),
+);
+
+// ─── GET /api/v1/spaces/:id/review-queue ─────────────────────────────────────
+// Dept Review V1 (A-3). One keyset page of a bucket (needs_review | flagged |
+// overdue | due_today), optional member filter. Same service-level gate.
+router.get(
+    "/:id/review-queue",
+    authenticate,
+    reviewQueueValidator,
+    validate,
+    (req: Request, res: Response, next: NextFunction) =>
+        reviewsController.queue(req as ReviewQueueRequest, res, next),
 );
 
 // ─── GET /api/v1/spaces/:id ──────────────────────────────────────────────────

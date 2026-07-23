@@ -14,6 +14,9 @@ interface UiState {
     /** Sidebar favourites — starred lists. */
     favoriteIds: string[];
     toggleFavorite: (id: string) => void;
+
+    /** Back to defaults — called on sign-out so nothing leaks across users. */
+    reset: () => void;
 }
 
 export const useUiStore = create<UiState>()(
@@ -51,6 +54,13 @@ export const useUiStore = create<UiState>()(
                             : [...ids, id],
                     });
                 },
+
+                reset: () =>
+                    set({
+                        sidebarCollapsed: false,
+                        expandedIds: [],
+                        favoriteIds: [],
+                    }),
             }),
             {
                 name: "th-ui",

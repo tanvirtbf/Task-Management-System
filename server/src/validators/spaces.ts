@@ -157,6 +157,27 @@ export const updateSpaceValidator = checkSchema({
             errorMessage: "id is too long (max 64 chars)",
         },
     },
+    // Dept Review V1 — department head. `null` clears the head; any other value
+    // must be a user id string (existence/role/status checks live in the
+    // service → 422 `space.head_invalid`). Mirrors the workspace `logo_url`
+    // nullable-clear pattern: `nullable: true` lets null through untouched.
+    head_user_id: {
+        in: ["body"],
+        optional: { options: { nullable: true } },
+        custom: {
+            options: (value: unknown): boolean => {
+                if (typeof value !== "string") {
+                    throw new Error(
+                        "head_user_id must be a user id string or null",
+                    );
+                }
+                if (value.length === 0 || value.length > 64) {
+                    throw new Error("head_user_id must be 1-64 characters");
+                }
+                return true;
+            },
+        },
+    },
     name: {
         in: ["body"],
         optional: true,

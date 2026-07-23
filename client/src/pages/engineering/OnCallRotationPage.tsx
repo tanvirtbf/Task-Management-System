@@ -21,6 +21,37 @@ const OnCallRotationPage = () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    // M15: the schedule could be EMPTY, and the old UI only rendered existing
+    // rows → the first shift could never be assigned (leaving S0/S1 bugs with
+    // no on-call). Always surface the current week + next 5 as assignable rows,
+    // merged with whatever already exists; `onCallApi.set` upserts by week.
+    const fmt = (d: Date): string => {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        return `${y}-${m}-${day}`;
+    };
+    const mondayOf = (d: Date): Date => {
+        const x = new Date(d);
+        x.setHours(0, 0, 0, 0);
+        x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); // Mon=0
+        return x;
+    };
+    const existingKeys = new Set(shifts.map((s) => s.weekStart.slice(0, 10)));
+    const startMon = mondayOf(new Date());
+    const upcoming = Array.from({ length: 6 }, (_, i) => {
+        const mon = new Date(startMon);
+        mon.setDate(mon.getDate() + i * 7);
+        return fmt(mon);
+    }).filter((ws) => !existingKeys.has(ws));
+    const rows = [
+        ...shifts.map((s) => ({
+            weekStart: s.weekStart.slice(0, 10),
+            shift: s as (typeof shifts)[number] | undefined,
+        })),
+        ...upcoming.map((ws) => ({ weekStart: ws, shift: undefined })),
+    ].sort((a, b) => a.weekStart.localeCompare(b.weekStart));
+
     const setShift = useMutation({
         mutationFn: ({
             weekStart,
@@ -86,18 +117,19 @@ const OnCallRotationPage = () => {
                     overflow: "hidden",
                 }}
             >
-                {shifts.map((shift) => {
-                    const monday = new Date(shift.weekStart);
+                {rows.map((row) => {
+                    const shift = row.shift;
+                    const monday = new Date(`${row.weekStart}T00:00:00`);
                     const sunday = new Date(monday);
                     sunday.setDate(sunday.getDate() + 6);
                     const isCurrent =
                         monday <= today &&
                         new Date(sunday.setHours(23, 59, 59, 999)) >= today;
-                    const user = shift.engineer;
+                    const user = shift?.engineer;
 
                     return (
                         <div
-                            key={shift.id}
+                            key={row.weekStart}
                             style={{
                                 display: "grid",
                                 gridTemplateColumns: "32px 1fr 1fr",
@@ -156,8 +188,9 @@ const OnCallRotationPage = () => {
                                 </div>
                             </div>
                             <Select
-                                value={shift.engineerId}
-                                onChange={(v) => updateShift(shift.weekStart, v)}
+                                value={shift?.engineerId}
+                                placeholder="Assign engineer…"
+                                onChange={(v) => updateShift(row.weekStart, v)}
                                 style={{ minWidth: 220 }}
                                 options={eligible.map((u) => ({
                                     value: u.id,

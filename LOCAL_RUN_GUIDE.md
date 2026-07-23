@@ -80,6 +80,7 @@ The seed creates only the **workspace + owner** — your workspace starts empty.
 4. Open a task → try **Comments** (@mention, #TASK-ID), **Checklists**, **Subtasks**, **Dependencies**, **Custom fields**, **Activity**.
 5. **Settings** → Members (invite teammates), Task Types, Tags, Custom Fields, Statuses, Templates, **Profile → Change password**.
 6. **Engineering** space features: Sprints, On-call rotation, Report a bug, Eng home rollup.
+7. **Department review (Dept Review V1, 2026-07-22)**: open a Space page → assign a **Department head** in the head card (owner/admin). The head gets a **Department** item in the sidebar (`/dept`): summary tiles, per-member rollup, and the review queue — **Approve ✓ / Flag ⚑ (+note)** completed tasks; assignees get notified. The weekly HR report generates via the `department-report` job (see §9) or the on-demand API; owners/admins + the head get a `report_ready` inbox notification. (The `/reports` viewer UI ships with Stage F of the build plan.)
 
 ---
 
@@ -122,4 +123,21 @@ The seed creates only the **workspace + owner** — your workspace starts empty.
 
 Auth, Workspace, Users/Members, Spaces, Lists, Statuses, Task Types, Tags, Tasks (List/Board/Calendar), Subtasks, Dependencies, Task Activity, **Comments (§14)**, **Checklists (§15)**, Attachments, Custom Fields, Forms (admin + public render), Notifications (inbox + bell), Home/KPIs, Search, Sprints, On-call, Engineering home, Report-bug, SLA, Templates, Profile (incl. change-password), Forgot/Reset password.
 
-Backend: **150 `/api/v1` endpoints** across all 29 spec sections, all routers mounted, server type-checks clean.
+Backend: **150 `/api/v1` endpoints** across all 29 spec sections (+**11 Dept Review V1 endpoints**: head assignment, review write/reads, queue/summary, reports A-6…A-11), all routers mounted, server type-checks clean.
+
+---
+
+## 9. Background jobs (external cron — no in-process scheduler)
+
+There is deliberately no in-process scheduler; schedule these externally (Windows Task Scheduler locally, real cron on the server):
+
+| Job | Cadence | Trigger |
+|-----|---------|---------|
+| `snooze-wake` | every 5 min | `POST /api/v1/jobs/snooze-wake` |
+| `session-cleanup`, `attachment-janitor`, `r2-purge` | daily | `POST /api/v1/jobs/<slug>` |
+| **`department-report`** | **weekly, Monday 09:00 (Asia/Dhaka)** | `POST /api/v1/jobs/department-report` |
+| `form-submission-expiry` | daily | CLI only |
+
+- HTTP triggers need the header `X-Internal-Token: <INTERNAL_JOB_TOKEN from server/.env>`.
+- CLI (no server needed): `cd server && npm run job <slug>` — add `-- --dry-run` to count without writing (e.g. `npm run job department-report -- --dry-run`).
+- `department-report` is idempotent: re-runs refresh the report payload but never re-send notifications, and a missed Monday self-heals one week back on the next run.

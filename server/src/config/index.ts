@@ -76,6 +76,13 @@ const {
 export const Config = {
     PORT,
     NODE_ENV,
+    /**
+     * True for ANY production spelling (gap-scan M4: a `NODE_ENV=production`
+     * deploy used to fail the exact-match `=== "prod"` checks and silently
+     * ship the 30-day refresh cookie over plain HTTP). Use this — never
+     * compare NODE_ENV to "prod" directly.
+     */
+    IS_PROD: NODE_ENV === "prod" || NODE_ENV === "production",
     LOG_LEVEL,
 
     DB_HOST,

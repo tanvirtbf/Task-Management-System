@@ -26,6 +26,8 @@ const AUTHED_ROUTES = [
     "/eng/sprint",
     "/eng/on-call",
     "/forms",
+    "/dept",
+    "/reports",
 ];
 
 // Console-error noise we treat as benign (AntD/React dev warnings, favicon, etc.)

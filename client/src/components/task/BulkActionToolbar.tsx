@@ -63,15 +63,17 @@ export const BulkActionToolbar = ({
         bulkUpdate.mutate({ ids: selectedIds, patch: { priority } });
         onClear();
     };
+    // Membership is DELTA-based on the bulk wire (assignee_add / tag_add) —
+    // "Assign"/"Tag" here ADD to the selection, they don't replace.
     const handleBulkAssignee = (userId: string) => {
         bulkUpdate.mutate({
             ids: selectedIds,
-            patch: { assignees: [userId] },
+            patch: { assigneeAdd: [userId] },
         });
         onClear();
     };
     const handleBulkTag = (tagId: string) => {
-        bulkUpdate.mutate({ ids: selectedIds, patch: { tags: [tagId] } });
+        bulkUpdate.mutate({ ids: selectedIds, patch: { tagAdd: [tagId] } });
         onClear();
     };
     const handleBulkDueDate = (iso: string | null) => {

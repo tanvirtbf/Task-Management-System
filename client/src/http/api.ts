@@ -1,15 +1,22 @@
 import type {
     Credentials,
     Folder,
+    DeptReport,
+    DeptReportListItem,
     HomeKpiSet,
     List,
     LoginResponse,
     MyWorkBucket,
     Notification,
+    ReviewQueueBucket,
+    ReviewQueueRow,
+    ReviewSummary,
+    ReviewVerdict,
     Space,
     Status,
     Tag,
     Task,
+    TaskReview,
     TaskType,
     User,
     Workspace,
@@ -148,10 +155,164 @@ export const spacesApi = {
     },
 };
 
+// ─── Dept Review V1 (A-2…A-5) ─ summary/queue are head-or-admin-gated ────────
+export const reviewsApi = {
+    summary: async (spaceId: string): Promise<ReviewSummary> =>
+        (
+            await api.get<ReviewSummary>(
+                `/spaces/${spaceId}/review-summary`,
+            )
+        ).data,
+    /**
+     * §5 rule 6: cursor-aware — RETURNS the pagination block (never
+     * `unwrapData`, which discards it — the H1 truncation bug). Wire rows are
+     * camelized WireTasks + review/parentTask wrappers; each passes through
+     * `mapTask` so consumers get real client `Task`s.
+     */
+    queue: async (
+        spaceId: string,
+        params: {
+            bucket: ReviewQueueBucket;
+            memberId?: string;
+            cursor?: string;
+            limit?: number;
+        },
+    ): Promise<{
+        data: ReviewQueueRow[];
+        pagination: {
+            nextCursor: string | null;
+            hasMore: boolean;
+            totalEstimate: number;
+        };
+    }> => {
+        const res = (
+            await api.get<{
+                data: Array<
+                    WireTask & {
+                        review: ReviewQueueRow["review"];
+                        parentTask: ReviewQueueRow["parentTask"];
+                    }
+                >;
+                pagination: {
+                    nextCursor: string | null;
+                    hasMore: boolean;
+                    totalEstimate: number;
+                };
+            }>(`/spaces/${spaceId}/review-queue`, {
+                params: {
+                    bucket: params.bucket,
+                    ...(params.memberId
+                        ? { member_id: params.memberId }
+                        : {}),
+                    ...(params.cursor ? { cursor: params.cursor } : {}),
+                    ...(params.limit ? { limit: params.limit } : {}),
+                },
+            })
+        ).data;
+        return {
+            data: res.data.map(({ review, parentTask, ...wire }) => ({
+                ...mapTask(wire),
+                review,
+                parentTask,
+            })),
+            pagination: res.pagination,
+        };
+    },
+    reviewTask: async (
+        taskId: string,
+        input: { status: ReviewVerdict; note?: string | null },
+    ): Promise<TaskReview> =>
+        (await api.post<TaskReview>(`/tasks/${taskId}/review`, input)).data,
+    // Bounded set (server caps at 100), bare {data} — no pagination block.
+    listReviews: async (taskId: string): Promise<TaskReview[]> =>
+        unwrapData<TaskReview[]>(
+            await api.get<{ data: TaskReview[] }>(`/tasks/${taskId}/reviews`),
+        ),
+};
+
+// ─── Dept Review V1 — weekly reports (A-6…A-10) ──────────────────────────────
+export const reportsApi = {
+    /** §5 rule 6: cursor-aware — pagination is RETURNED, never unwrapData'd. */
+    list: async (params?: {
+        spaceId?: string;
+        cursor?: string;
+        limit?: number;
+    }): Promise<{
+        data: DeptReportListItem[];
+        pagination: {
+            nextCursor: string | null;
+            hasMore: boolean;
+            totalEstimate: number;
+        };
+    }> =>
+        (
+            await api.get<{
+                data: DeptReportListItem[];
+                pagination: {
+                    nextCursor: string | null;
+                    hasMore: boolean;
+                    totalEstimate: number;
+                };
+            }>("/reports", {
+                params: {
+                    ...(params?.spaceId ? { space_id: params.spaceId } : {}),
+                    ...(params?.cursor ? { cursor: params.cursor } : {}),
+                    ...(params?.limit ? { limit: params.limit } : {}),
+                },
+            })
+        ).data,
+    getById: async (id: string): Promise<DeptReport> =>
+        (await api.get<DeptReport>(`/reports/${id}`)).data,
+    generate: async (input: {
+        spaceId: string;
+        weekStart?: string;
+    }): Promise<DeptReport> =>
+        (
+            await api.post<DeptReport>("/reports/generate", {
+                space_id: input.spaceId,
+                ...(input.weekStart ? { week_start: input.weekStart } : {}),
+            })
+        ).data,
+    setNote: async (
+        id: string,
+        headNote: string | null,
+    ): Promise<DeptReport> =>
+        (
+            await api.patch<DeptReport>(`/reports/${id}`, {
+                head_note: headNote,
+            })
+        ).data,
+    ack: async (id: string): Promise<DeptReport> =>
+        (await api.post<DeptReport>(`/reports/${id}/ack`)).data,
+};
+
 // ─── Users (§4) ─ list is {data}; single is bare ─────────────────────────────
 export const usersApi = {
-    list: async (): Promise<User[]> =>
-        unwrapData<User[]>(await api.get<{ data: User[] }>("/users")),
+    // H1 fix (SYSTEM_GAP_SCAN §8): GET /users is cursor-paginated (server clamps
+    // limit ≤200) and this ~100-person workspace sat exactly at the old silent
+    // truncation boundary. Follow next_cursor until has_more=false so every
+    // consumer (assignee pickers, MembersSettings, the dept-head picker) sees
+    // the COMPLETE roster. The response interceptor camelizes pagination keys.
+    list: async (): Promise<User[]> => {
+        type UsersPage = {
+            data: User[];
+            pagination?: { nextCursor: string | null; hasMore: boolean };
+        };
+        const all: User[] = [];
+        let cursor: string | null = null;
+        do {
+            const page: UsersPage = (
+                await api.get<UsersPage>("/users", {
+                    params: { limit: 200, ...(cursor ? { cursor } : {}) },
+                })
+            ).data;
+            all.push(...page.data);
+            cursor = page.pagination?.hasMore
+                ? (page.pagination.nextCursor ?? null)
+                : null;
+        } while (cursor);
+        return all;
+    },
     getById: async (id: string): Promise<User> =>
         (await api.get<User>(`/users/${id}`)).data,
     invite: async (input: {
@@ -338,11 +499,40 @@ export const templatesApi = {
 };
 
 // ─── Tasks (§10) ─ list is {data}; single/my-work/subtasks are bare ───────────
+
+/** Bulk PATCH body: normal task fields + the server's membership DELTA keys. */
+export type BulkTaskPatch = Partial<Task> & {
+    assigneeAdd?: string[];
+    assigneeRemove?: string[];
+    tagAdd?: string[];
+    tagRemove?: string[];
+};
+
 export const tasksApi = {
-    listByList: async (listId: string): Promise<Task[]> =>
-        unwrapData<WireTask[]>(
-            await api.get<{ data: WireTask[] }>(`/lists/${listId}/tasks`),
-        ).map(mapTask),
+    // H1 fix (SYSTEM_GAP_SCAN §8): the server pages at 50 (clamp ≤200) and the
+    // old call silently discarded `pagination` — List/Board/Calendar and the
+    // dependency picker only ever saw the oldest 50 tasks. Follow next_cursor
+    // to exhaustion so every view renders the COMPLETE list.
+    listByList: async (listId: string): Promise<Task[]> => {
+        type TasksPage = {
+            data: WireTask[];
+            pagination?: { nextCursor: string | null; hasMore: boolean };
+        };
+        const all: WireTask[] = [];
+        let cursor: string | null = null;
+        do {
+            const page: TasksPage = (
+                await api.get<TasksPage>(`/lists/${listId}/tasks`, {
+                    params: { limit: 200, ...(cursor ? { cursor } : {}) },
+                })
+            ).data;
+            all.push(...page.data);
+            cursor = page.pagination?.hasMore
+                ? (page.pagination.nextCursor ?? null)
+                : null;
+        } while (cursor);
+        return all.map(mapTask);
+    },
     getById: async (id: string): Promise<Task> =>
         mapTask((await api.get<WireTask>(`/tasks/${id}`)).data),
     subtasks: async (parentId: string): Promise<Task[]> =>
@@ -372,10 +562,25 @@ export const tasksApi = {
         mapTask(
             (await api.patch<WireTask>(`/tasks/${id}`, taskToWire(patch))).data,
         ),
-    bulkUpdate: async (ids: string[], patch: Partial<Task>): Promise<Task[]> => {
+    // Gap-scan C2: the wire wants `ids` (not task_ids) and DELTA keys for
+    // membership (`assignee_add`/`tag_add`… — bulk PATCH has no absolute
+    // assignees/tags). Extra keys ride beside the normal task patch and the
+    // request decamelizer turns assigneeAdd → assignee_add.
+    bulkUpdate: async (
+        ids: string[],
+        patch: BulkTaskPatch,
+    ): Promise<Task[]> => {
+        const { assigneeAdd, assigneeRemove, tagAdd, tagRemove, ...core } =
+            patch;
         const res = await api.post<{ tasks: WireTask[] }>("/tasks/bulk", {
-            taskIds: ids,
-            patch: taskToWire(patch),
+            ids,
+            patch: {
+                ...taskToWire(core),
+                ...(assigneeAdd ? { assigneeAdd } : {}),
+                ...(assigneeRemove ? { assigneeRemove } : {}),
+                ...(tagAdd ? { tagAdd } : {}),
+                ...(tagRemove ? { tagRemove } : {}),
+            },
         });
         return (res.data.tasks ?? []).map(mapTask);
     },
@@ -491,6 +696,16 @@ export const attachmentsApi = {
     delete: async (id: string): Promise<void> => {
         await api.delete(`/attachments/${id}`);
     },
+    /**
+     * Gap-scan M11: attachment `url`s are 5-minute signed GETs that the list
+     * cache holds indefinitely — always mint a FRESH one at click time.
+     */
+    freshUrl: async (id: string): Promise<string> =>
+        (
+            await api.get<{ url: string }>(`/attachments/${id}/download`, {
+                params: { json: 1 },
+            })
+        ).data.url,
 };
 
 // ─── Comments (§14) ─ GET returns a bare TREE (top-level comments, each with
@@ -696,10 +911,30 @@ export const formsApi = {
 // ─── Notifications (§19) ─ feed {data}; unread-count {unread_count}; JWT-scoped ─
 // (no userId arg per R7 — the inbox is the caller's, derived from the token).
 export const notificationsApi = {
-    list: async (): Promise<Notification[]> =>
-        unwrapData<WireNotification[]>(
-            await api.get<{ data: WireNotification[] }>("/notifications"),
-        ).map(mapNotification),
+    // H1 fix (SYSTEM_GAP_SCAN §8): the feed pages at 50 — the inbox and its
+    // filter counts used to reflect one page. Follow cursors (limit 200) with
+    // a 2,000-row safety cap: enough for months of history at this team's
+    // scale without an unbounded fetch on ancient inboxes.
+    list: async (): Promise<Notification[]> => {
+        type NotifPage = {
+            data: WireNotification[];
+            pagination?: { nextCursor: string | null; hasMore: boolean };
+        };
+        const all: WireNotification[] = [];
+        let cursor: string | null = null;
+        do {
+            const page: NotifPage = (
+                await api.get<NotifPage>("/notifications", {
+                    params: { limit: 200, ...(cursor ? { cursor } : {}) },
+                })
+            ).data;
+            all.push(...page.data);
+            cursor = page.pagination?.hasMore
+                ? (page.pagination.nextCursor ?? null)
+                : null;
+        } while (cursor && all.length < 2000);
+        return all.map(mapNotification);
+    },
     unreadCount: async (): Promise<number> =>
         (
             await api.get<{ unreadCount: number }>(
@@ -916,5 +1151,26 @@ export const engineeringApi = {
             currentOnCall: v.currentOnCall,
             activeSprint: v.activeSprint,
         };
+    },
+    // Postmortem checklist (gap-scan H5). `items` is keyed by human LABELS —
+    // both calls bypass the case transforms so keys survive verbatim (the
+    // response URL is in SKIP_CAMELIZE_URLS; the POST sets skipDecamelize).
+    getPostmortem: async (
+        taskId: string,
+    ): Promise<Record<string, boolean>> =>
+        (
+            await api.get<{ items: Record<string, boolean> }>(
+                `/eng/incidents/${taskId}/postmortem`,
+            )
+        ).data.items ?? {},
+    savePostmortem: async (
+        taskId: string,
+        items: Record<string, boolean>,
+    ): Promise<void> => {
+        await api.post(
+            `/eng/incidents/${taskId}/postmortem`,
+            { items },
+            { skipDecamelize: true },
+        );
     },
 };

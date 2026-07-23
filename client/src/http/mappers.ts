@@ -57,7 +57,15 @@ export const mapWorkspace = (w: WireWorkspace): Workspace => ({
     },
 });
 
-/** FE Workspace settings patch → flat wire patch for PATCH /workspace. */
+/** "HH:mm" (TimePicker) → "HH:MM:SS" (the server's TIME_RE). Values that
+ *  already carry seconds pass through untouched. */
+const toHms = (v: string): string =>
+    /^\d{2}:\d{2}$/.test(v) ? `${v}:00` : v;
+
+/** FE Workspace settings patch → flat wire patch for PATCH /workspace.
+ *  Gap-scan C3: `default_locale` is NEVER sent — the endpoint rejects the key
+ *  outright (the draft always contains it after a GET, so forwarding it made
+ *  every save 422). */
 export const workspaceToWire = (
     patch: Partial<Workspace>,
 ): Record<string, unknown> => {
@@ -67,13 +75,12 @@ export const workspaceToWire = (
     const s = patch.settings;
     if (s) {
         if (s.timezone !== undefined) out.timezone = s.timezone;
-        if (s.defaultLocale !== undefined) out.defaultLocale = s.defaultLocale;
         if (s.weekStartsOn !== undefined) out.weekStartsOn = s.weekStartsOn;
         if (s.workingDays !== undefined)
             out.workingDays = s.workingDays.map(dayIndexToName);
         if (s.businessHours !== undefined) {
-            out.businessHoursStart = s.businessHours.start;
-            out.businessHoursEnd = s.businessHours.end;
+            out.businessHoursStart = toHms(s.businessHours.start);
+            out.businessHoursEnd = toHms(s.businessHours.end);
         }
         if (s.fiscalYearStartMonth !== undefined)
             out.fiscalYearStartMonth = s.fiscalYearStartMonth;

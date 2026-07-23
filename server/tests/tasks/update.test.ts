@@ -77,6 +77,25 @@ const seed = async (role: Role = "member", typeName?: string) => {
 describe("PATCH /api/v1/tasks/:id", () => {
     // ─── a. Happy path ──────────────────────────────────────────────────────
     describe("Happy path", () => {
+        it("addressed by CUSTOM_ID actually persists (gap-scan C5 — was a silent 0-row no-op)", async () => {
+            const ctx = await seed();
+            await db()
+                .update(tasks)
+                .set({ customId: "BUG-77" })
+                .where(eq(tasks.id, ctx.task.id));
+
+            const res = await ctx.client
+                .patch(PATH("BUG-77"))
+                .send({ name: "Renamed via custom id", priority: 3 });
+
+            expect(res.status).toBe(200);
+            expect(res.body.name).toBe("Renamed via custom id");
+
+            // The regression was response-200-but-DB-unchanged — assert the ROW.
+            const row = await taskRow(ctx.task.id);
+            expect(row.name).toBe("Renamed via custom id");
+            expect(row.priority).toBe(3);
+        });
         it("updates scalar fields (200 + fresh ETag)", async () => {
             const ctx = await seed();
 

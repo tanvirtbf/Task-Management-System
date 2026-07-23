@@ -55,6 +55,8 @@ export interface UpdateSpaceBody {
     color?: string;
     is_private?: boolean;
     position?: number;
+    /** Dept Review V1 — set/change the department head; `null` clears it. */
+    head_user_id?: string | null;
 }
 
 export interface UpdateSpaceRequest extends AuthRequest {

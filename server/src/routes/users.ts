@@ -11,6 +11,7 @@ import { WorkspaceActivityRepo } from "../repositories/WorkspaceActivityRepo";
 import { MailService } from "../services/MailService";
 import { TokenService } from "../services/TokenService";
 import { PasswordResetTokensRepo } from "../repositories/PasswordResetTokensRepo";
+import { SpacesRepo } from "../repositories/SpacesRepo";
 import { getDb } from "../db/client";
 import logger from "../config/logger";
 import authenticate from "../middlewares/authenticate";
@@ -43,6 +44,7 @@ const workspaceActivityRepo = new WorkspaceActivityRepo(db);
 const mailService = new MailService(logger);
 const tokenService = new TokenService(db);
 const passwordResetTokensRepo = new PasswordResetTokensRepo(db);
+const spacesRepo = new SpacesRepo(db);
 const userService = new UserService(
     db,
     usersRepo,
@@ -51,6 +53,7 @@ const userService = new UserService(
     mailService,
     tokenService,
     passwordResetTokensRepo,
+    spacesRepo,
     logger,
 );
 const userController = new UserController(userService, logger);

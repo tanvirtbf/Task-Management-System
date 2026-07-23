@@ -60,9 +60,20 @@ export class R2Service {
         );
         if (Config.NODE_ENV === "test" || !configured) {
             this.client = null;
-            this.logger.debug("r2.transport.stub", {
-                reason: Config.NODE_ENV === "test" ? "test" : "unconfigured",
-            });
+            // Gap-scan M6: in PRODUCTION a missing R2 config must be LOUD —
+            // the stub returns https://r2.fake/... URLs that "succeed" while
+            // every real upload is silently lost. Dev/test stubbing stays
+            // intentional (the QA recipe blanks the creds on purpose).
+            if (Config.IS_PROD && Config.NODE_ENV !== "test") {
+                this.logger.error("r2.transport.stub_in_prod", {
+                    reason: "CLOUDFLARE_R2_* env incomplete — uploads will return fake URLs and store NOTHING",
+                });
+            } else {
+                this.logger.debug("r2.transport.stub", {
+                    reason:
+                        Config.NODE_ENV === "test" ? "test" : "unconfigured",
+                });
+            }
         } else {
             // `configured` guarantees these are set; assert for the compiler.
             this.client = new S3Client({

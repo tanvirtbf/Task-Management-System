@@ -13,6 +13,7 @@ import {
     lists,
     taskActivity,
     workspaceActivity,
+    departmentReports,
 } from "../../src/db/schema";
 import { Config } from "../../src/config";
 import { fakeId } from "../../src/utils";
@@ -51,6 +52,22 @@ const archiveListDirect = async (id: string) => {
         .update(lists)
         .set({ archivedAt: ARCHIVED_AT })
         .where(eq(lists.id, id));
+};
+
+/** Insert a minimal department_reports row (Dept Review V1) for a space. */
+const seedReport = async (workspaceId: string, spaceId: string) => {
+    const db = getDb();
+    const id = fakeId("rep");
+    await db.insert(departmentReports).values({
+        id,
+        workspaceId,
+        spaceId,
+        weekStart: "2026-07-13",
+        weekEnd: "2026-07-19",
+        payload: {},
+        generatedAt: new Date(),
+    });
+    return id;
 };
 
 const fetchActivityFor = async (entityId: string) => {
@@ -359,6 +376,40 @@ describe("DELETE /api/v1/spaces/:id", () => {
             // Remove the list directly, then the space deletes cleanly.
             const db = getDb();
             await db.delete(lists).where(eq(lists.id, l.id));
+
+            const ok = await client.delete(spacePath(id));
+            expect(ok.status).toBe(204);
+            expect(await fetchSpaceRow(id)).toBeNull();
+        });
+
+        it("returns 409 space.has_reports for an archived empty space that has a department report (Dept Review V1)", async () => {
+            const u = await makeUser({ role: "owner" });
+            const id = await seedDeletable(u);
+            await seedReport(u.workspaceId, id);
+            const client = await makeLoggedInClient(u);
+
+            const res = await client.delete(spacePath(id));
+
+            expect(res.status).toBe(409);
+            expect(res.body.error.code).toBe("space.has_reports");
+            expect(await fetchSpaceRow(id)).not.toBeNull();
+            expect(await countWorkspaceActivity()).toBe(0);
+        });
+
+        it("deletes successfully once the blocking report is removed", async () => {
+            const u = await makeUser({ role: "owner" });
+            const id = await seedDeletable(u);
+            await seedReport(u.workspaceId, id);
+            const client = await makeLoggedInClient(u);
+
+            const blocked = await client.delete(spacePath(id));
+            expect(blocked.status).toBe(409);
+            expect(blocked.body.error.code).toBe("space.has_reports");
+
+            const db = getDb();
+            await db
+                .delete(departmentReports)
+                .where(eq(departmentReports.spaceId, id));
 
             const ok = await client.delete(spacePath(id));
             expect(ok.status).toBe(204);

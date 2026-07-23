@@ -109,6 +109,19 @@ const ITEM_LABEL_MAX = 200;
  * `items` is a checklist `label → boolean` map — every value must be a boolean
  * (the canonical API_DESIGN.md shape, matching the frontend component).
  */
+/** Params-only guard for `GET /eng/incidents/:id/postmortem` (H5 read). */
+export const getPostmortemValidator = checkSchema({
+    id: {
+        in: ["params"],
+        trim: true,
+        notEmpty: { errorMessage: "id is required" },
+        isLength: {
+            options: { max: ID_MAX },
+            errorMessage: `id is too long (max ${ID_MAX} chars)`,
+        },
+    },
+});
+
 export const createPostmortemValidator = checkSchema({
     id: {
         in: ["params"],

@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { MySql2Database } from "drizzle-orm/mysql2";
 import type { Logger } from "winston";
 import * as schema from "../db/schema";
@@ -774,10 +775,19 @@ export class TaskWriteService {
             dbPatch.rollbackReason = p.rollbackReason;
 
         // completed_at follows the landing status group on a status change.
+        // Dept Review V1 (P9): leaving a done group also clears the current-
+        // review denorm trio (the task_reviews ledger keeps history) — a
+        // reopened task must be re-reviewed once it is completed again.
         if (newStatusGroup !== undefined) {
-            dbPatch.completedAt = DONE_GROUPS.has(newStatusGroup)
+            const landsDone = DONE_GROUPS.has(newStatusGroup);
+            dbPatch.completedAt = landsDone
                 ? (current.completedAt ?? now)
                 : null;
+            if (!landsDone) {
+                dbPatch.reviewStatus = null;
+                dbPatch.reviewedAt = null;
+                dbPatch.reviewedBy = null;
+            }
         }
 
         // §29: a bug_severity change recomputes sla_due_at (unless overridden —
@@ -802,7 +812,10 @@ export class TaskWriteService {
         // ─── Write (atomic) ──────────────────────────────────────────────────
         try {
             await this.db.transaction(async (tx) => {
-                await this.tasks.update(input.taskId, dbPatch, tx);
+                // Gap-scan C5: write against the RESOLVED id — `input.taskId`
+                // may be a custom_id (e.g. BUG-12), which `TasksRepo.update`
+                // matches against tasks.id only → silent 0-row no-op.
+                await this.tasks.update(current.id, dbPatch, tx);
                 const rows = [];
                 if (
                     p.statusId !== undefined &&
@@ -1058,6 +1071,27 @@ export class TaskWriteService {
 
         const p = input.patch;
 
+        // Dept Review V1 (P9) hardening: archived tasks cannot be bulk-EDITED
+        // (mirror of the single-PATCH rule, which was bypassable here). The one
+        // exception: a patch that provides `archived_at` is operating ON
+        // archival state (bulk unarchive / re-archive) and may target archived
+        // rows.
+        if (!p.archivedAtProvided) {
+            const archivedTargets = found.filter((t) => t.archivedAt !== null);
+            if (archivedTargets.length > 0) {
+                const shown = archivedTargets
+                    .map((t) => t.id)
+                    .slice(0, 5)
+                    .join(", ");
+                throw AppError.conflict(
+                    "task.archived",
+                    `Cannot bulk-edit archived task(s): ${shown}${
+                        archivedTargets.length > 5 ? ", …" : ""
+                    }`,
+                );
+            }
+        }
+
         // 2. Validate references in the patch.
         let newGroup: string | undefined;
         if (p.statusId !== undefined) {
@@ -1119,8 +1153,21 @@ export class TaskWriteService {
         if (p.archivedAtProvided) {
             dbPatch.archivedAt = p.archivedAt ? new Date(p.archivedAt) : null;
         }
+        // completed_at follows the landing group. Moving TO done PRESERVES an
+        // existing completion instant per task (SQL COALESCE — the old
+        // unconditional `now` re-dated already-done tasks, double-counting
+        // them across weekly dept-report windows). Leaving done clears it AND
+        // the Dept Review denorm trio — same reset rule as the single-PATCH
+        // path (P9: no done→not-done transition may keep a review verdict).
         if (newGroup !== undefined) {
-            dbPatch.completedAt = DONE_GROUPS.has(newGroup) ? now : null;
+            if (DONE_GROUPS.has(newGroup)) {
+                dbPatch.completedAt = sql`COALESCE(${schema.tasks.completedAt}, ${now})` as unknown as Date;
+            } else {
+                dbPatch.completedAt = null;
+                dbPatch.reviewStatus = null;
+                dbPatch.reviewedAt = null;
+                dbPatch.reviewedBy = null;
+            }
         }
 
         // 4. Atomic write (batched: bulk operations instead of per-task loop).

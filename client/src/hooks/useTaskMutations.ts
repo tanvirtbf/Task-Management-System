@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { App as AntApp } from "antd";
 import type { Task } from "../types";
-import { tasksApi } from "../http/api";
+import { tasksApi, type BulkTaskPatch } from "../http/api";
 import { useTaskTypes } from "./useReferenceData";
 
 /**
@@ -20,6 +20,9 @@ export const useUpdateTask = (listId?: string) => {
                 await qc.cancelQueries({ queryKey: key });
             }
             const prev = qc.getQueryData<Task[]>(["tasks-by-list", listId]);
+            // M10: snapshot the single-task cache too, or a failed PATCH leaves
+            // the drawer (which reads ["task", id]) showing the edit as applied.
+            const prevTask = qc.getQueryData<Task>(["task", id]);
             qc.setQueryData<Task[] | undefined>(
                 ["tasks-by-list", listId],
                 (old) =>
@@ -28,16 +31,20 @@ export const useUpdateTask = (listId?: string) => {
             qc.setQueryData<Task | undefined>(["task", id], (old) =>
                 old ? { ...old, ...patch } : old,
             );
-            return { prev };
+            return { prev, prevTask, id };
         },
         onError: (_err, _input, ctx) => {
             if (ctx?.prev) {
                 qc.setQueryData(["tasks-by-list", listId], ctx.prev);
             }
+            if (ctx?.prevTask !== undefined) {
+                qc.setQueryData(["task", ctx.id], ctx.prevTask);
+            }
             message.error("Could not update task");
         },
-        onSettled: () => {
+        onSettled: (_data, _err, vars) => {
             qc.invalidateQueries({ queryKey: ["tasks-by-list", listId] });
+            qc.invalidateQueries({ queryKey: ["task", vars.id] });
             qc.invalidateQueries({ queryKey: ["my-work"] });
         },
     });
@@ -78,7 +85,7 @@ export const useBulkUpdateTasks = (listId?: string) => {
             patch,
         }: {
             ids: string[];
-            patch: Partial<Task>;
+            patch: BulkTaskPatch;
         }) => tasksApi.bulkUpdate(ids, patch),
         onSuccess: (updated) => {
             qc.invalidateQueries({ queryKey: ["tasks-by-list", listId] });

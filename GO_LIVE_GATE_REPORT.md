@@ -19,6 +19,17 @@ The whole legacy system was tested end-to-end across **50 phases** (foundation �
 
 ---
 
+## 1b. ADDENDUM — Dept Review V1 shipped (2026-07-22)
+
+The lightweight **department-review + weekly HR reports** feature (`DEPARTMENT_REVIEW_PLAN.md` v1.1, 32 phases) is **built, tested and browser-proven** on this stack:
+
+- **Scope:** `spaces.head_user_id` (1 head per department) · head approve/flag reviews on DONE tasks (`task_reviews` + task denorm trio) · head dashboard `/dept` (summary + 4-bucket queue) · per-department weekly reports (`department_reports`, §payload snapshot) · HR inbox `/reports` + print-friendly detail with Mark seen / Regenerate / head-note · `department-report` weekly job (Mon 09:00 Dhaka, §3.7 cron table row 6) + on-demand generate · notification types `task_reviewed` / `report_ready`.
+- **Schema:** additive only — `database/upgrades/001–003` applied to dev + QA; **live DB upgrade = run those 3 scripts** (same gate as §3.7).
+- **Tests:** dept-review module **14 suites / 122 jest tests** (incl. the P28 permission + isolation sweep: cross-workspace fence, role matrix, head-handover H-12, deactivated head, archived edges) · P29 full regression across 8 modules (~1,660 module tests) green · committed Playwright E2E `client/e2e/dept-review.pw.ts` (assign → review → flag notif → report → HR ack).
+- **API:** documented as `API_DESIGN.md` **§33** (endpoints, wire shapes, error codes, job).
+
+---
+
 ## 2. Code fixes applied (14) — all verified + regression-checked
 
 | # | Phase | Sev | Area | Fix |
@@ -44,12 +55,16 @@ The whole legacy system was tested end-to-end across **50 phases** (foundation �
 
 > These are **deploy/config** actions on the live environment or repo. They do **NOT** block the RBAC dev build (which runs on the already-green codebase).
 
-### 3.1 ⚠️ DECISION NEEDED — KI-4 mail-sender dedupe
-`server/.env` has **3 duplicated `MAIL_*` blocks**. dotenv here is **LAST-wins**, so the block labeled **"Fallback"** (`beautyboothbd.com`) is the one **actually sending**, and the block labeled **"Primary — prod active"** (`beautybooth.com.bd`, identical to the top block) is **shadowed/dead**.
-- **You choose** which sender identity is correct, then dedupe **3 → 1** block. Mail currently delivers (from the Fallback sender), so this is about the *right* identity, not a breakage.
+### 3.1 ✅ RESOLVED (2026-07-23) — KI-4 mail-sender dedupe
+`server/.env` had **3 duplicated `MAIL_*` blocks** (dotenv LAST-wins → the "Fallback" `beautyboothbd.com` block was shadowing the labeled "Primary — verified + prod-e active" `beautybooth.com.bd` block). **Deduped 3 → 1**, keeping the **Primary (`beautybooth.com.bd`)** identity per the file's own annotation. dotenv now loads a single unambiguous sender. (To switch to the `beautyboothbd.com` token instead, swap the one block's values — one-line change.)
 
-### 3.2 🔐 Git-tracked secrets — rotate before any push
-`ENCRYPTION_KEYS.txt` **and** `deploy.sh` are **git-tracked** and contain **real prod AES keys** (currently unpushed). Before pushing to any remote: **history-rewrite** to purge them, **rotate** the keys, add both to `.gitignore`.
+### 3.2 ✅ RESOLVED (2026-07-23) — Git-tracked secrets purged + rotated
+`ENCRYPTION_KEYS.txt` and `deploy.sh` (real prod keys) were git-tracked **and already pushed** to `origin/main` (private repo). Remediation done:
+- **History purge** — `git filter-branch` removed both files from ALL of main's history; local gc dropped the old commits (`b14f0aa`/`b42961a` no longer resolve). Force-pushed to `origin/main` (`f947183 → 50a303e`).
+- **`.gitignore`** added (secrets + `.env` + `node_modules` + build/test artifacts); committed + pushed. `*.env.example` stay tracked.
+- **Rotation** — a fresh full secret set (`ENCRYPTION_KEY`, `ACCESS/REFRESH_TOKEN_SECRET`, `SECRET_KEY`, `COOKIE_SECRET`, `INTERNAL_JOB_TOKEN`) generated into gitignored **`ROTATED_SECRETS.local.txt`** — apply these to prod, then delete the file.
+- **⚠️ Still on you:** rotate provider secrets at their source if `deploy.sh` carried them — **MySQL prod DB password, Mailtrap token, OpenAI key, R2 keys**. GitHub may retain the orphaned pre-force-push commits by direct SHA for a while, so rotation (above) is the real protection. The dev `server/.env` was never tracked (not exposed).
+- **Repo bloat note (non-secret):** an 86 MB `workerd.exe` from an old accidental `node_modules` commit still bloats history — optional future `filter-branch`/BFG cleanup.
 
 ### 3.3 KI-1 form-encryption live-deploy
 - `ALTER TABLE form_submissions ADD encrypted_at TIMESTAMP NULL, ADD expires_at TIMESTAMP NULL, ADD INDEX idx_form_submissions_expires_at (expires_at)` on the **live** `taskmanagement` DB.
@@ -64,10 +79,12 @@ All 5 views (`v_open_tasks`, `v_open_bugs`, `v_active_sprint`, `v_current_on_cal
 ### 3.6 Timezone — `TZ=Asia/Dhaka` at deploy
 Home KPIs (`due_today`/`overdue`) and on-call "today" use the **server-local** date. Set `TZ=Asia/Dhaka` on the deployed server so "today" matches the team's calendar day. (DATE columns → coherent for a single-region team.)
 
-### 3.7 KI-9 — external cron for the 5 background jobs (no in-process scheduler)
+### 3.7 KI-9 — external cron for the 6 background jobs (no in-process scheduler)
 - HTTP (per deploy): `curl -fsS -X POST -H "X-Internal-Token: $INTERNAL_JOB_TOKEN" https://<api>/api/v1/jobs/<slug>`
   - `snooze-wake` every 5 min · `session-cleanup` / `attachment-janitor` / `r2-purge` daily.
-- CLI: `cd server && npx tsx src/bin/run-job.ts form-submission-expiry` daily.
+  - **`department-report` weekly — Monday 09:00 Asia/Dhaka** (Dept Review V1, added 2026-07-22): generates last week's per-department HR reports + `report_ready` notifications. Idempotent (safe to re-run; a missed Monday self-heals one week back on the next run).
+- CLI: `cd server && npx tsx src/bin/run-job.ts form-submission-expiry` daily (the only job without an HTTP route).
+- Verify any job first with `npm run job <slug> -- --dry-run`.
 
 ---
 

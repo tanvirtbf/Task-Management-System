@@ -6,13 +6,29 @@ const ENCODING = "utf8";
 const HEX = "hex";
 
 /**
- * Encrypts a JSON-serializable object using AES-256-GCM.
- * Returns a JSON string with ciphertext, iv, and authTag.
- *
- * Requires ENCRYPTION_KEY env (256-bit hex string) at runtime.
+ * True when ENCRYPTION_KEY holds a usable 256-bit key (64 hex chars).
+ * Callers that persist encrypted data must check this BEFORE creating any
+ * sibling rows (gap-scan C4: a mid-flow crypto crash used to orphan the
+ * intake task) so a misconfigured box fails clean, not cryptic.
  */
-export const encryptJSON = (data: any): string => {
-    const key = Buffer.from(Config.ENCRYPTION_KEY, HEX);
+export const encryptionReady = (): boolean =>
+    /^[0-9a-fA-F]{64}$/.test(Config.ENCRYPTION_KEY);
+
+const keyOrThrow = (): Buffer => {
+    if (!encryptionReady()) {
+        throw new Error(
+            "ENCRYPTION_KEY is missing or malformed (need 64 hex chars) — at-rest encryption unavailable",
+        );
+    }
+    return Buffer.from(Config.ENCRYPTION_KEY, HEX);
+};
+
+/**
+ * Encrypts a JSON-serializable value using AES-256-GCM.
+ * Returns a JSON string with ciphertext, iv, and authTag.
+ */
+export const encryptJSON = (data: unknown): string => {
+    const key = keyOrThrow();
     const iv = crypto.randomBytes(16);
     const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
 
@@ -30,14 +46,16 @@ export const encryptJSON = (data: any): string => {
 };
 
 /**
- * Decrypts a JSON object encrypted by encryptJSON.
+ * Decrypts a JSON value encrypted by encryptJSON.
  * Returns the original data or throws if authentication fails.
- *
- * Requires ENCRYPTION_KEY env (256-bit hex string) at runtime.
  */
-export const decryptJSON = (encrypted: string): any => {
-    const key = Buffer.from(Config.ENCRYPTION_KEY, HEX);
-    const { ciphertext, iv, authTag } = JSON.parse(encrypted);
+export const decryptJSON = (encrypted: string): unknown => {
+    const key = keyOrThrow();
+    const { ciphertext, iv, authTag } = JSON.parse(encrypted) as {
+        ciphertext: string;
+        iv: string;
+        authTag: string;
+    };
 
     const decipher = crypto.createDecipheriv(
         ALGORITHM,
@@ -49,5 +67,5 @@ export const decryptJSON = (encrypted: string): any => {
     let decrypted = decipher.update(ciphertext, HEX, ENCODING);
     decrypted += decipher.final(ENCODING);
 
-    return JSON.parse(decrypted);
+    return JSON.parse(decrypted) as unknown;
 };

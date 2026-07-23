@@ -47,6 +47,16 @@ export const userStatuses = ["active", "invited", "deactivated"] as const;
 export const invitationRoles = ["admin", "member", "guest"] as const;
 
 export const statusGroups = ["not_started", "active", "done", "closed"] as const;
+/**
+ * Status groups that count as "completed" (drive `tasks.completed_at` and the
+ * Dept Review D-4 done-authority). Hoisted for NEW code (Dept Review V1); the
+ * four pre-existing private copies (TaskWriteService, TemplateApplyService,
+ * SprintsRepo, EngineeringRepo) deliberately stay untouched — no-refactor rule.
+ */
+export const DONE_STATUS_GROUPS: ReadonlySet<string> = new Set([
+    "done",
+    "closed",
+]);
 export const scopeTypes = ["list", "space"] as const;
 export const customFieldScopeTypes = ["workspace", "space", "list"] as const;
 export const customFieldTypes = [
@@ -78,6 +88,9 @@ export const recurrencePatterns = ["none", "daily", "weekly"] as const;
 export const dependencyTypes = ["blocks"] as const;
 export const templateTypes = ["task", "list", "space"] as const;
 
+/** Dept Review V1 — a head's verdict on a completed task (`task_reviews.status`). */
+export const reviewStatuses = ["approved", "flagged"] as const;
+
 export const notificationTypes = [
     "assigned",
     "mentioned",
@@ -89,6 +102,9 @@ export const notificationTypes = [
     "automation_failed",
     "pr_review",
     "incident_alert",
+    // Dept Review V1 — appended at the END (ENUM order = INSTANT DDL + parity).
+    "task_reviewed",
+    "report_ready",
 ] as const;
 export const notificationEntityTypes = [
     "task",
@@ -96,6 +112,8 @@ export const notificationEntityTypes = [
     "form",
     "automation",
     "incident",
+    // Dept Review V1 — appended at the END.
+    "report",
 ] as const;
 
 export const workspaceActivityEntityTypes = [

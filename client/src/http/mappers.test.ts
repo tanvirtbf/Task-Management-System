@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { taskToWire } from "./mappers";
+import { taskToWire, workspaceToWire } from "./mappers";
+import type { Workspace } from "../types";
 
 /**
  * Regression tests for the calendar/inline/bulk "Could not create task" bug:
@@ -43,5 +44,43 @@ describe("taskToWire — date normalisation", () => {
         const out = taskToWire({ name: "x" });
         expect("dueDate" in out).toBe(false);
         expect("startDate" in out).toBe(false);
+    });
+});
+
+/**
+ * Gap-scan C3 regression: Workspace Settings could never save — the wire
+ * patch always carried `default_locale` (the endpoint rejects the key
+ * outright) and TimePicker times went out as HH:mm (validator wants
+ * HH:MM:SS).
+ */
+describe("workspaceToWire — C3 save-blockers", () => {
+    const settings: Workspace["settings"] = {
+        timezone: "Asia/Dhaka",
+        defaultLocale: "en-US",
+        weekStartsOn: 0,
+        workingDays: [1, 2, 3, 4, 5],
+        businessHours: { start: "09:00", end: "18:00" },
+        fiscalYearStartMonth: 1,
+    };
+
+    it("NEVER emits default_locale, even when the draft carries it", () => {
+        const out = workspaceToWire({ name: "BB", settings });
+        expect("defaultLocale" in out).toBe(false);
+        expect("default_locale" in out).toBe(false);
+    });
+
+    it("pads TimePicker HH:mm to HH:MM:SS; leaves HH:MM:SS untouched", () => {
+        const out = workspaceToWire({ settings });
+        expect(out.businessHoursStart).toBe("09:00:00");
+        expect(out.businessHoursEnd).toBe("18:00:00");
+
+        const already = workspaceToWire({
+            settings: {
+                ...settings,
+                businessHours: { start: "08:30:00", end: "17:15:00" },
+            },
+        });
+        expect(already.businessHoursStart).toBe("08:30:00");
+        expect(already.businessHoursEnd).toBe("17:15:00");
     });
 });

@@ -4,6 +4,7 @@ import {
     Button,
     Modal,
     Input,
+    Popconfirm,
     App as AntApp,
     Empty,
 } from "antd";
@@ -247,14 +248,28 @@ export const FormView = ({ listId }: FormViewProps) => {
                                 >
                                     Link
                                 </Button>
-                                <Button
-                                    type="text"
-                                    danger
-                                    icon={<Trash2 size={12} strokeWidth={1.75} />}
-                                    onClick={() =>
+                                {/* M14: deleting a form (+ its submissions) is
+                                    destructive — confirm first. */}
+                                <Popconfirm
+                                    title="Delete this form?"
+                                    description="Submissions to it stop working. This can't be undone."
+                                    okText="Delete"
+                                    okButtonProps={{ danger: true }}
+                                    onConfirm={() =>
                                         deleteMutation.mutate(form.id)
                                     }
-                                />
+                                >
+                                    <Button
+                                        type="text"
+                                        danger
+                                        icon={
+                                            <Trash2
+                                                size={12}
+                                                strokeWidth={1.75}
+                                            />
+                                        }
+                                    />
+                                </Popconfirm>
                             </div>
                         ))}
                     </div>

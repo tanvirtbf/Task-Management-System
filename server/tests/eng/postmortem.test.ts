@@ -237,3 +237,54 @@ describe("POST /api/v1/eng/incidents/:id/postmortem", () => {
         });
     });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+describe("GET /api/v1/eng/incidents/:id/postmortem (gap-scan H5 companion read)", () => {
+    it("nothing saved yet → 200 with EMPTY items + null timestamps (no 404 special-case)", async () => {
+        const fx = await setupIncident();
+
+        const res = await fx.client.get(path(fx.taskId));
+        expect(res.status).toBe(200);
+        expect(res.body.task_id).toBe(fx.taskId);
+        expect(res.body.items).toEqual({});
+        expect(res.body.updated_by).toBeNull();
+        expect(res.body.created_at).toBeNull();
+        expect(res.body.updated_at).toBeNull();
+    });
+
+    it("POST → GET round-trip: label keys survive VERBATIM (spaces, slashes, parens)", async () => {
+        const fx = await setupIncident();
+        const post = await fx.client.post(path(fx.taskId)).send({
+            items: validItems,
+        });
+        expect(post.status).toBe(200);
+
+        const res = await fx.client.get(path(fx.taskId));
+        expect(res.status).toBe(200);
+        expect(res.body.items).toEqual(validItems);
+        expect(res.body.updated_by).toBe(fx.ownerId);
+        expect(typeof res.body.created_at).toBe("string");
+    });
+
+    it("readable regardless of type/status (the write-side gates don't apply to reads)", async () => {
+        const fx = await setupIncident({ statusGroup: "active" });
+        const res = await fx.client.get(path(fx.taskId));
+        expect(res.status).toBe(200);
+        expect(res.body.items).toEqual({});
+    });
+
+    it("404 task.not_found for unknown and cross-workspace ids; 401 unauthenticated", async () => {
+        const fx = await setupIncident();
+        const other = await setupIncident(); // different workspace
+
+        const cross = await fx.client.get(path(other.taskId));
+        expect(cross.status).toBe(404);
+        expect(cross.body.error.code).toBe("task.not_found");
+
+        const unknown = await fx.client.get(path("t_nope123"));
+        expect(unknown.status).toBe(404);
+
+        const http = await oneOff();
+        expect((await http.get(path(fx.taskId))).status).toBe(401);
+    });
+});

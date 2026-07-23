@@ -1,7 +1,7 @@
-import { and, asc, eq, isNull, type SQL } from "drizzle-orm";
+import { and, asc, count, eq, isNull, type SQL } from "drizzle-orm";
 import { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../db/schema";
-import { spaces } from "../db/schema";
+import { departmentReports, spaces } from "../db/schema";
 import { fakeId } from "../utils";
 import type { DbExecutor } from "./types";
 
@@ -20,6 +20,8 @@ export interface SpaceRecord {
     icon: string;
     color: string;
     isPrivate: boolean;
+    /** Dept Review V1 — department head user id (null = no head assigned). */
+    headUserId: string | null;
     position: number;
     archivedAt: Date | null;
     createdBy: string;
@@ -39,6 +41,8 @@ export interface SpaceUpdateFields {
     color?: string;
     isPrivate?: boolean;
     position?: number;
+    /** Dept Review V1 — `null` clears the head (service validates non-null ids). */
+    headUserId?: string | null;
 }
 
 export class SpacesRepo {
@@ -71,6 +75,7 @@ export class SpacesRepo {
                 icon: spaces.icon,
                 color: spaces.color,
                 isPrivate: spaces.isPrivate,
+                headUserId: spaces.headUserId,
                 position: spaces.position,
                 archivedAt: spaces.archivedAt,
                 createdBy: spaces.createdBy,
@@ -108,6 +113,7 @@ export class SpacesRepo {
                 icon: spaces.icon,
                 color: spaces.color,
                 isPrivate: spaces.isPrivate,
+                headUserId: spaces.headUserId,
                 position: spaces.position,
                 archivedAt: spaces.archivedAt,
                 createdBy: spaces.createdBy,
@@ -228,5 +234,71 @@ export class SpacesRepo {
             .delete(spaces)
             .where(eq(spaces.id, spaceId));
         return result.affectedRows;
+    }
+
+    /**
+     * Count `department_reports` rows for a space (Dept Review V1). Reports are
+     * retained HR history — `fk_dept_reports_space` is ON DELETE RESTRICT — so
+     * the delete flow checks this first and surfaces `409 space.has_reports`
+     * instead of letting the FK bounce the DELETE into a 500. Pass `exec` to
+     * re-check inside the delete transaction.
+     */
+    async countReportsBySpace(
+        spaceId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<number> {
+        const [row] = await exec
+            .select({ n: count() })
+            .from(departmentReports)
+            .where(eq(departmentReports.spaceId, spaceId));
+        return row?.n ?? 0;
+    }
+
+    /**
+     * Null out every headship a user holds (Dept Review V1). Runs inside the
+     * deactivation transaction: users are soft-deactivated (never deleted), so
+     * the FK's ON DELETE SET NULL can never fire — this app-side write is the
+     * only mechanism that removes a deactivated head. Reactivation does NOT
+     * restore headships (one-way by design).
+     */
+    async clearHeadships(
+        userId: string,
+        workspaceId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<void> {
+        await exec
+            .update(spaces)
+            .set({ headUserId: null })
+            .where(
+                and(
+                    eq(spaces.headUserId, userId),
+                    eq(spaces.workspaceId, workspaceId),
+                ),
+            );
+    }
+
+    /**
+     * Every non-archived space across ALL workspaces — the weekly
+     * department-report job's iteration set (Dept Review V1 P20;
+     * single-tenant today, multi-tenant-ready like the rest of the schema).
+     */
+    async listAllActive(): Promise<
+        Array<{
+            id: string;
+            workspaceId: string;
+            name: string;
+            headUserId: string | null;
+        }>
+    > {
+        return this.db
+            .select({
+                id: spaces.id,
+                workspaceId: spaces.workspaceId,
+                name: spaces.name,
+                headUserId: spaces.headUserId,
+            })
+            .from(spaces)
+            .where(isNull(spaces.archivedAt))
+            .orderBy(asc(spaces.id));
     }
 }

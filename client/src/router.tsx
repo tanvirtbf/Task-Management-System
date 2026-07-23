@@ -46,6 +46,11 @@ const ImportExportSettings = lazy(
 );
 const InboxPage = lazy(() => import("./pages/inbox/InboxPage"));
 const SearchPage = lazy(() => import("./pages/search/SearchPage"));
+const DepartmentPage = lazy(() => import("./pages/dept/DepartmentPage"));
+const ReportsListPage = lazy(() => import("./pages/reports/ReportsListPage"));
+const ReportDetailPage = lazy(
+    () => import("./pages/reports/ReportDetailPage"),
+);
 const EngineeringHomePage = lazy(
     () => import("./pages/engineering/EngineeringHomePage"),
 );
@@ -113,6 +118,18 @@ export const router = createBrowserRouter([
                             {
                                 path: "search",
                                 element: lazyRoute(<SearchPage />),
+                            },
+                            {
+                                path: "dept",
+                                element: lazyRoute(<DepartmentPage />),
+                            },
+                            {
+                                path: "reports",
+                                element: lazyRoute(<ReportsListPage />),
+                            },
+                            {
+                                path: "reports/:reportId",
+                                element: lazyRoute(<ReportDetailPage />),
                             },
                             {
                                 path: "eng",

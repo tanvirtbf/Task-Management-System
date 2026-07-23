@@ -68,6 +68,8 @@ DROP TABLE IF EXISTS checklist_items;
 DROP TABLE IF EXISTS checklists;
 DROP TABLE IF EXISTS comments;
 DROP TABLE IF EXISTS task_activity;
+DROP TABLE IF EXISTS department_reports;
+DROP TABLE IF EXISTS task_reviews;
 DROP TABLE IF EXISTS task_dependencies;
 DROP TABLE IF EXISTS task_tags;
 DROP TABLE IF EXISTS task_watchers;
@@ -245,6 +247,9 @@ CREATE TABLE spaces (
     icon          VARCHAR(64)  NOT NULL DEFAULT 'Folder',
     color         CHAR(7)      NOT NULL DEFAULT '#4F46E5',
     is_private    BOOLEAN      NOT NULL DEFAULT FALSE,
+    -- Department head (Dept Review V1) — reviews this space's tasks. Nullable;
+    -- app-side nulling on user deactivation (users are never hard-deleted).
+    head_user_id  VARCHAR(64)  NULL,
     position      INT UNSIGNED NOT NULL DEFAULT 0,
     archived_at   TIMESTAMP    NULL,
     created_by    VARCHAR(64)  NOT NULL,
@@ -257,8 +262,11 @@ CREATE TABLE spaces (
         REFERENCES workspaces(id) ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT fk_spaces_created_by FOREIGN KEY (created_by)
         REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT fk_spaces_head FOREIGN KEY (head_user_id)
+        REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT ck_spaces_color CHECK (color REGEXP '^#[0-9A-Fa-f]{6}$'),
-    INDEX idx_spaces_workspace_archived (workspace_id, archived_at, position)
+    INDEX idx_spaces_workspace_archived (workspace_id, archived_at, position),
+    INDEX idx_spaces_head (head_user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
 
 
@@ -436,6 +444,14 @@ CREATE TABLE tasks (
     due_date             DATE         NULL,
     completed_at         TIMESTAMP    NULL,
 
+    -- ─── Dept Review V1 — current review state (denormalised) ─────────────
+    -- App-maintained in the SAME tx as the task_reviews insert (NO triggers).
+    -- reviewed_at is app-written UTC. All three are cleared whenever the task
+    -- leaves a done status group (single PATCH, bulk — see TaskWriteService).
+    review_status        ENUM('approved','flagged') NULL,
+    reviewed_at          TIMESTAMP    NULL,
+    reviewed_by          VARCHAR(64)  NULL,
+
     -- ─── SLA (P0 — CS complaints + engineering S0/S1 bugs) ────────────────
     -- Set by app at create time based on task type / severity:
     --   complaint task        → created_at + 24h
@@ -503,6 +519,8 @@ CREATE TABLE tasks (
     CONSTRAINT fk_tasks_sprint FOREIGN KEY (sprint_id)
         REFERENCES sprints(id) ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT fk_tasks_reviewer FOREIGN KEY (reviewer_id)
+        REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_tasks_reviewed_by FOREIGN KEY (reviewed_by)
         REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT fk_tasks_created_by FOREIGN KEY (created_by)
         REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
@@ -952,9 +970,11 @@ CREATE TABLE notifications (
     type           ENUM('assigned','mentioned','comment','status_change',
                         'due_soon','overdue','form_submitted',
                         'automation_failed','pr_review',
-                        'incident_alert') NOT NULL,
+                        'incident_alert',
+                        -- Dept Review V1 (appended at END — ENUM order parity)
+                        'task_reviewed','report_ready') NOT NULL,
     entity_type    ENUM('task','comment','form','automation',
-                        'incident') NOT NULL,
+                        'incident','report') NOT NULL,
     entity_id      VARCHAR(64)  NOT NULL,
     actor_id       VARCHAR(64)  NULL,
     title          VARCHAR(300) NOT NULL,
@@ -990,7 +1010,9 @@ CREATE TABLE user_notification_prefs (
     type            ENUM('assigned','mentioned','comment','status_change',
                         'due_soon','overdue','form_submitted',
                         'automation_failed','pr_review',
-                        'incident_alert') NOT NULL,
+                        'incident_alert',
+                        -- Dept Review V1 (must mirror notifications.type)
+                        'task_reviewed','report_ready') NOT NULL,
     in_app_enabled  BOOLEAN     NOT NULL DEFAULT TRUE,
     email_enabled   BOOLEAN     NOT NULL DEFAULT TRUE,
     updated_at      TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -1169,6 +1191,85 @@ CREATE TABLE chat_messages (
     CONSTRAINT fk_chat_messages_conversation FOREIGN KEY (conversation_id)
         REFERENCES chat_conversations(id) ON DELETE CASCADE ON UPDATE CASCADE,
     INDEX idx_chat_messages_conversation_time (conversation_id, created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
+
+
+-- =============================================================================
+-- 36. task_reviews  (Dept Review V1 — append-only head-verdict ledger)
+-- One row per review ACTION (approve ✓ / flag ⚑). The task's CURRENT review
+-- state is denormalised onto tasks.review_status/reviewed_at/reviewed_by and
+-- maintained app-side in the SAME transaction (NO triggers — 1442 lesson).
+-- `created_at` is app-written UTC (bound param) — deliberately NO DB default.
+-- `workspace_id`/`space_id` are historical snapshot annotations (report
+-- attribution); live bucketing always derives a task's space via
+-- primary_list_id → lists.space_id, never from these columns.
+-- =============================================================================
+CREATE TABLE task_reviews (
+    id            VARCHAR(64)  NOT NULL,
+    internal_id   BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    workspace_id  VARCHAR(64)  NOT NULL,
+    space_id      VARCHAR(64)  NOT NULL,
+    task_id       VARCHAR(64)  NOT NULL,
+    reviewer_id   VARCHAR(64)  NOT NULL,
+    status        ENUM('approved','flagged') NOT NULL,
+    note          VARCHAR(500) NULL,
+    created_at    TIMESTAMP    NOT NULL,
+
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_task_reviews_internal_id (internal_id),
+    CONSTRAINT fk_task_reviews_ws FOREIGN KEY (workspace_id)
+        REFERENCES workspaces(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_task_reviews_space FOREIGN KEY (space_id)
+        REFERENCES spaces(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_task_reviews_task FOREIGN KEY (task_id)
+        REFERENCES tasks(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    -- RESTRICT: accountability ledger — a user hard-delete must never silently
+    -- destroy review history (users are soft-deactivated in practice anyway).
+    CONSTRAINT fk_task_reviews_reviewer FOREIGN KEY (reviewer_id)
+        REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    -- Space rollups / A-5 history — keyset over internal_id (insertion order)
+    INDEX idx_task_reviews_space_time (space_id, internal_id),
+    INDEX idx_task_reviews_task_time (task_id, internal_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
+
+
+-- =============================================================================
+-- 37. department_reports  (Dept Review V1 — weekly per-department HR reports)
+-- One row per (space, Dhaka-calendar week). `payload` = full stats snapshot
+-- (JSON, shape owned by ReportStatsService). Regeneratable: the upsert updates
+-- payload/generated_* ONLY — never head_note / acknowledged_* / notified_at.
+-- `notified_at` = atomic one-time-fanout claim (UPDATE … WHERE notified_at IS
+-- NULL; affectedRows=1 elects exactly one notifier — job vs manual race-proof).
+-- `generated_at`/`notified_at`/`acknowledged_at` are app-written UTC (NO DB
+-- defaults). `head_user_id`/`generated_by`/`acknowledged_by` are point-in-time
+-- snapshots (deliberately NO user FKs). Space FK is RESTRICT: reports are
+-- retained HR history — a space with reports can be archived but never
+-- hard-deleted (SpacesService surfaces 409 `space.has_reports`).
+-- =============================================================================
+CREATE TABLE department_reports (
+    id              VARCHAR(64)  NOT NULL,
+    internal_id     BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    workspace_id    VARCHAR(64)  NOT NULL,
+    space_id        VARCHAR(64)  NOT NULL,
+    week_start      DATE         NOT NULL,
+    week_end        DATE         NOT NULL,
+    head_user_id    VARCHAR(64)  NULL,
+    head_note       VARCHAR(1000) NULL,
+    payload         JSON         NOT NULL,
+    generated_by    VARCHAR(64)  NULL,
+    generated_at    TIMESTAMP    NOT NULL,
+    notified_at     TIMESTAMP    NULL,
+    acknowledged_by VARCHAR(64)  NULL,
+    acknowledged_at TIMESTAMP    NULL,
+
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_department_reports_internal_id (internal_id),
+    UNIQUE KEY uq_department_reports_space_week (space_id, week_start),
+    CONSTRAINT fk_dept_reports_ws FOREIGN KEY (workspace_id)
+        REFERENCES workspaces(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_dept_reports_space FOREIGN KEY (space_id)
+        REFERENCES spaces(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    INDEX idx_department_reports_ws_week (workspace_id, week_start)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
 
 

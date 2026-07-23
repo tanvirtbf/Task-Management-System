@@ -42,6 +42,8 @@ const SPACE_KEYS = [
     "icon",
     "color",
     "is_private",
+    "head_user_id",
+    "head",
     "position",
     "archived_at",
     "created_by",

@@ -15,6 +15,7 @@ import type { WorkspaceActivityRepo } from "../repositories/WorkspaceActivityRep
 import type { MailService } from "./MailService";
 import type { TokenService } from "./TokenService";
 import type { PasswordResetTokensRepo } from "../repositories/PasswordResetTokensRepo";
+import type { SpacesRepo } from "../repositories/SpacesRepo";
 
 /**
  * §4 Users domain logic. The read paths (`list`, `getUser`) delegate straight
@@ -24,6 +25,14 @@ import type { PasswordResetTokensRepo } from "../repositories/PasswordResetToken
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 200;
+
+/** mysql2 transient lock errors worth retrying a transaction on (gap-scan M7 —
+ *  admin reset-password gets the same deadlock protection as forgot-password). */
+const isRetryableTxError = (err: unknown): boolean => {
+    const e = err as { errno?: number } | null;
+    return e?.errno === 1213 || e?.errno === 1205; // ER_LOCK_DEADLOCK / ER_LOCK_WAIT_TIMEOUT
+};
+const MAX_RESET_TX_ATTEMPTS = 3;
 
 /** Invitations are valid for 7 days (spec is silent; reset tokens are ≤30 min). */
 const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -134,6 +143,7 @@ export class UserService {
         private mail: MailService,
         private tokens: TokenService,
         private resetTokens: PasswordResetTokensRepo,
+        private spaces: SpacesRepo,
         private logger: Logger,
     ) {}
 
@@ -488,6 +498,15 @@ export class UserService {
                 tx,
             );
             await this.tokens.revokeAllForUser(input.userId, tx);
+            // Dept Review V1 — a deactivated user must not remain a department
+            // head. Users are soft-deactivated (never deleted), so the FK's
+            // ON DELETE SET NULL can never fire; this app-side null is the only
+            // mechanism. Reactivation deliberately does NOT restore headships.
+            await this.spaces.clearHeadships(
+                input.userId,
+                input.workspaceId,
+                tx,
+            );
             await this.activity.record(
                 {
                     workspaceId: input.workspaceId,
@@ -603,28 +622,55 @@ export class UserService {
         const tokenHash = sha256(rawToken);
         const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
 
-        await this.db.transaction(async (tx) => {
-            await this.resetTokens.deleteActiveForUser(input.userId, tx);
-            await this.resetTokens.create(
-                {
-                    id: fakeId("prt"),
-                    userId: input.userId,
-                    tokenHash,
-                    expiresAt,
-                },
-                tx,
-            );
-            await this.activity.record(
-                {
-                    workspaceId: input.workspaceId,
-                    actorId: input.actorId,
-                    entityType: "user",
-                    entityId: input.userId,
-                    action: "password_reset_requested",
-                },
-                tx,
-            );
-        });
+        // M7: mirror forgotPassword's deadlock guard — take the user-row lock
+        // FIRST (lock-ordering), then bounded-retry the DELETE+INSERT pair that
+        // can otherwise deadlock on the password_reset_tokens `user_id` gap
+        // locks (1213) when an admin reset races a user's own forgot-password.
+        let lastErr: unknown;
+        for (let attempt = 0; attempt < MAX_RESET_TX_ATTEMPTS; attempt++) {
+            try {
+                await this.db.transaction(async (tx) => {
+                    await this.users.findByIdForUpdate(
+                        input.userId,
+                        input.workspaceId,
+                        tx,
+                    );
+                    await this.resetTokens.deleteActiveForUser(input.userId, tx);
+                    await this.resetTokens.create(
+                        {
+                            id: fakeId("prt"),
+                            userId: input.userId,
+                            tokenHash,
+                            expiresAt,
+                        },
+                        tx,
+                    );
+                    await this.activity.record(
+                        {
+                            workspaceId: input.workspaceId,
+                            actorId: input.actorId,
+                            entityType: "user",
+                            entityId: input.userId,
+                            action: "password_reset_requested",
+                        },
+                        tx,
+                    );
+                });
+                lastErr = undefined;
+                break;
+            } catch (err) {
+                if (isRetryableTxError(err)) {
+                    lastErr = err;
+                    continue;
+                }
+                throw err;
+            }
+        }
+        if (lastErr) {
+            throw lastErr instanceof Error
+                ? lastErr
+                : AppError.internal("Password reset token persist failed");
+        }
 
         const resetUrl = `${Config.FRONTEND_URL ?? ""}/reset-password/${rawToken}`;
         try {

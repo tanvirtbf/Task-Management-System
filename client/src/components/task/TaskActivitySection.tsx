@@ -134,7 +134,8 @@ export const TaskActivitySection = ({ taskId }: { taskId: string }) => {
                                         {actor?.firstName ?? "Someone"}
                                     </span>{" "}
                                     {verb(entry.action)}
-                                    {entry.context.taskName && (
+                                    {/* M12: `context` is nullable on the wire */}
+                                    {entry.context?.taskName && (
                                         <>
                                             {" — "}
                                             <span
@@ -147,7 +148,7 @@ export const TaskActivitySection = ({ taskId }: { taskId: string }) => {
                                                         .textPrimary,
                                                 }}
                                             >
-                                                {entry.context.taskName}
+                                                {entry.context?.taskName}
                                             </span>
                                         </>
                                     )}

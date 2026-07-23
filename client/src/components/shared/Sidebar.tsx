@@ -17,11 +17,14 @@ import {
     LogOut,
     Plus,
     X,
+    UserCheck,
+    BarChart3,
 } from "lucide-react";
 import { Dropdown, Input, App as AntApp } from "antd";
 import { workspaceApi, notificationsApi } from "../../http/api";
 import { useUiStore } from "../../stores/ui";
 import { useAuthStore } from "../../stores/auth";
+import { useSpaces } from "../../hooks/useReferenceData";
 import { tokens } from "../../theme";
 import { Logo } from "../ui/Logo";
 import { SidebarNavItem } from "./SidebarNavItem";
@@ -48,6 +51,17 @@ export const Sidebar = () => {
         enabled: !!user,
         refetchInterval: 60_000,
     });
+    // Dept Review V1 — "Department" item visibility. Derived from the shared
+    // ["spaces"] query (same key as SidebarSpaceTree → deduped, zero extra
+    // requests) over the UNFILTERED rows: a member who heads a private space
+    // must still get the item. Non-archived headships only (an archived-space
+    // headship would deep-link into a 409). Omitted from the collapsed rail —
+    // the Engineering section precedent.
+    const { data: allSpaces = [] } = useSpaces();
+    const canSeeDept =
+        user?.role === "owner" ||
+        user?.role === "admin" ||
+        allSpaces.some((s) => !s.archivedAt && s.headUserId === user?.id);
 
     const workspaceMenuItems = [
         {
@@ -248,6 +262,33 @@ export const Sidebar = () => {
                             label="Search"
                             rightSlot={<KbdHint k="⌘K" />}
                         />
+                        {canSeeDept && (
+                            <>
+                                <SidebarNavItem
+                                    to="/dept"
+                                    icon={
+                                        <UserCheck
+                                            size={15}
+                                            strokeWidth={1.75}
+                                        />
+                                    }
+                                    label="Department"
+                                />
+                                {/* Same visibility set (M-5/H-12): owners/
+                                    admins see all reports; heads see their
+                                    own departments'. */}
+                                <SidebarNavItem
+                                    to="/reports"
+                                    icon={
+                                        <BarChart3
+                                            size={15}
+                                            strokeWidth={1.75}
+                                        />
+                                    }
+                                    label="Reports"
+                                />
+                            </>
+                        )}
                         <SectionHeader title="Engineering" icon={<Code size={11} />} />
                         <SidebarNavItem
                             to="/eng"

@@ -24,6 +24,7 @@ import { validate } from "../middlewares/validate";
 import {
     reportBugValidator,
     createPostmortemValidator,
+    getPostmortemValidator,
 } from "../validators/engineering";
 import type {
     ReportBugRequest,
@@ -94,6 +95,18 @@ router.get(
     authenticate,
     (req: Request, res: Response, next: NextFunction) =>
         controller.getHome(req as GetEngHomeRequest, res, next),
+);
+
+// ─── GET /api/v1/eng/incidents/:id/postmortem ─────────────────────────────────
+// 🔐 any authenticated member (gap-scan H5). Read the saved checklist so the
+// UI can rehydrate; empty items (200) when nothing is saved yet.
+router.get(
+    "/eng/incidents/:id/postmortem",
+    authenticate,
+    getPostmortemValidator,
+    validate,
+    (req: Request, res: Response, next: NextFunction) =>
+        controller.getPostmortem(req as CreatePostmortemRequest, res, next),
 );
 
 // ─── POST /api/v1/eng/incidents/:id/postmortem ────────────────────────────────

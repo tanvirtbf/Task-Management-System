@@ -1,5 +1,6 @@
 import logger from "../config/logger";
 import { attachmentJanitor } from "./attachmentJanitor";
+import { departmentReport } from "./departmentReport";
 import { r2Purge } from "./r2Purge";
 import { sessionCleanup } from "./sessionCleanup";
 import { snoozeWake } from "./snoozeWake";
@@ -17,6 +18,7 @@ const JOBS = {
     "r2-purge": r2Purge,
     "snooze-wake": snoozeWake,
     "form-submission-expiry": formSubmissionExpiry,
+    "department-report": departmentReport,
 } as const;
 
 export type JobName = keyof typeof JOBS;

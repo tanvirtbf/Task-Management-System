@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Input, Empty, Spin } from "antd";
+import { Alert, Button, Input, Empty, Spin } from "antd";
 import {
     Search,
     Hash,
@@ -42,21 +42,22 @@ const SearchPage = () => {
     const [params, setParams] = useSearchParams();
     const [query, setQuery] = useState(params.get("q") ?? "");
     const [filter, setFilter] = useState<"all" | Kind>("all");
+    // M13: debounce so we fire ONE request after typing stops, not per keystroke.
+    const [debounced, setDebounced] = useState(query);
 
     useEffect(() => {
         if (query) setParams({ q: query });
         else setParams({});
+        const t = setTimeout(() => setDebounced(query), 250);
+        return () => clearTimeout(t);
     }, [query, setParams]);
 
-    const { data, isFetching } = useQuery({
-        queryKey: ["search-page", query, filter],
-        queryFn: () =>
-            searchApi.search({
-                query,
-                types: filter === "all" ? undefined : [filter],
-                limit: 30,
-            }),
-        enabled: query.trim().length > 0,
+    // M13: always fetch ALL types (filter is applied client-side for DISPLAY),
+    // so the chip counts never collapse to 0 and switching chips is instant.
+    const { data, isFetching, isError, refetch } = useQuery({
+        queryKey: ["search-page", debounced],
+        queryFn: () => searchApi.search({ query: debounced, limit: 30 }),
+        enabled: debounced.trim().length > 0,
     });
 
     const counts: Record<Kind, number> = useMemo(() => {
@@ -213,6 +214,19 @@ const SearchPage = () => {
                     }
                     description="Type to begin searching."
                 />
+            ) : isError ? (
+                // M9: a search failure is NOT "no results".
+                <Alert
+                    type="error"
+                    showIcon
+                    message="Search failed"
+                    description="Check your connection and try again."
+                    action={
+                        <Button size="small" onClick={() => void refetch()}>
+                            Retry
+                        </Button>
+                    }
+                />
             ) : !data || data.total === 0 ? (
                 <Empty
                     description={`No results for “${query}”.`}
@@ -236,6 +250,8 @@ const SearchPage = () => {
                         ] as const
                     ).map(([kind, items]) => {
                         if (items.length === 0) return null;
+                        // M13: the selected chip filters which sections SHOW.
+                        if (filter !== "all" && filter !== kind) return null;
                         const meta = KIND_META[kind];
                         const Icon = meta.icon;
                         return (

@@ -51,6 +51,37 @@ const seedSubmittableForm = async (opts: {
 };
 
 describe("§18 Forms — public submit", () => {
+    it("missing ENCRYPTION_KEY → clean 503 BEFORE the intake task exists (gap-scan C4 orphan-task lock)", async () => {
+        const { form } = await seedSubmittableForm();
+        await makeFormField({
+            formId: form.id,
+            fieldKind: "task_attr",
+            fieldKey: "name",
+            label: "Subject",
+            isRequired: true,
+        });
+        const { Config } = await import("../../src/config");
+        const realKey = Config.ENCRYPTION_KEY;
+        try {
+            (Config as { ENCRYPTION_KEY: string }).ENCRYPTION_KEY = "";
+            const agent = await oneOff();
+            const res = await agent
+                .post(`/api/v1/public/forms/${form.publicSlug}/submit`)
+                .send({ data: { name: "should not create a task" } });
+            expect(res.status).toBe(503);
+            expect(res.body.error.code).toBe("form.encryption_unavailable");
+
+            // The old bug created the task FIRST, then crashed on encrypt.
+            const orphan = await getDb()
+                .select({ id: tasks.id })
+                .from(tasks)
+                .where(eq(tasks.name, "should not create a task"));
+            expect(orphan.length).toBe(0);
+        } finally {
+            (Config as { ENCRYPTION_KEY: string }).ENCRYPTION_KEY = realKey;
+        }
+    });
+
     it("creates a task + records the submission + bumps submission_count (201)", async () => {
         const { form } = await seedSubmittableForm({
             settings: { success_message: "Thanks for reaching out!" },

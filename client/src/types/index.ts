@@ -67,6 +67,9 @@ export interface Space {
     icon: string; // lucide-react icon name
     color: string; // hex
     isPrivate: boolean;
+    /** Dept Review V1 — department head (the server always sends both fields). */
+    headUserId: string | null;
+    head: User | null;
     position: number;
     archivedAt: string | null;
     createdBy: string;
@@ -177,6 +180,11 @@ export interface Task {
     updatedAt: string;
     createdBy: string;
     completedAt: string | null;
+    /** Dept Review V1 — current review verdict (null until the department
+     *  head reviews the completed task; auto-reset when it reopens). */
+    reviewStatus: "approved" | "flagged" | null;
+    reviewedAt: string | null;
+    reviewedBy: string | null;
     archivedAt: string | null;
     nestingDepth: number;
     /** Optional recurrence config — when set, completing the task spawns the next instance. */
@@ -237,9 +245,143 @@ export interface TaskRecurrence {
 }
 
 // ============================================================
+// Dept Review V1 — department head review + HR reports
+// ============================================================
+
+export type ReviewVerdict = "approved" | "flagged";
+
+export type ReviewQueueBucket =
+    | "needs_review"
+    | "flagged"
+    | "overdue"
+    | "due_today";
+
+/** One ledger row from `GET /tasks/:id/reviews` (reviewer hydrated). */
+export interface TaskReview {
+    id: string;
+    taskId: string;
+    spaceId: string;
+    status: ReviewVerdict;
+    note: string | null;
+    reviewerId: string;
+    createdAt: string;
+    reviewer: User | null;
+}
+
+/** A review-queue row: a full Task + current verdict + parent breadcrumb. */
+export interface ReviewQueueRow extends Task {
+    review: {
+        status: ReviewVerdict;
+        reviewedAt: string | null;
+        reviewedBy: string | null;
+    } | null;
+    parentTask: { id: string; name: string } | null;
+}
+
+/** `user: null` = the synthetic "Unassigned" row (always sorted last). */
+export interface ReviewSummaryMember {
+    user: User | null;
+    open: number;
+    dueToday: number;
+    overdue: number;
+    doneUnreviewed: number;
+    flagged: number;
+    lastActivity: string | null;
+}
+
+export interface ReviewSummary {
+    spaceId: string;
+    members: ReviewSummaryMember[];
+    /** Task-level DEDUPED totals — never the sum of the member rows. */
+    totals: {
+        open: number;
+        dueToday: number;
+        overdue: number;
+        doneUnreviewed: number;
+        flagged: number;
+    };
+}
+
+// Weekly department reports (the stored payload arrives camelized by the
+// response interceptor — `payload` is deliberately NOT in the opaque set).
+
+export interface ReportTotalsView {
+    completed: number;
+    completedLate: number;
+    overdueNow: number;
+    approved: number;
+    flagged: number;
+    doneUnreviewed: number;
+}
+
+export interface DeptReportFlag {
+    taskId: string;
+    customId: string | null;
+    taskName: string;
+    note: string | null;
+    reviewedAt: string;
+    reviewer: User | null;
+    parentTask: { id: string; name: string } | null;
+}
+
+export interface DeptReportMember {
+    /** null = the synthetic "Unassigned" row; `isActive` false = deactivated. */
+    user: {
+        id: string;
+        firstName: string;
+        lastName: string;
+        avatarUrl: string | null;
+        isActive: boolean;
+    } | null;
+    assignedOpen: number;
+    completed: number;
+    completedLate: number;
+    overdueNow: number;
+    approved: number;
+    flagged: number;
+    flags: DeptReportFlag[];
+}
+
+export interface DeptReportPayloadView {
+    members: DeptReportMember[];
+    totals: ReportTotalsView;
+    headAccountability: {
+        reviewsDone: number;
+        selfReviewed: number;
+        doneUnreviewedAtGeneration: number;
+    };
+    prevWeek: { completed: number; overdueNow: number } | null;
+}
+
+export interface DeptReportListItem {
+    id: string;
+    spaceId: string;
+    weekStart: string;
+    weekEnd: string;
+    headUserId: string | null;
+    head: User | null;
+    headNote: string | null;
+    generatedBy: string | null;
+    generatedAt: string;
+    acknowledgedBy: string | null;
+    acknowledgedAt: string | null;
+    totals: ReportTotalsView | null;
+}
+
+export interface DeptReport extends Omit<DeptReportListItem, "totals"> {
+    payload: DeptReportPayloadView;
+}
+
+// ============================================================
 // Notifications, reminders, activity
 // ============================================================
 
+/**
+ * Mirrors the server's `notifications.type` ENUM exactly (12 values as of
+ * Dept Review V1). The pre-existing drift is fixed here: `pr_review` /
+ * `incident_alert` were missing, and the phantom `reminder_due` (removed
+ * server-side long ago) is gone.
+ */
 export type NotificationType =
     | "assigned"
     | "mentioned"
@@ -249,13 +391,24 @@ export type NotificationType =
     | "overdue"
     | "form_submitted"
     | "automation_failed"
-    | "reminder_due";
+    | "pr_review"
+    | "incident_alert"
+    | "task_reviewed"
+    | "report_ready";
 
 export interface Notification {
     id: string;
     userId: string;
     type: NotificationType;
-    entityType: "task" | "comment" | "form" | "reminder" | "automation";
+    /** Mirrors the server ENUM ("reminder" was drift — the server has
+     *  "incident"; "report" arrived with Dept Review V1). */
+    entityType:
+        | "task"
+        | "comment"
+        | "form"
+        | "automation"
+        | "incident"
+        | "report";
     entityId: string;
     actorId: string | null;
     title: string;
@@ -312,7 +465,10 @@ export interface AuthState {
     bootstrapping: boolean;
     setUser: (user: User | null) => void;
     setAccessToken: (token: string | null) => void;
-    logout: () => void;
+    /** Full sign-out: revokes the server session (unless `revoke: false` —
+     *  used when the session is already dead) and purges all user-scoped
+     *  client state (query cache, chat, UI prefs). */
+    logout: (opts?: { revoke?: boolean }) => void;
     /** Revalidate a (possibly cookie-only) session on app load. */
     bootstrap: () => Promise<void>;
     pendingTwoFactor: PendingTwoFactor | null;

@@ -4,7 +4,11 @@ import * as schema from "../db/schema";
 import type { Form, FormField, NewForm, NewFormField } from "../db/schema";
 import { AppError, type ErrorDetail } from "../errors";
 import { fakeId, randomToken } from "../utils";
-import { encryptJSON, decryptJSON } from "../utils/encryption";
+import {
+    decryptJSON,
+    encryptJSON,
+    encryptionReady,
+} from "../utils/encryption";
 import { Roles } from "../constants";
 import type { FormsRepo } from "../repositories/FormsRepo";
 import type { FormFieldsRepo } from "../repositories/FormFieldsRepo";
@@ -561,6 +565,13 @@ export class FormsService {
             throw AppError.notFound("form.not_found", "Form not found");
         }
         const { form, workspaceId } = resolved;
+        // Gap-scan H2: an unpublished form must not render anonymously —
+        // same 404 as an unknown slug (no existence oracle behind the
+        // guessable slug). `submission_open` is the separate soft-close
+        // switch handled by submit(); the VIEW only honours the publish bit.
+        if (!form.isPublic) {
+            throw AppError.notFound("form.not_found", "Form not found");
+        }
         const fields = await this.fields.listByForm(form.id);
 
         // Enrich custom_field fields with their type / config / dropdown options
@@ -621,6 +632,16 @@ export class FormsService {
      * that second step fails — it is the standing intake record).
      */
     async submit(input: SubmitInput): Promise<SubmitResult> {
+        // Gap-scan C4: submissions are encrypted at rest — refuse UP FRONT
+        // (clean 503) when the key is absent/malformed, BEFORE the intake
+        // task exists. A mid-flow crypto crash used to orphan the task.
+        if (!encryptionReady()) {
+            throw new AppError(
+                503,
+                "form.encryption_unavailable",
+                "Form intake is temporarily unavailable (encryption not configured)",
+            );
+        }
         const resolved = await this.forms.resolveBySlug(input.slug);
         if (!resolved) {
             throw AppError.notFound("form.not_found", "Form not found");

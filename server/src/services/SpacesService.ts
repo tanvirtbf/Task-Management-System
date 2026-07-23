@@ -9,6 +9,16 @@ import {
 } from "../repositories/SpacesRepo";
 import { ListsRepo } from "../repositories/ListsRepo";
 import { WorkspaceActivityRepo } from "../repositories/WorkspaceActivityRepo";
+import type { UsersRepo, UserListRow } from "../repositories/UsersRepo";
+
+/**
+ * A space row with its department head hydrated (Dept Review V1). `head` is the
+ * non-sensitive user projection (`UserListRow` — no password_hash) or null when
+ * the space has no head; the controller maps it through `toWireUser`.
+ */
+export interface SpaceWithHead extends SpaceRecord {
+    head: UserListRow | null;
+}
 
 export interface ListSpacesInput {
     workspaceId: string;
@@ -55,18 +65,46 @@ export class SpacesService {
         private spaces: SpacesRepo,
         private lists: ListsRepo,
         private activity: WorkspaceActivityRepo,
+        private users: UsersRepo,
         private logger: Logger,
     ) {}
+
+    /**
+     * Attach the hydrated `head` user to space rows (Dept Review V1). One
+     * batched `findManyByIdsInWorkspace` for ALL distinct head ids — never a
+     * per-row lookup (anti-N+1). A head id that no longer resolves in the
+     * workspace hydrates as null (defensive; cannot happen through the
+     * validated write path).
+     */
+    private async hydrateHeads(
+        rows: SpaceRecord[],
+        workspaceId: string,
+    ): Promise<SpaceWithHead[]> {
+        const headIds = [
+            ...new Set(
+                rows.flatMap((r) => (r.headUserId ? [r.headUserId] : [])),
+            ),
+        ];
+        const heads = headIds.length
+            ? await this.users.findManyByIdsInWorkspace(headIds, workspaceId)
+            : [];
+        const byId = new Map(heads.map((u) => [u.id, u]));
+        return rows.map((r) => ({
+            ...r,
+            head: r.headUserId ? (byId.get(r.headUserId) ?? null) : null,
+        }));
+    }
 
     /**
      * List the spaces in a workspace. The `workspaceId` always comes from the
      * caller's verified JWT (`req.auth.workspaceId`) — never from client input
      * — so there is no cross-tenant read path.
      */
-    async listSpaces(input: ListSpacesInput): Promise<SpaceRecord[]> {
-        return this.spaces.listByWorkspace(input.workspaceId, {
+    async listSpaces(input: ListSpacesInput): Promise<SpaceWithHead[]> {
+        const rows = await this.spaces.listByWorkspace(input.workspaceId, {
             includeArchived: input.includeArchived,
         });
+        return this.hydrateHeads(rows, input.workspaceId);
     }
 
     /**
@@ -75,7 +113,7 @@ export class SpacesService {
      * scopes by `workspace_id`, so there is no cross-tenant existence oracle.
      * An archived space still exists and is returned (200), not 404.
      */
-    async getSpace(input: GetSpaceInput): Promise<SpaceRecord> {
+    async getSpace(input: GetSpaceInput): Promise<SpaceWithHead> {
         const space = await this.spaces.findByIdInWorkspace(
             input.spaceId,
             input.workspaceId,
@@ -86,7 +124,11 @@ export class SpacesService {
                 `Space ${input.spaceId} does not exist`,
             );
         }
-        return space;
+        const [withHead] = await this.hydrateHeads(
+            [space],
+            input.workspaceId,
+        );
+        return withHead;
     }
 
     /**
@@ -99,8 +141,8 @@ export class SpacesService {
      * The just-inserted row is re-read inside the transaction so the response
      * carries the authoritative DB `created_at`, identical to a later GET.
      */
-    async create(input: CreateSpaceInput): Promise<SpaceRecord> {
-        return this.db.transaction(async (tx) => {
+    async create(input: CreateSpaceInput): Promise<SpaceWithHead> {
+        const created = await this.db.transaction(async (tx) => {
             const id = await this.spaces.insert(
                 {
                     workspaceId: input.workspaceId,
@@ -137,6 +179,9 @@ export class SpacesService {
             }
             return space;
         });
+        // A new space never has a head (`head_user_id` is PATCH-only), so
+        // hydrate as null without a lookup.
+        return { ...created, head: null };
     }
 
     /**
@@ -149,7 +194,7 @@ export class SpacesService {
      * authoritative post-update row is re-read — all in one transaction. An
      * archived space remains editable (it still exists).
      */
-    async update(input: UpdateSpaceInput): Promise<SpaceRecord> {
+    async update(input: UpdateSpaceInput): Promise<SpaceWithHead> {
         const existing = await this.spaces.findByIdInWorkspace(
             input.spaceId,
             input.workspaceId,
@@ -161,12 +206,57 @@ export class SpacesService {
             );
         }
 
-        const changedFields = Object.keys(input.fields);
-        if (changedFields.length === 0) {
-            return existing;
+        // Dept Review V1 — validate a non-null head BEFORE the write: must be
+        // an existing user of THIS workspace, active, and not a guest. `null`
+        // (clear) needs no validation. All three failures are 422
+        // `space.head_invalid` — bad input, not a missing resource (and no
+        // cross-tenant existence oracle: a foreign user id reads as unknown).
+        if (
+            input.fields.headUserId !== undefined &&
+            input.fields.headUserId !== null
+        ) {
+            const head = await this.users.findByIdInWorkspace(
+                input.fields.headUserId,
+                input.workspaceId,
+            );
+            if (!head) {
+                throw AppError.unprocessable(
+                    "space.head_invalid",
+                    "head_user_id must be an existing user in this workspace",
+                    [{ field: "head_user_id", issue: "unknown user" }],
+                );
+            }
+            if (head.status !== "active") {
+                throw AppError.unprocessable(
+                    "space.head_invalid",
+                    "head_user_id must be an active user",
+                    [{ field: "head_user_id", issue: "user is not active" }],
+                );
+            }
+            if (head.role === "guest") {
+                throw AppError.unprocessable(
+                    "space.head_invalid",
+                    "A guest cannot be a department head",
+                    [
+                        {
+                            field: "head_user_id",
+                            issue: "guests cannot be heads",
+                        },
+                    ],
+                );
+            }
         }
 
-        return this.db.transaction(async (tx) => {
+        const changedFields = Object.keys(input.fields);
+        if (changedFields.length === 0) {
+            const [withHead] = await this.hydrateHeads(
+                [existing],
+                input.workspaceId,
+            );
+            return withHead;
+        }
+
+        const updatedRow = await this.db.transaction(async (tx) => {
             await this.spaces.lockById(input.spaceId, tx);
             await this.spaces.updateFields(input.spaceId, input.fields, tx);
             await this.activity.record(
@@ -191,6 +281,11 @@ export class SpacesService {
             }
             return updated;
         });
+        const [withHead] = await this.hydrateHeads(
+            [updatedRow],
+            input.workspaceId,
+        );
+        return withHead;
     }
 
     /**
@@ -313,6 +408,9 @@ export class SpacesService {
      *   - absent / cross-workspace id → `404 space.not_found`.
      *   - not archived → `409 space.not_archived` (05-spaces.md: "must be archived").
      *   - still holds ANY list → `409 space.not_empty`.
+     *   - has department_reports → `409 space.has_reports` (Dept Review V1:
+     *     reports are retained HR history, backed by an ON DELETE RESTRICT FK —
+     *     archive the space instead).
      *
      * NOTE on "empty": 05-spaces.md refuses only on a NON-archived list, implying
      * a delete cascades archived lists. The DB cannot do that safely — `lists`
@@ -350,6 +448,12 @@ export class SpacesService {
                 "Space still has lists; delete them before deleting the space",
             );
         }
+        if ((await this.spaces.countReportsBySpace(input.spaceId)) > 0) {
+            throw AppError.conflict(
+                "space.has_reports",
+                "Space has department reports (retained HR history); archive it instead of deleting",
+            );
+        }
 
         await this.db.transaction(async (tx) => {
             await this.spaces.lockById(input.spaceId, tx);
@@ -371,6 +475,14 @@ export class SpacesService {
                 throw AppError.conflict(
                     "space.not_empty",
                     "Space still has lists; delete them before deleting the space",
+                );
+            }
+            if (
+                (await this.spaces.countReportsBySpace(input.spaceId, tx)) > 0
+            ) {
+                throw AppError.conflict(
+                    "space.has_reports",
+                    "Space has department reports (retained HR history); archive it instead of deleting",
                 );
             }
             await this.activity.record(

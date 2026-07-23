@@ -1,5 +1,6 @@
 import { rateLimit, ipKeyGenerator } from "express-rate-limit";
 import type { NextFunction, Request, Response } from "express";
+import jwt from "jsonwebtoken";
 import { AppError } from "../errors";
 
 /**
@@ -59,7 +60,24 @@ export const authStrictLimiter = rateLimitOff
           handler: authRateLimitHandler,
       });
 
-// `/api/v1/*` authenticated calls — 600/min/user (fallback to IP if no user yet)
+/**
+ * Gap-scan M1: this limiter mounts BEFORE the per-route `authenticate`, so
+ * `req.auth` is never set here and the whole office NAT used to share one
+ * 600/min IP bucket. Bucket on an UNVERIFIED decode of the Bearer `sub`
+ * instead — for RATE-KEYING only (never authorization): forging a sub merely
+ * splits buckets, exactly like rotating IPs, while real users each get their
+ * own quota.
+ */
+const bearerSub = (req: Request): string | null => {
+    const header = req.headers.authorization;
+    if (!header?.startsWith("Bearer ")) return null;
+    const payload = jwt.decode(header.slice(7));
+    const sub =
+        payload && typeof payload === "object" ? payload.sub : undefined;
+    return typeof sub === "string" && sub.length > 0 ? sub : null;
+};
+
+// `/api/v1/*` calls — 600/min/user (IP bucket only for tokenless requests)
 export const apiLimiter = rateLimitOff
     ? noop
     : rateLimit({
@@ -70,6 +88,8 @@ export const apiLimiter = rateLimitOff
           keyGenerator: (req: Request) => {
               const auth = (req as Request & { auth?: { sub?: string } }).auth;
               if (auth?.sub) return `u:${auth.sub}`;
+              const sub = bearerSub(req);
+              if (sub) return `u:${sub}`;
               return ipKeyGenerator(req.ip ?? "unknown");
           },
           handler,
@@ -93,6 +113,23 @@ export const assistantLimiter = rateLimitOff
     : rateLimit({
           windowMs: 60 * 1000,
           limit: 20,
+          standardHeaders: true,
+          legacyHeaders: false,
+          keyGenerator: (req: Request) => {
+              const auth = (req as Request & { auth?: { sub?: string } }).auth;
+              if (auth?.sub) return `u:${auth.sub}`;
+              return ipKeyGenerator(req.ip ?? "unknown");
+          },
+          handler,
+      });
+
+// `/api/v1/reports/generate` — 10/min/user (Dept Review V1 A-8; report
+// computation fans out several aggregate queries — post-auth keyed).
+export const reportGenerateLimiter = rateLimitOff
+    ? noop
+    : rateLimit({
+          windowMs: 60 * 1000,
+          limit: 10,
           standardHeaders: true,
           legacyHeaders: false,
           keyGenerator: (req: Request) => {

@@ -1,4 +1,4 @@
-import { Drawer, Dropdown, App as AntApp } from "antd";
+import { Alert, Button, Drawer, Dropdown, App as AntApp } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     X,
@@ -33,6 +33,7 @@ import { PostmortemChecklist } from "./PostmortemChecklist";
 import { SLABadge } from "./SLABadge";
 import { CustomFieldsList } from "../custom-field/CustomFieldsList";
 import { useUpdateTask } from "../../hooks/useTaskMutations";
+import { ReviewSection } from "./ReviewSection";
 import { tokens } from "../../theme";
 
 interface TaskDetailDrawerProps {
@@ -54,7 +55,12 @@ export const TaskDetailDrawer = ({
     const userMap = useUserMap();
     const statusMap = useStatusMap(listId);
 
-    const { data: task, isLoading } = useQuery({
+    const {
+        data: task,
+        isLoading,
+        isError: taskError,
+        refetch: refetchTask,
+    } = useQuery({
         queryKey: ["task", taskId],
         queryFn: () =>
             taskId ? tasksApi.getById(taskId) : Promise.resolve(null),
@@ -172,7 +178,25 @@ export const TaskDetailDrawer = ({
             }}
             destroyOnHidden
         >
-            {isLoading || !task ? (
+            {taskError ? (
+                // M9: a failed fetch used to spin "Loading task…" forever.
+                <div style={{ padding: 24 }}>
+                    <Alert
+                        type="error"
+                        showIcon
+                        message="Couldn't load this task"
+                        description="It may have been deleted, or the connection dropped."
+                        action={
+                            <Button
+                                size="small"
+                                onClick={() => void refetchTask()}
+                            >
+                                Retry
+                            </Button>
+                        }
+                    />
+                </div>
+            ) : isLoading || !task ? (
                 <LoadingState label="Loading task…" />
             ) : (
                 <div
@@ -284,6 +308,11 @@ export const TaskDetailDrawer = ({
 
                         <TaskPropertiesPanel task={task} />
 
+                        {/* Dept Review V1 — verdict badge + head actions +
+                            history (self-gating; renders nothing for viewers
+                            with no stake and no verdict). */}
+                        <ReviewSection task={task} listId={listId} />
+
                         {isBug && <BugFieldsSection task={task} />}
 
                         <CustomFieldsList task={task} />
@@ -317,7 +346,10 @@ export const TaskDetailDrawer = ({
                         <ChecklistsSection taskId={task.id} />
 
                         {isIncidentResolved && (
-                            <PostmortemChecklist taskId={task.id} />
+                            <PostmortemChecklist
+                                key={task.id}
+                                taskId={task.id}
+                            />
                         )}
 
                         <AttachmentsSection taskId={task.id} />

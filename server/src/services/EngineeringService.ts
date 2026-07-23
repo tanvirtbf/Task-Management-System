@@ -67,13 +67,14 @@ export interface SubmitPostmortemInput {
     actorId: string;
 }
 
-/** Wire `Postmortem` returned by `POST /eng/incidents/:id/postmortem`. */
+/** Wire `Postmortem` returned by GET/POST `/eng/incidents/:id/postmortem`.
+ *  Timestamps are null ONLY on the GET's "nothing saved yet" empty shape. */
 export interface WirePostmortem {
     task_id: string;
     items: Record<string, boolean>;
     updated_by: string | null;
-    created_at: string;
-    updated_at: string;
+    created_at: string | null;
+    updated_at: string | null;
 }
 
 const TITLE_MAX = 120;
@@ -357,6 +358,42 @@ export class EngineeringService {
             itemCount: Object.keys(input.items).length,
         });
 
+        return toWirePostmortem(row);
+    }
+
+    /**
+     * §22 companion read `GET /api/v1/eng/incidents/:id/postmortem` (🔐 any
+     * member) — gap-scan H5: the checklist UI persists server-side now and
+     * needs to REHYDRATE. 404 `task.not_found` for unknown/cross-workspace
+     * ids; a task with nothing saved yet returns an EMPTY items map (200,
+     * null timestamps) so the client has no 404 special-case. No
+     * type/status gate — reading is harmless and the drawer already gates
+     * rendering to resolved Incidents.
+     */
+    async getPostmortem(input: {
+        workspaceId: string;
+        incidentId: string;
+    }): Promise<WirePostmortem> {
+        const state = await this.repo.findIncidentTaskState(
+            input.incidentId,
+            input.workspaceId,
+        );
+        if (!state) {
+            throw AppError.notFound(
+                "task.not_found",
+                `Task ${input.incidentId} does not exist`,
+            );
+        }
+        const row = await this.repo.findPostmortem(state.id);
+        if (!row) {
+            return {
+                task_id: state.id,
+                items: {},
+                updated_by: null,
+                created_at: null,
+                updated_at: null,
+            };
+        }
         return toWirePostmortem(row);
     }
 

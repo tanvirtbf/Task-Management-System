@@ -249,3 +249,21 @@ body {
 .logo {
     padding: 20px 30px;
 }
+
+/* ============================================================
+   Print (Dept Review V1 P25 — the weekly HR report must print
+   clean). The AppShell wraps every authed route in the sidebar
+   <aside> + topbar <header>; both disappear on paper, as does the
+   floating assistant launcher and anything tagged .no-print.
+   ============================================================ */
+@media print {
+    aside,
+    header,
+    [aria-label="Open help assistant"],
+    .no-print {
+        display: none !important;
+    }
+    body {
+        background: #fff !important;
+    }
+}

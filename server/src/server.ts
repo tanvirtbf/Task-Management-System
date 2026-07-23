@@ -1,11 +1,26 @@
 import { Config } from "./config";
 import { initDb, closeDb } from "./db/client";
 import logger from "./config/logger";
+import { encryptionReady } from "./utils/encryption";
 import { closeAllSseStreams } from "./services/sseHub";
 
 const startServer = async () => {
     const PORT = Config.PORT;
     try {
+        // 0. Config sanity (gap-scan C4): a malformed key is a hard NO-BOOT
+        // (encrypted reads would silently break); an absent key only degrades
+        // form intake, which fails clean per-request — warn loudly.
+        if (Config.ENCRYPTION_KEY && !encryptionReady()) {
+            throw new Error(
+                "ENCRYPTION_KEY is set but malformed — need 64 hex chars (256-bit)",
+            );
+        }
+        if (!Config.ENCRYPTION_KEY) {
+            logger.warn(
+                "ENCRYPTION_KEY missing — public form submissions will return 503 until it is set",
+            );
+        }
+
         // 1. Initialize database connection pool
         await initDb();
         logger.info("Database connected successfully.");

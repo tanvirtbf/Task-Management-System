@@ -5,15 +5,18 @@ import { Config } from "../config";
 import logger from "../config/logger";
 
 /**
- * Bootstrap a fresh database from `database/schema.sql` — the raw, self-
+ * Bootstrap a FRESH database from `database/schema.sql` — the raw, self-
  * contained source of truth (tables + triggers + views all in one file).
  *
- *   npm run db:setup           # idempotent; creates DB if missing
+ *   npm run db:setup           # FRESH PROVISION ONLY — refuses a non-empty DB
  *   npm run db:setup:fresh     # WIPES the DB first (dev/test only!)
  *
- * In production prefer Drizzle migrations via `npm run db:migrate`.
- * Do NOT run both — schema.sql and Drizzle migrations both create the
- * same objects; mixing them in one DB will duplicate triggers/views.
+ * ⚠️ DESTRUCTIVE (gap-scan H3): schema.sql begins with DROP TABLE IF EXISTS —
+ * applying it to a database that already has tables means TOTAL DATA LOSS.
+ * This script therefore ABORTS when the target DB is non-empty unless --drop
+ * was given explicitly. To change the schema of an EXISTING database, run the
+ * hand-written scripts in `database/upgrades/` (the canonical upgrade path —
+ * see src/db/migrations/README.md).
  */
 
 const SCHEMA_PATH = path.join(__dirname, "../../../database/schema.sql");
@@ -75,6 +78,23 @@ const setupDb = async () => {
     });
 
     try {
+        // Gap-scan H3 guard: schema.sql DROPs every table first. Refuse to
+        // "sync" over live data — that is what database/upgrades/ is for.
+        if (!wantDrop) {
+            const [[existing]] = (await conn.query(
+                `SELECT COUNT(*) AS n FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE'`,
+                [dbName],
+            )) as [{ n: number }[], unknown];
+            if (existing.n > 0) {
+                logger.error(
+                    `Refusing to apply schema.sql: database "${dbName}" already has ${existing.n} tables and schema.sql would DROP them all. ` +
+                        `For schema changes on an existing DB run the scripts in database/upgrades/. ` +
+                        `If you REALLY want a wipe, use \`npm run db:setup:fresh\` (--drop).`,
+                );
+                process.exit(1);
+            }
+        }
+
         logger.info(`Applying schema.sql (${SCHEMA_PATH})`);
         const schemaSql = cleanSql(readFileSync(SCHEMA_PATH, "utf8"));
         await conn.query(schemaSql);

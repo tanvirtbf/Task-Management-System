@@ -7,11 +7,16 @@
 --
 -- So those DDL statements live here and are run by `db/migrate.ts` after
 -- `migrate(...)` completes the Drizzle migrations.
+--
+-- IDEMPOTENT by design (gap-scan H3): migrate.ts replays this file on every
+-- run, so each trigger is DROP-IF-EXISTS first and views use OR REPLACE --
+-- a second db:migrate must be a no-op, never ER_TRG_ALREADY_EXISTS.
 -- =============================================================================
 
 -- ─── 1. Self-dependency guard triggers (BEFORE INSERT / UPDATE) ──────────────
 DELIMITER $$
 
+DROP TRIGGER IF EXISTS trg_task_dependencies_no_self_insert$$
 CREATE TRIGGER trg_task_dependencies_no_self_insert
 BEFORE INSERT ON task_dependencies
 FOR EACH ROW
@@ -22,6 +27,7 @@ BEGIN
     END IF;
 END$$
 
+DROP TRIGGER IF EXISTS trg_task_dependencies_no_self_update$$
 CREATE TRIGGER trg_task_dependencies_no_self_update
 BEFORE UPDATE ON task_dependencies
 FOR EACH ROW
@@ -35,6 +41,7 @@ END$$
 
 -- ─── 2. Counter-maintenance triggers ─────────────────────────────────────────
 
+DROP TRIGGER IF EXISTS trg_comments_after_insert$$
 CREATE TRIGGER trg_comments_after_insert
 AFTER INSERT ON comments
 FOR EACH ROW
@@ -42,6 +49,7 @@ BEGIN
     UPDATE tasks SET comments_count = comments_count + 1 WHERE id = NEW.task_id;
 END$$
 
+DROP TRIGGER IF EXISTS trg_comments_after_delete$$
 CREATE TRIGGER trg_comments_after_delete
 AFTER DELETE ON comments
 FOR EACH ROW
@@ -49,6 +57,7 @@ BEGIN
     UPDATE tasks SET comments_count = GREATEST(comments_count - 1, 0) WHERE id = OLD.task_id;
 END$$
 
+DROP TRIGGER IF EXISTS trg_attachments_after_insert$$
 CREATE TRIGGER trg_attachments_after_insert
 AFTER INSERT ON attachments
 FOR EACH ROW
@@ -58,6 +67,7 @@ BEGIN
     END IF;
 END$$
 
+DROP TRIGGER IF EXISTS trg_attachments_after_update$$
 CREATE TRIGGER trg_attachments_after_update
 AFTER UPDATE ON attachments
 FOR EACH ROW
@@ -78,6 +88,7 @@ END$$
 -- 2026-07-14; counters stay 0 until app-side maintenance is added (gate item).
 -- Kept in sync with database/schema.sql.
 
+DROP TRIGGER IF EXISTS trg_form_submissions_after_insert$$
 CREATE TRIGGER trg_form_submissions_after_insert
 AFTER INSERT ON form_submissions
 FOR EACH ROW

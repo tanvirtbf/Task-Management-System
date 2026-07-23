@@ -15,7 +15,6 @@ import {
     mysqlEnum,
     mysqlTable,
     timestamp,
-    tinyint,
     uniqueIndex,
     varchar,
 } from "drizzle-orm/mysql-core";
@@ -24,7 +23,6 @@ import {
     ID_LENGTH,
     NAME_LENGTH,
     SHORT_NAME_LENGTH,
-    URL_LENGTH,
     scopeTypes,
     statusGroups,
 } from "./_shared";
@@ -48,6 +46,8 @@ export const spaces = mysqlTable(
             .notNull()
             .default("#4F46E5"),
         isPrivate: boolean("is_private").notNull().default(false),
+        /** Department head (Dept Review V1) — nullable; app clears it on user deactivation. */
+        headUserId: varchar("head_user_id", { length: ID_LENGTH }),
         position: int("position", { unsigned: true }).notNull().default(0),
         archivedAt: timestamp("archived_at"),
         createdBy: varchar("created_by", { length: ID_LENGTH }).notNull(),
@@ -62,6 +62,14 @@ export const spaces = mysqlTable(
         })
             .onDelete("restrict")
             .onUpdate("cascade"),
+        headFk: foreignKey({
+            columns: [t.headUserId],
+            foreignColumns: [users.id],
+            name: "fk_spaces_head",
+        })
+            .onDelete("set null")
+            .onUpdate("cascade"),
+        headIdx: index("idx_spaces_head").on(t.headUserId),
         workspaceArchivedIdx: index("idx_spaces_workspace_archived").on(
             t.workspaceId,
             t.archivedAt,

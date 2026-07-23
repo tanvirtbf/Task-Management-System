@@ -6,6 +6,7 @@ import type {
     GetEngHomeRequest,
     CreatePostmortemRequest,
 } from "../types/engineering";
+import type { AuthRequest } from "../types";
 import { bugSeverities, reporterTeams } from "../db/schema/_shared";
 
 type BugSeverity = (typeof bugSeverities)[number];
@@ -88,6 +89,23 @@ export class EngineeringController {
      * / `incident.not_resolved` for an ineligible task, 404 `task.not_found` for
      * an unknown id. Returns 200 with the saved postmortem.
      */
+    /** §22 H5 companion read — the checklist UI rehydrates from this. */
+    async getPostmortem(
+        req: AuthRequest,
+        res: Response,
+        next: NextFunction,
+    ) {
+        try {
+            const postmortem = await this.service.getPostmortem({
+                workspaceId: req.auth.workspaceId,
+                incidentId: req.params.id,
+            });
+            res.status(200).json(postmortem);
+        } catch (err) {
+            next(err);
+        }
+    }
+
     async createPostmortem(
         req: CreatePostmortemRequest,
         res: Response,

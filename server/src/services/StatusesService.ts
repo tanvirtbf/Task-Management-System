@@ -1,6 +1,7 @@
 import type { Logger } from "winston";
 import { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../db/schema";
+import { DONE_STATUS_GROUPS } from "../db/schema/_shared";
 import { AppError } from "../errors";
 import { fakeId } from "../utils";
 import { ListsRepo } from "../repositories/ListsRepo";
@@ -179,6 +180,25 @@ export class StatusesService {
                 "status.not_found",
                 `Status ${input.id} does not exist`,
             );
+        }
+
+        // Dept Review V1 (P9): re-grouping a status ACROSS the done boundary
+        // while tasks sit on it would silently (un)complete those tasks —
+        // bypassing completed_at maintenance AND the review-reset invariant
+        // (approved badges on effectively-reopened work). Mirror the delete
+        // rule: refuse while in use; move the tasks off the status first.
+        if (
+            input.statusGroup !== undefined &&
+            DONE_STATUS_GROUPS.has(input.statusGroup) !==
+                DONE_STATUS_GROUPS.has(existing.statusGroup)
+        ) {
+            const inUse = await this.statuses.countTasksUsingStatus(input.id);
+            if (inUse > 0) {
+                throw AppError.conflict(
+                    "status.in_use",
+                    `${inUse} task(s) use this status; move them off it before changing it across the done boundary`,
+                );
+            }
         }
 
         let updated: StatusRecord | null;

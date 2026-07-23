@@ -4,6 +4,7 @@ import cookieParser from "cookie-parser";
 
 import { Config } from "./config";
 import { requestIdMiddleware } from "./middlewares/requestId";
+import { securityHeaders } from "./middlewares/securityHeaders";
 import { requestLoggerMiddleware } from "./middlewares/requestLogger";
 import { apiLimiter } from "./middlewares/rateLimit";
 import { notFoundMiddleware } from "./middlewares/notFound";
@@ -26,6 +27,7 @@ import checklistsRouter from "./routes/checklists";
 import sprintsRouter from "./routes/sprints";
 import templatesRouter from "./routes/templates";
 import onCallRouter from "./routes/onCall";
+import reportsRouter from "./routes/reports";
 import notificationsRouter from "./routes/notifications";
 import engineeringRouter from "./routes/engineering";
 import searchRouter from "./routes/search";
@@ -48,6 +50,9 @@ app.set("trust proxy", 1);
 // including the error handler, sees the same id.
 app.use(requestIdMiddleware);
 app.use(requestLoggerMiddleware);
+
+// Security headers on EVERY response, error paths included (gap-scan M3).
+app.use(securityHeaders);
 
 // §30 metrics — count + time every request (shares the request-id/logger
 // correlation; sits before routing so it measures the whole handler). Feeds
@@ -181,6 +186,9 @@ v1.use("/templates", templatesRouter);
 // §21 On-call — weekly engineering rotation; all routes under the single
 // `/on-call` prefix (no shared path segments), so mount order is irrelevant.
 v1.use("/on-call", onCallRouter);
+
+// Dept Review V1 — weekly department reports (A-6…A-10).
+v1.use("/reports", reportsRouter);
 // §19 Notifications — per-user inbox (read + state-management). Clean
 // `/notifications` prefix (no shared path segments), so mount order is
 // irrelevant. All routes are authenticated and user-scoped.
