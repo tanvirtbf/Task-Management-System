@@ -1,0 +1,33 @@
+# ─── Secrets — NEVER commit ──────────────────────────────────────────────────
+# These were git-tracked with REAL prod keys and history-purged 2026-07-23.
+# The keys they held are being ROTATED; keep any local copies OUT of git.
+ENCRYPTION_KEYS.txt
+ENCRYPTION_KEYS*.txt
+ROTATED_SECRETS*.txt
+deploy.sh
+.env
+.env.local
+.env.*.local
+server/.env
+client/.env
+# …but keep the placeholder templates in version control:
+!.env.example
+!**/.env.example
+
+# ─── Dependencies / build output ─────────────────────────────────────────────
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# ─── Test / tooling artifacts ────────────────────────────────────────────────
+client/test-results/
+playwright-report/
+.playwright/
+
+# ─── Logs / OS cruft ─────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
