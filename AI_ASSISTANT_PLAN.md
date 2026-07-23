@@ -366,3 +366,30 @@ Bot-এর জ্ঞান = `knowledge-base.md`। তাই **নিয়ম:
 
 ### 🎯 সারমর্ম
 ভিত্তি (0) → মগজ (1) → API (2) → streaming (3) → ব্রাউজারে চালু (4) → সুন্দর UI (5) → DB (6, ঐচ্ছিক) → নিরাপত্তা+টেস্ট (7)। প্রতিটা phase স্বয়ংসম্পূর্ণ ও টেস্টযোগ্য। যেকোনো phase শুরু করতে বললেই আমি সেটা ধরে কাজ শুরু করব। 🚀
+
+---
+
+## 🔄 Maintaining the assistant — KB freshness (added 2026-07-23, upgrade P12)
+
+The bot answers ONLY from `server/src/assistant/knowledgeBase.ts` (KB-in-prompt, not
+RAG). It has NO automatic link to the product code, so it silently goes stale unless the
+KB is updated when features change. A guardrail now catches that:
+
+**`server/tests/assistant/kb-coverage.test.ts`** (run via `jest.assistant`) asserts the KB
+is accurate + link-rich: no fake claims (Ctrl+K / "invite not finished"), every major
+feature area is present (the "feature manifest" net), the Department/Reports content +
+canonical URL patterns exist, no fabricated `/s/` or `/t/` links, the system prompt is
+Bangla-always + emits links, and both strings are template-literal-safe.
+
+**When you ship a feature that a user can see, do ALL of this:**
+1. **Update `knowledgeBase.ts`** — describe the feature in the right section, in plain
+   English, with role notes if gated.
+2. **If it has a new page**, add its route to the "Where things live" URL block and use a
+   Markdown link (`[Name](/path)`) in the relevant answer. NEVER add a `/s/` or `/t/`
+   dynamic path (the bot must not fabricate ids — tell the user to open it from the Sidebar).
+3. **Add a row to the feature manifest** in `kb-coverage.test.ts` (or a targeted
+   assertion) so the KB can never lose this feature silently.
+4. **Keep it string-safe** — no backtick or `${` inside the KB/prompt template literals.
+5. **Answer in Bangla** — the prompt is Bangla-always; UI labels stay English inline.
+6. Optionally run the real-key pass (`scratchpad p5-verify.cjs` pattern) to eyeball the
+   live answer.

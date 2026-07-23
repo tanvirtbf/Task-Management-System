@@ -15,6 +15,12 @@ interface UiState {
     favoriteIds: string[];
     toggleFavorite: (id: string) => void;
 
+    /** One-time first-run marker: has the assistant onboarding nudge been shown
+     *  and dismissed on THIS browser. NOT reset on sign-out — it's a per-browser
+     *  discoverability hint, not user data. */
+    assistantNudgeSeen: boolean;
+    dismissAssistantNudge: () => void;
+
     /** Back to defaults — called on sign-out so nothing leaks across users. */
     reset: () => void;
 }
@@ -55,6 +61,12 @@ export const useUiStore = create<UiState>()(
                     });
                 },
 
+                assistantNudgeSeen: false,
+                dismissAssistantNudge: () =>
+                    set({ assistantNudgeSeen: true }),
+
+                // NOTE: assistantNudgeSeen is intentionally NOT reset here — it
+                // is a per-browser hint, not per-user data.
                 reset: () =>
                     set({
                         sidebarCollapsed: false,
@@ -68,6 +80,7 @@ export const useUiStore = create<UiState>()(
                     sidebarCollapsed: s.sidebarCollapsed,
                     expandedIds: s.expandedIds,
                     favoriteIds: s.favoriteIds,
+                    assistantNudgeSeen: s.assistantNudgeSeen,
                 }),
             },
         ),

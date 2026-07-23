@@ -83,18 +83,25 @@ export async function streamChat(params: StreamChatParams): Promise<void> {
         } catch {
             // Refresh failed — the session is gone; purge locally only.
             useAuthStore.getState().logout({ revoke: false });
-            throw new Error("Your session has expired. Please sign in again.");
+            throw new Error(
+                "আপনার সেশন শেষ হয়ে গেছে — আবার সাইন ইন করুন।",
+            );
         }
         res = await postChat(body, useAuthStore.getState().accessToken, signal);
     }
 
     if (!res.ok || !res.body) {
-        let msg = "The assistant is unavailable right now. Please try again.";
+        // Bangla, status-appropriate — never surface the server's raw English.
+        let msg = "কিছু একটা সমস্যা হয়েছে — একটু পরে আবার চেষ্টা করুন।";
+        if (res.status === 503) {
+            msg = "সহায়ক এখন ব্যস্ত বা বন্ধ আছে — একটু পরে আবার চেষ্টা করুন 🙏।";
+        } else if (res.status === 504) {
+            msg = "উত্তর আসতে বেশি সময় লাগছে — আবার চেষ্টা করুন।";
+        }
         try {
-            const data = (await res.json()) as { error?: { message?: string } };
-            if (data?.error?.message) msg = data.error.message;
+            await res.text(); // drain the body
         } catch {
-            /* response body was not JSON — keep the default message */
+            /* ignore */
         }
         throw new Error(msg);
     }
@@ -130,7 +137,7 @@ export async function streamChat(params: StreamChatParams): Promise<void> {
             if (!obj) continue;
             if (obj.error) {
                 throw new Error(
-                    obj.message ?? "The assistant ran into a problem.",
+                    "সহায়ক একটা সমস্যায় পড়েছে — আবার চেষ্টা করুন।",
                 );
             }
             if (obj.delta) onDelta(obj.delta);

@@ -69,18 +69,25 @@ describe("streamChat (SSE parsing)", () => {
         expect(out.join("")).toBe("Hi");
     });
 
-    it("rejects with the message of a mid-stream error event", async () => {
+    it("rejects with a friendly Bangla error on a mid-stream error event (suppresses the server's raw message)", async () => {
         mockFetch(
             sse([
                 'data: {"error":"assistant.upstream_error","message":"boom"}\n\n',
             ]),
         );
-        await expect(
-            streamChat({
+        let caught: Error | null = null;
+        try {
+            await streamChat({
                 message: "x",
                 history: [],
                 onDelta: () => undefined,
-            }),
-        ).rejects.toThrow("boom");
+            });
+        } catch (e) {
+            caught = e as Error;
+        }
+        expect(caught).toBeInstanceOf(Error);
+        // Bangla reply (Bengali Unicode block), NOT the raw English "boom".
+        expect(caught?.message).toMatch(/[ঀ-৿]/);
+        expect(caught?.message).not.toContain("boom");
     });
 });

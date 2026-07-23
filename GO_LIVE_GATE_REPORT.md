@@ -30,6 +30,16 @@ The lightweight **department-review + weekly HR reports** feature (`DEPARTMENT_R
 
 ---
 
+## 1c. ADDENDUM — AI Help Assistant upgrade shipped (2026-07-23)
+
+The in-app Bangla help chatbot was upgraded end-to-end (`AI_ASSISTANT_UPGRADE_PLAN.md`, 14 phases P0–P13; gaps in `AI_ASSISTANT_GAP_ANALYSIS.md`, log in `AI_ASSISTANT_BUILD_LOG.md`).
+
+- **Scope:** knowledge base refreshed + made link-rich (now covers Department Review/Reports + every feature, with real app URLs); system prompt is **Bangla-always** and **emits clickable in-app links** with role caveats; the widget navigates those links via **react-router (no reload)**; **persistent role-aware starter questions**; **first-time onboarding nudge**; **error banner + Retry**; **a11y** (viewport-correct focus trap/restore); per-answer **Copy**; and a **KB-freshness guardrail test** so it can't silently go stale.
+- **No new infra:** still `gpt-4o-mini`, backend-only key, KB-in-prompt (no RAG), read-only JWT-scoped tools — the production-quality transport/security layer was untouched.
+- **Tests:** server `jest.assistant` **52 tests** (incl. `kb-coverage.test.ts` guardrail) · client `vitest` **32 tests** · **7/7 committed Playwright e2e** with live gpt-4o-mini · a 9/9 real-key content pass. All green.
+
+---
+
 ## 2. Code fixes applied (14) — all verified + regression-checked
 
 | # | Phase | Sev | Area | Fix |

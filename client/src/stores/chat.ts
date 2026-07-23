@@ -24,6 +24,8 @@ interface ChatState {
     clear: () => void;
     stop: () => void;
     sendMessage: (text: string) => Promise<void>;
+    /** Re-run the last user turn after a failure (Retry button). */
+    retryLast: () => Promise<void>;
 }
 
 // The in-flight stream's controller — kept outside the store (not serialisable).
@@ -119,14 +121,18 @@ export const useChatStore = create<ChatState>()(
                             const msg =
                                 err instanceof Error
                                     ? err.message
-                                    : "Something went wrong. Please try again.";
+                                    : "কিছু একটা সমস্যা হয়েছে — আবার চেষ্টা করুন।";
+                            // Drop the empty assistant placeholder (the error
+                            // banner + Retry cover it); keep a partially-streamed
+                            // bubble so the user still sees what arrived.
                             set((state) => ({
                                 error: msg,
-                                // If nothing streamed, show the error in the bubble.
-                                messages: state.messages.map((m) =>
-                                    m.id === assistantMsg.id && m.content === ""
-                                        ? { ...m, content: `⚠️ ${msg}` }
-                                        : m,
+                                messages: state.messages.filter(
+                                    (m) =>
+                                        !(
+                                            m.id === assistantMsg.id &&
+                                            m.content === ""
+                                        ),
                                 ),
                             }));
                         }
@@ -134,6 +140,24 @@ export const useChatStore = create<ChatState>()(
                         activeController = null;
                         set({ isStreaming: false });
                     }
+                },
+
+                retryLast: async () => {
+                    if (get().isStreaming) return;
+                    const msgs = get().messages;
+                    let idx = -1;
+                    for (let i = msgs.length - 1; i >= 0; i--) {
+                        if (msgs[i].role === "user") {
+                            idx = i;
+                            break;
+                        }
+                    }
+                    if (idx === -1) return;
+                    const lastUser = msgs[idx];
+                    // Drop the failed turn (last user msg + any assistant after
+                    // it), then re-send it fresh.
+                    set({ messages: msgs.slice(0, idx), error: null });
+                    await get().sendMessage(lastUser.content);
                 },
             }),
             {
