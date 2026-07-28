@@ -1,0 +1,33 @@
+# /etc/logrotate.d/bbtasks
+#
+# Install:
+#   cp deploy/logrotate/bbtasks /etc/logrotate.d/bbtasks
+#   chmod 644 /etc/logrotate.d/bbtasks
+#   logrotate -d /etc/logrotate.d/bbtasks     # dry run, prints what it WOULD do
+#
+# Why this is not optional: winston writes every single HTTP request to
+# server/logs/combined.log with no size cap and no rotation of its own, and pm2
+# appends to /var/log/bbtasks/*.log the same way. This host's disk is already
+# 79% full and shared with five other production apps — unrotated request logs
+# from ~100 users would eventually fill it and take all of them down.
+
+/var/www/html/tasks-beautybooth/server/logs/*.log
+/var/log/bbtasks/*.log
+{
+    daily
+    rotate 14
+    maxsize 50M
+    compress
+    delaycompress
+    missingok
+    notifempty
+    su root root
+    create 0640 root root
+
+    # copytruncate, NOT a restart signal: winston and pm2 both hold their log
+    # files open by descriptor and neither reopens on SIGHUP, so a plain rotate
+    # would leave them writing into the renamed (now invisible) file forever.
+    # Copy-then-truncate keeps the same descriptor valid. The tiny risk is
+    # losing lines written during the copy, which is the right trade for logs.
+    copytruncate
+}
