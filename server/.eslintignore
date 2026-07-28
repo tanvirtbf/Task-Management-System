@@ -4,3 +4,6 @@ node_modules
 tests/
 src/db/migrations
 jest.statuses.config.cjs
+
+# Operator scripts — plain Node CJS, run by hand, outside the TS project
+scripts/

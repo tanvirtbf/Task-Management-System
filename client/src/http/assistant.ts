@@ -97,6 +97,15 @@ export async function streamChat(params: StreamChatParams): Promise<void> {
             msg = "সহায়ক এখন ব্যস্ত বা বন্ধ আছে — একটু পরে আবার চেষ্টা করুন 🙏।";
         } else if (res.status === 504) {
             msg = "উত্তর আসতে বেশি সময় লাগছে — আবার চেষ্টা করুন।";
+        } else if (res.status === 403) {
+            // RBAC (§34): `assistant.use` is a real permission now. Retrying
+            // will never help, so say why instead of offering "try again" —
+            // otherwise the panel just looks broken.
+            msg =
+                "সহায়ক ব্যবহারের অনুমতি আপনার রোলে দেওয়া নেই। ওয়ার্কস্পেস Owner বা Admin-কে বলুন।";
+        } else if (res.status === 429) {
+            msg =
+                "একটু বেশি দ্রুত প্রশ্ন করা হচ্ছে — এক মিনিট পরে আবার চেষ্টা করুন।";
         }
         try {
             await res.text(); // drain the body

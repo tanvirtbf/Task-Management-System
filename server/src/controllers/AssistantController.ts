@@ -82,6 +82,7 @@ export class AssistantController {
         try {
             const { message, history, conversationId } = req.body;
             const { sub: userId, workspaceId } = req.auth;
+            const toolCtx = { userId, workspaceId, role: req.auth.role };
 
             const convId = await this.resolveConversation(
                 userId,
@@ -91,7 +92,21 @@ export class AssistantController {
             );
             await this.saveMessage(convId, "user", message);
 
-            const reply = await this.assistantService.ask(history ?? [], message);
+            // Same tools as the SSE path (P9 / decision D-9): a contract that
+            // answers "how many tasks do I have" over one transport and not the
+            // other is a bug waiting for its first non-browser client.
+            const reply = await this.assistantService.ask(history ?? [], message, {
+                tools: {
+                    definitions: ASSISTANT_TOOL_DEFS,
+                    execute: (name, args) =>
+                        executeAssistantTool(
+                            name,
+                            args,
+                            toolCtx,
+                            this.toolServices,
+                        ),
+                },
+            });
 
             await this.saveMessage(convId, "assistant", reply);
             this.logger.debug("assistant.chat.ok", {

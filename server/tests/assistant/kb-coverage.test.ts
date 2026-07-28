@@ -173,3 +173,247 @@ describe("KB feature manifest (freshness net)", () => {
         expect(KNOWLEDGE_BASE).toMatch(re);
     });
 });
+
+/**
+ * P2 (AI_ASSISTANT_PERFECT_PLAN.md) — the false statements, removed at source.
+ *
+ * Each of these was found by checking the KB claim against the LIVE system, and
+ * each is worded so the test fails if the claim ever comes back. A confused user
+ * acting on a confidently wrong answer is worse off than one told "I don't know".
+ */
+describe("KB accuracy — P2: no false claims", () => {
+    it("does NOT promise that the workspace can be deleted (no such endpoint exists)", () => {
+        // `routes/workspace.ts` has GET and PATCH only — there is no delete.
+        // The assertion targets the CLAIM, not the denial: the KB is allowed to
+        // say "there is no way to delete the workspace", which is the fix.
+        expect(KNOWLEDGE_BASE).not.toMatch(/including delet\w*\s+the\s+workspace/i);
+        expect(KNOWLEDGE_BASE).not.toMatch(/can\s+delete\s+the\s+workspace/i);
+        expect(KNOWLEDGE_BASE).toMatch(/no way to delete the workspace/i);
+    });
+
+    it("does NOT describe Guest as read-only (the seeded Guest role holds 19 permissions)", () => {
+        // A Guest can create, edit, archive and delete tasks and comment; the
+        // only thing they lack that a Member has is attachment upload. Again the
+        // assertion targets the claim — "Guest is NOT read-only" must survive.
+        expect(KNOWLEDGE_BASE).not.toMatch(/mostly read.?only/i);
+        expect(KNOWLEDGE_BASE).not.toMatch(/Guest[^\n]*?\bis read.?only/i);
+        expect(KNOWLEDGE_BASE).toMatch(/Guest is NOT read-only/i);
+        expect(KNOWLEDGE_BASE).toMatch(/cannot do that a Member can is upload attachments/i);
+    });
+
+    it("lists the Roles & permissions settings page (the live nav has 10 sections, not 9)", () => {
+        expect(KNOWLEDGE_BASE).toMatch(/\*\*Roles & permissions\*\*/);
+    });
+
+    it("does NOT claim permissions are fixed to Admin/Owner (they are configurable)", () => {
+        expect(KNOWLEDGE_BASE).not.toMatch(
+            /Most setup and management actions[^\n]*need Admin or Owner/i,
+        );
+        expect(KNOWLEDGE_BASE).toMatch(/configurable/i);
+    });
+
+    it("does NOT claim Spaces/Lists/tasks have no address — it says do not LINK to them", () => {
+        // They do have addresses (/s/:id, /s/:id/l/:id, /t/:id); the bot simply
+        // cannot know the ids, which is a different (and honest) reason.
+        expect(KNOWLEDGE_BASE).not.toMatch(/do NOT have fixed addresses/i);
+        expect(KNOWLEDGE_BASE).toMatch(
+            /never write a link to a Space, List or task/i,
+        );
+    });
+
+    it("names all SEVEN task types (Incident was missing)", () => {
+        for (const type of [
+            "Task",
+            "Bug",
+            "Feature",
+            "Campaign",
+            "Order",
+            "Complaint",
+            "Incident",
+        ]) {
+            expect(KNOWLEDGE_BASE).toContain(type);
+        }
+        // The core-structure sentence must carry the full list, not five of them.
+        expect(KNOWLEDGE_BASE).toMatch(
+            /Campaign, Order, Complaint or Incident/,
+        );
+    });
+
+    it("is honest that Recurrence does not create the next task yet (no job generates it)", () => {
+        // The field and its UI exist and save; nothing in `src/jobs/` acts on
+        // it, so promising repeating tasks would be a lie the user only
+        // discovers when the next task never appears.
+        expect(KNOWLEDGE_BASE).toMatch(/Recurrence is not automatic yet/i);
+        expect(KNOWLEDGE_BASE).toMatch(/does not create the next occurrence/i);
+    });
+
+    it("still contains no backtick or dollar-brace (the literal must stay valid)", () => {
+        expect(KNOWLEDGE_BASE).not.toMatch(/`/);
+        expect(KNOWLEDGE_BASE).not.toMatch(/\$\{/);
+    });
+});
+
+/**
+ * P3 (AI_ASSISTANT_PERFECT_PLAN.md) — the RBAC feature, taught accurately.
+ *
+ * The bot could not answer the flagship question of the newest feature; worse,
+ * it sent people to Settings → Members, which cannot do it. These assertions pin
+ * both halves: what the product CAN do, and — just as important — the honest
+ * limit, because the per-space assignment screen does not exist yet.
+ */
+describe("KB coverage — P3: roles & permissions", () => {
+    it("gives the roles page as a real in-app link", () => {
+        expect(KNOWLEDGE_BASE).toMatch(
+            /\[Roles & permissions\]\(\/settings\/roles\)/,
+        );
+        // …and in the page-address block. P4 turned that block from plain text
+        // into links, so the address now appears in link form there too.
+        expect(
+            (KNOWLEDGE_BASE.match(/\[Roles & permissions\]\(\/settings\/roles\)/g) ?? [])
+                .length,
+        ).toBeGreaterThanOrEqual(2);
+    });
+
+    it("explains the permission grid and that a change is instant", () => {
+        expect(KNOWLEDGE_BASE).toMatch(/permission grid/i);
+        expect(KNOWLEDGE_BASE).toMatch(/New role/);
+        expect(KNOWLEDGE_BASE).toMatch(/very next click/i);
+    });
+
+    it("names all three scopes in the UI's own words", () => {
+        // These must match `RolesSettings.tsx`'s SCOPE_LABEL exactly, or the bot
+        // describes buttons that do not exist on the screen.
+        expect(KNOWLEDGE_BASE).toMatch(/\*\*Everywhere\*\*/);
+        expect(KNOWLEDGE_BASE).toMatch(/\*\*Their spaces\*\*/);
+        expect(KNOWLEDGE_BASE).toMatch(/\*\*Own items\*\*/);
+    });
+
+    it("identifies See spaces as the master visibility switch", () => {
+        expect(KNOWLEDGE_BASE).toMatch(/See spaces/);
+        expect(KNOWLEDGE_BASE).toMatch(/master switch/i);
+    });
+
+    it("says the Owner role cannot be edited (the anti-lockout floor)", () => {
+        expect(KNOWLEDGE_BASE).toMatch(/Owner\*\* role is shown but cannot be edited/i);
+    });
+
+    it("is HONEST that per-space and custom-role assignment has no UI yet", () => {
+        // `MembersSettings.tsx` hardcodes ["admin","member","guest"] and nothing
+        // in the client calls the assignment API. Promising a screen that does
+        // not exist is exactly the failure P2 cleaned up.
+        expect(KNOWLEDGE_BASE).toMatch(/cannot be done from Settings yet/i);
+        expect(KNOWLEDGE_BASE).toMatch(
+            /can only set someone to \*\*Admin\*\*, \*\*Member\*\* or \*\*Guest\*\*/i,
+        );
+    });
+
+    it("explains what a permission refusal means and who to ask", () => {
+        expect(KNOWLEDGE_BASE).toMatch(/don't have permission/i);
+        expect(KNOWLEDGE_BASE).toMatch(/not a bug/i);
+    });
+
+    it("adds quick answers for the two questions that failed live", () => {
+        expect(KNOWLEDGE_BASE).toMatch(/How do I create a new role\?/);
+        expect(KNOWLEDGE_BASE).toMatch(/How do I stop someone seeing other departments\?/);
+    });
+});
+
+/**
+ * P4 (AI_ASSISTANT_PERFECT_PLAN.md) — the link layer.
+ *
+ * The bot's purpose is to TAKE a confused person somewhere, not just describe
+ * it. At the P0 baseline only 3 of 15 answers carried a clickable route,
+ * because the KB held 11 links across 2 of its 18 sections and wrote every
+ * address as plain text. These assertions keep the addresses in LINK form.
+ */
+describe("KB coverage — P4: every destination is a link", () => {
+    /** Static routes a beginner is actually sent to. Dynamic ones are excluded
+     *  on purpose — the bot must never construct an id. */
+    const LINKED_ROUTES = [
+        "/",
+        "/inbox",
+        "/search",
+        "/dept",
+        "/reports",
+        "/forms",
+        "/eng",
+        "/eng/sprint",
+        "/eng/on-call",
+        "/settings",
+        "/settings/profile",
+        "/settings/workspace",
+        "/settings/members",
+        "/settings/roles",
+        "/settings/task-types",
+        "/settings/tags",
+        "/settings/statuses",
+        "/settings/custom-fields",
+        "/settings/templates",
+        "/settings/import-export",
+        "/login",
+        "/forgot-password",
+    ];
+
+    // Plain substring, no regex: "](/inbox)" can only be the tail of a markdown
+    // link, and there is no escaping to get wrong.
+    it.each(LINKED_ROUTES)(
+        "%s appears as a markdown link, not bare text",
+        (route) => {
+            expect(KNOWLEDGE_BASE).toContain("](" + route + ")");
+        },
+    );
+
+    it("the sidebar list links every destination it names", () => {
+        for (const [label, route] of [
+            ["Home", "/"],
+            ["Inbox", "/inbox"],
+            ["Search", "/search"],
+            ["Department", "/dept"],
+            ["Reports", "/reports"],
+            ["Engineering", "/eng"],
+            ["Settings", "/settings"],
+        ] as const) {
+            expect(KNOWLEDGE_BASE).toContain(`[**${label}**](${route})`);
+        }
+    });
+
+    it("carries far more links than the 11 it had before this phase", () => {
+        const count = (KNOWLEDGE_BASE.match(/\]\(\//g) ?? []).length;
+        expect(count).toBeGreaterThanOrEqual(60);
+    });
+
+    it("still never links a Space, List or task (dynamic ids)", () => {
+        expect(KNOWLEDGE_BASE).not.toMatch(/\]\(\/s\//);
+        expect(KNOWLEDGE_BASE).not.toMatch(/\]\(\/t\//);
+    });
+
+    it("keeps the whole system message inside its size budget (landmine L2)", () => {
+        // It ships on EVERY request, so growth is a latency and cost decision,
+        // not a free one. Baseline before P4 was ~27.6k chars.
+        const sys = buildMessages([], "x")[0].content as string;
+        expect(sys.length).toBeLessThan(34000);
+    });
+});
+
+describe("System prompt — P4: the always-give-a-destination rule", () => {
+    it("requires every answer to end with a clickable link", () => {
+        expect(SYSTEM_PROMPT).toMatch(
+            /EVERY answer must give the person somewhere to start/i,
+        );
+        expect(SYSTEM_PROMPT).toMatch(/end it with at least one clickable link/i);
+    });
+
+    it("names the fallback destination for things with no address of their own", () => {
+        // A Space / List / task has no linkable address, so the prompt must say
+        // which page to send someone to instead — otherwise the model falls back
+        // to "open it from the Sidebar", which is the instruction a confused
+        // person cannot act on. This rule is what moved links 7/15 -> 14/15.
+        for (const route of ["(/)", "(/search)", "(/inbox)"]) {
+            expect(SYSTEM_PROMPT).toContain(route);
+        }
+    });
+
+    it("still allows no link when the question genuinely has no page", () => {
+        expect(SYSTEM_PROMPT).toMatch(/Only skip the link when/i);
+    });
+});

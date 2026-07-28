@@ -20,6 +20,7 @@ import { getDb } from "../db/client";
 import logger from "../config/logger";
 import authenticate from "../middlewares/authenticate";
 import { validate } from "../middlewares/validate";
+import { requirePermission } from "../middlewares/requirePermission";
 import { assistantLimiter } from "../middlewares/rateLimit";
 import { AppError } from "../errors";
 import {
@@ -81,14 +82,26 @@ if (!openai) {
         logger,
     );
 
+    // The assistant is a permission now, not a given (RBAC §34). All four
+    // seeded roles hold `assistant.use`, so nothing changes today — but an
+    // admin who takes it away from a role actually gets what they asked for,
+    // instead of a catalog checkbox that gates nothing.
+    //
+    // Order: the rate limiter stays OUTSIDE the permission check. It is a cheap
+    // in-memory counter and the check is a database read; letting a flood past
+    // it just to look up permissions would defeat the point of having it.
+    const canUseAssistant = requirePermission("assistant.use");
+
     // ─── POST /api/v1/assistant/chat ───────────────────────────────────────────
-    // 🔐 any member. authenticate → assistantLimiter (20/min/user) → validate body.
+    // 🔐 assistant.use. authenticate → assistantLimiter (20/min/user) → permission
+    // → validate body.
     // Streams Server-Sent Events when the client sends `Accept: text/event-stream`
     // (the frontend does); otherwise returns the full reply as JSON `{ reply }`.
     router.post(
         "/chat",
         authenticate,
         assistantLimiter,
+        canUseAssistant,
         chatValidator,
         validate,
         (req: Request, res: Response, next: NextFunction) => {
@@ -107,6 +120,7 @@ if (!openai) {
     router.get(
         "/conversations",
         authenticate,
+        canUseAssistant,
         (req: Request, res: Response, next: NextFunction) =>
             controller.listConversations(req as AuthRequest, res, next),
     );
@@ -116,6 +130,7 @@ if (!openai) {
     router.get(
         "/conversations/:id",
         authenticate,
+        canUseAssistant,
         conversationParamValidator,
         validate,
         (req: Request, res: Response, next: NextFunction) =>

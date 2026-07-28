@@ -250,7 +250,7 @@ describe("AI Help Assistant — data-aware tools (Phase 8)", () => {
         // Two model calls: one to request the tool, one to answer with its result.
         expect(mockCreate).toHaveBeenCalledTimes(2);
         // The executor ran get_my_task_counts and its result was fed back + echoed.
-        expect(res.text).toContain("myOpenTasks");
-        expect(res.text).toContain("overdue");
+        expect(res.text).toContain("openTasksAssignedToMe");
+        expect(res.text).toContain("myTasksOverdue");
     });
 });

@@ -31,7 +31,7 @@ export const ASSISTANT_TOOL_DEFS: OpenAI.Chat.Completions.ChatCompletionTool[] =
             function: {
                 name: "get_my_task_counts",
                 description:
-                    "Get the current user's live task counts: my open tasks, due today, overdue, awaiting my review, plus workspace open tasks and SLA breaches. Use when the user asks how many tasks they have, how many are overdue or due today, etc.",
+                    "Live task counts. Returns SIX separate numbers, each named for its scope: openTasksAssignedToMe, myTasksDueToday, myTasksOverdue, tasksAwaitingMyReview, openTasksAcrossTheWholeWorkspace, slaBreachesAcrossTheWholeWorkspace. Read the key that matches what was asked — a question about the team or the whole workspace is NOT the same as a question about the user's own tasks. Use whenever the user asks how many tasks there are.",
                 parameters: {
                     type: "object",
                     properties: {},
@@ -92,13 +92,19 @@ export async function executeAssistantTool(
     switch (name) {
         case "get_my_task_counts": {
             const k = await services.home.kpis(ctx.workspaceId, ctx.userId);
+            // The keys are deliberately long and self-describing. With terse
+            // ones (`myOpenTasks` / `openTeamTasks`) the model read the wrong
+            // field: asked "how many open tasks in the whole workspace?" it
+            // answered with the user's own count — right data, wrong number,
+            // and no way for the reader to tell. Naming the scope inside the
+            // key costs a few tokens and removes the ambiguity entirely.
             return {
-                myOpenTasks: k.myTasks.value,
-                dueToday: k.dueToday.value,
-                overdue: k.overdue.value,
-                awaitingMyReview: k.awaitingReview.value,
-                openTeamTasks: k.openTeamTasks.value,
-                slaBreaches: k.slaBreaches.value,
+                openTasksAssignedToMe: k.myTasks.value,
+                myTasksDueToday: k.dueToday.value,
+                myTasksOverdue: k.overdue.value,
+                tasksAwaitingMyReview: k.awaitingReview.value,
+                openTasksAcrossTheWholeWorkspace: k.openTeamTasks.value,
+                slaBreachesAcrossTheWholeWorkspace: k.slaBreaches.value,
             };
         }
         case "get_my_agenda": {

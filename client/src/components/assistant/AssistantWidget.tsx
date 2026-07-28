@@ -25,6 +25,7 @@ import { useUiStore } from "../../stores/ui";
 import { useSpaces } from "../../hooks/useReferenceData";
 import { makeAssistantMarkdownComponents } from "./mdLink";
 import { pickSuggestions } from "./suggestions";
+import { usePermissions } from "../../hooks/usePermissions";
 import "./AssistantWidget.css";
 
 /**
@@ -55,6 +56,7 @@ export const AssistantWidget = () => {
     const retryLast = useChatStore((s) => s.retryLast);
     const navigate = useNavigate();
     const { data: spaces = [] } = useSpaces();
+    const { holds, ready } = usePermissions();
     const nudgeSeen = useUiStore((s) => s.assistantNudgeSeen);
     const dismissNudge = useUiStore((s) => s.dismissAssistantNudge);
 
@@ -117,13 +119,26 @@ export const AssistantWidget = () => {
     // Only logged-in users see the assistant.
     if (!user) return null;
 
-    // Department/Reports starter questions only for users who can reach them
-    // (owner/admin or a Space Head) — mirrors the Sidebar's canSeeDept gate.
-    const isAdmin = user.role === "owner" || user.role === "admin";
+    // RBAC §34 — `assistant.use` is a real permission now, so an admin who
+    // takes it away should not leave a button that only ever apologises. While
+    // permissions are still loading we render nothing rather than flashing a
+    // button that then disappears.
+    if (!ready || !holds("assistant.use")) return null;
+
+    // Which starter questions are worth offering.
+    //
+    // Department/Reports: the PERMISSION is what admins hold, but a plain
+    // Member who is the Head of a Space can also reach those pages — that rule
+    // lives in the service, not in a grant — so the head check stays alongside.
+    // Dropping it would quietly hide the feature from the very people it was
+    // built for.
     const headsAny = spaces.some(
         (s) => !s.archivedAt && s.headUserId === user.id,
     );
-    const suggestions = pickSuggestions(isAdmin || headsAny);
+    const suggestions = pickSuggestions({
+        canSeeDept: holds("review.read") || holds("report.view") || headsAny,
+        canManageRoles: holds("role.manage"),
+    });
 
     const userInitial = (
         user.firstName?.[0] ??

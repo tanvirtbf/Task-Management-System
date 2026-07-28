@@ -13,6 +13,26 @@ import { AppError } from "../errors";
  *
  * The OpenAI client + model are injected so tests can pass a fake (Phase 7).
  */
+/**
+ * The tool bridge both transports use. The model supplies only intent
+ * (a search query); the executor injects the caller's identity, so the model
+ * can never reach another user's or workspace's data.
+ */
+export interface ToolBridge {
+    definitions: OpenAI.Chat.Completions.ChatCompletionTool[];
+    execute: (
+        name: string,
+        args: Record<string, unknown>,
+    ) => Promise<unknown>;
+}
+
+/**
+ * Call → read result → answer needs at least two rounds; the cap stops a model
+ * that keeps asking for tools from looping forever. The LAST round always runs
+ * WITHOUT tools, so the model is forced to produce a plain answer.
+ */
+const MAX_TOOL_ROUNDS = 4;
+
 export class AssistantService {
     constructor(
         private client: OpenAI,
@@ -23,37 +43,128 @@ export class AssistantService {
 
     /**
      * Answer one question and return the full reply text (non-streaming).
+     *
+     * Takes the SAME tools as `streamReply`. They were streaming-only until P9,
+     * which meant `POST /assistant/chat` silently could not answer "how many
+     * tasks do I have" while its own SSE twin could. The browser always streams,
+     * so nobody had noticed — and that is exactly what makes a
+     * behaves-differently-by-transport contract worth removing rather than
+     * documenting: the next client to use the JSON path would have lost every
+     * data answer with no error to explain it.
      */
-    async ask(history: ChatTurn[], message: string): Promise<string> {
+    async ask(
+        history: ChatTurn[],
+        message: string,
+        opts: { tools?: ToolBridge } = {},
+    ): Promise<string> {
         const startedAt = Date.now();
-        let reply: string | undefined;
-        try {
-            const completion = await this.client.chat.completions.create({
-                model: this.model,
-                messages: buildMessages(
-                    history,
-                    message,
-                ) as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
-                max_tokens: this.maxTokens,
-                temperature: 0.3,
-            });
-            reply = completion.choices[0]?.message?.content?.trim();
-            this.logger.debug("assistant.openai.completed", {
-                ms: Date.now() - startedAt,
-                totalTokens: completion.usage?.total_tokens,
-            });
-        } catch (err) {
-            throw this.toAppError(err);
-        }
+        const messages = buildMessages(
+            history,
+            message,
+        ) as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
+        const maxRounds = opts.tools ? MAX_TOOL_ROUNDS : 1;
 
-        if (!reply) {
-            throw new AppError(
-                502,
-                "assistant.empty_reply",
-                "The assistant did not return a response. Please try again.",
+        for (let round = 0; round < maxRounds; round++) {
+            const useTools = !!opts.tools && round < maxRounds - 1;
+            const params: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming =
+                {
+                    model: this.model,
+                    messages,
+                    max_tokens: this.maxTokens,
+                    temperature: 0.3,
+                };
+            if (useTools && opts.tools) {
+                params.tools = opts.tools.definitions;
+                params.tool_choice = "auto";
+            }
+
+            let completion;
+            try {
+                completion = await this.client.chat.completions.create(params);
+            } catch (err) {
+                throw this.toAppError(err);
+            }
+
+            const choice = completion.choices[0]?.message;
+            const toolCalls = (choice?.tool_calls ?? [])
+                .filter((t) => t.type === "function")
+                .map((t) => ({
+                    id: t.id,
+                    name: t.function.name,
+                    args: t.function.arguments || "{}",
+                }));
+
+            if (!opts.tools || toolCalls.length === 0) {
+                const reply = choice?.content?.trim();
+                this.logger.debug("assistant.openai.completed", {
+                    ms: Date.now() - startedAt,
+                    totalTokens: completion.usage?.total_tokens,
+                    rounds: round + 1,
+                });
+                if (!reply) {
+                    throw new AppError(
+                        502,
+                        "assistant.empty_reply",
+                        "The assistant did not return a response. Please try again.",
+                    );
+                }
+                return reply;
+            }
+
+            await this.appendToolRound(
+                messages,
+                toolCalls,
+                choice?.content ?? null,
+                opts.tools.execute,
             );
         }
-        return reply;
+
+        // Every round asked for another tool and never answered.
+        throw new AppError(
+            502,
+            "assistant.empty_reply",
+            "The assistant did not return a response. Please try again.",
+        );
+    }
+
+    /**
+     * Append one tool round to the conversation: the assistant's tool-call turn
+     * (carrying any text it already produced) followed by each tool's result.
+     *
+     * Shared by both transports on purpose — this is the exact logic that was
+     * duplicated-and-divergent before P9.
+     */
+    private async appendToolRound(
+        messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+        toolCalls: { id: string; name: string; args: string }[],
+        content: string | null,
+        execute: ToolBridge["execute"],
+    ): Promise<void> {
+        messages.push({
+            role: "assistant",
+            content: content || null,
+            tool_calls: toolCalls.map((t) => ({
+                id: t.id,
+                type: "function",
+                function: { name: t.name, arguments: t.args || "{}" },
+            })),
+        });
+        for (const t of toolCalls) {
+            let result: unknown;
+            try {
+                const args = t.args
+                    ? (JSON.parse(t.args) as Record<string, unknown>)
+                    : {};
+                result = await execute(t.name, args);
+            } catch {
+                result = { error: "tool_execution_failed" };
+            }
+            messages.push({
+                role: "tool",
+                tool_call_id: t.id,
+                content: JSON.stringify(result),
+            });
+        }
     }
 
     /**
@@ -72,13 +183,7 @@ export class AssistantService {
         opts: {
             onDelta: (delta: string) => void;
             signal: AbortSignal;
-            tools?: {
-                definitions: OpenAI.Chat.Completions.ChatCompletionTool[];
-                execute: (
-                    name: string,
-                    args: Record<string, unknown>,
-                ) => Promise<unknown>;
-            };
+            tools?: ToolBridge;
         },
     ): Promise<void> {
         const messages = buildMessages(
@@ -86,10 +191,7 @@ export class AssistantService {
             message,
         ) as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
 
-        // With tools the model may need a round-trip (call tool → read result →
-        // answer). Cap the rounds; the final round runs WITHOUT tools so the
-        // model is forced to produce a plain answer.
-        const maxRounds = opts.tools ? 4 : 1;
+        const maxRounds = opts.tools ? MAX_TOOL_ROUNDS : 1;
 
         for (let round = 0; round < maxRounds; round++) {
             const useTools = !!opts.tools && round < maxRounds - 1;
@@ -120,13 +222,13 @@ export class AssistantService {
             // Accumulate streamed content + any streamed tool-call fragments.
             const acc: Record<number, { id: string; name: string; args: string }> =
                 {};
-            let contentStreamed = false;
+            let streamedText = "";
             try {
                 for await (const chunk of stream) {
                     const delta = chunk.choices[0]?.delta;
                     if (delta?.content) {
                         opts.onDelta(delta.content);
-                        contentStreamed = true;
+                        streamedText += delta.content;
                     }
                     for (const tc of delta?.tool_calls ?? []) {
                         const i = tc.index;
@@ -143,36 +245,30 @@ export class AssistantService {
             }
 
             const toolCalls = Object.values(acc).filter((t) => t.name);
-            // Answered with content, no tool calls, or tools disabled → done.
-            if (contentStreamed || toolCalls.length === 0 || !opts.tools) return;
+            // No tool calls (or tools disabled) → this round WAS the answer.
+            //
+            // ⚠️ This deliberately does NOT stop when the model also streamed
+            // text. It used to: `if (contentStreamed || …) return`, which threw
+            // away every tool call the model emitted after a lead-in sentence —
+            // and under a "always answer in Bangla" system prompt the model
+            // opens with one constantly. Measured effect: only 2 of 10 live
+            // data questions came back with a real number (P0 baseline). A
+            // round that produced tool calls must always execute them.
+            if (toolCalls.length === 0 || !opts.tools) return;
 
             // Append the assistant's tool-call turn + each tool result, then loop
             // so the next round can answer using the data.
-            messages.push({
-                role: "assistant",
-                content: null,
-                tool_calls: toolCalls.map((t) => ({
-                    id: t.id,
-                    type: "function",
-                    function: { name: t.name, arguments: t.args || "{}" },
-                })),
-            });
-            for (const t of toolCalls) {
-                let result: unknown;
-                try {
-                    const args = t.args
-                        ? (JSON.parse(t.args) as Record<string, unknown>)
-                        : {};
-                    result = await opts.tools.execute(t.name, args);
-                } catch {
-                    result = { error: "tool_execution_failed" };
-                }
-                messages.push({
-                    role: "tool",
-                    tool_call_id: t.id,
-                    content: JSON.stringify(result),
-                });
-            }
+            //
+            // The lead-in the user has ALREADY seen goes in as this turn's
+            // `content`, so the next round continues from it instead of
+            // repeating itself — the reader gets one coherent answer rather
+            // than the same sentence twice.
+            await this.appendToolRound(
+                messages,
+                toolCalls,
+                streamedText,
+                opts.tools.execute,
+            );
         }
     }
 

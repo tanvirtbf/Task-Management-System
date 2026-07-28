@@ -1,25 +1,77 @@
-import { describe, it, expect } from "vitest";
-import { SUGGESTIONS, pickSuggestions } from "./suggestions";
+import { describe, expect, it } from "vitest";
+import { pickSuggestions, SUGGESTIONS } from "./suggestions";
+import type { SuggestionAudience } from "./suggestions";
 
-describe("pickSuggestions (P7 role-aware starter questions)", () => {
-    it("always includes the base (non-dept) questions", () => {
-        const base = SUGGESTIONS.filter((s) => !s.deptOnly).map((s) => s.q);
-        const shown = pickSuggestions(false);
-        for (const q of base) expect(shown).toContain(q);
-    });
+/**
+ * Starter questions — who is offered what (P7 of AI_ASSISTANT_PERFECT_PLAN.md
+ * re-gated these on real permissions instead of the legacy role string).
+ *
+ * The rule these pin: never offer someone a question whose answer sends them to
+ * a page they cannot open. A starter chip that leads to a refusal is worse than
+ * no chip, because the bot is what a confused person turns to *after* the app
+ * has already confused them once.
+ */
 
-    it("HIDES the Department/Reports question when the user can't see it", () => {
-        const dept = SUGGESTIONS.find((s) => s.deptOnly)!.q;
-        expect(pickSuggestions(false)).not.toContain(dept);
-    });
+const audience = (
+    over: Partial<SuggestionAudience> = {},
+): SuggestionAudience => ({
+    canSeeDept: false,
+    canManageRoles: false,
+    ...over,
+});
 
-    it("SHOWS the Department/Reports question when canSeeDept", () => {
-        const dept = SUGGESTIONS.find((s) => s.deptOnly)!.q;
-        expect(pickSuggestions(true)).toContain(dept);
-        expect(pickSuggestions(true).length).toBe(SUGGESTIONS.length);
+const DEPT_Q = "Department review আর weekly report কোথায়?";
+const ROLES_Q = "কাউকে শুধু একটা department-এর access কীভাবে দেব?";
+
+describe("pickSuggestions", () => {
+    it("offers exactly the ungated questions to an ordinary member", () => {
+        const plain = pickSuggestions(audience());
+        const ungated = SUGGESTIONS.filter((s) => !s.show).map((s) => s.q);
+        expect(plain).toEqual(ungated);
     });
 
     it("has a meaningful curated set (more than the old 4)", () => {
         expect(SUGGESTIONS.length).toBeGreaterThanOrEqual(7);
+    });
+
+    it("HIDES the Department question from someone who cannot reach it", () => {
+        expect(pickSuggestions(audience())).not.toContain(DEPT_Q);
+    });
+
+    it("SHOWS the Department question to someone who can", () => {
+        expect(pickSuggestions(audience({ canSeeDept: true }))).toContain(
+            DEPT_Q,
+        );
+    });
+
+    it("HIDES the roles question from someone who cannot manage roles", () => {
+        // Seeing Department does not imply being able to edit roles — the two
+        // gates are separate permissions and must not leak into each other.
+        expect(pickSuggestions(audience({ canSeeDept: true }))).not.toContain(
+            ROLES_Q,
+        );
+    });
+
+    it("SHOWS the roles question to someone who can", () => {
+        expect(pickSuggestions(audience({ canManageRoles: true }))).toContain(
+            ROLES_Q,
+        );
+    });
+
+    it("shows everything to someone who holds both", () => {
+        const both = pickSuggestions(
+            audience({ canSeeDept: true, canManageRoles: true }),
+        );
+        expect(both).toContain(DEPT_Q);
+        expect(both).toContain(ROLES_Q);
+        expect(both).toHaveLength(SUGGESTIONS.length);
+    });
+
+    it("every question is a non-empty Bangla string", () => {
+        for (const s of SUGGESTIONS) {
+            expect(s.q.trim().length).toBeGreaterThan(5);
+            // Bengali script — these render verbatim as chips.
+            expect(s.q).toMatch(/[ঀ-৿]/);
+        }
     });
 });
