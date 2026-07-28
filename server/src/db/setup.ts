@@ -2,6 +2,7 @@ import mysql from "mysql2/promise";
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { Config } from "../config";
+import { dbEndpoint } from "./client";
 import logger from "../config/logger";
 
 /**
@@ -47,8 +48,7 @@ const setupDb = async () => {
 
     // Phase 1 — connect WITHOUT a database to CREATE / DROP it.
     const bootstrap = await mysql.createConnection({
-        host: Config.DB_HOST,
-        port: Number(Config.DB_PORT) || 3306,
+        ...dbEndpoint(),
         user: Config.DB_USERNAME,
         password: Config.DB_PASSWORD,
         multipleStatements: true,
@@ -77,8 +77,7 @@ const setupDb = async () => {
 
     // Phase 2 — connect TO the database and apply schema + _post.
     const conn = await mysql.createConnection({
-        host: Config.DB_HOST,
-        port: Number(Config.DB_PORT) || 3306,
+        ...dbEndpoint(),
         user: Config.DB_USERNAME,
         password: Config.DB_PASSWORD,
         database: dbName,

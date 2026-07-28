@@ -26,6 +26,7 @@ const {
     DB_USERNAME,
     DB_PASSWORD,
     DB_NAME,
+    DB_SOCKET_PATH,
     DB_POOL_MAX,
     DB_POOL_QUEUE_LIMIT,
     DB_TIMEZONE,
@@ -94,6 +95,12 @@ export const Config = {
     // isolated database without editing the shared `.env.test`. Backward
     // compatible: when unset, the normal `DB_NAME` applies.
     DB_NAME: process.env.DB_NAME_OVERRIDE ?? DB_NAME,
+    /**
+     * Unix socket to reach MySQL (e.g. `/var/run/mysqld/mysqld.sock`). When set
+     * it REPLACES host/port — see `dbEndpoint()` in `db/client.ts` for why that
+     * is the preferred transport on a local MySQL 8.4.
+     */
+    DB_SOCKET_PATH,
     DB_POOL_MAX,
     DB_POOL_QUEUE_LIMIT,
     /**

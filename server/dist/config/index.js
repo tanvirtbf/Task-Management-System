@@ -20,7 +20,7 @@ if (process.env.NODE_ENV === "test") {
         override: true,
     });
 }
-const { PORT, NODE_ENV, LOG_LEVEL, DB_HOST, DB_PORT, DB_USERNAME, DB_PASSWORD, DB_NAME, DB_POOL_MAX, DB_POOL_QUEUE_LIMIT, DB_TIMEZONE, ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET, COOKIE_SECRET, ACCESS_TOKEN_TTL, REFRESH_TOKEN_TTL, SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM, EMAIL_FROM_NAME, 
+const { PORT, NODE_ENV, LOG_LEVEL, DB_HOST, DB_PORT, DB_USERNAME, DB_PASSWORD, DB_NAME, DB_SOCKET_PATH, DB_POOL_MAX, DB_POOL_QUEUE_LIMIT, DB_TIMEZONE, ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET, COOKIE_SECRET, ACCESS_TOKEN_TTL, REFRESH_TOKEN_TTL, SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM, EMAIL_FROM_NAME, 
 // Laravel-style MAIL_* names (what ops set in .env). Preferred over SMTP_*.
 MAIL_HOST, MAIL_PORT, MAIL_USERNAME, MAIL_PASSWORD, MAIL_FROM_ADDRESS, MAIL_FROM_NAME, FRONTEND_URL, API_URL, CORS_ALLOWED_ORIGINS, INTERNAL_JOB_TOKEN, 
 // Cloudflare R2 (S3-compatible object storage for §16 attachments).
@@ -48,6 +48,12 @@ exports.Config = {
     // isolated database without editing the shared `.env.test`. Backward
     // compatible: when unset, the normal `DB_NAME` applies.
     DB_NAME: process.env.DB_NAME_OVERRIDE ?? DB_NAME,
+    /**
+     * Unix socket to reach MySQL (e.g. `/var/run/mysqld/mysqld.sock`). When set
+     * it REPLACES host/port — see `dbEndpoint()` in `db/client.ts` for why that
+     * is the preferred transport on a local MySQL 8.4.
+     */
+    DB_SOCKET_PATH,
     DB_POOL_MAX,
     DB_POOL_QUEUE_LIMIT,
     /**

@@ -9,6 +9,7 @@ const promise_1 = __importDefault(require("mysql2/promise"));
 const node_fs_1 = require("node:fs");
 const node_path_1 = __importDefault(require("node:path"));
 const config_1 = require("../config");
+const client_1 = require("./client");
 const logger_1 = __importDefault(require("../config/logger"));
 /**
  * Run Drizzle migrations, then apply the post-migration SQL that contains
@@ -18,8 +19,7 @@ const logger_1 = __importDefault(require("../config/logger"));
 const runMigrations = async () => {
     try {
         const connection = await promise_1.default.createConnection({
-            host: config_1.Config.DB_HOST,
-            port: Number(config_1.Config.DB_PORT) || 3306,
+            ...(0, client_1.dbEndpoint)(),
             user: config_1.Config.DB_USERNAME,
             password: config_1.Config.DB_PASSWORD,
             database: config_1.Config.DB_NAME,

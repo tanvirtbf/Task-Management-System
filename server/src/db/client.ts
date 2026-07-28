@@ -23,12 +23,32 @@ const dbTimezone = ((): string | undefined => {
     return raw;
 })();
 
+/**
+ * Where to reach MySQL. `DB_SOCKET_PATH` wins when set.
+ *
+ * This is not just a performance preference. On MySQL **8.4** the
+ * `mysql_native_password` plugin ships DISABLED, and accounts default to
+ * `caching_sha2_password`. Over plain TCP that scheme needs an RSA key exchange
+ * (or TLS) to complete a first-time authentication; mysql2 does not negotiate
+ * it, falls back to asking for `mysql_native_password`, and the server answers
+ * `ER_PLUGIN_IS_NOT_LOADED`. A unix socket is treated as an already-secure
+ * channel, so the same credentials authenticate cleanly. Verified against a
+ * live 8.4.7 server: all five TCP variants failed, the socket succeeded.
+ */
+export const dbEndpoint = ():
+    | { socketPath: string }
+    | { host: string | undefined; port: number } => {
+    const socketPath = Config.DB_SOCKET_PATH?.trim();
+    return socketPath
+        ? { socketPath }
+        : { host: Config.DB_HOST, port: Number(Config.DB_PORT) || 3306 };
+};
+
 export const initDb = async (): Promise<MySql2Database<typeof schema>> => {
     if (db) return db;
 
     pool = mysql.createPool({
-        host: Config.DB_HOST,
-        port: Number(Config.DB_PORT) || 3306,
+        ...dbEndpoint(),
         user: Config.DB_USERNAME,
         password: Config.DB_PASSWORD,
         database: Config.DB_NAME,

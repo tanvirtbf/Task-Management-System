@@ -4,6 +4,7 @@ import mysql from "mysql2/promise";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { Config } from "../config";
+import { dbEndpoint } from "./client";
 import logger from "../config/logger";
 
 /**
@@ -14,8 +15,7 @@ import logger from "../config/logger";
 const runMigrations = async () => {
     try {
         const connection = await mysql.createConnection({
-            host: Config.DB_HOST,
-            port: Number(Config.DB_PORT) || 3306,
+            ...dbEndpoint(),
             user: Config.DB_USERNAME,
             password: Config.DB_PASSWORD,
             database: Config.DB_NAME,

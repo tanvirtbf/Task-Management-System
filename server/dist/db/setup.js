@@ -7,6 +7,7 @@ const promise_1 = __importDefault(require("mysql2/promise"));
 const node_fs_1 = require("node:fs");
 const node_path_1 = __importDefault(require("node:path"));
 const config_1 = require("../config");
+const client_1 = require("./client");
 const logger_1 = __importDefault(require("../config/logger"));
 /**
  * Bootstrap a FRESH database from `database/schema.sql` — the raw, self-
@@ -45,8 +46,7 @@ const setupDb = async () => {
     }
     // Phase 1 — connect WITHOUT a database to CREATE / DROP it.
     const bootstrap = await promise_1.default.createConnection({
-        host: config_1.Config.DB_HOST,
-        port: Number(config_1.Config.DB_PORT) || 3306,
+        ...(0, client_1.dbEndpoint)(),
         user: config_1.Config.DB_USERNAME,
         password: config_1.Config.DB_PASSWORD,
         multipleStatements: true,
@@ -70,8 +70,7 @@ const setupDb = async () => {
     }
     // Phase 2 — connect TO the database and apply schema + _post.
     const conn = await promise_1.default.createConnection({
-        host: config_1.Config.DB_HOST,
-        port: Number(config_1.Config.DB_PORT) || 3306,
+        ...(0, client_1.dbEndpoint)(),
         user: config_1.Config.DB_USERNAME,
         password: config_1.Config.DB_PASSWORD,
         database: dbName,

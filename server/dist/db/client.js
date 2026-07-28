@@ -36,7 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.closeDb = exports.getPool = exports.getDb = exports.initDb = void 0;
+exports.closeDb = exports.getPool = exports.getDb = exports.initDb = exports.dbEndpoint = void 0;
 const mysql2_1 = require("drizzle-orm/mysql2");
 const promise_1 = __importDefault(require("mysql2/promise"));
 const config_1 = require("../config");
@@ -58,12 +58,30 @@ const dbTimezone = (() => {
     }
     return raw;
 })();
+/**
+ * Where to reach MySQL. `DB_SOCKET_PATH` wins when set.
+ *
+ * This is not just a performance preference. On MySQL **8.4** the
+ * `mysql_native_password` plugin ships DISABLED, and accounts default to
+ * `caching_sha2_password`. Over plain TCP that scheme needs an RSA key exchange
+ * (or TLS) to complete a first-time authentication; mysql2 does not negotiate
+ * it, falls back to asking for `mysql_native_password`, and the server answers
+ * `ER_PLUGIN_IS_NOT_LOADED`. A unix socket is treated as an already-secure
+ * channel, so the same credentials authenticate cleanly. Verified against a
+ * live 8.4.7 server: all five TCP variants failed, the socket succeeded.
+ */
+const dbEndpoint = () => {
+    const socketPath = config_1.Config.DB_SOCKET_PATH?.trim();
+    return socketPath
+        ? { socketPath }
+        : { host: config_1.Config.DB_HOST, port: Number(config_1.Config.DB_PORT) || 3306 };
+};
+exports.dbEndpoint = dbEndpoint;
 const initDb = async () => {
     if (db)
         return db;
     pool = promise_1.default.createPool({
-        host: config_1.Config.DB_HOST,
-        port: Number(config_1.Config.DB_PORT) || 3306,
+        ...(0, exports.dbEndpoint)(),
         user: config_1.Config.DB_USERNAME,
         password: config_1.Config.DB_PASSWORD,
         database: config_1.Config.DB_NAME,
