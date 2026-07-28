@@ -10,9 +10,30 @@ import {
 } from "./schema";
 import logger from "../config/logger";
 import { fakeId } from "../utils";
+import { Config } from "../config";
 import { bootstrapRbac } from "../rbac/bootstrap";
 
+/**
+ * Owner credentials. Dev keeps the documented defaults so LOCAL_RUN_GUIDE.md and
+ * the demo dataset stay valid. Production MUST supply its own: this file lives in
+ * the repository, so the fallback password is a PUBLISHED credential — seeding a
+ * public deployment with it would hand anyone who reads the source an owner login.
+ */
+const DEFAULT_OWNER_PASSWORD = "Owner@12345";
+const OWNER_EMAIL = process.env.SEED_OWNER_EMAIL ?? "owner@company.local";
+const OWNER_PASSWORD = process.env.SEED_OWNER_PASSWORD ?? DEFAULT_OWNER_PASSWORD;
+
 const seed = async () => {
+    if (Config.IS_PROD && OWNER_PASSWORD === DEFAULT_OWNER_PASSWORD) {
+        logger.error(
+            "REFUSING to seed: SEED_OWNER_PASSWORD is unset (or still the default). " +
+                "That password is published in this repository's source, so seeding " +
+                "production with it creates an owner account anyone can log into. " +
+                "Set SEED_OWNER_EMAIL and SEED_OWNER_PASSWORD, then re-run.",
+        );
+        process.exit(1);
+    }
+
     try {
         const db = await initDb();
         logger.info("Seeding database...");
@@ -28,14 +49,14 @@ const seed = async () => {
         logger.info("Workspace created", { id: workspaceId });
 
         // Seed owner user
-        const passwordHash = await bcrypt.hash("Owner@12345", 10);
+        const passwordHash = await bcrypt.hash(OWNER_PASSWORD, 10);
         const ownerId = fakeId("u");
         await db.insert(users).values({
             id: ownerId,
             workspaceId,
             firstName: "Owner",
             lastName: "User",
-            email: "owner@company.local",
+            email: OWNER_EMAIL,
             passwordHash,
             role: "owner",
             status: "active",
@@ -172,8 +193,11 @@ const seed = async () => {
         const rbac = await bootstrapRbac(db, workspaceId);
         logger.info("RBAC bootstrapped", rbac);
 
+        // Never log the password itself — it would land in logs/combined.log.
         logger.info(
-            "Seed completed. Default owner: owner@company.local / Owner@12345",
+            `Seed completed. Owner: ${OWNER_EMAIL} (password from ${
+                process.env.SEED_OWNER_PASSWORD ? "SEED_OWNER_PASSWORD" : "the dev default"
+            })`,
         );
         await closeDb();
         process.exit(0);
