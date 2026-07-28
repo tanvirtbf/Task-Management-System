@@ -6,13 +6,22 @@
 
 ---
 
-## 🔑 Your Generated Keys (KEEP SECURE!)
+## 🔑 Generate your own key — one per environment
 
-| Environment | ENCRYPTION_KEY | Status | Action |
-|---|---|---|---|
-| **Staging** | `0835496954420d93dc126b00821b67a24798dabf8cb7b39b9ed267bbef54e69c` | Ready | Use this |
-| **Production** | `926ecd91f5bcf9f65b53cd641aeed7bed66e34af3a197c79176a76be279fc7a9` | Ready | Use this |
-| **Development** | `b82f70ad2b6f62e066214c088e4c2cf5397d0d41033cad9da1fdb0eefc44d825` | Ready | Use this |
+> **2026-07-28:** this file used to contain three real, paste-ready keys, in a
+> git-tracked document, directly under a rule saying never to commit keys. They
+> have been removed. Every `REPLACE_WITH_YOUR_OWN_64_HEX_KEY` below is a
+> placeholder — generate a fresh key per environment and keep it out of git:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+| Environment | ENCRYPTION_KEY | Action |
+|---|---|---|
+| **Development** | *(generate your own)* | put in `server/.env` — gitignored |
+| **Staging** | *(generate your own)* | secrets manager or the host's env |
+| **Production** | *(generate your own)* | secrets manager or the host's env — **never** a tracked file |
 
 > ⚠️ **CRITICAL SECURITY RULES:**
 > 1. Never commit these keys to git/GitHub
@@ -43,7 +52,7 @@
 # 1. Create dev .env file (if not exists)
 cat > server/.env.local << 'EOF'
 # ... existing vars ...
-ENCRYPTION_KEY=b82f70ad2b6f62e066214c088e4c2cf5397d0d41033cad9da1fdb0eefc44d825
+ENCRYPTION_KEY=REPLACE_WITH_YOUR_OWN_64_HEX_KEY
 EOF
 
 # 2. Verify it's gitignored
@@ -59,7 +68,7 @@ npm run dev
 
 ```bash
 # Set for this session only
-export ENCRYPTION_KEY=b82f70ad2b6f62e066214c088e4c2cf5397d0d41033cad9da1fdb0eefc44d825
+export ENCRYPTION_KEY=REPLACE_WITH_YOUR_OWN_64_HEX_KEY
 
 # Start server
 npm run dev
@@ -96,7 +105,7 @@ mysql> SELECT id, encrypted_at, SUBSTR(data, 1, 50) as data_preview
 # 1. Store in AWS Secrets Manager
 aws secretsmanager create-secret \
   --name task-management/staging/encryption-key \
-  --secret-string '{"ENCRYPTION_KEY":"0835496954420d93dc126b00821b67a24798dabf8cb7b39b9ed267bbef54e69c"}'
+  --secret-string '{"ENCRYPTION_KEY":"REPLACE_WITH_YOUR_OWN_64_HEX_KEY"}'
 
 # 2. Update server startup script to fetch secret
 cat > scripts/fetch-secrets.sh << 'EOF'
@@ -120,7 +129,7 @@ sudo systemctl edit task-management-server
 ```bash
 # 1. Store in Vault
 vault kv put secret/staging/task-management \
-  ENCRYPTION_KEY=0835496954420d93dc126b00821b67a24798dabf8cb7b39b9ed267bbef54e69c
+  ENCRYPTION_KEY=REPLACE_WITH_YOUR_OWN_64_HEX_KEY
 
 # 2. Fetch at runtime
 export ENCRYPTION_KEY=$(vault kv get -field=ENCRYPTION_KEY secret/staging/task-management)
@@ -137,7 +146,7 @@ sudo chown task-management:task-management /etc/task-management/secrets.env
 
 # 2. Add content
 sudo tee /etc/task-management/secrets.env > /dev/null << 'EOF'
-ENCRYPTION_KEY=0835496954420d93dc126b00821b67a24798dabf8cb7b39b9ed267bbef54e69c
+ENCRYPTION_KEY=REPLACE_WITH_YOUR_OWN_64_HEX_KEY
 EOF
 
 # 3. Update server startup
@@ -200,7 +209,7 @@ mysql -u staging_user -p staging_db -e \
 # 1. Create secret (one-time, don't repeat!)
 aws secretsmanager create-secret \
   --name prod/task-management/encryption-key \
-  --secret-string '{"ENCRYPTION_KEY":"926ecd91f5bcf9f65b53cd641aeed7bed66e34af3a197c79176a76be279fc7a9"}' \
+  --secret-string '{"ENCRYPTION_KEY":"REPLACE_WITH_YOUR_OWN_64_HEX_KEY"}' \
   --region us-east-1 \
   --tags Key=environment,Value=production
 
@@ -238,7 +247,7 @@ encryption_key = json.loads(secret['SecretString'])['ENCRYPTION_KEY']
 ```bash
 # 1. Create secret
 kubectl create secret generic task-management-secrets \
-  --from-literal=ENCRYPTION_KEY=926ecd91f5bcf9f65b53cd641aeed7bed66e34af3a197c79176a76be279fc7a9 \
+  --from-literal=ENCRYPTION_KEY=REPLACE_WITH_YOUR_OWN_64_HEX_KEY \
   -n production
 
 # 2. Reference in deployment
@@ -271,7 +280,7 @@ kubectl apply -f deployment.yaml
 ```bash
 # 1. Store secret
 vault kv put secret/prod/task-management \
-  ENCRYPTION_KEY=926ecd91f5bcf9f65b53cd641aeed7bed66e34af3a197c79176a76be279fc7a9
+  ENCRYPTION_KEY=REPLACE_WITH_YOUR_OWN_64_HEX_KEY
 
 # 2. Configure AppRole authentication (for server to fetch)
 vault write auth/approle/role/task-management-server \
@@ -364,7 +373,7 @@ Test encryption/decryption locally to verify setup:
 
 ```bash
 # 1. Start server with encryption key set
-export ENCRYPTION_KEY=b82f70ad2b6f62e066214c088e4c2cf5397d0d41033cad9da1fdb0eefc44d825
+export ENCRYPTION_KEY=REPLACE_WITH_YOUR_OWN_64_HEX_KEY
 npm run dev
 
 # 2. Create a test form submission

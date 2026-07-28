@@ -4,7 +4,14 @@
         "target": "es2022",
         "lib": ["es2022"],
         "module": "commonjs",
-        "rootDir": "./",
+        /* `rootDir` MUST stay "./src" — it is what makes `tsc` emit
+           dist/server.js (matching package.json `main`/`start` and the prod
+           Dockerfile CMD) instead of dist/src/server.js. It also keeps every
+           __dirname-relative path correct in the compiled build: config/index.ts
+           resolves ../../.env to server/.env, db/setup.ts resolves
+           ../../../database/schema.sql to the repo root, and db/migrate.ts
+           resolves ./migrations to dist/db/migrations. */
+        "rootDir": "./src",
         "outDir": "./dist",
 
         /* Interop Constraints */

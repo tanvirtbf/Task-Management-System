@@ -23,6 +23,7 @@ import { eq } from "drizzle-orm";
 import { initDb, closeDb, getPool } from "./client";
 import * as S from "./schema";
 import { fakeId } from "../utils";
+import { Config } from "../config";
 import logger from "../config/logger";
 import { bootstrapRbac } from "../rbac/bootstrap";
 import {
@@ -56,6 +57,22 @@ const LAST_WEEK_INSTANT = new Date(
 const taskIdByName: Record<string, string> = {};
 
 const seed = async () => {
+    // The npm script's `cross-env NODE_ENV=dev` is NOT a guard — config always
+    // loads server/.env regardless of NODE_ENV, so on a production box this
+    // script would truncate the live database. Refuse, loudly.
+    if (Config.IS_PROD) {
+        logger.error(
+            `REFUSING to run the demo seed: NODE_ENV=${Config.NODE_ENV}. This truncates EVERY table in ${Config.DB_NAME}.`,
+        );
+        process.exit(1);
+    }
+    if (process.env.ALLOW_DEMO_SEED !== "1") {
+        logger.error(
+            `REFUSING to run the demo seed: it truncates EVERY table in "${Config.DB_NAME}" on ${Config.DB_HOST}. Re-run with ALLOW_DEMO_SEED=1 if that is really what you want.`,
+        );
+        process.exit(1);
+    }
+
     const db = await initDb();
     const pool = getPool();
     logger.info("Demo seed starting…");

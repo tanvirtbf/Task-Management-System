@@ -22,7 +22,7 @@
 
 ```bash
 # 1. Add to server/.env.local
-echo "ENCRYPTION_KEY=b82f70ad2b6f62e066214c088e4c2cf5397d0d41033cad9da1fdb0eefc44d825" >> server/.env.local
+echo "ENCRYPTION_KEY=REPLACE_WITH_YOUR_OWN_64_HEX_KEY" >> server/.env.local
 
 # 2. Verify it's gitignored
 grep ".env.local" server/.gitignore  # Should exist
@@ -46,7 +46,7 @@ curl http://localhost:5501/api/v1/health
 # 1. Create secret
 aws secretsmanager create-secret \
   --name task-management/staging/encryption-key \
-  --secret-string '{"ENCRYPTION_KEY":"0835496954420d93dc126b00821b67a24798dabf8cb7b39b9ed267bbef54e69c"}' \
+  --secret-string '{"ENCRYPTION_KEY":"REPLACE_WITH_YOUR_OWN_64_HEX_KEY"}' \
   --region us-east-1
 
 # 2. Verify
@@ -59,7 +59,7 @@ aws secretsmanager get-secret-value \
 ```bash
 # 1. Create secrets file (restricted permissions)
 sudo tee /etc/task-management/staging-secrets.env > /dev/null << 'EOF'
-ENCRYPTION_KEY=0835496954420d93dc126b00821b67a24798dabf8cb7b39b9ed267bbef54e69c
+ENCRYPTION_KEY=REPLACE_WITH_YOUR_OWN_64_HEX_KEY
 EOF
 
 # 2. Restrict permissions
@@ -80,7 +80,7 @@ sudo systemctl edit task-management-server
 # 1. Create secret
 aws secretsmanager create-secret \
   --name prod/task-management/encryption-key \
-  --secret-string '{"ENCRYPTION_KEY":"926ecd91f5bcf9f65b53cd641aeed7bed66e34af3a197c79176a76be279fc7a9"}' \
+  --secret-string '{"ENCRYPTION_KEY":"REPLACE_WITH_YOUR_OWN_64_HEX_KEY"}' \
   --region us-east-1
 
 # 2. Restrict IAM access (see ENCRYPTION_SETUP.md)
@@ -92,7 +92,7 @@ aws secretsmanager create-secret \
 ```bash
 # 1. Create secret
 kubectl create secret generic task-management-secrets \
-  --from-literal=ENCRYPTION_KEY=926ecd91f5bcf9f65b53cd641aeed7bed66e34af3a197c79176a76be279fc7a9 \
+  --from-literal=ENCRYPTION_KEY=REPLACE_WITH_YOUR_OWN_64_HEX_KEY \
   -n production
 
 # 2. Reference in deployment.yaml
@@ -194,7 +194,7 @@ mysql -h $DB_HOST -u $DB_USER -p$DB_PASS $DB_NAME < server/src/db/migrations/000
 
 ```bash
 # Development: Add to .env.local
-echo "ENCRYPTION_KEY=b82f70ad2b6f62e066214c088e4c2cf5397d0d41033cad9da1fdb0eefc44d825" >> server/.env.local
+echo "ENCRYPTION_KEY=REPLACE_WITH_YOUR_OWN_64_HEX_KEY" >> server/.env.local
 
 # Staging: Add to secrets manager or env file
 # (See setup sections above)

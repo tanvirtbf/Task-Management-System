@@ -56,6 +56,14 @@ const setupDb = async () => {
 
     try {
         if (wantDrop) {
+            // db:setup itself is safe on prod (it refuses a non-empty DB), but
+            // --drop deletes the whole database first. Never on a prod box.
+            if (Config.IS_PROD) {
+                logger.error(
+                    `REFUSING --drop: NODE_ENV=${Config.NODE_ENV}. This would DELETE the database "${dbName}".`,
+                );
+                process.exit(1);
+            }
             logger.warn(`Dropping database ${dbName} (--drop given)`);
             await bootstrap.query(`DROP DATABASE IF EXISTS \`${dbName}\``);
         }
