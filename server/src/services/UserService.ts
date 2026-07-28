@@ -1,3 +1,4 @@
+import { syncUserSystemRole } from "../rbac/bootstrap";
 import { MySql2Database } from "drizzle-orm/mysql2";
 import type { Logger } from "winston";
 import * as schema from "../db/schema";
@@ -223,6 +224,16 @@ export class UserService {
                     },
                     tx,
                 );
+                // RBAC (L13): give the invited row its system-role assignment
+                // now, so the account is correctly powered the moment the
+                // invite is accepted — no separate accept-time step to forget.
+                await syncUserSystemRole(
+                    tx as unknown as Parameters<typeof syncUserSystemRole>[0],
+                    input.workspaceId,
+                    userId,
+                    input.role,
+                    { bump: false },
+                );
                 await this.invitations.create(
                     {
                         id: invitationId,
@@ -429,6 +440,17 @@ export class UserService {
             }
 
             await this.users.update(input.userId, { role: input.newRole }, tx);
+            // RBAC (landmine L13): `users.role` is only the mirror — the
+            // authority lives in `user_roles`. Swapping the system-role
+            // assignment inside the SAME transaction keeps the two from ever
+            // drifting, and the version bump makes the new role effective on
+            // the person's very next request instead of in ≤15 minutes.
+            await syncUserSystemRole(
+                tx as unknown as Parameters<typeof syncUserSystemRole>[0],
+                input.workspaceId,
+                input.userId,
+                input.newRole,
+            );
             await this.activity.record(
                 {
                     workspaceId: input.workspaceId,

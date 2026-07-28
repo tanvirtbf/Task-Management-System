@@ -15,7 +15,7 @@ import { ReportStatsService } from "../services/ReportStatsService";
 import { getDb } from "../db/client";
 import logger from "../config/logger";
 import authenticate from "../middlewares/authenticate";
-import { canAccess } from "../middlewares/canAccess";
+import { requirePermission } from "../middlewares/requirePermission";
 import { reportGenerateLimiter } from "../middlewares/rateLimit";
 import { validate } from "../middlewares/validate";
 import {
@@ -25,7 +25,6 @@ import {
     headNoteValidator,
     listReportsValidator,
 } from "../validators/reports";
-import { Roles } from "../constants";
 import type {
     AckReportRequest,
     GenerateReportRequest,
@@ -124,7 +123,7 @@ router.patch(
 router.post(
     "/:id/ack",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("report.ack"),
     ackReportValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>

@@ -15,9 +15,8 @@ import { TasksService } from "../services/TasksService";
 import { getDb } from "../db/client";
 import logger from "../config/logger";
 import authenticate from "../middlewares/authenticate";
-import { canAccess } from "../middlewares/canAccess";
+import { requirePermission } from "../middlewares/requirePermission";
 import { validate } from "../middlewares/validate";
-import { Roles } from "../constants";
 import {
     createCustomFieldValidator,
     customFieldIdParamValidator,
@@ -108,7 +107,7 @@ router.get(
 router.post(
     "/custom-fields",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("catalog.custom_fields"),
     createCustomFieldValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -125,7 +124,7 @@ router.post(
 router.patch(
     "/custom-fields/:id",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("catalog.custom_fields"),
     updateCustomFieldValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -142,7 +141,7 @@ router.patch(
 router.delete(
     "/custom-fields/:id",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("catalog.custom_fields"),
     customFieldIdParamValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>

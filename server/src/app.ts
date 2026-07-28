@@ -10,6 +10,9 @@ import { apiLimiter } from "./middlewares/rateLimit";
 import { notFoundMiddleware } from "./middlewares/notFound";
 import { errorHandler } from "./middlewares/errorHandler";
 import authRouter from "./routes/auth";
+import meRouter from "./routes/me";
+import rolesRouter from "./routes/roles";
+import { rbacContext } from "./middlewares/requirePermission";
 import usersRouter from "./routes/users";
 import workspaceRouter from "./routes/workspace";
 import spacesRouter from "./routes/spaces";
@@ -120,8 +123,21 @@ app.use(healthRouter);
 // ═════════════════════════════════════════════════════════════════════════════
 const v1 = express.Router();
 v1.use(apiLimiter);
+// §34 RBAC — establish the per-request authorization context for EVERY v1
+// route, ahead of any of them, so no endpoint can run without it. Resolution is
+// lazy (it reads `req.auth` only when a permission or a row filter is first
+// asked for), so an unauthenticated public route costs nothing.
+v1.use(rbacContext);
 
 v1.use("/auth", authRouter);
+// §34 RBAC — `GET /me/permissions`. Declares its own full path, so it mounts at
+// the v1 root; `/me` overlaps no other router.
+v1.use(meRouter);
+// §34 RBAC — roles CRUD + assignments. Declares full paths spanning `/roles`,
+// `/users/:id/roles` and `/spaces/:id/members`, so it mounts at the v1 root
+// BEFORE `/users` and `/spaces` (its 3-segment routes must resolve ahead of
+// their `/:id` routes).
+v1.use(rolesRouter);
 v1.use("/workspace", workspaceRouter);
 v1.use("/users", usersRouter);
 v1.use("/spaces", spacesRouter);

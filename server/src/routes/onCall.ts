@@ -10,14 +10,13 @@ import { UsersRepo } from "../repositories/UsersRepo";
 import { getDb } from "../db/client";
 import logger from "../config/logger";
 import authenticate from "../middlewares/authenticate";
-import { canAccess } from "../middlewares/canAccess";
+import { requirePermission } from "../middlewares/requirePermission";
 import { validate } from "../middlewares/validate";
 import {
     scheduleQueryValidator,
     setOnCallValidator,
     weekStartParamValidator,
 } from "../validators/onCall";
-import { Roles } from "../constants";
 import type { AuthRequest } from "../types";
 import type { SetOnCallRequest } from "../types/onCall";
 
@@ -57,13 +56,13 @@ router.get(
 
 // ─── PUT /api/v1/on-call/:weekStart ───────────────────────────────────────────
 // 👑 admin/owner only. Upsert the on-call engineer for a Monday-keyed week.
-// Chain order encodes the status precedence: authenticate (401) → canAccess
+// Chain order encodes the status precedence: authenticate (401) → requirePermission
 // (403) → validation (422). Registered AFTER the literal /current + /schedule
 // routes so those win over this `:weekStart` param.
 router.put(
     "/:weekStart",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("oncall.manage"),
     setOnCallValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -72,12 +71,12 @@ router.put(
 
 // ─── DELETE /api/v1/on-call/:weekStart ────────────────────────────────────────
 // 👑 admin/owner only. Clear a week's on-call assignment. Same chain/precedence
-// as PUT: authenticate (401) → canAccess (403) → validation (422). 404 if no
+// as PUT: authenticate (401) → requirePermission (403) → validation (422). 404 if no
 // shift exists for the week; 204 on success.
 router.delete(
     "/:weekStart",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("oncall.manage"),
     weekStartParamValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>

@@ -20,6 +20,11 @@ Config.DB_NAME = "taskmanagement_tags_test";
 // rows; those are asserted by specific id, so they need no per-test reset.) FK
 // checks are disabled so truncation order does not matter.
 const TABLES = [
+    // RBAC (P11): assignments/grants/roles are per-workspace rows and must not
+    // survive a reset, or a later test inherits another test's authority.
+    "user_roles",
+    "role_permissions",
+    "roles",
     "sessions",
     "tags",
     "workspace_activity",

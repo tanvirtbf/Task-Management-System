@@ -16,9 +16,8 @@ import { TasksRepo } from "../repositories/TasksRepo";
 import { getDb } from "../db/client";
 import logger from "../config/logger";
 import authenticate from "../middlewares/authenticate";
-import { canAccess } from "../middlewares/canAccess";
+import { requirePermission } from "../middlewares/requirePermission";
 import { validate } from "../middlewares/validate";
-import { Roles } from "../constants";
 import {
     createListValidator,
     getListValidator,
@@ -100,7 +99,7 @@ router.get(
 
 // ─── POST /api/v1/lists ───────────────────────────────────────────────────────
 // 👑 admin/owner only. Chain order encodes the spec's status precedence:
-// `authenticate` (401) → `canAccess` (403) → validation (422). Creates a list in
+// `authenticate` (401) → `requirePermission` (403) → validation (422). Creates a list in
 // a space the caller's workspace owns (`space_id` in the body), seeds the 5
 // default statuses, and records the `created` activity — all in one transaction.
 // Workspace scope and the actor come from `req.auth`, never the body; `position`
@@ -109,7 +108,7 @@ router.get(
 router.post(
     "/lists",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("list.create"),
     createListValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -135,14 +134,14 @@ router.get(
 // ─── PATCH /api/v1/lists/:id ──────────────────────────────────────────────────
 // 👑 admin/owner only. Partial update of name / description / icon / color /
 // default_task_type_id (at least one required). Chain order encodes the spec's
-// status precedence: `authenticate` (401) → `canAccess` (403) → validation
+// status precedence: `authenticate` (401) → `requirePermission` (403) → validation
 // (422). The list is resolved within the caller's workspace (404
 // `list.not_found` otherwise); an archived list is read-only (409
 // `list.archived`). The `updated` activity is recorded in the same transaction.
 router.patch(
     "/lists/:id",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("list.edit"),
     updateListValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -157,7 +156,7 @@ router.patch(
 router.post(
     "/lists/:id/archive",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("list.archive"),
     getListValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -171,7 +170,7 @@ router.post(
 router.post(
     "/lists/:id/unarchive",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("list.archive"),
     getListValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -181,14 +180,14 @@ router.post(
 // ─── DELETE /api/v1/lists/:id ─────────────────────────────────────────────────
 // 🛡️ OWNER only (stricter than the 👑 create/update/archive verbs — Appendix B
 // legend: 🛡️ = Owner role only). Hard-delete; the list must be archived AND
-// empty (no tasks). Chain: `authenticate` (401) → `canAccess` (403) → validation
+// empty (no tasks). Chain: `authenticate` (401) → `requirePermission` (403) → validation
 // (422). Resolved within the caller's workspace (404 `list.not_found`); a
 // non-archived list → 409 `list.not_archived`, a list with tasks → 409
 // `list.not_empty`. The teardown + `deleted` activity run in one transaction.
 router.delete(
     "/lists/:id",
     authenticate,
-    canAccess([Roles.OWNER]),
+    requirePermission("list.delete"),
     getListValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>

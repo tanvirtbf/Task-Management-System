@@ -20,10 +20,11 @@
  */
 import bcrypt from "bcrypt";
 import { eq } from "drizzle-orm";
-import { initDb, closeDb, getDb, getPool } from "./client";
+import { initDb, closeDb, getPool } from "./client";
 import * as S from "./schema";
 import { fakeId } from "../utils";
 import logger from "../config/logger";
+import { bootstrapRbac } from "../rbac/bootstrap";
 import {
     dhakaWeekOf,
     previousWeekStart,
@@ -534,6 +535,12 @@ const seed = async () => {
         engineerId: U[10],
         createdBy: U[2],
     });
+
+    // ── 13. RBAC bootstrap (catalog + system roles + assignments) ────────────
+    // Also derives a starting space-membership map from who is assigned tasks,
+    // so the demo workspace is ready for an admin to tighten access.
+    const rbac = await bootstrapRbac(db, ws);
+    logger.info("RBAC bootstrapped", rbac);
 
     const counts = (await pool.query(
         "SELECT (SELECT COUNT(*) FROM users) u,(SELECT COUNT(*) FROM spaces) s,(SELECT COUNT(*) FROM lists) l,(SELECT COUNT(*) FROM tasks) t,(SELECT COUNT(*) FROM comments) c,(SELECT COUNT(*) FROM checklists) ck,(SELECT COUNT(*) FROM task_reviews) r,(SELECT COUNT(*) FROM notifications) n",

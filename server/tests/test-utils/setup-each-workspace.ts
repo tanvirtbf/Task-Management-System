@@ -15,7 +15,15 @@ Config.DB_NAME = "tms_workspace_test";
 // which runs an `information_schema.TABLES` scan — keeps the per-test reset fast
 // and off the global metadata locks that concurrent DROP/CREATE DATABASE test
 // runs hold. FK checks are disabled so truncation order does not matter.
-const TABLES = ["sessions", "users", "workspaces"] as const;
+const TABLES = [
+    "sessions",
+    "user_roles",
+    "role_permissions",
+    "roles",
+    "workspace_activity",
+    "users",
+    "workspaces",
+] as const;
 
 const resetWorkspaceTables = async (): Promise<void> => {
     const conn = await getPool().getConnection();

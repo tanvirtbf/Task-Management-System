@@ -15,9 +15,8 @@ import type { AuthRequest } from "../types";
 import { getDb } from "../db/client";
 import logger from "../config/logger";
 import authenticate from "../middlewares/authenticate";
-import { canAccess } from "../middlewares/canAccess";
+import { requirePermission } from "../middlewares/requirePermission";
 import { validate } from "../middlewares/validate";
-import { Roles } from "../constants";
 import {
     addSprintTasksValidator,
     createSprintValidator,
@@ -45,8 +44,8 @@ import type {
  * and `/sprints/:id/tasks[/:taskId]`.
  *
  * Role legend: 🔐 = any member (reads + task membership), 👑 = Owner/Admin
- * (`canAccess([OWNER, ADMIN])`) for the sprint lifecycle writes. Chain order
- * encodes precedence: `authenticate` (401) → `canAccess` (403) → validation (422).
+ * (`requirePermission(...)`) for the sprint lifecycle writes. Chain order
+ * encodes precedence: `authenticate` (401) → `requirePermission` (403) → validation (422).
  */
 const router = express.Router();
 
@@ -123,7 +122,7 @@ router.get(
 router.post(
     "/sprints",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("sprint.manage"),
     createSprintValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -134,7 +133,7 @@ router.post(
 router.patch(
     "/sprints/:id",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("sprint.manage"),
     updateSprintValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -145,7 +144,7 @@ router.patch(
 router.post(
     "/sprints/:id/start",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("sprint.manage"),
     sprintIdParamValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -156,7 +155,7 @@ router.post(
 router.post(
     "/sprints/:id/close",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("sprint.manage"),
     sprintIdParamValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>

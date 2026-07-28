@@ -26,6 +26,8 @@ import {
 } from "../db/schema";
 import type { Task as TaskRow } from "../db/schema";
 import type { ListTasksFilters } from "../types/tasks";
+import { listScopeFilter } from "../rbac/context";
+import { taskOwnEscape } from "../rbac/ownEscape";
 import type { DbExecutor } from "./types";
 
 /**
@@ -76,7 +78,14 @@ export class TasksRepo {
             })
             .from(tasks)
             .where(
-                and(eq(tasks.id, taskId), eq(tasks.workspaceId, workspaceId)),
+                and(
+                    eq(tasks.id, taskId),
+                    eq(tasks.workspaceId, workspaceId),
+                    // RBAC P17 — THE hole the scan called out: any member could
+                    // read any task by id. Filtered on the LIST column, which
+                    // leads `idx_tasks_list_active`.
+                    await listScopeFilter(tasks.primaryListId, await taskOwnEscape()),
+                ),
             )
             .limit(1);
         return row ?? null;
@@ -105,6 +114,8 @@ export class TasksRepo {
                 and(
                     eq(tasks.workspaceId, workspaceId),
                     or(eq(tasks.id, idOrKey), eq(tasks.customId, idOrKey)),
+                    // RBAC P17 — the same hole via the custom-id route.
+                    await listScopeFilter(tasks.primaryListId, await taskOwnEscape()),
                 ),
             )
             .orderBy(desc(eq(tasks.id, idOrKey)))
@@ -137,6 +148,8 @@ export class TasksRepo {
                     params.includeArchived
                         ? undefined
                         : isNull(tasks.archivedAt),
+                    // RBAC P17 — subtasks follow their own list's visibility.
+                    await listScopeFilter(tasks.primaryListId, await taskOwnEscape()),
                 ),
             )
             .orderBy(asc(tasks.internalId));
@@ -361,10 +374,16 @@ export class TasksRepo {
     async listByList(
         params: TaskListParams & { afterId?: string; limit: number },
     ): Promise<TaskRow[]> {
+        // RBAC P17 — the page and the count below share this predicate, which
+        // is what keeps `total_estimate` honest under scoping (landmine L2).
+        const visible = await listScopeFilter(
+            tasks.primaryListId,
+            await taskOwnEscape(),
+        );
         return this.db
             .select()
             .from(tasks)
-            .where(this.filterWhere(params))
+            .where(and(this.filterWhere(params), visible))
             .orderBy(asc(tasks.internalId))
             .limit(params.limit);
     }
@@ -385,7 +404,13 @@ export class TasksRepo {
             .select()
             .from(tasks)
             .where(
-                and(eq(tasks.workspaceId, workspaceId), inArray(tasks.id, ids)),
+                and(
+                    eq(tasks.workspaceId, workspaceId),
+                    inArray(tasks.id, ids),
+                    // RBAC P17 — a bulk operation fails atomically on any id the
+                    // caller cannot see, because it is simply not returned.
+                    await listScopeFilter(tasks.primaryListId, await taskOwnEscape()),
+                ),
             )
             .orderBy(asc(tasks.internalId));
     }
@@ -406,6 +431,8 @@ export class TasksRepo {
                     eq(tasks.workspaceId, workspaceId),
                     eq(tasks.sprintId, sprintId),
                     isNull(tasks.archivedAt),
+                    // RBAC P17 — a sprint spans lists; each one is filtered.
+                    await listScopeFilter(tasks.primaryListId, await taskOwnEscape()),
                 ),
             )
             .orderBy(asc(tasks.internalId));
@@ -427,10 +454,14 @@ export class TasksRepo {
 
     /** Exact count for the same filter set — feeds `pagination.total_estimate`. */
     async countByList(params: TaskListParams): Promise<number> {
+        const visible = await listScopeFilter(
+            tasks.primaryListId,
+            await taskOwnEscape(),
+        );
         const [row] = await this.db
             .select({ value: count() })
             .from(tasks)
-            .where(this.filterWhere(params));
+            .where(and(this.filterWhere(params), visible));
         return row?.value ?? 0;
     }
 

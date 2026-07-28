@@ -17,9 +17,8 @@ import { TaskActivityRepo } from "../repositories/TaskActivityRepo";
 import { getDb } from "../db/client";
 import logger from "../config/logger";
 import authenticate from "../middlewares/authenticate";
-import { canAccess } from "../middlewares/canAccess";
+import { requirePermission } from "../middlewares/requirePermission";
 import { validate } from "../middlewares/validate";
-import { Roles } from "../constants";
 import {
     applyTemplateValidator,
     createTemplateValidator,
@@ -95,12 +94,12 @@ router.get(
 );
 
 // ─── POST /api/v1/templates ──────────────────────────────────────────────────
-// 👑 Owner/admin only. `canAccess` runs before validation so a member is
+// 👑 Owner/admin only. `requirePermission` runs before validation so a member is
 // rejected (403) without their body being inspected.
 router.post(
     "/",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("catalog.templates"),
     createTemplateValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -113,7 +112,7 @@ router.post(
 router.patch(
     "/:id",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("catalog.templates"),
     updateTemplateValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -125,7 +124,7 @@ router.patch(
 router.delete(
     "/:id",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("catalog.templates"),
     templateIdParamValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>

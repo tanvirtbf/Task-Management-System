@@ -3,6 +3,8 @@ import { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../db/schema";
 import { comments, lists, spaces, tasks, users } from "../db/schema";
 import type { Task as TaskRow } from "../db/schema";
+import { listScopeFilter, spaceScopeFilter } from "../rbac/context";
+import { taskOwnEscape } from "../rbac/ownEscape";
 
 /**
  * §24 Search data access. Owns the workspace-scoped LIKE queries for all five
@@ -83,6 +85,13 @@ export class SearchRepo {
                     eq(tasks.workspaceId, workspaceId),
                     isNull(tasks.archivedAt),
                     or(like(tasks.name, pattern), eq(tasks.customId, q)),
+                    // RBAC P18 — search was the single biggest leak in the
+                    // scan: task names, list names, space names and comment
+                    // bodies, workspace-wide, to anyone.
+                    await listScopeFilter(
+                        tasks.primaryListId,
+                        await taskOwnEscape(),
+                    ),
                 ),
             )
             .orderBy(asc(tasks.internalId))
@@ -121,6 +130,7 @@ export class SearchRepo {
                     eq(spaces.workspaceId, workspaceId),
                     isNull(lists.archivedAt),
                     like(lists.name, `%${escapeLike(q)}%`),
+                    await spaceScopeFilter(lists.spaceId), // RBAC P18
                 ),
             )
             .orderBy(asc(lists.name), asc(lists.id))
@@ -152,6 +162,7 @@ export class SearchRepo {
                     eq(spaces.workspaceId, workspaceId),
                     isNull(spaces.archivedAt),
                     like(spaces.name, `%${escapeLike(q)}%`),
+                    await spaceScopeFilter(spaces.id), // RBAC P18
                 ),
             )
             .orderBy(asc(spaces.name), asc(spaces.id))
@@ -225,6 +236,11 @@ export class SearchRepo {
                     isNull(tasks.archivedAt), // hide content of archived tasks (matches searchTasks)
                     isNull(comments.deletedAt),
                     like(comments.body, `%${escapeLike(q)}%`),
+                    // RBAC P18 — a comment inherits its task's visibility.
+                    await listScopeFilter(
+                        tasks.primaryListId,
+                        await taskOwnEscape(),
+                    ),
                 ),
             )
             .orderBy(desc(comments.createdAt))

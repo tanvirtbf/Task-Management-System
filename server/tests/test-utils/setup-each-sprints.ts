@@ -24,6 +24,11 @@ import { getPool } from "../../src/db/client";
 jest.setTimeout(60000);
 
 const TABLES = [
+    // RBAC (P11): assignments/grants/roles are per-workspace rows and must not
+    // survive a reset, or a later test inherits another test's authority.
+    "user_roles",
+    "role_permissions",
+    "roles",
     "task_activity",
     "tasks",
     "sprints",

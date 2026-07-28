@@ -3,6 +3,7 @@ import {
     asc,
     count,
     eq,
+    inArray,
     isNotNull,
     isNull,
     max,
@@ -12,6 +13,7 @@ import { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../db/schema";
 import { lists, spaces, statuses } from "../db/schema";
 import { fakeId } from "../utils";
+import { spaceScopeFilter } from "../rbac/context";
 import type { DbExecutor } from "./types";
 
 /**
@@ -51,9 +53,15 @@ export class ListsRepo {
         spaceId: string,
         includeArchived: boolean,
     ): Promise<ListRecord[]> {
+        // RBAC P16 — a list inherits its space's visibility.
+        const visible = await spaceScopeFilter(lists.spaceId);
         const where = includeArchived
-            ? eq(lists.spaceId, spaceId)
-            : and(eq(lists.spaceId, spaceId), isNull(lists.archivedAt));
+            ? and(eq(lists.spaceId, spaceId), visible)
+            : and(
+                  eq(lists.spaceId, spaceId),
+                  isNull(lists.archivedAt),
+                  visible,
+              );
 
         return this.db
             .select({
@@ -101,6 +109,9 @@ export class ListsRepo {
         if (!opts.includeArchived) {
             conditions.push(isNull(lists.archivedAt));
         }
+        // RBAC P16 — a list inherits its space's visibility.
+        const visible = await spaceScopeFilter(lists.spaceId);
+        if (visible) conditions.push(visible);
 
         return this.db
             .select({
@@ -144,7 +155,12 @@ export class ListsRepo {
             .from(lists)
             .innerJoin(spaces, eq(lists.spaceId, spaces.id))
             .where(
-                and(eq(lists.id, listId), eq(spaces.workspaceId, workspaceId)),
+                and(
+                    eq(lists.id, listId),
+                    eq(spaces.workspaceId, workspaceId),
+                    // RBAC P16 — invisible resolves to null → the caller's 404.
+                    await spaceScopeFilter(lists.spaceId),
+                ),
             )
             .limit(1);
         return row ?? null;
@@ -187,7 +203,12 @@ export class ListsRepo {
             .from(lists)
             .innerJoin(spaces, eq(lists.spaceId, spaces.id))
             .where(
-                and(eq(lists.id, listId), eq(spaces.workspaceId, workspaceId)),
+                and(
+                    eq(lists.id, listId),
+                    eq(spaces.workspaceId, workspaceId),
+                    // RBAC P16 — invisible resolves to null → the caller's 404.
+                    await spaceScopeFilter(lists.spaceId),
+                ),
             )
             .limit(1);
         return row ?? null;
@@ -419,5 +440,37 @@ export class ListsRepo {
             .from(lists)
             .where(eq(lists.spaceId, spaceId));
         return row?.value ?? 0;
+    }
+
+    /**
+     * Every list id inside the given spaces — the `listIds` half of a
+     * `VisibilityScope` (RBAC_DYNAMIC_PLAN.md P8). Implements
+     * `rbac/scope.ts#ListScopeSource`.
+     *
+     * Archived lists ARE included: visibility and archiving are separate
+     * filters, and a caller that excludes archived rows still does so with its
+     * own predicate. Joining `spaces` costs a PK lookup and buys tenant safety
+     * — `lists` has no `workspace_id` of its own, so without the join a stray
+     * space id from another workspace would widen what the caller can see.
+     *
+     * Backed by `idx_lists_space_archived (space_id, …)`.
+     */
+    async idsBySpaces(
+        spaceIds: readonly string[],
+        workspaceId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<string[]> {
+        if (spaceIds.length === 0) return [];
+        const rows = await exec
+            .select({ id: lists.id })
+            .from(lists)
+            .innerJoin(spaces, eq(spaces.id, lists.spaceId))
+            .where(
+                and(
+                    inArray(lists.spaceId, [...spaceIds]),
+                    eq(spaces.workspaceId, workspaceId),
+                ),
+            );
+        return rows.map((r) => r.id);
     }
 }

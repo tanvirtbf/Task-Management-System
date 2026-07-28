@@ -14,8 +14,7 @@ import { TaskActivityRepo } from "../repositories/TaskActivityRepo";
 import { getDb } from "../db/client";
 import logger from "../config/logger";
 import authenticate from "../middlewares/authenticate";
-import { canAccess } from "../middlewares/canAccess";
-import { Roles } from "../constants";
+import { requirePermission } from "../middlewares/requirePermission";
 import { validate } from "../middlewares/validate";
 import { breachedSlaValidator, overrideSlaValidator } from "../validators/sla";
 import type { ListBreachedRequest, OverrideSlaRequest } from "../types/sla";
@@ -56,12 +55,12 @@ router.get(
 
 // ─── PATCH /api/v1/tasks/:id/sla ──────────────────────────────────────────────
 // 👑 owner/admin override of sla_due_at. MUST be registered before the `/tasks`
-// router so its 3-segment path resolves cleanly. canAccess gives a route-level
+// router so its 3-segment path resolves cleanly. requirePermission gives a route-level
 // 403; the future-timestamp rule (422 sla.invalid_due_at) is enforced in-service.
 router.patch(
     "/tasks/:id/sla",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("task.sla_override"),
     overrideSlaValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>

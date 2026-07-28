@@ -91,6 +91,17 @@ export const templateTypes = ["task", "list", "space"] as const;
 /** Dept Review V1 — a head's verdict on a completed task (`task_reviews.status`). */
 export const reviewStatuses = ["approved", "flagged"] as const;
 
+/**
+ * Dynamic RBAC — how widely one granted permission applies
+ * (`role_permissions.scope`). MUST stay set-equal to `PERMISSION_SCOPES` in
+ * `src/rbac/catalog.ts`; a test asserts it (the DB layer owns the ENUM, the
+ * rbac layer owns the ordering used for "widest grant wins").
+ */
+export const permissionScopes = ["all", "space", "own"] as const;
+
+/** Dynamic RBAC — where a role assignment applies (`user_roles.scope_type`). */
+export const roleScopeTypes = ["workspace", "space"] as const;
+
 export const notificationTypes = [
     "assigned",
     "mentioned",

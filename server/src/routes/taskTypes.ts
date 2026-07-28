@@ -10,9 +10,8 @@ import { WorkspaceActivityRepo } from "../repositories/WorkspaceActivityRepo";
 import { getDb } from "../db/client";
 import logger from "../config/logger";
 import authenticate from "../middlewares/authenticate";
-import { canAccess } from "../middlewares/canAccess";
+import { requirePermission } from "../middlewares/requirePermission";
 import { validate } from "../middlewares/validate";
-import { Roles } from "../constants";
 import {
     createTaskTypeValidator,
     deleteTaskTypeValidator,
@@ -51,13 +50,13 @@ router.get(
 );
 
 // ─── POST /api/v1/task-types ─────────────────────────────────────────────────
-// 👑 Owner/admin only. `canAccess` runs before validation so a member is
+// 👑 Owner/admin only. `requirePermission` runs before validation so a member is
 // rejected (403) without their body being inspected. The new type is created
 // in the caller's workspace (`req.auth.workspaceId`).
 router.post(
     "/",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("catalog.task_types"),
     createTaskTypeValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -65,14 +64,14 @@ router.post(
 );
 
 // ─── PATCH /api/v1/task-types/:id ────────────────────────────────────────────
-// 👑 Owner/admin only. `canAccess` runs before validation so a member is
+// 👑 Owner/admin only. `requirePermission` runs before validation so a member is
 // rejected (403) without their body being inspected. Editing the seeded
 // `is_system` types is restricted to icon/color/description (enforced in the
 // service); workspace scoping comes from `req.auth.workspaceId`.
 router.patch(
     "/:id",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("catalog.task_types"),
     updateTaskTypeValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -80,7 +79,7 @@ router.patch(
 );
 
 // ─── DELETE /api/v1/task-types/:id ───────────────────────────────────────────
-// 👑 Owner/admin only. `canAccess` runs before validation so a member is
+// 👑 Owner/admin only. `requirePermission` runs before validation so a member is
 // rejected (403) without their target being inspected. Refuses with 403
 // `task_type.system` for a seeded system type and 409 `task_type.in_use` when a
 // task or list still references it; otherwise deletes the row + writes a
@@ -88,7 +87,7 @@ router.patch(
 router.delete(
     "/:id",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("catalog.task_types"),
     deleteTaskTypeValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>

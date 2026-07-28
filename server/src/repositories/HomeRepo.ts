@@ -1,6 +1,7 @@
 import { and, asc, count, eq, isNull, lt, notInArray, sql } from "drizzle-orm";
 import { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../db/schema";
+import { listScopeFilter } from "../rbac/context";
 import { statuses, taskAssignees, tasks } from "../db/schema";
 import type { Task as TaskRow } from "../db/schema";
 
@@ -130,6 +131,10 @@ export class HomeRepo {
                     eq(tasks.workspaceId, workspaceId),
                     isNull(tasks.archivedAt),
                     notInArray(statuses.statusGroup, CLOSED_GROUPS),
+                    // RBAC P19 — the two workspace-wide KPI series counted the
+                    // whole company for everyone; now they count what the
+                    // reader may actually see.
+                    await listScopeFilter(tasks.primaryListId),
                 ),
             )
             .groupBy(DAY);
@@ -149,6 +154,7 @@ export class HomeRepo {
                     isNull(tasks.archivedAt),
                     isNull(tasks.completedAt),
                     lt(tasks.slaDueAt, now),
+                    await listScopeFilter(tasks.primaryListId), // RBAC P19
                 ),
             )
             .groupBy(DAY);

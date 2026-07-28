@@ -15,7 +15,7 @@ import { SpacesRepo } from "../repositories/SpacesRepo";
 import { getDb } from "../db/client";
 import logger from "../config/logger";
 import authenticate from "../middlewares/authenticate";
-import { canAccess } from "../middlewares/canAccess";
+import { requirePermission } from "../middlewares/requirePermission";
 import { validate } from "../middlewares/validate";
 import {
     listUsersValidator,
@@ -24,7 +24,6 @@ import {
     patchUserValidator,
     changeRoleValidator,
 } from "../validators/users";
-import { Roles } from "../constants";
 import type { AuthRequest } from "../types";
 import type {
     InviteUserRequest,
@@ -73,7 +72,7 @@ router.get(
 
 // ─── POST /api/v1/users/invite ─────────────────────────────────────────────
 // 👑 admin/owner only. Chain order encodes the spec's status precedence:
-// `authenticate` (401) → `canAccess` (403) → validation (422). Workspace scope
+// `authenticate` (401) → `requirePermission` (403) → validation (422). Workspace scope
 // and the inviting actor come from `req.auth`, never the body. Creates a pending
 // `users` row (status `invited`) + an `invitations` token + a `workspace_activity`
 // row in one transaction, then emails the accept link. Declared before `/:id` so
@@ -81,7 +80,7 @@ router.get(
 router.post(
     "/invite",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("member.invite"),
     inviteUserValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -105,7 +104,7 @@ router.get(
 
 // ─── PATCH /api/v1/users/:id/role ──────────────────────────────────────────
 // 👑 admin/owner. Chain order encodes the spec's status precedence:
-// `authenticate` (401) → `canAccess` (403 `auth.forbidden`) → validation (422,
+// `authenticate` (401) → `requirePermission` (403 `auth.forbidden`) → validation (422,
 // where `role: "owner"` is rejected). The row-level rules (the owner's role is
 // immutable here; a caller cannot change their own role) are enforced in the
 // service as 403s. Declared before `PATCH /:id` so the more specific two-segment
@@ -113,7 +112,7 @@ router.get(
 router.patch(
     "/:id/role",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("member.role_change"),
     changeRoleValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -121,7 +120,7 @@ router.patch(
 );
 
 // ─── PATCH /api/v1/users/:id ───────────────────────────────────────────────
-// 🔐 self / 👑 admin. Deliberately NO `canAccess`: a member may edit their OWN
+// 🔐 self / 👑 admin. Deliberately NO `requirePermission`: a member may edit their OWN
 // profile, so the rule is row-dependent ("self OR owner/admin") and enforced in
 // the service — a member editing someone else → 403 `user.forbidden_edit`; a
 // cross-workspace id → 404 `user.not_found`. Partial body: any of first_name,
@@ -137,7 +136,7 @@ router.patch(
 );
 
 // ─── POST /api/v1/users/:id/deactivate ─────────────────────────────────────
-// 👑 admin/owner. `authenticate` (401) → `canAccess` (403) → id-param validation
+// 👑 admin/owner. `authenticate` (401) → `requirePermission` (403) → id-param validation
 // (422). Reuses `getUserValidator` (a pure user-id param check). The row rules
 // (owner cannot be deactivated; cannot deactivate self) are 403s in the service,
 // which also flips `status` and revokes every refresh session in one
@@ -145,7 +144,7 @@ router.patch(
 router.post(
     "/:id/deactivate",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("member.deactivate"),
     getUserValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -159,7 +158,7 @@ router.post(
 router.post(
     "/:id/reactivate",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("member.deactivate"),
     getUserValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -172,7 +171,7 @@ router.post(
 router.post(
     "/:id/reset-password",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("member.reset_password"),
     getUserValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>

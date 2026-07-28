@@ -26,7 +26,7 @@ import type {
 import { getDb } from "../db/client";
 import logger from "../config/logger";
 import authenticate from "../middlewares/authenticate";
-import { canAccess } from "../middlewares/canAccess";
+import { requirePermission } from "../middlewares/requirePermission";
 import { validate } from "../middlewares/validate";
 import {
     createSpaceValidator,
@@ -35,7 +35,6 @@ import {
     spaceIdParamValidator,
     updateSpaceValidator,
 } from "../validators/spaces";
-import { Roles } from "../constants";
 import type {
     CreateSpaceRequest,
     GetSpaceRequest,
@@ -95,12 +94,12 @@ router.get(
 
 // ─── POST /api/v1/spaces ─────────────────────────────────────────────────────
 // 👑 admin/owner only. Chain order encodes the spec's status precedence:
-// `authenticate` (401) → `canAccess` (403) → validation (422). Workspace scope
+// `authenticate` (401) → `requirePermission` (403) → validation (422). Workspace scope
 // and the actor come from `req.auth`, never the body.
 router.post(
     "/",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("space.create"),
     createSpaceValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -147,13 +146,13 @@ router.get(
 
 // ─── PATCH /api/v1/spaces/:id ────────────────────────────────────────────────
 // 👑 admin/owner only. Chain order encodes the spec's status precedence:
-// `authenticate` (401) → `canAccess` (403) → validation (422). Workspace scope
+// `authenticate` (401) → `requirePermission` (403) → validation (422). Workspace scope
 // and the actor come from `req.auth`, never the body. Body is a partial update;
 // an empty body is a no-op that returns the unchanged space.
 router.patch(
     "/:id",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("space.edit"),
     updateSpaceValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -166,7 +165,7 @@ router.patch(
 router.post(
     "/:id/archive",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("space.archive"),
     spaceIdParamValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -180,7 +179,7 @@ router.post(
 router.post(
     "/:id/unarchive",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("space.archive"),
     spaceIdParamValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -194,7 +193,7 @@ router.post(
 router.delete(
     "/:id",
     authenticate,
-    canAccess([Roles.OWNER]),
+    requirePermission("space.delete"),
     spaceIdParamValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>

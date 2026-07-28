@@ -10,6 +10,7 @@ import {
 } from "./schema";
 import logger from "../config/logger";
 import { fakeId } from "../utils";
+import { bootstrapRbac } from "../rbac/bootstrap";
 
 const seed = async () => {
     try {
@@ -163,6 +164,13 @@ const seed = async () => {
             },
         ]);
         logger.info("Engineering space + Bug Triage list seeded");
+
+        // Dynamic RBAC: sync the permission catalog, create the four system
+        // roles and give every seeded user their workspace-wide assignment.
+        // The seeded grants reproduce the pre-RBAC behaviour exactly, so a
+        // fresh install behaves identically until an admin tightens it.
+        const rbac = await bootstrapRbac(db, workspaceId);
+        logger.info("RBAC bootstrapped", rbac);
 
         logger.info(
             "Seed completed. Default owner: owner@company.local / Owner@12345",

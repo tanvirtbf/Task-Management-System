@@ -14,7 +14,12 @@ import { getPool } from "../../src/db/client";
  */
 jest.setTimeout(60000); // first test pays the cold ts-jest compile of the full app graph
 
-const TABLES = ["notifications", "sessions", "users", "workspaces"];
+const TABLES = [
+    // RBAC (P11): assignments/grants/roles are per-workspace rows and must not
+    // survive a reset, or a later test inherits another test's authority.
+    "user_roles",
+    "role_permissions",
+    "roles","notifications", "sessions", "users", "workspaces"];
 
 beforeAll(async () => {
     await connectTestDb();

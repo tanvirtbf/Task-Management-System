@@ -1,3 +1,8 @@
+import {
+    seedSystemRoles,
+    syncPermissionCatalog,
+    syncUserSystemRole,
+} from "../../src/rbac/bootstrap";
 import bcrypt from "bcrypt";
 import { getDb } from "../../src/db/client";
 import {
@@ -36,6 +41,20 @@ export interface MakeWorkspaceInput {
     defaultLocale?: string;
 }
 
+/**
+ * RBAC bootstrap for a test workspace (RBAC_DYNAMIC_PLAN.md P11).
+ *
+ * Every real deployment has run P3's bootstrap, so a workspace with no roles is
+ * a state that cannot exist in production — and a test built on one would show
+ * 403s that no user would ever see. These factories therefore reproduce the
+ * post-bootstrap state: the catalog (once per process — `permissions` is
+ * workspace-independent reference data), the four system roles per workspace,
+ * and the matching assignment for each user created.
+ */
+// Deliberately NOT memoised: several suites reset by truncating every table,
+// which empties the catalog. A single batched 56-row upsert is cheap, and
+// re-running it is the only way this stays correct under every reset strategy.
+
 export const makeWorkspace = async (input: MakeWorkspaceInput = {}) => {
     const db = getDb();
     const id = fakeId("ws");
@@ -47,6 +66,8 @@ export const makeWorkspace = async (input: MakeWorkspaceInput = {}) => {
         timezone: input.timezone ?? "Asia/Dhaka",
         defaultLocale: input.defaultLocale ?? "en-US",
     });
+    await syncPermissionCatalog(db);
+    await seedSystemRoles(db, id);
     return { id, name };
 };
 
@@ -84,6 +105,10 @@ export const makeUser = async (input: MakeUserInput = {}) => {
         role: input.role ?? "member",
         status: input.status ?? "active",
     });
+
+    // The assignment that actually carries authority (the `users.role` column
+    // above is only its mirror — plan D-6/L13).
+    await syncUserSystemRole(db, workspaceId, id, input.role ?? "member");
 
     return { id, email, password, workspaceId, role: input.role ?? "member" };
 };

@@ -11,6 +11,7 @@ import {
     check,
     foreignKey,
     index,
+    int,
     mysqlEnum,
     mysqlTable,
     time,
@@ -68,6 +69,15 @@ export const workspaces = mysqlTable(
         })
             .notNull()
             .default(7),
+        /**
+         * Dynamic RBAC cache stamp. Bumped on ANY role / grant / assignment
+         * change so the per-request permission cache (keyed by
+         * `(userId, permissionsVersion)`) invalidates instantly — this is what
+         * removes the ~15-minute stale-role window of the JWT-carried role.
+         */
+        permissionsVersion: int("permissions_version", { unsigned: true })
+            .notNull()
+            .default(1),
         createdAt: timestamp("created_at").notNull().defaultNow(),
         updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
     },

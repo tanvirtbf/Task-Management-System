@@ -61,8 +61,9 @@ export class AppError extends Error {
     static forbidden(
         code = "auth.forbidden",
         message = "You don't have permission to perform this action",
+        details?: ErrorDetail[],
     ) {
-        return new AppError(403, code, message);
+        return new AppError(403, code, message, details);
     }
 
     static notFound(code: string, message: string) {

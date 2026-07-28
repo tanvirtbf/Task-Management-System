@@ -26,3 +26,4 @@
 | `001_dept_head_enums.sql` | ✅ 2026-07-22 | ✅ 2026-07-22 | ⏳ pending (no prod yet) |
 | `002_task_reviews.sql` | ✅ 2026-07-22 | ✅ 2026-07-22 | ⏳ pending (no prod yet) |
 | `003_department_reports.sql` | ✅ 2026-07-22 | ✅ 2026-07-22 | ⏳ pending (no prod yet) |
+| `004_rbac.sql` | ✅ 2026-07-25 | ✅ 2026-07-25 | ⏳ pending (no prod yet) |

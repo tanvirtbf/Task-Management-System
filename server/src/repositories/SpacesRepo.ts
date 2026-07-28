@@ -2,6 +2,7 @@ import { and, asc, count, eq, isNull, type SQL } from "drizzle-orm";
 import { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../db/schema";
 import { departmentReports, spaces } from "../db/schema";
+import { spaceScopeFilter } from "../rbac/context";
 import { fakeId } from "../utils";
 import type { DbExecutor } from "./types";
 
@@ -60,11 +61,15 @@ export class SpacesRepo {
         workspaceId: string,
         opts: { includeArchived: boolean },
     ): Promise<SpaceRecord[]> {
+        // RBAC P16 — the caller sees only the spaces they are assigned to.
+        // `undefined` for an unrestricted viewer, so the SQL is unchanged.
+        const visible = await spaceScopeFilter(spaces.id);
         const where: SQL | undefined = opts.includeArchived
-            ? eq(spaces.workspaceId, workspaceId)
+            ? and(eq(spaces.workspaceId, workspaceId), visible)
             : and(
                   eq(spaces.workspaceId, workspaceId),
                   isNull(spaces.archivedAt),
+                  visible,
               );
 
         const rows = await this.db
@@ -124,6 +129,10 @@ export class SpacesRepo {
                 and(
                     eq(spaces.id, spaceId),
                     eq(spaces.workspaceId, workspaceId),
+                    // RBAC P16 — an invisible space resolves to null, which
+                    // every caller already turns into 404 (D-9: reads deny by
+                    // 404 so there is no existence oracle).
+                    await spaceScopeFilter(spaces.id),
                 ),
             )
             .limit(1);

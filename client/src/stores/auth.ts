@@ -4,6 +4,7 @@ import type { AuthState } from "../types";
 import { authApi } from "../http/api";
 import { queryClient } from "../lib/queryClient";
 import { useChatStore } from "./chat";
+import { usePermissionsStore } from "./permissions";
 import { useUiStore } from "./ui";
 
 /**
@@ -19,7 +20,13 @@ export const useAuthStore = create<AuthState>()(
                 accessToken: null,
                 bootstrapping: true,
                 pendingTwoFactor: null,
-                setUser: (user) => set({ user }),
+                setUser: (user) => {
+                    set({ user });
+                    // RBAC P25 — a fresh sign-in must land with a fresh
+                    // permission set; the previous account's is never reused.
+                    if (user) void usePermissionsStore.getState().load();
+                    else usePermissionsStore.getState().clear();
+                },
                 setAccessToken: (accessToken) => set({ accessToken }),
                 // Gap-scan C1: sign-out must actually sign out. Revoke the
                 // server session + bb_refresh cookie (fire-and-forget — the
@@ -38,6 +45,10 @@ export const useAuthStore = create<AuthState>()(
                         pendingTwoFactor: null,
                     });
                     queryClient.clear();
+                    // RBAC P31 — authority must never outlive the session on a
+                    // shared machine. The store is already non-persisted; this
+                    // drops the in-memory copy too.
+                    usePermissionsStore.getState().clear();
                     useChatStore.getState().clear();
                     useChatStore.getState().close();
                     useUiStore.getState().reset();
@@ -48,8 +59,14 @@ export const useAuthStore = create<AuthState>()(
                         // refreshes via the bb_refresh cookie and retries — so a
                         // reload with a valid cookie restores the session.
                         const user = await authApi.me();
+                        // RBAC P25 — fetch the permission set alongside identity
+                        // so no gated control renders before we know the answer.
+                        // Deliberately awaited: a flash of buttons that then
+                        // disappear is worse than 150ms more on the splash.
+                        await usePermissionsStore.getState().load();
                         set({ user, bootstrapping: false });
                     } catch {
+                        usePermissionsStore.getState().clear();
                         set({
                             user: null,
                             accessToken: null,

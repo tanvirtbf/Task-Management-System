@@ -3,6 +3,7 @@ import { initDb, closeDb } from "./db/client";
 import logger from "./config/logger";
 import { encryptionReady } from "./utils/encryption";
 import { closeAllSseStreams } from "./services/sseHub";
+import { PermissionsRepo } from "./repositories/PermissionsRepo";
 
 const startServer = async () => {
     const PORT = Config.PORT;
@@ -22,8 +23,23 @@ const startServer = async () => {
         }
 
         // 1. Initialize database connection pool
-        await initDb();
+        const db = await initDb();
         logger.info("Database connected successfully.");
+
+        // 1b. Sync the RBAC permission CATALOG from code into the DB. The
+        // catalog is reference data owned by `src/rbac/catalog.ts`; this keeps
+        // the queryable mirror current so the admin UI and grant validation see
+        // newly shipped permissions. Deliberately NON-FATAL: a failure here
+        // leaves the previously synced catalog in place, which is far better
+        // than refusing to boot. Rows are only ever upserted, never deleted.
+        try {
+            const synced = await new PermissionsRepo(db).syncCatalog();
+            logger.info("Permission catalog synced", { permissions: synced });
+        } catch (err: unknown) {
+            logger.error("Permission catalog sync failed — continuing", {
+                error: err instanceof Error ? err.message : String(err),
+            });
+        }
 
         // 2. Import app AFTER DB is ready (routes call getDb() at module load time)
         const { default: app } = await import("./app");

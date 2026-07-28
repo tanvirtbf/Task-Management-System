@@ -114,6 +114,9 @@ CREATE TABLE workspaces (
     business_hours_end       TIME NOT NULL DEFAULT '18:00:00',
     -- BD fiscal year starts July (=7)
     fiscal_year_start_month  TINYINT UNSIGNED NOT NULL DEFAULT 7,
+    -- Dynamic RBAC cache stamp: bumped on ANY role/grant/assignment change so
+    -- the per-request permission cache invalidates instantly (see §38-41).
+    permissions_version      INT UNSIGNED NOT NULL DEFAULT 1,
     created_at               TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at               TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
                                        ON UPDATE CURRENT_TIMESTAMP,
@@ -1270,6 +1273,124 @@ CREATE TABLE department_reports (
     CONSTRAINT fk_dept_reports_space FOREIGN KEY (space_id)
         REFERENCES spaces(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     INDEX idx_department_reports_ws_week (workspace_id, week_start)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
+
+
+-- =============================================================================
+-- 38. permissions  (Dynamic RBAC — the permission CATALOG)
+-- Reference data, not user content: rows are synced from `server/src/rbac/
+-- catalog.ts` at boot. `scopes` is a CSV of the scopes an admin may choose for
+-- this permission ('all' always included; 'space' only where the resource
+-- resolves to a space; 'own' only where creator/assignee is meaningful).
+-- Column is `permission_key`, not `key` — KEY is a MySQL reserved word.
+-- =============================================================================
+CREATE TABLE permissions (
+    permission_key VARCHAR(64)  NOT NULL,
+    group_key      VARCHAR(40)  NOT NULL,
+    label          VARCHAR(120) NOT NULL,
+    description    VARCHAR(400) NOT NULL,
+    scopes         VARCHAR(60)  NOT NULL,
+    is_dangerous   BOOLEAN      NOT NULL DEFAULT FALSE,
+    position       INT UNSIGNED NOT NULL DEFAULT 0,
+
+    PRIMARY KEY (permission_key),
+    INDEX idx_permissions_group (group_key, position)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
+
+
+-- =============================================================================
+-- 39. roles  (Dynamic RBAC — per-workspace, USER-DEFINABLE)
+-- Four rows are seeded as `is_system` (owner/admin/member/guest) reproducing
+-- the pre-RBAC behaviour exactly; admins create their own beside them.
+-- `rank_order`: lower = more powerful (owner=0) — drives the escalation guard.
+-- Column is `role_key` / `rank_order`, not `key` / `rank` — both reserved.
+-- =============================================================================
+CREATE TABLE roles (
+    id           VARCHAR(64)  NOT NULL,
+    workspace_id VARCHAR(64)  NOT NULL,
+    role_key     VARCHAR(60)  NOT NULL,
+    name         VARCHAR(80)  NOT NULL,
+    description  VARCHAR(300) NULL,
+    color        CHAR(7)      NOT NULL DEFAULT '#6B7280',
+    is_system    BOOLEAN      NOT NULL DEFAULT FALSE,
+    rank_order   INT UNSIGNED NOT NULL DEFAULT 100,
+    created_by   VARCHAR(64)  NULL,
+    archived_at  TIMESTAMP    NULL,
+    created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                           ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_roles_workspace_key (workspace_id, role_key),
+    CONSTRAINT fk_roles_ws FOREIGN KEY (workspace_id)
+        REFERENCES workspaces(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_roles_created_by FOREIGN KEY (created_by)
+        REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT ck_roles_color CHECK (color REGEXP '^#[0-9A-Fa-f]{6}$'),
+    INDEX idx_roles_workspace (workspace_id, archived_at, rank_order)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
+
+
+-- =============================================================================
+-- 40. role_permissions  (Dynamic RBAC — what a role grants, at what scope)
+-- Absence of a row = NOT granted. There is no explicit deny (plan D-4:
+-- allow-wins union across every role a user holds, widest scope wins).
+-- The catalog FK is RESTRICT so a key that roles still reference cannot vanish.
+-- =============================================================================
+CREATE TABLE role_permissions (
+    role_id        VARCHAR(64) NOT NULL,
+    permission_key VARCHAR(64) NOT NULL,
+    scope          ENUM('all','space','own') NOT NULL DEFAULT 'all',
+    created_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (role_id, permission_key),
+    CONSTRAINT fk_role_permissions_role FOREIGN KEY (role_id)
+        REFERENCES roles(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_role_permissions_perm FOREIGN KEY (permission_key)
+        REFERENCES permissions(permission_key) ON DELETE RESTRICT ON UPDATE CASCADE,
+    INDEX idx_role_permissions_perm (permission_key)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
+
+
+-- =============================================================================
+-- 41. user_roles  (Dynamic RBAC — assignments AND space membership)
+-- `scope_type='workspace'` applies everywhere; `scope_type='space'` applies
+-- inside one space — and holding ANY space-scoped role IS that user's
+-- membership of that space (there is deliberately no separate members table).
+-- `scope_key` is a VIRTUAL generated column used ONLY by the UNIQUE key: MySQL
+-- treats NULLs as distinct, so a unique key over the nullable `scope_id` would
+-- allow the same workspace-wide grant to be inserted twice. It must be VIRTUAL,
+-- not STORED — MySQL forbids an ON UPDATE CASCADE foreign key on a base column
+-- of a STORED generated column (error 1215), and `scope_id` is both the spaces
+-- FK and this expression's base. The app never reads or writes it (it is not
+-- modelled in the Drizzle mirror).
+-- =============================================================================
+CREATE TABLE user_roles (
+    id           VARCHAR(64) NOT NULL,
+    workspace_id VARCHAR(64) NOT NULL,
+    user_id      VARCHAR(64) NOT NULL,
+    role_id      VARCHAR(64) NOT NULL,
+    scope_type   ENUM('workspace','space') NOT NULL DEFAULT 'workspace',
+    scope_id     VARCHAR(64) NULL,
+    granted_by   VARCHAR(64) NULL,
+    created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    scope_key    VARCHAR(64) GENERATED ALWAYS AS (IFNULL(scope_id, '*')) VIRTUAL,
+
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_user_roles_grant (user_id, role_id, scope_type, scope_key),
+    CONSTRAINT fk_user_roles_ws FOREIGN KEY (workspace_id)
+        REFERENCES workspaces(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_user_roles_user FOREIGN KEY (user_id)
+        REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_user_roles_role FOREIGN KEY (role_id)
+        REFERENCES roles(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_user_roles_space FOREIGN KEY (scope_id)
+        REFERENCES spaces(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_user_roles_granted_by FOREIGN KEY (granted_by)
+        REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,
+    INDEX idx_user_roles_user (user_id, scope_type),
+    INDEX idx_user_roles_scope (scope_id),
+    INDEX idx_user_roles_role (role_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
 
 

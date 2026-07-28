@@ -7,9 +7,8 @@ import { getDb } from "../db/client";
 import logger from "../config/logger";
 import { validate } from "../middlewares/validate";
 import authenticate from "../middlewares/authenticate";
-import { canAccess } from "../middlewares/canAccess";
+import { requirePermission } from "../middlewares/requirePermission";
 import { publicFormLimiter } from "../middlewares/rateLimit";
-import { Roles } from "../constants";
 import type { AuthRequest } from "../types";
 
 import { FormsRepo } from "../repositories/FormsRepo";
@@ -60,7 +59,7 @@ import type {
  * `/lists/:listId/forms`, `/form-fields/:id`, and the public
  * `/public/forms/:slug/submit`), so it mounts at the v1 root rather than under a
  * single prefix — the same shape §6/§7/§17 use. 👑 (admin/owner) endpoints chain
- * `canAccess`; the public submit omits `authenticate` and rate-limits per IP.
+ * `requirePermission`; the public submit omits `authenticate` and rate-limits per IP.
  */
 const router = express.Router();
 
@@ -112,7 +111,7 @@ const formsService = new FormsService(
 );
 const controller = new FormsController(formsService, logger);
 
-const admin = canAccess([Roles.OWNER, Roles.ADMIN]);
+const admin = requirePermission("form.manage");
 
 // ─── #1 GET /api/v1/forms ─────────────────────────────────────────────────────
 // 🔐 Any member. All forms in the caller's workspace (newest first), each with

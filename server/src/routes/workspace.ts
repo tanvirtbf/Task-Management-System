@@ -10,10 +10,9 @@ import { WorkspaceActivityRepo } from "../repositories/WorkspaceActivityRepo";
 import { getDb } from "../db/client";
 import logger from "../config/logger";
 import authenticate from "../middlewares/authenticate";
-import { canAccess } from "../middlewares/canAccess";
+import { requirePermission } from "../middlewares/requirePermission";
 import { validate } from "../middlewares/validate";
 import { workspaceUpdateValidator } from "../validators/workspace";
-import { Roles } from "../constants";
 import type { AuthRequest } from "../types";
 import type { WorkspaceUpdateRequest } from "../types/workspace";
 
@@ -46,13 +45,13 @@ router.get(
 // ─── PATCH /api/v1/workspace ───────────────────────────────────────────────────
 // 👑 Admin/owner only. Partial update of workspace settings; writes a
 // `workspace_activity` row in the same transaction. Returns the updated
-// Workspace (200). `canAccess` yields a spec-shaped `auth.forbidden` envelope
+// Workspace (200). `requirePermission` yields a spec-shaped `auth.forbidden` envelope
 // via the global error handler; the target is always the caller's own
 // `workspaceId` claim, so there is no cross-tenant write.
 router.patch(
     "/",
     authenticate,
-    canAccess([Roles.ADMIN, Roles.OWNER]),
+    requirePermission("workspace.settings"),
     workspaceUpdateValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>

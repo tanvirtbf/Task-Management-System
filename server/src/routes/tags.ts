@@ -10,14 +10,13 @@ import { WorkspaceActivityRepo } from "../repositories/WorkspaceActivityRepo";
 import { getDb } from "../db/client";
 import logger from "../config/logger";
 import authenticate from "../middlewares/authenticate";
-import { canAccess } from "../middlewares/canAccess";
+import { requirePermission } from "../middlewares/requirePermission";
 import { validate } from "../middlewares/validate";
 import {
     createTagValidator,
     deleteTagValidator,
     updateTagValidator,
 } from "../validators/tags";
-import { Roles } from "../constants";
 import type { AuthRequest } from "../types";
 import type {
     CreateTagRequest,
@@ -49,12 +48,12 @@ router.get(
 
 // ─── POST /api/v1/tags ─────────────────────────────────────────────────────
 // 👑 admin/owner only. Chain order encodes the spec's status precedence:
-// `authenticate` (401) → `canAccess` (403) → validation (422). Workspace scope
+// `authenticate` (401) → `requirePermission` (403) → validation (422). Workspace scope
 // and the actor come from `req.auth`, never the body.
 router.post(
     "/",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("catalog.tags"),
     createTagValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -63,12 +62,12 @@ router.post(
 
 // ─── PATCH /api/v1/tags/:id ────────────────────────────────────────────────
 // 👑 admin/owner only. Same chain/precedence as POST: `authenticate` (401) →
-// `canAccess` (403) → validation (422). The tag id is a path param; workspace
+// `requirePermission` (403) → validation (422). The tag id is a path param; workspace
 // scope and the actor come from `req.auth`, never the body.
 router.patch(
     "/:id",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("catalog.tags"),
     updateTagValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -77,13 +76,13 @@ router.patch(
 
 // ─── DELETE /api/v1/tags/:id ───────────────────────────────────────────────
 // 👑 admin/owner only. Same chain/precedence as POST/PATCH: `authenticate`
-// (401) → `canAccess` (403) → validation (422). Deleting a tag also removes it
+// (401) → `requirePermission` (403) → validation (422). Deleting a tag also removes it
 // from every task that had it (via the `task_tags` FK cascade). The tag id is a
 // path param; workspace scope and the actor come from `req.auth`, never the body.
 router.delete(
     "/:id",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("catalog.tags"),
     deleteTagValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>

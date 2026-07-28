@@ -19,6 +19,8 @@
 //   templates.ts       — templates (reusable task structures)
 //   reviews.ts         — task_reviews (Dept Review V1 — head-verdict ledger)
 //   reports.ts         — department_reports (Dept Review V1 — weekly HR reports)
+//   rbac.ts            — permissions, roles, role_permissions, user_roles
+//                        (Dynamic RBAC — RBAC_DYNAMIC_PLAN.md)
 //   views.ts           — v_open_tasks, v_open_bugs, v_active_sprint,
 //                        v_current_on_call, v_breached_sla
 //   relations.ts       — relations() for the Drizzle query API
@@ -41,5 +43,6 @@ export * from "./templates";
 export * from "./chat";
 export * from "./reviews";
 export * from "./reports";
+export * from "./rbac";
 export * from "./views";
 export * from "./relations";

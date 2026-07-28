@@ -9,13 +9,21 @@ import {
     Sparkles,
     Download,
     LayoutTemplate,
+    ShieldCheck,
 } from "lucide-react";
+import { usePermissions } from "../../hooks/usePermissions";
 import { tokens } from "../../theme";
 
 type NavItem = {
     to: string;
     label: string;
     icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
+    /**
+     * Permission required to see this item (RBAC P28). Omitted = everyone.
+     * Hiding a link is a courtesy — the route guard and the API both refuse
+     * the page regardless, so this only stops people walking into a wall.
+     */
+    permission?: string;
 };
 
 type NavGroup = {
@@ -35,8 +43,20 @@ const NAV: NavGroup[] = [
                 to: "/settings/workspace",
                 label: "General",
                 icon: SettingsIcon,
+                permission: "workspace.settings",
             },
-            { to: "/settings/members", label: "Members", icon: Users },
+            {
+                to: "/settings/members",
+                label: "Members",
+                icon: Users,
+                permission: "member.view",
+            },
+            {
+                to: "/settings/roles",
+                label: "Roles & permissions",
+                icon: ShieldCheck,
+                permission: "role.manage",
+            },
         ],
     },
     {
@@ -46,22 +66,31 @@ const NAV: NavGroup[] = [
                 to: "/settings/task-types",
                 label: "Task types",
                 icon: Hexagon,
+                permission: "catalog.task_types",
             },
-            { to: "/settings/tags", label: "Tags", icon: TagIcon },
+            {
+                to: "/settings/tags",
+                label: "Tags",
+                icon: TagIcon,
+                permission: "catalog.tags",
+            },
             {
                 to: "/settings/statuses",
                 label: "Statuses",
                 icon: SquareDashed,
+                permission: "status.manage",
             },
             {
                 to: "/settings/custom-fields",
                 label: "Custom fields",
                 icon: Sparkles,
+                permission: "catalog.custom_fields",
             },
             {
                 to: "/settings/templates",
                 label: "Templates",
                 icon: LayoutTemplate,
+                permission: "catalog.templates",
             },
         ],
     },
@@ -79,6 +108,13 @@ const NAV: NavGroup[] = [
 
 export const SettingsLayout = () => {
     const location = useLocation();
+    const { holds, ready } = usePermissions();
+    // Until the permission set lands, show only the ungated items rather than
+    // flashing links that then vanish.
+    const visible = NAV.map((g) => ({
+        ...g,
+        items: g.items.filter((i) => !i.permission || (ready && holds(i.permission))),
+    })).filter((g) => g.items.length > 0);
     return (
         <div
             style={{
@@ -111,7 +147,7 @@ export const SettingsLayout = () => {
                 >
                     Settings
                 </h2>
-                {NAV.map((group) => (
+                {visible.map((group) => (
                     <div
                         key={group.title}
                         style={{ marginBottom: tokens.spacing[4] }}

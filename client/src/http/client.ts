@@ -98,7 +98,21 @@ export const decamelizeKeys = (input: unknown): unknown =>
  */
 // `/postmortem`: its `items` map is keyed by human labels ("Timeline
 // reconstructed") — case-transforming those keys would corrupt them (H5).
-const SKIP_CAMELIZE_URLS = ["/home/kpis", "/postmortem"];
+//
+// RBAC (§34) — the same hazard, one layer deeper: `/me/permissions` returns a
+// map KEYED BY PERMISSION KEY (`catalog.task_types`), and the camelizer would
+// silently rewrite those keys to `catalog.taskTypes`, so every lookup misses and
+// the UI hides controls the person actually holds. `/roles*` and
+// `/spaces/:id/members` carry the same identifiers inside their payloads. All of
+// these are declared snake_case in `types/rbac.ts`, so skipping the transform is
+// also what makes the types honest.
+const SKIP_CAMELIZE_URLS = [
+    "/home/kpis",
+    "/postmortem",
+    "/me/permissions",
+    "/roles",
+    "/members",
+];
 
 // ─── axios instance ───────────────────────────────────────────────────────────
 export const api = axios.create({

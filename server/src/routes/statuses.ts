@@ -10,9 +10,8 @@ import { StatusesRepo } from "../repositories/StatusesRepo";
 import { getDb } from "../db/client";
 import logger from "../config/logger";
 import authenticate from "../middlewares/authenticate";
-import { canAccess } from "../middlewares/canAccess";
+import { requirePermission } from "../middlewares/requirePermission";
 import { validate } from "../middlewares/validate";
-import { Roles } from "../constants";
 import {
     createStatusValidator,
     deleteStatusValidator,
@@ -60,7 +59,7 @@ router.get(
 );
 
 // ─── POST /api/v1/lists/:listId/statuses ──────────────────────────────────────
-// 👑 Owner/Admin only — `canAccess` rejects member/guest with the spec
+// 👑 Owner/Admin only — `requirePermission` rejects member/guest with the spec
 // `auth.forbidden` envelope (the global error handler maps its http-errors 403).
 // Adds a status to a list the caller's workspace owns (404 `list.not_found`
 // otherwise), appended to the end of the list's order unless `position` is given.
@@ -69,7 +68,7 @@ router.get(
 router.post(
     "/lists/:listId/statuses",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("status.manage"),
     createStatusValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -86,7 +85,7 @@ router.post(
 router.patch(
     "/lists/:listId/statuses/reorder",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("status.manage"),
     reorderStatusesValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -102,7 +101,7 @@ router.patch(
 router.patch(
     "/statuses/:id",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("status.manage"),
     updateStatusValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -117,7 +116,7 @@ router.patch(
 router.delete(
     "/statuses/:id",
     authenticate,
-    canAccess([Roles.OWNER, Roles.ADMIN]),
+    requirePermission("status.manage"),
     deleteStatusValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
