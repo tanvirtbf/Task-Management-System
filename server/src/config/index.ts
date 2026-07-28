@@ -28,6 +28,7 @@ const {
     DB_NAME,
     DB_POOL_MAX,
     DB_POOL_QUEUE_LIMIT,
+    DB_TIMEZONE,
 
     ACCESS_TOKEN_SECRET,
     REFRESH_TOKEN_SECRET,
@@ -95,6 +96,12 @@ export const Config = {
     DB_NAME: process.env.DB_NAME_OVERRIDE ?? DB_NAME,
     DB_POOL_MAX,
     DB_POOL_QUEUE_LIMIT,
+    /**
+     * Fixed UTC offset (e.g. `+06:00`) applied to BOTH the mysql2 driver and the
+     * MySQL session, so the two always agree — see `db/client.ts`. Leave unset to
+     * keep the driver on `local` and the session on the server default.
+     */
+    DB_TIMEZONE,
 
     ACCESS_TOKEN_SECRET,
     REFRESH_TOKEN_SECRET,

@@ -43,6 +43,21 @@ const config_1 = require("../config");
 const schema = __importStar(require("./schema"));
 let pool;
 let db;
+/**
+ * Fixed offset like `+06:00`, or undefined. Named zones (`Asia/Dhaka`) are
+ * rejected on purpose: MySQL only resolves those when the tz tables have been
+ * loaded, which they usually have not been, and Bangladesh has no DST — so an
+ * offset is both safer and exactly equivalent here.
+ */
+const dbTimezone = (() => {
+    const raw = config_1.Config.DB_TIMEZONE?.trim();
+    if (!raw)
+        return undefined;
+    if (!/^[+-]\d{2}:\d{2}$/.test(raw)) {
+        throw new Error(`DB_TIMEZONE must be a fixed offset like "+06:00" (got "${raw}")`);
+    }
+    return raw;
+})();
 const initDb = async () => {
     if (db)
         return db;
@@ -53,10 +68,23 @@ const initDb = async () => {
         password: config_1.Config.DB_PASSWORD,
         database: config_1.Config.DB_NAME,
         waitForConnections: true,
-        connectionLimit: 10,
-        queueLimit: 0,
+        connectionLimit: Number(config_1.Config.DB_POOL_MAX) || 10,
+        queueLimit: Number(config_1.Config.DB_POOL_QUEUE_LIMIT) || 0,
+        // Controls how the DRIVER formats/parses JS Dates. It must agree with
+        // the MySQL SESSION time_zone set below, or every timestamp is written
+        // at the wrong instant — silently, and only visible as data that is a
+        // few hours off. The two are set together for exactly that reason.
+        ...(dbTimezone ? { timezone: dbTimezone } : {}),
         // dateStrings: true,
     });
+    if (dbTimezone) {
+        // The other half of the pair. Per-connection because the MySQL server is
+        // shared with unrelated applications — changing the global time_zone
+        // would move THEIR timestamps too.
+        pool.on("connection", (c) => {
+            c.query("SET time_zone = ?", [dbTimezone]);
+        });
+    }
     // Probe connection
     const conn = await pool.getConnection();
     await conn.ping();
