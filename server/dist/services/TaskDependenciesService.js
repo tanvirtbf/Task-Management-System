@@ -1,0 +1,260 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.TaskDependenciesService = void 0;
+const errors_1 = require("../errors");
+const taskSerializer_1 = require("../serializers/taskSerializer");
+/** mysql2 surfaces a unique-violation as `ER_DUP_ENTRY` / errno 1062. */
+const isDuplicateKeyError = (err) => {
+    const e = err;
+    return e?.code === "ER_DUP_ENTRY" || e?.errno === 1062;
+};
+/**
+ * mysql2 surfaces a missing FK parent (the referenced task was deleted) as
+ * `ER_NO_REFERENCED_ROW_2` / errno 1452 — the race-safe backstop behind the
+ * pre-insert existence checks when an endpoint task is hard-deleted concurrently.
+ */
+const isMissingReferencedRowError = (err) => {
+    const e = err;
+    return e?.code === "ER_NO_REFERENCED_ROW_2" || e?.errno === 1452;
+};
+class TaskDependenciesService {
+    db;
+    deps;
+    tasks;
+    activity;
+    logger;
+    constructor(db, deps, tasks, activity, logger) {
+        this.db = db;
+        this.deps = deps;
+        this.tasks = tasks;
+        this.activity = activity;
+        this.logger = logger;
+    }
+    /**
+     * Both directions of a task's dependency graph, each with the OTHER end fully
+     * hydrated. `blocks` = edges where this task is the blocker (other end =
+     * `related_task_id`); `blocked_by` = the computed reverse (edges where this
+     * task is blocked, other end = `task_id`). The `:id` task is resolved in the
+     * caller's workspace first (`404 task.not_found`, no cross-tenant oracle).
+     */
+    async getForTask(input) {
+        const task = await this.tasks.findByIdInWorkspace(input.taskId, input.workspaceId);
+        if (!task) {
+            throw errors_1.AppError.notFound("task.not_found", `Task ${input.taskId} does not exist`);
+        }
+        const [blocksEdges, blockedByEdges] = await Promise.all([
+            this.deps.findBlocks(input.taskId),
+            this.deps.findBlockedBy(input.taskId),
+        ]);
+        // Other-end ids: blocks → related_task_id; blocked_by → task_id.
+        const otherIds = [
+            ...new Set([
+                ...blocksEdges.map((e) => e.relatedTaskId),
+                ...blockedByEdges.map((e) => e.taskId),
+            ]),
+        ];
+        const taskMap = await this.hydrateTaskMap(otherIds, input.workspaceId, input.role === "guest");
+        return {
+            blocks: this.toViews(blocksEdges, (e) => e.relatedTaskId, "blocks", taskMap),
+            blocked_by: this.toViews(blockedByEdges, (e) => e.taskId, "blocked_by", taskMap),
+        };
+    }
+    /**
+     * Add a "blocks" edge `task_id → related_task_id`. Guards, in order:
+     *   - `422 dep.self` — a task cannot depend on itself (the DB trigger
+     *     `trg_task_dependencies_no_self_*` is the backstop).
+     *   - `404 task.not_found` — either endpoint is missing or in another
+     *     workspace (no cross-tenant oracle).
+     *   - `422 dep.cycle` — adding the edge would close a directed cycle, i.e.
+     *     `related_task_id` can already reach `task_id` by following stored
+     *     "blocks" edges. Detected by a BFS read INSIDE the create transaction
+     *     (consistent snapshot).
+     *   - `409 dep.duplicate` — the exact edge already exists
+     *     (`uq_task_dependencies`); the insert is the race-safe arbiter.
+     *
+     * The insert + a `task_activity` row on BOTH endpoints (the blocker sees
+     * `blocks`, the blocked sees `blocked_by`) are one transaction. Returns the
+     * created edge as a wire `TaskDependency` (other end = `related_task_id`,
+     * `type: "blocks"`).
+     *
+     * Concurrency note: the existence checks run before the tx and the cycle BFS
+     * reads a tx snapshot — two edges added at the exact same instant could each
+     * miss the other and theoretically close a cycle. The graph is small and this
+     * race is vanishingly rare; full prevention would need a workspace-wide lock.
+     */
+    async create(input) {
+        const { taskId, relatedTaskId, actorId, workspaceId, role } = input;
+        if (taskId === relatedTaskId) {
+            throw errors_1.AppError.unprocessable("dep.self", "A task cannot depend on itself");
+        }
+        const [blocker, blocked] = await Promise.all([
+            this.tasks.findByIdInWorkspace(taskId, workspaceId),
+            this.tasks.findByIdInWorkspace(relatedTaskId, workspaceId),
+        ]);
+        if (!blocker) {
+            throw errors_1.AppError.notFound("task.not_found", `Task ${taskId} does not exist`);
+        }
+        if (!blocked) {
+            throw errors_1.AppError.notFound("task.not_found", `Task ${relatedTaskId} does not exist`);
+        }
+        const edge = await this.db.transaction(async (tx) => {
+            await this.assertNoCycle(taskId, relatedTaskId, tx);
+            let created;
+            try {
+                created = await this.deps.insert({ taskId, relatedTaskId, createdBy: actorId }, tx);
+            }
+            catch (err) {
+                if (isDuplicateKeyError(err)) {
+                    throw errors_1.AppError.conflict("dep.duplicate", "This dependency already exists");
+                }
+                if (isMissingReferencedRowError(err)) {
+                    // An endpoint task was hard-deleted between the pre-insert
+                    // existence check and this insert — surface the FK race as
+                    // 404, not a raw 500 (the race-safe backstop behind the check).
+                    throw errors_1.AppError.notFound("task.not_found", "A referenced task no longer exists");
+                }
+                throw err;
+            }
+            await this.activity.recordMany([
+                {
+                    taskId,
+                    actorId,
+                    action: "dependency_added",
+                    context: { dependency_id: created.id, blocks: relatedTaskId },
+                },
+                {
+                    taskId: relatedTaskId,
+                    actorId,
+                    action: "dependency_added",
+                    context: { dependency_id: created.id, blocked_by: taskId },
+                },
+            ], tx);
+            return created;
+        });
+        const taskMap = await this.hydrateTaskMap([relatedTaskId], workspaceId, role === "guest");
+        const view = this.toView(edge, relatedTaskId, "blocks", taskMap);
+        if (!view) {
+            // Unreachable: the related task was just validated in-workspace.
+            throw errors_1.AppError.internal();
+        }
+        return view;
+    }
+    /**
+     * Remove a dependency edge. Resolved within the caller's workspace via its
+     * `task_id` task (`404 dep.not_found` for missing / cross-tenant). The delete
+     * + a `task_activity` row on BOTH endpoints run in one transaction. A
+     * concurrent delete that already removed the row is a `204` no-op (the
+     * `affectedRows === 0` path writes no activity).
+     */
+    async delete(input) {
+        const { depId, workspaceId, actorId } = input;
+        const edge = await this.deps.findByIdInWorkspace(depId, workspaceId);
+        if (!edge) {
+            throw errors_1.AppError.notFound("dep.not_found", `Dependency ${depId} does not exist`);
+        }
+        await this.db.transaction(async (tx) => {
+            const removed = await this.deps.deleteById(depId, tx);
+            if (removed === 0)
+                return; // concurrent delete won — no double audit
+            await this.activity.recordMany([
+                {
+                    taskId: edge.taskId,
+                    actorId,
+                    action: "dependency_removed",
+                    context: {
+                        dependency_id: edge.id,
+                        blocks: edge.relatedTaskId,
+                    },
+                },
+                {
+                    taskId: edge.relatedTaskId,
+                    actorId,
+                    action: "dependency_removed",
+                    context: {
+                        dependency_id: edge.id,
+                        blocked_by: edge.taskId,
+                    },
+                },
+            ], tx);
+        });
+    }
+    /**
+     * Throw `422 dep.cycle` if adding `fromTaskId → toTaskId` would close a
+     * directed cycle — i.e. `toTaskId` can already reach `fromTaskId` by following
+     * stored "blocks" edges. Level-order BFS from `toTaskId`, one batched
+     * `outNeighbors` query per level, a `visited` set to terminate on any
+     * pre-existing structure. Reads via `exec` (the create tx) for a consistent
+     * snapshot.
+     */
+    async assertNoCycle(fromTaskId, toTaskId, exec) {
+        const visited = new Set([toTaskId]);
+        let frontier = [toTaskId];
+        while (frontier.length > 0) {
+            const neighbors = await this.deps.outNeighbors(frontier, exec);
+            const next = [];
+            for (const outs of neighbors.values()) {
+                for (const n of outs) {
+                    if (n === fromTaskId) {
+                        throw errors_1.AppError.unprocessable("dep.cycle", "This dependency would create a cycle");
+                    }
+                    if (!visited.has(n)) {
+                        visited.add(n);
+                        next.push(n);
+                    }
+                }
+            }
+            frontier = next;
+        }
+    }
+    /**
+     * Fetch + batch-hydrate the given task ids (scoped to the workspace) into
+     * wire `Task`s, reusing `TasksRepo`'s map helpers (no N+1). `redactGuest`
+     * omits guest-hidden custom fields, matching §10's list/get behaviour.
+     */
+    async hydrateTaskMap(ids, workspaceId, redactGuest) {
+        const map = new Map();
+        if (ids.length === 0)
+            return map;
+        const rows = await this.deps.findTaskRowsByIds(ids, workspaceId);
+        const presentIds = rows.map((r) => r.id);
+        const [assignees, watchers, tags, cfv] = await Promise.all([
+            this.tasks.assigneesByTask(presentIds),
+            this.tasks.watchersByTask(presentIds),
+            this.tasks.tagsByTask(presentIds),
+            this.tasks.customFieldValuesByTask(presentIds, redactGuest),
+        ]);
+        for (const row of rows) {
+            map.set(row.id, (0, taskSerializer_1.toWireTask)(row, {
+                assignees: assignees.get(row.id) ?? [],
+                watchers: watchers.get(row.id) ?? [],
+                tags: tags.get(row.id) ?? [],
+                customFieldValues: cfv.get(row.id) ?? {},
+            }));
+        }
+        return map;
+    }
+    toViews(edges, otherId, type, taskMap) {
+        const views = [];
+        for (const e of edges) {
+            const view = this.toView(e, otherId(e), type, taskMap);
+            if (view)
+                views.push(view);
+        }
+        return views;
+    }
+    toView(edge, otherId, type, taskMap) {
+        const task = taskMap.get(otherId);
+        // Defensive: a cross-workspace other end (impossible by construction —
+        // both ends are validated in-workspace at create time) is dropped rather
+        // than emitted with a missing `task`.
+        if (!task)
+            return null;
+        return {
+            id: edge.id,
+            task,
+            type,
+            created_at: edge.createdAt.toISOString(),
+        };
+    }
+}
+exports.TaskDependenciesService = TaskDependenciesService;

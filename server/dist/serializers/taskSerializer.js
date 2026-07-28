@@ -1,0 +1,76 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.toWireTask = void 0;
+/**
+ * Format a MySQL DATE to the `YYYY-MM-DD` wire form using local date
+ * components: the mysql2 driver materialises a DATE as a Date at local
+ * midnight, so `toISOString()` could shift it across the UTC boundary. Accepts
+ * a pre-formatted string defensively (string-mode columns).
+ */
+const toWireDate = (value) => {
+    if (value === null)
+        return null;
+    if (typeof value === "string")
+        return value.slice(0, 10);
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+};
+/** Format a nullable TIMESTAMP to ISO-8601 UTC (`…Z`). */
+const toWireTimestamp = (value) => value ? value.toISOString() : null;
+const toWireTask = (t, h) => ({
+    id: t.id,
+    custom_id: t.customId,
+    task_number: t.taskNumber,
+    workspace_id: t.workspaceId,
+    primary_list_id: t.primaryListId,
+    name: t.name,
+    description: t.description,
+    status_id: t.statusId,
+    priority: t.priority,
+    task_type_id: t.taskTypeId,
+    parent_task_id: t.parentTaskId,
+    nesting_depth: t.nestingDepth,
+    is_milestone: t.isMilestone,
+    start_date: toWireDate(t.startDate),
+    due_date: toWireDate(t.dueDate),
+    completed_at: toWireTimestamp(t.completedAt),
+    review_status: t.reviewStatus,
+    reviewed_at: toWireTimestamp(t.reviewedAt),
+    reviewed_by: t.reviewedBy,
+    sla_due_at: toWireTimestamp(t.slaDueAt),
+    recurrence_pattern: t.recurrencePattern,
+    recurrence_days: t.recurrenceDays && t.recurrenceDays.length > 0
+        ? t.recurrenceDays
+        : null,
+    recurrence_ends_at: toWireDate(t.recurrenceEndsAt),
+    time_estimate_seconds: t.timeEstimateSeconds,
+    time_tracked_seconds: t.timeTrackedSeconds,
+    subtasks_count: t.subtasksCount,
+    subtasks_completed: t.subtasksCompleted,
+    comments_count: t.commentsCount,
+    attachments_count: t.attachmentsCount,
+    sprint_id: t.sprintId,
+    story_points: t.storyPoints,
+    reviewer_id: t.reviewerId,
+    branch_name: t.branchName,
+    pr_url: t.prUrl,
+    pr_status: t.prStatus,
+    bug_severity: t.bugSeverity,
+    bug_reproducibility: t.bugReproducibility,
+    bug_environment: t.bugEnvironment,
+    bug_browser: t.bugBrowser,
+    reporter_team: t.reporterTeam,
+    deployed_at: toWireTimestamp(t.deployedAt),
+    rollback_reason: t.rollbackReason,
+    assignees: h.assignees,
+    watchers: h.watchers,
+    tags: h.tags,
+    custom_field_values: h.customFieldValues,
+    archived_at: toWireTimestamp(t.archivedAt),
+    created_by: t.createdBy,
+    created_at: t.createdAt.toISOString(),
+    updated_at: t.updatedAt.toISOString(),
+});
+exports.toWireTask = toWireTask;

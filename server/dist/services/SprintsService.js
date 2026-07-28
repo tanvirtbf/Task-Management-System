@@ -1,0 +1,380 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.SprintsService = void 0;
+const errors_1 = require("../errors");
+const sprintSerializer_1 = require("../serializers/sprintSerializer");
+/** mysql2 surfaces a unique-violation (`uq_sprints_workspace_name`) as
+ *  `ER_DUP_ENTRY` / errno 1062. */
+const isDuplicateKeyError = (err) => {
+    const e = err;
+    return e?.code === "ER_DUP_ENTRY" || e?.errno === 1062;
+};
+/**
+ * Parse a `YYYY-MM-DD` wire date into a LOCAL-midnight `Date` for the MySQL DATE
+ * column (Drizzle `date()` mode "date"). Local midnight round-trips cleanly
+ * through the serializer's local-component formatting, avoiding the UTC-boundary
+ * shift a `new Date("YYYY-MM-DD")` (UTC midnight) would cause. Mirrors §10.
+ */
+const toLocalDate = (value) => {
+    const [y, m, d] = value.split("-").map(Number);
+    return new Date(y, m - 1, d);
+};
+/**
+ * §20 Sprints domain logic. Owns the sprint lifecycle (planned → active →
+ * closed, with the single-active-per-workspace invariant enforced in a
+ * workspace-serialised transaction since the DB does not constrain it) and the
+ * `tasks.sprint_id` membership writes. Every mutation appends a
+ * `workspace_activity` row (entity_type `sprint`); task moves also append
+ * `task_activity` per affected task — all in the same transaction as the change.
+ *
+ * Reuses only `SprintsRepo` (self-contained — no edits to the shared tasks
+ * files); "completed points" is derived, never stored: it is summed at read
+ * time and snapshotted into the close audit row.
+ */
+class SprintsService {
+    db;
+    sprints;
+    wsActivity;
+    taskActivity;
+    logger;
+    constructor(db, sprints, wsActivity, taskActivity, logger) {
+        this.db = db;
+        this.sprints = sprints;
+        this.wsActivity = wsActivity;
+        this.taskActivity = taskActivity;
+        this.logger = logger;
+    }
+    /** #1 — all sprints in the workspace, optional `status` filter. */
+    async list(input) {
+        const rows = await this.sprints.listByWorkspace(input.workspaceId, input.status);
+        return rows.map(sprintSerializer_1.toWireSprint);
+    }
+    /** #2 — the single active sprint (404 `sprint.not_found` if none). */
+    async getActive(input) {
+        const row = await this.sprints.findActive(input.workspaceId);
+        if (!row) {
+            throw errors_1.AppError.notFound("sprint.not_found", "No sprint is currently active");
+        }
+        return (0, sprintSerializer_1.toWireSprint)(row);
+    }
+    /** #3 — one sprint by id, resolved in the caller's workspace. */
+    async getById(input) {
+        const row = await this.sprints.findByIdInWorkspace(input.id, input.workspaceId);
+        if (!row) {
+            throw errors_1.AppError.notFound("sprint.not_found", `Sprint ${input.id} does not exist`);
+        }
+        return (0, sprintSerializer_1.toWireSprint)(row);
+    }
+    /**
+     * #4 — create a `planned` sprint. The insert + a `workspace_activity`
+     * `created` row are one transaction. A clashing name trips
+     * `uq_sprints_workspace_name` → `409 sprint.duplicate`; an out-of-order date
+     * pair is rejected up front with `422 validation.failed` (the DB
+     * `ck_sprints_dates` is the backstop).
+     */
+    async create(input) {
+        this.assertDateOrder(input.startDate, input.endDate);
+        const row = await this.db.transaction(async (tx) => {
+            let created;
+            try {
+                created = await this.sprints.insert({
+                    workspaceId: input.workspaceId,
+                    name: input.name,
+                    goal: input.goal,
+                    startDate: toLocalDate(input.startDate),
+                    endDate: toLocalDate(input.endDate),
+                    committedPoints: input.committedPoints,
+                }, tx);
+            }
+            catch (err) {
+                if (isDuplicateKeyError(err)) {
+                    throw errors_1.AppError.conflict("sprint.duplicate", `A sprint named "${input.name}" already exists`);
+                }
+                throw err;
+            }
+            await this.wsActivity.record({
+                workspaceId: input.workspaceId,
+                actorId: input.actorId,
+                entityType: "sprint",
+                entityId: created.id,
+                action: "created",
+                context: { name: created.name, status: created.status },
+            }, tx);
+            return created;
+        });
+        return (0, sprintSerializer_1.toWireSprint)(row);
+    }
+    /**
+     * #5 — partial update of name / goal / dates / committed_points. Locks the
+     * row, diffs against the stored values (a genuine no-op writes nothing and
+     * returns 200), re-checks the merged date order, and records `updated` with
+     * the changed field list. A name clash → `409 sprint.duplicate`.
+     */
+    async update(input) {
+        const { id, workspaceId, actorId, fields } = input;
+        const row = await this.db.transaction(async (tx) => {
+            const current = await this.sprints.lockByIdInWorkspace(id, workspaceId, tx);
+            if (!current) {
+                throw errors_1.AppError.notFound("sprint.not_found", `Sprint ${id} does not exist`);
+            }
+            const patch = {};
+            const changed = [];
+            if (fields.name !== undefined && fields.name !== current.name) {
+                patch.name = fields.name;
+                changed.push("name");
+            }
+            if (fields.goal !== undefined && fields.goal !== current.goal) {
+                patch.goal = fields.goal;
+                changed.push("goal");
+            }
+            if (fields.committedPoints !== undefined &&
+                fields.committedPoints !== current.committedPoints) {
+                patch.committedPoints = fields.committedPoints;
+                changed.push("committed_points");
+            }
+            // Re-check date order against the merged (request ∪ stored) pair, since
+            // a PATCH may send only one of the two dates.
+            const curStart = (0, sprintSerializer_1.formatWireDate)(current.startDate);
+            const curEnd = (0, sprintSerializer_1.formatWireDate)(current.endDate);
+            const effStart = fields.startDate ?? curStart;
+            const effEnd = fields.endDate ?? curEnd;
+            this.assertDateOrder(effStart, effEnd);
+            if (fields.startDate !== undefined && fields.startDate !== curStart) {
+                patch.startDate = toLocalDate(fields.startDate);
+                changed.push("start_date");
+            }
+            if (fields.endDate !== undefined && fields.endDate !== curEnd) {
+                patch.endDate = toLocalDate(fields.endDate);
+                changed.push("end_date");
+            }
+            if (changed.length === 0)
+                return current; // no-op, no activity
+            try {
+                await this.sprints.updateFields(id, workspaceId, patch, tx);
+            }
+            catch (err) {
+                if (isDuplicateKeyError(err)) {
+                    throw errors_1.AppError.conflict("sprint.duplicate", `A sprint named "${fields.name}" already exists`);
+                }
+                throw err;
+            }
+            await this.wsActivity.record({
+                workspaceId,
+                actorId,
+                entityType: "sprint",
+                entityId: id,
+                action: "updated",
+                context: { fields: changed },
+            }, tx);
+            const updated = await this.sprints.findByIdInWorkspace(id, workspaceId, tx);
+            if (!updated)
+                throw errors_1.AppError.internal();
+            return updated;
+        });
+        return (0, sprintSerializer_1.toWireSprint)(row);
+    }
+    /**
+     * #6 — start a sprint (planned → active). The workspace row is locked first
+     * so concurrent starts serialise: at most one sprint per workspace can be
+     * active. Already-active is an idempotent 200; a closed sprint cannot start
+     * (`409 sprint.invalid_status`); another active sprint blocks it
+     * (`422 sprint.another_active`).
+     */
+    async start(input) {
+        const { id, workspaceId, actorId } = input;
+        const row = await this.db.transaction(async (tx) => {
+            await this.sprints.lockWorkspace(workspaceId, tx);
+            const current = await this.sprints.lockByIdInWorkspace(id, workspaceId, tx);
+            if (!current) {
+                throw errors_1.AppError.notFound("sprint.not_found", `Sprint ${id} does not exist`);
+            }
+            if (current.status === "active")
+                return current; // idempotent
+            if (current.status === "closed") {
+                throw errors_1.AppError.conflict("sprint.invalid_status", "A closed sprint cannot be started");
+            }
+            const other = await this.sprints.findOtherActive(workspaceId, id, tx);
+            if (other) {
+                throw errors_1.AppError.unprocessable("sprint.another_active", `Sprint "${other.name}" is already active`);
+            }
+            await this.sprints.setStatus(id, workspaceId, "active", tx);
+            await this.wsActivity.record({
+                workspaceId,
+                actorId,
+                entityType: "sprint",
+                entityId: id,
+                action: "started",
+                context: { name: current.name },
+            }, tx);
+            const updated = await this.sprints.findByIdInWorkspace(id, workspaceId, tx);
+            if (!updated)
+                throw errors_1.AppError.internal();
+            return updated;
+        });
+        return (0, sprintSerializer_1.toWireSprint)(row);
+    }
+    /**
+     * #7 — close a sprint (active → closed). Snapshots the completed-points figure
+     * (sum of story points of done/closed tasks) into the audit row, rolls the
+     * sprint's UNFINISHED tasks over to the next planned sprint (if one exists),
+     * and returns `{ rolled_over: N }`. Already-closed is an idempotent
+     * `{ rolled_over: 0 }`; a planned sprint cannot be closed
+     * (`409 sprint.invalid_status`). Workspace-serialised like start.
+     */
+    async close(input) {
+        const { id, workspaceId, actorId } = input;
+        return this.db.transaction(async (tx) => {
+            await this.sprints.lockWorkspace(workspaceId, tx);
+            const current = await this.sprints.lockByIdInWorkspace(id, workspaceId, tx);
+            if (!current) {
+                throw errors_1.AppError.notFound("sprint.not_found", `Sprint ${id} does not exist`);
+            }
+            if (current.status === "closed")
+                return { rolled_over: 0 }; // idempotent
+            if (current.status === "planned") {
+                throw errors_1.AppError.conflict("sprint.invalid_status", "Only an active sprint can be closed");
+            }
+            const completedPoints = await this.sprints.sumCompletedPoints(id, workspaceId, tx);
+            const unfinished = await this.sprints.findUnfinishedTaskIdsInSprint(id, workspaceId, tx);
+            const next = await this.sprints.findNextPlanned(workspaceId, id, tx);
+            let rolledOver = 0;
+            if (next && unfinished.length > 0) {
+                await this.sprints.setSprintForTasks(unfinished, next.id, workspaceId, tx);
+                rolledOver = unfinished.length;
+                await this.taskActivity.recordMany(unfinished.map((taskId) => ({
+                    taskId,
+                    actorId,
+                    action: "sprint_rolled_over",
+                    context: { from_sprint_id: id, to_sprint_id: next.id },
+                })), tx);
+            }
+            await this.sprints.setStatus(id, workspaceId, "closed", tx);
+            await this.wsActivity.record({
+                workspaceId,
+                actorId,
+                entityType: "sprint",
+                entityId: id,
+                action: "closed",
+                context: {
+                    name: current.name,
+                    completed_points: completedPoints,
+                    rolled_over: rolledOver,
+                    rolled_to: next?.id ?? null,
+                },
+            }, tx);
+            return { rolled_over: rolledOver };
+        });
+    }
+    /**
+     * #8 — bulk-attach LIVE tasks to a sprint (sets `tasks.sprint_id`). All ids
+     * must be real, non-archived tasks in the workspace, else the whole batch is
+     * rejected with `404 task.not_found`. Tasks cannot be added to a CLOSED sprint
+     * (`409 sprint.invalid_status`). Only tasks not already in THIS sprint actually
+     * change (the audit reflects real moves); an all-no-op call is idempotent 204.
+     *
+     * The sprint row is locked `FOR UPDATE` and ALL validation runs inside the
+     * transaction, so the add serialises against `close()` (which holds the same
+     * row lock): a concurrent close either snapshots these tasks for rollover, or
+     * this add observes the closed sprint and is rejected — the unfinished task can
+     * never be orphaned in a just-closed sprint.
+     */
+    async addTasks(input) {
+        const { id, workspaceId, actorId } = input;
+        const taskIds = [...new Set(input.taskIds)];
+        await this.db.transaction(async (tx) => {
+            const sprint = await this.sprints.lockByIdInWorkspace(id, workspaceId, tx);
+            if (!sprint) {
+                throw errors_1.AppError.notFound("sprint.not_found", `Sprint ${id} does not exist`);
+            }
+            if (sprint.status === "closed") {
+                throw errors_1.AppError.conflict("sprint.invalid_status", "Tasks cannot be added to a closed sprint");
+            }
+            const found = await this.sprints.findTasksByIdsInWorkspace(taskIds, workspaceId, tx);
+            if (found.length !== taskIds.length) {
+                const foundIds = new Set(found.map((t) => t.id));
+                const missing = taskIds.filter((tid) => !foundIds.has(tid));
+                throw errors_1.AppError.notFound("task.not_found", `Task(s) not found in this workspace: ${missing.join(", ")}`);
+            }
+            const changing = found.filter((t) => t.sprintId !== id);
+            if (changing.length === 0)
+                return; // already all in this sprint — no-op
+            await this.sprints.setSprintForTasks(changing.map((t) => t.id), id, workspaceId, tx);
+            await this.taskActivity.recordMany(changing.map((t) => ({
+                taskId: t.id,
+                actorId,
+                action: "sprint_added",
+                context: { sprint_id: id, from_sprint_id: t.sprintId },
+            })), tx);
+            await this.wsActivity.record({
+                workspaceId,
+                actorId,
+                entityType: "sprint",
+                entityId: id,
+                action: "tasks_added",
+                context: {
+                    task_ids: changing.map((t) => t.id),
+                    count: changing.length,
+                },
+            }, tx);
+        });
+    }
+    /**
+     * #9 — detach one task from a sprint (clears `tasks.sprint_id`). 404 if the
+     * sprint or task is missing/cross-tenant, or if the task is not in THIS
+     * sprint (`sprint.task_not_in_sprint`). Detaching is allowed regardless of the
+     * sprint's status (so a task archived after being added can still be cleaned
+     * up). The sprint row is locked and validation runs inside the transaction so
+     * the detach is atomic and serialises with `close()`.
+     */
+    async removeTask(input) {
+        const { id, workspaceId, actorId, taskId } = input;
+        await this.db.transaction(async (tx) => {
+            const sprint = await this.sprints.lockByIdInWorkspace(id, workspaceId, tx);
+            if (!sprint) {
+                throw errors_1.AppError.notFound("sprint.not_found", `Sprint ${id} does not exist`);
+            }
+            const task = await this.sprints.findTaskByIdInWorkspace(taskId, workspaceId, tx);
+            if (!task) {
+                throw errors_1.AppError.notFound("task.not_found", `Task ${taskId} does not exist`);
+            }
+            if (task.sprintId !== id) {
+                throw errors_1.AppError.notFound("sprint.task_not_in_sprint", `Task ${taskId} is not in sprint ${id}`);
+            }
+            const affected = await this.sprints.setSprintForTasks([taskId], null, workspaceId, tx);
+            if (affected === 0)
+                return; // concurrent removal won — no double audit
+            await this.taskActivity.recordMany([
+                {
+                    taskId,
+                    actorId,
+                    action: "sprint_removed",
+                    context: { sprint_id: id },
+                },
+            ], tx);
+            await this.wsActivity.record({
+                workspaceId,
+                actorId,
+                entityType: "sprint",
+                entityId: id,
+                action: "task_removed",
+                context: { task_id: taskId },
+            }, tx);
+        });
+    }
+    /**
+     * Reject an out-of-order date pair with `422 validation.failed`. Wire dates
+     * are `YYYY-MM-DD`, so a lexicographic compare is a correct chronological
+     * compare. The DB `ck_sprints_dates` CHECK is the race-safe backstop.
+     */
+    assertDateOrder(start, end) {
+        if (start > end) {
+            throw errors_1.AppError.validationFailed([
+                {
+                    field: "end_date",
+                    issue: "end_date must be on or after start_date",
+                },
+            ]);
+        }
+    }
+}
+exports.SprintsService = SprintsService;
