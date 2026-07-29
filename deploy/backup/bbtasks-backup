@@ -1,0 +1,16 @@
+# /etc/cron.d/bbtasks-backup
+#
+# Install:
+#   cp deploy/backup/bbtasks-backup /etc/cron.d/bbtasks-backup
+#   chmod 644 /etc/cron.d/bbtasks-backup     # cron IGNORES group/other-writable files
+#
+# 01:00 UTC = 07:00 Dhaka - before the working day and before the other jobs at
+# 02:xx, so a backup exists that predates whatever they change or purge.
+#
+# Restore from one of these:
+#   gunzip -c /var/backups/bbtasks/taskmanagement-<stamp>.sql.gz | mysql taskmanagement
+
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+0 1 * * * root /var/www/html/tasks-beautybooth/deploy/backup/bbtasks-backup.sh >>/var/log/bbtasks/backup.log 2>&1
