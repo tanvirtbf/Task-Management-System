@@ -1,0 +1,16 @@
+
+  === F3 — my-work buckets ===
+  Dhaka today = 2026-08-03   (process TZ UTC)
+
+  task                      due_date      expected      actual
+  OK   TEST-F03-mw-overdue  2026-08-02    overdue       overdue
+  OK   TEST-F03-mw-today    2026-08-03    today         today
+  OK   TEST-F03-mw-next     2026-08-06    next          next
+  OK   TEST-F03-mw-far      2026-08-13    (none)        (none)
+  OK   TEST-F03-mw-unscheduled(none)        unscheduled   unscheduled
+  OK   every wire due_date round-trips exactly
+
+  cleanup: tasks 46 (46)
+
+  PASS
+

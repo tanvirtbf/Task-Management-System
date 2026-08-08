@@ -1,0 +1,9 @@
+server jest sweep — started 2026-07-30T17:02:49+06:00
+auth             Test Suites: 9 passed, 9 total | Tests: 339 passed, 339 total | 319.5s
+users              Test Suites: 1 failed, 7 passed, 8 total Tests:       1 failed, 278 passed, 279 total Time:        288.995 s 
+workspace          Test Suites: 2 passed, 2 total Tests:       84 passed, 84 total Time:        81.779 s, estimated 146 s 
+spaces             Test Suites: 7 passed, 7 total Tests:       244 passed, 244 total Time:        153.291 s, estimated 187 s 
+lists              Test Suites: 5 passed, 5 total Tests:       171 passed, 171 total Time:        123.746 s 
+statuses           Test Suites: 5 passed, 5 total Tests:       209 passed, 209 total Time:        105.558 s, estimated 121 s 
+taskTypes          Test Suites: 4 passed, 4 total Tests:       184 passed, 184 total Time:        60.691 s, estimated 74 s 
+tagsreview         Test Suites: 4 passed, 4 total Tests:       149 passed, 149 total Time:        117.031 s 

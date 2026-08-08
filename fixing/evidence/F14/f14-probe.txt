@@ -1,0 +1,44 @@
+
+  === F14 — destructive-command guards and config ===
+
+  --- ISS-002: the demo seed's refusals ---
+  OK    npm script no longer hard-codes NODE_ENV=dev                tsx src/db/seed-demo.ts
+  OK    guard 1 — NODE_ENV=prod refuses (even with ALLOW_DEMO_SEED=1)exit 1
+  OK    guard 2 — no ALLOW_DEMO_SEED refuses                        exit 1
+  OK    guard 3 — a DB holding non-demo accounts refuses (env-independent)exit 1
+  OK    …and all three refusals truncated NOTHING                   tasks 46 -> 46
+
+  --- ISS-079: ?dry_run parsing ---
+  query                 status  dry_run reported
+  ?dry_run=true         200     true
+  ?dry_run=1            200     true
+  ?dry_run=yes          200     true
+  ?dry_run=TRUE         200     true
+  ?dry_run=on           200     true
+  ?dry_run              200     true
+  ?dry_run=false        200     false
+  ?dry_run=0            200     false
+  (absent)              200     false
+  (?dry_run=1 / yes / TRUE / bare all reported FALSE and RAN the job before F14)
+  OK    an unparseable value is a clean 422, never a silent real rungot 422 unrecognised value "maybe" — use true/false (o
+
+  --- ISS-003: a missing REFRESH_TOKEN_SECRET must NOT boot ---
+  OK    boot refused with a named reason (was: READY, then 500 on every login)exit 1
+  OK    …and it never reported Listening                            
+
+  --- ISS-004 / ISS-090: config hygiene ---
+  OK    COOKIE_SECRET gone from config, app, .env and .env.example  
+  OK    dead key removed: SECRET_KEY                                
+  OK    dead key removed: REDIS_URL                                 
+  OK    dead key removed: CLOUDFLARE_TOKEN_VALUE                    
+  OK    now documented in .env.example: SMTP_HOST                   
+  OK    now documented in .env.example: EMAIL_FROM                  
+  OK    now documented in .env.example: OPENAI_MAX_OUTPUT_TOKENS    
+  OK    every var Config reads appears in .env.example              68 vars checked
+
+  === CLEANUP ===
+  tasks 46 (46) | users 15 (15)
+
+  PASS — the seed refuses three ways, dry_run cannot silently disengage,
+  a secretless boot is refused, and the config is honest.
+

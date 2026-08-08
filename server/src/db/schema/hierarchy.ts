@@ -69,6 +69,13 @@ export const spaces = mysqlTable(
         })
             .onDelete("set null")
             .onUpdate("cascade"),
+        /** F27 (ISS-033): two spaces called "Marketing" rendered identically
+         *  in the sidebar. Case-insensitive via the column collation, like the
+         *  catalog resources that already got this right. */
+        workspaceNameUq: uniqueIndex("uq_spaces_workspace_name").on(
+            t.workspaceId,
+            t.name,
+        ),
         headIdx: index("idx_spaces_head").on(t.headUserId),
         workspaceArchivedIdx: index("idx_spaces_workspace_archived").on(
             t.workspaceId,
@@ -153,6 +160,8 @@ export const lists = mysqlTable(
         })
             .onDelete("set null")
             .onUpdate("cascade"),
+        /** F27 (ISS-035): the same trap one level deeper in the tree. */
+        spaceNameUq: uniqueIndex("uq_lists_space_name").on(t.spaceId, t.name),
         spaceArchivedIdx: index("idx_lists_space_archived").on(
             t.spaceId,
             t.archivedAt,

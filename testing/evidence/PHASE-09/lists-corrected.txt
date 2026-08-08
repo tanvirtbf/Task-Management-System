@@ -1,0 +1,59 @@
+=== 1b. default_task_type_id — the REAL field ===
+  {"space_id":"sp-hb8qbLyl_mAOfp5Wj1ia5g","name":"TEST-p9-typed"   (valid type)                 -> 201                         stored: tt-Xtba3baw07I8h-WWPXcXhA
+  {"space_id":"sp-hb8qbLyl_mAOfp5Wj1ia5g","name":"TEST-p9-nullty   (explicit null)              -> 201                         stored: null
+  {"space_id":"sp-hb8qbLyl_mAOfp5Wj1ia5g","name":"TEST-p9-badtyp   (unknown type)               -> 422 list.invalid_task_type  stored: -
+  {"space_id":"sp-hb8qbLyl_mAOfp5Wj1ia5g","name":"TEST-p9-emptyt   (empty string)               -> 422 validation.failed       stored: -
+  {"space_id":"sp-hb8qbLyl_mAOfp5Wj1ia5g","name":"TEST-p9-wrongf   (the WRONG field name)       -> 201                         stored: null
+
+=== 3b. PATCH surface — what is actually editable? ===
+  {"name":"TEST-p9-renamed"}                       (rename)                             -> 200
+  {"description":"hi"}                             (description)                        -> 200
+  {"icon":"star"}                                  (icon)                               -> 200
+  {"color":"#abcdef"}                              (colour)                             -> 200
+  {"default_task_type_id":"tt-pkGgglLMAeouAcD9mA   (CHANGE the default task type)       -> 200
+  {"default_task_type_id":"tt-nope"}               (unknown type)                       -> 422 list.invalid_task_type
+  {"default_task_type_id":null}                    (clear the type)                     -> 200
+  {"space_id":"sp-dF0LJ21_qvqS5fEjidE8Xw"}         (MOVE to another space)              -> 422 validation.failed
+  {"is_private":true}                              (is_private after create)            -> 422 validation.failed
+  {"id":"l-hacked"}                                (PK change)                          -> 422 validation.failed
+  {"name":"TEST-p9-renamed","id":"l-hacked"}       (PK change alongside a valid field)  -> 200
+  {"bogus":1}                                      (only an unknown field)              -> 422 validation.failed
+  {}                                               (empty body)                         -> 422 validation.failed
+  final: id unchanged: true | space unchanged: true | type: null | is_private: 0
+
+=== 4b. ARCHIVE / DELETE semantics ===
+  archive              -> 204
+  archive AGAIN        -> 204
+  in GET /lists?       -> hidden ✓
+  direct GET archived  -> 200
+  PATCH archived       -> 409 list.archived
+  create a TASK in it  -> 409 list.archived
+  DELETE archived+empty-> 204
+  unarchive a deleted  -> 404 list.not_found
+
+  a list holding 1 task:
+    DELETE not-archived      -> 409 list.not_archived
+    archive                  -> 204
+    DELETE archived + 1 task -> 409 list.not_empty
+    soft-delete the task     -> 204
+    DELETE again             -> 409 list.not_empty
+    after HARD-removing it   -> 204
+
+=== 5b. GET /lists/:id/tasks ===
+  busiest real list: Eid Campaign 2026 - 8 tasks
+  (none)                   -> 200  8    
+  ?limit=2                 -> 200  2    
+  ?status_group=done       -> 200  3    
+  ?priority=1              -> 200  2    
+  ?q=a                     -> 200  6    
+  ?assignee_id=me          -> 200  8    
+  ?include_archived=true   -> 200  8    
+  ?sort=due_date           -> 200  8    
+  ?bogus=1                 -> 200  8    
+  ?limit=0                 -> 422  -    validation.failed
+  pagination: {"next_cursor":"Mg","has_more":true,"total_estimate":8}
+  total 8 | archived 0 | default returns 8 | include_archived returns 8  (archived correctly excluded ✓)
+  tasks of a list in a FOREIGN space, as marketing.only -> 200
+
+=== CLEANUP ===
+  removed: 3 | lists: 14 (14) | tasks: 51 (51)

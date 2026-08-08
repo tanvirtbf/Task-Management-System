@@ -2,6 +2,9 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.changeRoleValidator = exports.patchUserValidator = exports.inviteUserValidator = exports.getUserValidator = exports.listUsersValidator = void 0;
 const express_validator_1 = require("express-validator");
+// F12 (ISS-031): the one IANA check, shared — not a second copy. The workspace
+// validator has always had it; the user profile had only `isString`.
+const workspace_1 = require("./workspace");
 const _shared_1 = require("../db/schema/_shared");
 /**
  * Query validators for `GET /api/v1/users`. Pair each `checkSchema(...)` with
@@ -217,6 +220,15 @@ exports.patchUserValidator = (0, express_validator_1.checkSchema)({
         isLength: {
             options: { max: _shared_1.TIMEZONE_LENGTH },
             errorMessage: `timezone must be at most ${_shared_1.TIMEZONE_LENGTH} characters`,
+        },
+        // F12 (ISS-031): the SAME IANA check `PATCH /workspace` has always had.
+        // Without it a profile could hold a zone no date library can resolve,
+        // and `users.timezone` is on the wire in `GET /users` and `/auth/me` —
+        // so any client doing `Intl.DateTimeFormat(…, {timeZone})` threw a
+        // RangeError on that row.
+        custom: {
+            options: (value) => typeof value === "string" && (0, workspace_1.isIanaTimezone)(value),
+            errorMessage: "timezone must be a valid IANA zone (e.g. Asia/Dhaka)",
         },
     },
     avatar_url: {

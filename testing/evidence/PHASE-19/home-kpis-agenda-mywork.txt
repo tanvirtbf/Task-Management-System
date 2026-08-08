@@ -1,0 +1,99 @@
+workspace timezone column: Asia/Dhaka | MySQL NOW() date: 2026-07-30 | node local date: 2026-07-30 (UTC) / 2026-07-30 (node local)
+
+=== 1. KPI TILES vs a hand-written SQL recount ===
+
+  owner@company.local  (legacy role: owner)  -> 200
+    tile            api   hand-sql  sum(sparkline)  verdict
+    myTasks         1     1         0               match  | value != sum(sparkline)
+    dueToday        0     0         0               match
+    overdue         1     1         0               match  | value != sum(sparkline)
+    awaitingReview  0     0         0               match
+    openTeamTasks   31    31        4               match  | value != sum(sparkline)
+    slaBreaches     0     0         0               match
+    trend fields: {"trend":0,"dir":"flat","pos":false}
+
+  arif@beautybooth.com.bd  (legacy role: member)  -> 200
+    tile            api   hand-sql  sum(sparkline)  verdict
+    myTasks         3     3         0               match  | value != sum(sparkline)
+    dueToday        0     0         0               match
+    overdue         3     3         0               match  | value != sum(sparkline)
+    awaitingReview  0     0         0               match
+    openTeamTasks   31    31        4               match  | value != sum(sparkline)
+    slaBreaches     0     0         0               match
+    trend fields: {"trend":0,"dir":"flat","pos":false}
+
+  marketing.only@beautybooth.com.bd  (legacy role: member)  -> 200
+    tile            api   hand-sql  sum(sparkline)  verdict
+    myTasks         0     0         0               match
+    dueToday        0     0         0               match
+    overdue         0     0         0               match
+    awaitingReview  0     0         0               match
+    openTeamTasks   6     31        2               DIFFERS (scoped? hand=whole workspace)  | value != sum(sparkline)
+    slaBreaches     0     0         0               match
+    trend fields: {"trend":0,"dir":"flat","pos":false}
+
+  guest@beautybooth.com.bd  (legacy role: guest)  -> 200
+    tile            api   hand-sql  sum(sparkline)  verdict
+    myTasks         0     0         0               match
+    dueToday        0     0         0               match
+    overdue         0     0         0               match
+    awaitingReview  0     0         0               match
+    openTeamTasks   31    31        4               match  | value != sum(sparkline)
+    slaBreaches     0     0         0               match
+    trend fields: {"trend":0,"dir":"flat","pos":false}
+
+=== 2. openTeamTasks / slaBreaches for a SPACE-SCOPED user ===
+  openTeamTasks: api=6 | Marketing-only=6 | whole workspace=31
+  -> correctly narrowed to their space ✓
+
+=== 3. GET /home/agenda ===
+  no ?date          -> 200 | shape: bare array ✓ | count: 0
+  ?date=2026-07-30  -> 200                       0 tasks
+  ?date=2026-01-01  -> 200                       0 tasks
+  ?date=2030-12-31  -> 200                       0 tasks
+  ?date=nonsense    -> 422 validation.failed     
+  ?date=2026-13-45  -> 422 validation.failed     
+  ?date=            -> 422 validation.failed     
+  agenda ids vs my-work.today ids identical? yes ✓
+
+=== 4. GET /tasks/my-work buckets, hand-verified ===
+  -> 200 | buckets: today,overdue,next,unscheduled,done
+    today        api=0    hand=0    match
+    overdue      api=1    hand=1    match
+    next         api=0    hand=0    match
+    unscheduled  api=0    hand=0    match
+    done         api=1    hand=1    match
+  tasks due MORE than 7 days out that land in NO bucket: 0 (documented behaviour)
+  ?bucket=today     -> 200 keys: today
+  ?bucket=bogus     -> 422 validation.failed
+
+=== 5. GUEST on home ===
+  /home/kpis -> 200 openTeamTasks = 31 (whole workspace = 31)
+  /home/agenda -> 200 0 tasks
+  /tasks/my-work -> 200 counts: {"today":0,"overdue":0,"next":0,"unscheduled":0,"done":0}
+
+=== 6. THE 'today' BOUNDARY — which clock decides? ===
+  MySQL NOW(): 2026-07-30 14:17 | MySQL UTC_TIMESTAMP(): 2026-07-30 08:17
+  node new Date(): Thu Jul 30 2026 14:17:10 GMT+0600
+  the service derives 'today' from `new Date()` on the SERVER — i.e. the API process's OS timezone,
+  not the workspace.timezone column (Asia/Dhaka) and not the caller's.
+  seed due_date range: {"mn":"2026-07-06T18:00:00.000Z","mx":"2026-08-05T18:00:00.000Z","n":37}
+
+=== 7. awaitingReview — which review queue does it mean? ===
+  tasks with pr_status='open' (what the KPI counts): 0
+  task_reviews rows by status (the dept-head review queue): [{"status":"approved","n":7},{"status":"flagged","n":2}]
+  -> the tile is labelled 'Awaiting My Review'
+
+=== 8. SPARKLINE semantics ===
+  myTasks         value=1     sparkline=[0,0,0,0,0,0,0] sum=0
+  openTeamTasks   value=31    sparkline=[0,0,0,0,1,3,0] sum=4
+  overdue         value=1     sparkline=[0,0,0,0,0,0,0] sum=0
+  tasks created more than 7 days ago: 0 — these count in `value` but can never appear in the 7-day sparkline
+
+=== 9. UNAUTH / bad token ===
+  no token /home/kpis        -> 401
+  no token /home/agenda      -> 401
+  no token /tasks/my-work    -> 401
+
+(no fixtures created — read-only phase)
+CHECK: tasks 51 (51) | lists 14 (14)

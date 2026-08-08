@@ -33,7 +33,6 @@ const WIRE_KEYS = [
     "business_hours_end",
     "business_hours_start",
     "default_locale",
-    "fiscal_year_start_month",
     "id",
     "logo_url",
     "name",
@@ -50,7 +49,7 @@ const signAccess = (
     jwt.sign(
         { sub: user.id, role: user.role, workspaceId: user.workspaceId },
         secret,
-        { algorithm: "HS256", issuer: "task-management-server", ...opts },
+        { algorithm: "HS256", issuer: "task-management-server", expiresIn: "15m", ...opts },
     );
 
 /** Direct Drizzle update to seed non-default starting state the factory omits. */
@@ -114,20 +113,25 @@ describe("PATCH /api/v1/workspace", () => {
         it("updates multiple fields and records them in changed_fields", async () => {
             const { ws, client } = await setup();
 
+            // F28 (D12.2) — this used to pair `name` with
+            // `fiscal_year_start_month`, which no longer exists.
+            // `week_starts_on` is the equivalent subject: a numeric setting that
+            // is still editable AND still read (the client calendar consumes
+            // it), so the pairing stays meaningful.
             const res = await client
                 .patch(PATH)
-                .send({ name: "Multi", fiscal_year_start_month: 9 });
+                .send({ name: "Multi", week_starts_on: 3 });
 
             expect(res.status).toBe(200);
             expect(res.body.name).toBe("Multi");
-            expect(res.body.fiscal_year_start_month).toBe(9);
+            expect(res.body.week_starts_on).toBe(3);
             const row = await rowOf(ws.id);
-            expect(row.fiscalYearStartMonth).toBe(9);
+            expect(row.weekStartsOn).toBe(3);
 
             const [act] = await activityFor(ws.id);
             expect(ctxOf(act).changed_fields).toEqual([
                 "name",
-                "fiscal_year_start_month",
+                "week_starts_on",
             ]);
         });
 
@@ -257,8 +261,6 @@ describe("PATCH /api/v1/workspace", () => {
             ["timezone empty", { timezone: "" }],
             ["week_starts_on too high", { week_starts_on: 7 }],
             ["week_starts_on negative", { week_starts_on: -1 }],
-            ["fiscal_year_start_month 0", { fiscal_year_start_month: 0 }],
-            ["fiscal_year_start_month 13", { fiscal_year_start_month: 13 }],
             ["working_days junk member", { working_days: ["funday"] }],
             ["working_days not array", { working_days: "mon" }],
             ["logo_url not a url", { logo_url: "not-a-url" }],
@@ -383,7 +385,7 @@ describe("PATCH /api/v1/workspace", () => {
             expect(res.body.name).toBe(name);
         });
 
-        it("accepts week_starts_on boundaries 0 and 6, fiscal 1 and 12", async () => {
+        it("accepts week_starts_on boundaries 0 and 6", async () => {
             const { client } = await setup();
             expect(
                 (await client.patch(PATH).send({ week_starts_on: 0 })).status,
@@ -391,14 +393,30 @@ describe("PATCH /api/v1/workspace", () => {
             expect(
                 (await client.patch(PATH).send({ week_starts_on: 6 })).status,
             ).toBe(200);
-            expect(
-                (await client.patch(PATH).send({ fiscal_year_start_month: 1 }))
-                    .status,
-            ).toBe(200);
-            expect(
-                (await client.patch(PATH).send({ fiscal_year_start_month: 12 }))
-                    .status,
-            ).toBe(200);
+        });
+
+        /**
+         * F28 (ISS-029, D12.2): `fiscal_year_start_month` was DROPPED — stored,
+         * validated 1–12, and read by nothing, with no financial-reporting
+         * surface anywhere in the product to read it.
+         *
+         * This endpoint picks known keys rather than rejecting unknown ones, so
+         * the field is now simply ignored. Asserted as it actually behaves: it
+         * does not reach the response, and it does not reach `changed_fields`
+         * (which is what the activity feed shows a human).
+         */
+        it("ignores fiscal_year_start_month — the column no longer exists", async () => {
+            const { ws, client } = await setup();
+            const res = await client
+                .patch(PATH)
+                .send({ name: "Still fine", fiscal_year_start_month: 7 });
+
+            expect(res.status).toBe(200);
+            expect(res.body.name).toBe("Still fine");
+            expect(res.body).not.toHaveProperty("fiscal_year_start_month");
+
+            const [act] = await activityFor(ws.id);
+            expect(ctxOf(act).changed_fields).toEqual(["name"]);
         });
 
         it("allows updating only business_hours_end higher (valid against stored start)", async () => {

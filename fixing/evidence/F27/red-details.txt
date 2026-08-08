@@ -1,0 +1,45 @@
+solo failure details — 2026-08-06T14:03:18+06:00
+════ home ════
+Tests:       23 passed, 23 total
+════ spaces ════
+  ● PATCH /api/v1/spaces/:id › No conflict (duplicate names allowed) › allows renaming a space to match another space's name (no 409)
+    Expected: 200
+    Received: 409
+  ● POST /api/v1/spaces › Validation › rejects malformed colors and accepts #RRGGBB (case-insensitive)
+    Expected: 201
+    Received: 409
+  ● POST /api/v1/spaces › Validation › rejects out-of-range / non-integer position, accepts 0 and the uint32 max
+    Expected: 201
+    Received: 409
+  ● POST /api/v1/spaces › Duplicate names › allows two spaces with an identical body (no unique constraint → no 409)
+    Expected: 201
+    Received: 409
+  ● POST /api/v1/spaces › Idempotency and concurrency › does not dedupe identical retries (no Idempotency-Key support)
+    Expected: 2
+    Received: 1
+Tests:       5 failed, 239 passed, 244 total
+════ lists ════
+  ● POST /api/v1/lists › References & conflict › allows two lists with the same name in a space (no unique constraint)
+    Expected: 201
+    Received: 409
+  ● PATCH /api/v1/lists/:id › References & conflict › allows renaming to a sibling list's name (no unique constraint)
+    Expected: 200
+    Received: 409
+Tests:       2 failed, 169 passed, 171 total
+════ rbac ════
+  ● POST /roles + PUT /roles/:id/permissions › derives a unique key when two roles share a name
+    Expected: "reviewer-2"
+    Received: undefined
+Tests:       1 failed, 285 passed, 286 total
+════ customfields ════
+  ● GET /api/v1/custom-fields › Happy path › returns the workspace's fields as a bare array in the exact wire shape
+    - Expected  - 0
+    + Received  + 1
+Tests:       1 failed, 89 passed, 90 total
+════ statuses ════
+  ● PATCH /api/v1/lists/:listId/statuses/reorder › Lifecycle & not-found › 404 status.not_found for a status id from another list (no cross-list move)
+  ● GET /api/v1/lists/:listId/statuses › Empty set & scoping › returns only the requested list's statuses, not a sibling list's
+  ● POST /api/v1/lists/:listId/statuses › Conflict › allows the same name in a different list (scope differs → 201)
+  ● PATCH /api/v1/statuses/:id › Conflict › allows the same name as a status in a DIFFERENT list (200)
+Tests:       4 failed, 205 passed, 209 total
+done

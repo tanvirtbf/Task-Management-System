@@ -1,0 +1,37 @@
+real 'now' (UTC): 2026-07-30T04:12:04.190Z
+════════════════════════════════════════════════════════════════════════════════════════
+CASE: DB_TIMEZONE unset   (dev default)
+  probe session tz          : SYSTEM (probe conn, not the server's)
+  --- created_at (auto, DB-side default) ---
+    API returned            : 2026-07-30T10:12:06.000Z   drift from real now: 360 min
+    raw DB string           : 2026-07-30 10:12:06
+    VERDICT                 : *** DRIFT 360 min ***
+  --- sla_due_at (explicit write) ---
+    sent                    : 2026-08-15T09:30:00.000Z  PATCH -> 200
+    API returned            : 2026-08-15T09:30:00.000Z
+    raw DB string           : 2026-08-15 09:30:00
+    VERDICT                 : EXACT ✓
+════════════════════════════════════════════════════════════════════════════════════════
+CASE: DB_TIMEZONE=+06:00  (prod setting)
+  probe session tz          : SYSTEM (probe conn, not the server's)
+  --- created_at (auto, DB-side default) ---
+    API returned            : 2026-07-30T10:12:08.000Z   drift from real now: 360 min
+    raw DB string           : 2026-07-30 10:12:08
+    VERDICT                 : *** DRIFT 360 min ***
+  --- sla_due_at (explicit write) ---
+    sent                    : 2026-08-15T09:30:00.000Z  PATCH -> 200
+    API returned            : 2026-08-15T09:30:00.000Z
+    raw DB string           : 2026-08-15 09:30:00
+    VERDICT                 : EXACT ✓
+════════════════════════════════════════════════════════════════════════════════════════
+CASE: DB_TIMEZONE=+00:00  (UTC box)
+  probe session tz          : SYSTEM (probe conn, not the server's)
+  --- created_at (auto, DB-side default) ---
+    API returned            : 2026-07-30T04:12:10.000Z   drift from real now: 0 min
+    raw DB string           : 2026-07-30 10:12:10
+    VERDICT                 : OK ✓
+  --- sla_due_at (explicit write) ---
+    sent                    : 2026-08-15T09:30:00.000Z  PATCH -> 200
+    API returned            : 2026-08-15T09:30:00.000Z
+    raw DB string           : 2026-08-15 15:30:00
+    VERDICT                 : EXACT ✓

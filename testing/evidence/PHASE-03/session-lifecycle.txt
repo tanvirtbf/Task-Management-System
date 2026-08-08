@@ -1,0 +1,57 @@
+=== 7. REFRESH ===
+  logged in, session: ses-7nRMm5jSxC19wAvIE2cszw
+  refresh with valid cookie -> 200 new access_token: true
+  new refresh cookie issued  : true (ROTATED)
+  session id before/after     : ses-7nRMm5jSxC19wAvIE2cszw -> ses-tUenodyfCyFRvQSaynICqw (new session)
+
+  is the OLD refresh cookie still usable after a refresh?
+    replay old cookie -> 401 rejected (rotated)
+
+  refresh failure modes:
+    no cookie at all             -> 401  auth.invalid_refresh
+    empty cookie                 -> 401  auth.invalid_refresh
+    garbage cookie               -> 401  auth.invalid_refresh
+    tampered signature           -> 401  auth.invalid_refresh
+    an ACCESS token as refresh   -> 401  auth.invalid_refresh
+
+=== 8. LOGOUT — does it really end the session? ===
+  active sessions for owner before logout: 1
+  POST /auth/logout -> 204
+  session row revoked_at: SET ✓
+  active sessions after : 0
+  cookie cleared        : bb_refresh=  (Max-Age/Expires: Expires=Thu, 01 Jan 1970 00:00:00 GMT)
+
+  after logout:
+    refresh with the revoked session -> 401 auth.invalid_refresh
+    ACCESS token still accepted      -> 200 *** YES — logout does not invalidate the access token ***
+
+=== 9. LOGOUT-ALL ===
+  opened 3 more sessions; active now: 3
+  POST /auth/logout-all -> 204
+  active sessions after : 0 (expect 0)
+    s1 refresh -> 401 auth.invalid_refresh
+    s2 refresh -> 401 auth.invalid_refresh
+    s3 refresh -> 401 auth.invalid_refresh
+
+=== 10. EXPIRED / REVOKED SESSION ROWS ===
+  session expires_at in the past -> refresh: 401 auth.invalid_refresh
+  session row DELETED            -> refresh: 401 auth.invalid_refresh
+
+=== 11. SESSION HYGIENE ===
+  sessions rows: 258 | revoked: 240 | live: 17
+  columns: id, user_id, token_hash, user_agent, ip_address, created_at, last_seen_at, expires_at, revoked_at
+node:internal/process/promises:394
+    triggerUncaughtException(err, true /* fromPromise */);
+    ^
+
+Error: Unknown column 'internal_id' in 'order clause'
+    at C:\Users\Tanvir\AppData\Local\Temp\claude\E--Task-Management-System\0c5a6be8-84af-4c0b-91a3-1cb6f5c4eb9d\scratchpad\p3_session.cjs:99:29
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5) {
+  code: 'ER_BAD_FIELD_ERROR',
+  errno: 1054,
+  sqlState: '42S22',
+  sqlMessage: "Unknown column 'internal_id' in 'order clause'",
+  sql: 'SELECT user_agent, ip_address FROM sessions ORDER BY internal_id DESC LIMIT 1'
+}
+
+Node.js v22.21.1

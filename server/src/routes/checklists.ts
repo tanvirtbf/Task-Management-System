@@ -12,6 +12,7 @@ import { TaskActivityRepo } from "../repositories/TaskActivityRepo";
 import { getDb } from "../db/client";
 import logger from "../config/logger";
 import authenticate from "../middlewares/authenticate";
+import { requirePermission } from "../middlewares/requirePermission";
 import { validate } from "../middlewares/validate";
 import {
     addItemValidator,
@@ -21,7 +22,7 @@ import {
     itemIdParamValidator,
     listChecklistsValidator,
     updateChecklistValidator,
-    updateItemValidator,
+    updateItemValidator, updateItemBodyGuard,
 } from "../validators/checklists";
 import type { AuthRequest } from "../types";
 import type {
@@ -72,6 +73,7 @@ router.get(
 router.post(
     "/tasks/:id/checklists",
     authenticate,
+    requirePermission("checklist.manage"),
     createChecklistValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -83,6 +85,7 @@ router.post(
 router.patch(
     "/checklists/:id",
     authenticate,
+    requirePermission("checklist.manage"),
     updateChecklistValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -94,6 +97,7 @@ router.patch(
 router.delete(
     "/checklists/:id",
     authenticate,
+    requirePermission("checklist.manage"),
     checklistIdParamValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -105,6 +109,7 @@ router.delete(
 router.post(
     "/checklists/:id/items",
     authenticate,
+    requirePermission("checklist.manage"),
     addItemValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -116,6 +121,7 @@ router.post(
 router.post(
     "/checklists/:id/items/bulk",
     authenticate,
+    requirePermission("checklist.manage"),
     bulkAddItemsValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -127,7 +133,9 @@ router.post(
 router.patch(
     "/checklist-items/:id",
     authenticate,
+    requirePermission("checklist.manage"),
     updateItemValidator,
+    updateItemBodyGuard,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
         controller.updateItem(req as UpdateItemRequest, res, next),
@@ -138,6 +146,7 @@ router.patch(
 router.post(
     "/checklist-items/:id/toggle",
     authenticate,
+    requirePermission("checklist.manage"),
     itemIdParamValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -149,6 +158,7 @@ router.post(
 router.delete(
     "/checklist-items/:id",
     authenticate,
+    requirePermission("checklist.manage"),
     itemIdParamValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>

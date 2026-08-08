@@ -21,9 +21,18 @@ export const r2Purge = async ({ dryRun }: JobContext): Promise<JobOutcome> => {
     const repo = new AttachmentsRepo(getDb());
     const cutoff = new Date(Date.now() - SEVEN_DAYS_MS);
     const purgeable = await repo.findPurgeable(cutoff);
+    // F16 (ISS-022): keys queued by task HARD deletes. The FK cascade removed
+    // those attachment rows before this job could ever see them, so the
+    // hard-delete transaction copies the keys into `r2_purge_queue` and this
+    // job drains it. No 7-day grace — the task is already permanently gone.
+    const queued = await repo.findQueuedPurge();
 
     if (dryRun) {
-        return { processed: purgeable.length, wouldPurge: purgeable.length };
+        return {
+            processed: purgeable.length + queued.length,
+            wouldPurge: purgeable.length,
+            wouldDrainQueue: queued.length,
+        };
     }
 
     const r2 = new R2Service(logger);
@@ -45,5 +54,29 @@ export const r2Purge = async ({ dryRun }: JobContext): Promise<JobOutcome> => {
         }
         purged += await repo.hardDeletePurged(att.id);
     }
-    return { processed: purged, purged, r2Errors };
+
+    // Same contract as above: objects first, row second, so a crash mid-drain
+    // leaves the queue row for the next run. R2 DELETE is idempotent.
+    let queueDrained = 0;
+    for (const q of queued) {
+        try {
+            await r2.deleteObject(q.storageKey);
+            if (q.thumbnailKey) await r2.deleteObject(q.thumbnailKey);
+        } catch (err) {
+            r2Errors += 1;
+            logger.warn("job.r2-purge.queue_delete_failed", {
+                queueId: q.id,
+                error: err instanceof Error ? err.message : String(err),
+            });
+            continue;
+        }
+        queueDrained += await repo.deleteQueuedPurge(q.id);
+    }
+
+    return {
+        processed: purged + queueDrained,
+        purged,
+        queueDrained,
+        r2Errors,
+    };
 };

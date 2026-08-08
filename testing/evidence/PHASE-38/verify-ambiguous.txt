@@ -1,0 +1,49 @@
+=== 1. JWT role escalation — redone on a MEMBER token ===
+  the scoped user's real role in the token: "member"
+  payload actually changed? yes
+  member token with role forged to owner -> GET /auth/me: 401 auth.invalid_token     rejected
+  ... and an owner-only action (PATCH /users/:id/role): 401 auth.invalid_token
+  (the earlier '200 ACCEPTED' was the OWNER's token re-encoded to the SAME payload — role was already owner: true )
+
+=== 2. GET /forms/:id from a space-scoped user — what is exposed? ===
+  the form lives in space: Marketing
+  marketing.only GET /forms/:id -> 200      keys: ["id","list_id","title","description","public_slug","is_public","branding","settings","submission_count","fields","created_at"]
+     title: "Order intake form" | list_id: "l-cGkbEGaUJ1chQhMWrUr5Lg" | fields: 1
+  can they reach that list directly? 200
+  marketing.only GET /forms (the collection) -> 200      rows: 1 | titles: ["Order intake form"]
+  forms in the workspace: 1 -> they see ALL of them
+  can they EDIT it? 403 auth.forbidden
+  can they DELETE it? 403 auth.forbidden
+  the form is intact: "Order intake form"
+
+=== 3. GET /sprints/:id from a space-scoped user ===
+  -> 200      keys: ["id","name","goal","start_date","end_date","status","committed_points"] | name: "Sprint 12 — Checkout & Payments"
+  (P28 established sprints are workspace-scoped BY DESIGN and their task list IS filtered)
+  its task list -> 200      rows: 0
+
+=== 4. The CORS 500 — what is actually thrown? ===
+  Origin https://evil.example.com  -> 500  ACAO null                      body: {"error":{"code":"internal","message":"Internal server error","request_id":"req_0da3bd51-2df6-49a8-a06d-f688ae
+  Origin http://localhost:5173     -> 200  ACAO "http://localhost:5173"   
+  Origin http://localhost:3000     -> 200  ACAO "http://localhost:3000"   
+  Origin null                      -> 500  ACAO null                      body: {"error":{"code":"internal","message":"Internal server error","request_id":"req_2c51c908-5f42-4e20-81c5-e14cfa
+  preflight from evil -> 500 body: {"error":{"code":"internal","message":"Internal server error","request_id":"req_e4b86e46-bcb4-4bf3-a483-35d4533e638c"}}
+  preflight from localhost:5173 -> 204 ACAO "http://localhost:5173"
+  -> the request itself is still SERVED to a hostile origin? 500
+
+=== 5. PASSWORD POLICY, precisely (the owner password was restored after this) ===
+  5 chars                           -> 422 validation.failed     refused
+  12 lower-case letters, no digit   -> 204                       *** ACCEPTED ***
+  10 digits                         -> 204                       *** ACCEPTED ***
+  8 upper-case letters              -> 204                       *** ACCEPTED ***
+  8 identical letters               -> 204                       *** ACCEPTED ***
+  the literal word password         -> 204                       *** ACCEPTED ***
+  restoring arif's password -> 204
+  arif can log in with Owner@12345 again: true
+  owner can log in with Owner@12345:      true
+
+=== 6. The validator that governs it ===
+            errorMessage: "Reset token is required",
+            errorMessage: "Reset token must be a string",
+        isLength: {
+            options: { max: 512 },
+            errorMessage: "Reset token is too long (max 512 chars)",

@@ -74,6 +74,19 @@ class AttachmentsController {
                     filename = rawName;
                 }
             }
+            // F18 (ISS-071): the SAME 255 rule the presign path has always
+            // enforced (`attachments.name` is varchar(255)). Without it, a
+            // long X-Filename reached MySQL and "Data too long for column
+            // 'name'" surfaced as a raw 500 — on the path the shipped client
+            // actually uses. Counted AFTER decoding, which is what is stored.
+            if (filename.length > 255) {
+                throw errors_1.AppError.validationFailed([
+                    {
+                        field: "X-Filename",
+                        issue: "filename is too long (max 255 chars)",
+                    },
+                ]);
+            }
             const attachment = await this.service.uploadDirect({
                 workspaceId: req.auth.workspaceId,
                 uploaderId: req.auth.sub,

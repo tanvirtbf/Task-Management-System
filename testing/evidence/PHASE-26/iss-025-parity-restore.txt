@@ -1,0 +1,7 @@
+BEFORE — the ISS-025 symptom on the drifted dev DB:
+  GET /forms/:id/submissions -> 500 {"error":{"code":"internal","message":"Internal server error","request_id":"req_13d937e1-5dba-4a89-a469-531f1df3cdcc"}}
+
+RESTORING PROD PARITY — adding the two columns exactly as schema.sql:951-952 declares them
+  columns now: id, internal_id, form_id, task_id, submitter_email, submitter_ip, data, submitted_at, encrypted_at, expires_at
+  GET /forms/:id/submissions -> 200 {"data":[],"pagination":{"next_cursor":null,"has_more":false,"total_estimate":0}}
+  ISS-025 reproduces again: GET /forms/:id/submissions -> 500

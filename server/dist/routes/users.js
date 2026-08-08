@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
+const allowQuery_1 = require("../middlewares/allowQuery");
 const UserController_1 = require("../controllers/UserController");
 const UserService_1 = require("../services/UserService");
 const UsersRepo_1 = require("../repositories/UsersRepo");
@@ -37,7 +38,9 @@ const userController = new UserController_1.UserController(userService, logger_1
 // Authenticated (any workspace member). Workspace-scoped via
 // `req.auth.workspaceId`; supports ?status / ?role / ?q filters + opaque cursor
 // pagination (keyset on `id`). The v1-level `apiLimiter` (600/min/user) applies.
-router.get("/", authenticate_1.default, users_1.listUsersValidator, validate_1.validate, (req, res, next) => userController.list(req, res, next));
+router.get("/", authenticate_1.default, 
+// F23 (ISS-014): a mistyped filter is a 422, not the full set.
+(0, allowQuery_1.allowQuery)(["status", "role", "q", "cursor", "limit"]), (0, requirePermission_1.requirePermission)("member.view"), users_1.listUsersValidator, validate_1.validate, (req, res, next) => userController.list(req, res, next));
 // ─── POST /api/v1/users/invite ─────────────────────────────────────────────
 // 👑 admin/owner only. Chain order encodes the spec's status precedence:
 // `authenticate` (401) → `requirePermission` (403) → validation (422). Workspace scope
@@ -52,7 +55,7 @@ router.post("/invite", authenticate_1.default, (0, requirePermission_1.requirePe
 // `user.not_found`, never a cross-tenant read. Returns the bare Appendix-A
 // `User`. Registered after `GET /` and before any future static `/users/<word>`
 // GET route, so the `:id` param does not shadow them.
-router.get("/:id", authenticate_1.default, users_1.getUserValidator, validate_1.validate, (req, res, next) => userController.get(req, res, next));
+router.get("/:id", authenticate_1.default, (0, requirePermission_1.requirePermission)("member.view"), users_1.getUserValidator, validate_1.validate, (req, res, next) => userController.get(req, res, next));
 // ─── PATCH /api/v1/users/:id/role ──────────────────────────────────────────
 // 👑 admin/owner. Chain order encodes the spec's status precedence:
 // `authenticate` (401) → `requirePermission` (403 `auth.forbidden`) → validation (422,

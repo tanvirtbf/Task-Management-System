@@ -1,0 +1,43 @@
+=== 0. custom field fixture ===
+  POST /custom-fields -> 422 validation.failed          {"error":{"code":"validation.failed","message":"One or more fields failed validation","request_id":"req_93856484-e30e-4079-aed6-3f75f2246914
+
+=== 1. SLUG round-trip — the API rejects the slug it generated ===
+  generated slug: "test-p26b-intake-CHr0adgY"
+  SLUG_RE is /^[a-z0-9]+(?:-[a-z0-9]+)*$/ — the random suffix is mixed-case
+  PATCH the form with its OWN slug -> 422 validation.failed          *** the API will not accept its own output ***
+  a valid lowercase explicit slug -> "test-p26b-taken"
+  the SAME slug again -> 409 form.slug_taken (the plan expects form.slug_taken)
+  "UPPER-case"    (uppercase)         -> 422 validation.failed
+  "has spaces"    (spaces)            -> 422 validation.failed
+  "trailing-"     (trailing hyphen)   -> 422 validation.failed
+  "ok-slug-123"   (valid)             -> 201
+
+=== 2. FIELDS + reorder with the real body {items:[{id,position}]} ===
+  name/description/priority/custom_field -> 201 | 201 | 201 | 0
+  before: ["name:0","description:1","priority:2"]
+  reorder -> 200      after: ["priority:0","description:1","name:2"]
+  a field id from ANOTHER form -> 422 form_field.not_in_form
+  a partial list (1 of 4)      -> 200
+     positions now: ["name:0","priority:0","description:1"]
+  duplicate positions          -> 200
+
+=== 3. SUBMIT — extra keys, types, required custom field ===
+  valid                       -> 201
+  with an EXTRA key           -> 201                            (the plan expects form.invalid_field_key)
+  name as a NUMBER            -> 201     
+     -> task name stored as: "TEST-p26b Intake submission" type: string
+  submissions stored: 3
+  any PLAINTEXT phone number in the data column? no — all ciphertext
+  submission_count trigger: 3 vs actual rows: 3
+
+=== 4. RETENTION — the expiry job ===
+  submitted_at: 2026-07-30 15:21:39 | expires_at: 2026-10-28 09:21:40 ( 90 days )
+  form-submission-expiry --dry-run -> {"ok":true,"dry_run":false,"processed":0,"deleted":0}
+  one row backdated past retention
+  --dry-run again                  -> {"ok":true,"dry_run":false,"processed":1,"deleted":1}
+  run for real                     -> {"ok":true,"dry_run":false,"processed":0,"deleted":0}
+     rows 2 -> 2 *** nothing removed ***
+     submission_count after the purge: 3 vs rows: 2 *** drifted ***
+
+=== CLEANUP ===
+  orphan statuses 0 | tasks 55 (51) | lists 15 (14) | forms 3 (1) | fields 5 (1) | submissions 4 (0)

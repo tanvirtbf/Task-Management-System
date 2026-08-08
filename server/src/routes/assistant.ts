@@ -8,6 +8,7 @@ import { AssistantService } from "../services/AssistantService";
 import { ChatRepo } from "../repositories/ChatRepo";
 import { HomeService } from "../services/HomeService";
 import { HomeRepo } from "../repositories/HomeRepo";
+import { WorkspaceRepo } from "../repositories/WorkspaceRepo";
 import { SearchService } from "../services/SearchService";
 import { SearchRepo } from "../repositories/SearchRepo";
 import { TasksRepo } from "../repositories/TasksRepo";
@@ -72,7 +73,7 @@ if (!openai) {
     // Read-only data tools (Phase 8): reuse HomeService (KPIs/agenda) + SearchService.
     const tasksRepo = new TasksRepo(db);
     const toolServices = {
-        home: new HomeService(new HomeRepo(db), tasksRepo),
+        home: new HomeService(new HomeRepo(db), tasksRepo, new WorkspaceRepo(db)),
         search: new SearchService(new SearchRepo(db), tasksRepo),
     };
     const controller = new AssistantController(

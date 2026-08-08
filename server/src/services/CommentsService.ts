@@ -2,6 +2,9 @@ import { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../db/schema";
 import { AppError } from "../errors";
 import { Roles, type Role } from "../constants";
+import { holds } from "../rbac/can";
+import { liveLegacyRole } from "../rbac/scopeGuard";
+import { currentActor } from "../rbac/context";
 import { CommentsRepo, type CommentRow } from "../repositories/CommentsRepo";
 import { TasksRepo } from "../repositories/TasksRepo";
 import { TaskActivityRepo } from "../repositories/TaskActivityRepo";
@@ -70,6 +73,17 @@ export class CommentsService {
     async create(input: CreateCommentInput): Promise<WireComment> {
         const task = await this.requireTask(input.idOrKey, input.workspaceId);
 
+        // F22 (ISS-051): the archived-state machine, applied evenly. Edits and
+        // assignment were already 409 task.archived; comments slipped through,
+        // so discussion could continue on a task the workspace considers
+        // deleted (and DELETE is a soft archive — ISS-050).
+        if (task.archivedAt) {
+            throw AppError.conflict(
+                "task.archived",
+                "This task is archived — unarchive it to comment",
+            );
+        }
+
         // A reply must target a real, non-deleted, TOP-LEVEL comment on this task.
         if (input.parentCommentId) {
             const parent = await this.comments.findById(input.parentCommentId);
@@ -99,6 +113,7 @@ export class CommentsService {
             input.body,
             input.workspaceId,
             task.id,
+            task.primaryListId,
         );
 
         const comment = await this.db.transaction(async (tx) => {
@@ -131,6 +146,39 @@ export class CommentsService {
                         entityId: created.id,
                         actorId: input.authorId,
                         title: "mentioned you in a comment",
+                        body: input.body.slice(0, 140),
+                    })),
+                    tx,
+                );
+            }
+
+            // F19 (ISS-064): the people ATTACHED to the task learn it was
+            // commented on. Before this, a plain comment notified nobody — the
+            // only way to reach anyone was to @mention them by name, so the
+            // watcher feature maintained rows nothing ever read. Recipients:
+            // assignees + watchers, minus the author (their own comment) and
+            // minus anyone already notified as `mentioned` (one event, one
+            // notification). Preference suppression happens inside createMany.
+            const [assigneeMap, watcherMap] = await Promise.all([
+                this.tasks.assigneesByTask([task.id]),
+                this.tasks.watchersByTask([task.id]),
+            ]);
+            const already = new Set([input.authorId, ...mentionedIds]);
+            const attached = [
+                ...new Set([
+                    ...(assigneeMap.get(task.id) ?? []),
+                    ...(watcherMap.get(task.id) ?? []),
+                ]),
+            ].filter((id) => !already.has(id));
+            if (attached.length > 0) {
+                await this.notifications.createMany(
+                    attached.map((userId) => ({
+                        userId,
+                        type: "comment" as const,
+                        entityType: "comment" as const,
+                        entityId: created.id,
+                        actorId: input.authorId,
+                        title: `commented on "${task.name}"`,
                         body: input.body.slice(0, 140),
                     })),
                     tx,
@@ -186,8 +234,15 @@ export class CommentsService {
             input.workspaceId,
         );
         const isAuthor = comment.authorId === input.actorId;
+        // F7 / D3.1 compose: the author branch is feature logic and stays free;
+        // the admin branch now ALSO requires the `comment.delete_any` grant, so
+        // the roles-grid toggle stops being inert (ISS-024 special case #2).
+        // Compose cannot widen: granting the key to a non-admin does nothing.
+        // F10 (ISS-021): the role is the LIVE one, not the token claim.
+        const role = await liveLegacyRole(input.role);
         const isAdmin =
-            input.role === Roles.OWNER || input.role === Roles.ADMIN;
+            (role === Roles.OWNER || role === Roles.ADMIN) &&
+            holds(await currentActor(), "comment.delete_any");
         if (!isAuthor && !isAdmin) {
             throw AppError.forbidden(
                 "comment.forbidden_delete",
@@ -275,13 +330,24 @@ export class CommentsService {
     }
 
     /**
-     * `#CUSTOM-ID` → OTHER task ids in the workspace (deduped, host task
-     * excluded). Unmatched / cross-workspace refs are ignored.
+     * `#CUSTOM-ID` **or `#T-<n>`** → OTHER task ids (deduped, host excluded).
+     * Unmatched / cross-workspace refs are ignored.
+     *
+     * F25 (ISS-066): `T-<n>` resolves now. The client renders a task's key as
+     * `custom_id ?? "T-" + task_number`, and 43 of the 46 live tasks have no
+     * `custom_id` — so the identifier people READ, and therefore TYPE, was the
+     * one the resolver did not understand. `custom_id` is tried first
+     * (workspace-unique); `T-<n>` is then resolved **inside the host task's
+     * list**, because `task_number` is unique per list only — thirteen tasks
+     * in this workspace are "T-1", so a workspace-wide lookup would have to
+     * guess. A `T-<n>` from a different list stays unresolved, which is the
+     * honest outcome.
      */
     private async resolveTaskRefs(
         body: string,
         workspaceId: string,
         hostTaskId: string,
+        hostListId: string,
     ): Promise<string[]> {
         const refs = [
             ...new Set([...body.matchAll(TASK_REF_RE)].map((m) => m[1])),
@@ -293,7 +359,17 @@ export class CommentsService {
                 ref,
                 workspaceId,
             );
-            if (t && t.id !== hostTaskId) ids.add(t.id);
+            if (t) {
+                if (t.id !== hostTaskId) ids.add(t.id);
+                continue;
+            }
+            const tn = /^[Tt]-(\d+)$/.exec(ref);
+            if (!tn) continue;
+            const sibling = await this.tasks.findByTaskNumberInList(
+                hostListId,
+                Number(tn[1]),
+            );
+            if (sibling && sibling.id !== hostTaskId) ids.add(sibling.id);
         }
         return [...ids];
     }

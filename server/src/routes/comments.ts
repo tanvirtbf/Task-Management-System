@@ -12,6 +12,7 @@ import { NotificationsRepo } from "../repositories/NotificationsRepo";
 import { getDb } from "../db/client";
 import logger from "../config/logger";
 import authenticate from "../middlewares/authenticate";
+import { requirePermission } from "../middlewares/requirePermission";
 import { validate } from "../middlewares/validate";
 import {
     commentIdParamValidator,
@@ -65,6 +66,7 @@ router.get(
 router.post(
     "/tasks/:id/comments",
     authenticate,
+    requirePermission("comment.create"),
     createCommentValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>

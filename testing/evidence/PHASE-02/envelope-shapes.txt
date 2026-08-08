@@ -1,0 +1,32 @@
+=== 1. SUCCESS ENVELOPE SHAPE ===
+  200  /workspace                 single      bare ✓                         keys=id,name,logo_url,timezone,default_locale,week_starts_on
+  200  /auth/me                   single      bare ✓                         keys=id,first_name,last_name,email,role,avatar_url
+  200  /me/permissions            single      bare ✓                         keys=version,is_owner,role,visible_space_ids,permissions
+  200  /spaces                    collection  envelope ✓                     keys=data,pagination
+  200  /lists                     collection  envelope ✓                     keys=data,pagination
+  200  /users                     collection  envelope ✓                     keys=data,pagination
+  200  /tags                      collection  envelope ✓                     keys=data,pagination
+  200  /task-types                collection  envelope ✓                     keys=data,pagination
+  200  /templates                 collection  envelope ✓                     keys=data,pagination
+  200  /notifications             collection  envelope ✓                     keys=data,pagination
+  200  /activity/recent           collection  *** NOT {data,pagination} ***  keys=data
+  200  /activity                  collection  envelope ✓                     keys=data,pagination
+  200  /forms                     collection  *** NOT {data,pagination} ***  keys=<array len 1>
+  200  /sprints                   collection  *** NOT {data,pagination} ***  keys=<array len 1>
+  200  /reports                   collection  envelope ✓                     keys=data,pagination
+  200  /search?q=task             collection  *** NOT {data,pagination} ***  keys=tasks,lists,spaces,users,comments,total
+  200  /tasks/my-work             special     bare ✓                         keys=today,overdue,next,unscheduled,done
+  200  /home/kpis                 single      bare ✓                         keys=myTasks,dueToday,overdue,awaitingReview,openTeamTasks,slaBreaches
+  200  /sla/breached              bare-array  bare array ✓                   keys=<array len 0>
+  200  /on-call/current           single      bare ✓                         keys=<object>
+  200  /roles                     collection  *** NOT {data,pagination} ***  keys=data
+  200  /roles/catalog             single      bare ✓                         keys=groups
+
+=== 2. PAGINATION OBJECT SHAPE ===
+  /spaces                pagination keys = next_cursor, has_more, total_estimate  | data len=9
+  /lists                 pagination keys = next_cursor, has_more, total_estimate  | data len=14
+  /users                 pagination keys = next_cursor, has_more, total_estimate  | data len=16
+  /notifications         pagination keys = next_cursor, has_more, total_estimate  | data len=15
+  /activity              pagination keys = next_cursor, has_more, total_estimate  | data len=6
+  /tasks/my-work         (no pagination object)  top keys = today,overdue,next,unscheduled,done
+  /search?q=a            (no pagination object)  top keys = tasks,lists,spaces,users,comments,total

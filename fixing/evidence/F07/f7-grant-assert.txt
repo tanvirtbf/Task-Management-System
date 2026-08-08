@@ -1,0 +1,12 @@
+
+  === F7 Side 1 — live grants vs SYSTEM_ROLE_GRANTS ===
+
+  OK   owner   granted 56 / expected 56
+  OK   admin   granted 53 / expected 53
+  OK   member  granted 20 / expected 20
+  OK   guest   granted 19 / expected 19
+
+  active roles in the DB: 5 (4 system + any customs)
+
+  PASS — zero drift. No upgrades/ script needed; the gates land on the intended grants.
+

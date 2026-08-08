@@ -39,6 +39,7 @@ export const BoardSwimlane = ({
         >
             <button
                 onClick={() => setCollapsed(!collapsed)}
+                aria-label={collapsed ? "Expand swimlane" : "Collapse swimlane"}
                 style={{
                     display: "flex",
                     alignItems: "center",

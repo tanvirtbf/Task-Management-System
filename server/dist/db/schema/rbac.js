@@ -73,6 +73,10 @@ exports.roles = (0, mysql_core_1.mysqlTable)("roles", {
     updatedAt: (0, mysql_core_1.timestamp)("updated_at").notNull().defaultNow().onUpdateNow(),
 }, (t) => ({
     workspaceKeyUq: (0, mysql_core_1.uniqueIndex)("uq_roles_workspace_key").on(t.workspaceId, t.roleKey),
+    /** F27 (ISS-027): `role_key` was deduped by silently SUFFIXING it, so
+     *  `role.key_taken` never fired and two roles could carry the same
+     *  display name. The name is unique now; the key stays as it was. */
+    workspaceNameUq: (0, mysql_core_1.uniqueIndex)("uq_roles_workspace_name").on(t.workspaceId, t.name),
     wsFk: (0, mysql_core_1.foreignKey)({
         columns: [t.workspaceId],
         foreignColumns: [auth_1.workspaces.id],

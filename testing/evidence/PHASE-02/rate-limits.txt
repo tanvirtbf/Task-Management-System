@@ -1,0 +1,23 @@
+2 logins done (auth bucket: 2/5 used)
+
+=== 15. RATE-LIMIT BUCKETS ===
+  authStrictLimiter /auth/login (5/min/IP)   429 at attempt 4     (expected 4   ) ✓  code=auth.rate_limited    Retry-After=60
+      statuses: 401,401,401,429
+  invitationLimiter /auth/invitation (5/min/IP) 429 at attempt 6     (expected 6   ) ✓  code=auth.rate_limited    Retry-After=60
+      statuses: 404,404,404,404,404,429
+  reportGenerateLimiter (10/min/user)        429 at attempt 11    (expected 11  ) ✓  code=rate.exceeded        Retry-After=60
+      statuses: 422,422,422,422,422,422,422,422,422,422,429
+  assistantLimiter (20/min/user)             429 at attempt 21    (expected 21  ) ✓  code=rate.exceeded        Retry-After=60
+      statuses: 422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,429
+  uploadSignLimiter (60/min/user)            429 at attempt 61    (expected 61  ) ✓  code=rate.exceeded        Retry-After=60
+      statuses: 422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,422,429
+
+=== 16. BUCKET KEYING: does user B survive user A's exhaustion? (same IP) ===
+  owner (already 429'd) -> 429
+  farhana (fresh user)  -> 422  separate bucket ✓
+
+=== 17. public form limiter (30/min/IP) ===
+  (no form in the dataset — deferred to P26)
+
+=== 18. general apiLimiter (600/min/user) ===
+  429 at request 600  code=rate.exceeded  Retry-After=58

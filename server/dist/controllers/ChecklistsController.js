@@ -35,6 +35,7 @@ class ChecklistsController {
             const checklist = await this.service.createChecklist({
                 idOrKey: req.params.id,
                 workspaceId: req.auth.workspaceId,
+                actorId: req.auth.sub,
                 name,
             });
             this.logger.info("checklists.create.ok", {
@@ -73,6 +74,7 @@ class ChecklistsController {
             await this.service.deleteChecklist({
                 id: req.params.id,
                 workspaceId: req.auth.workspaceId,
+                actorId: req.auth.sub,
             });
             res.sendStatus(204);
         }
@@ -87,6 +89,7 @@ class ChecklistsController {
             const item = await this.service.addItem({
                 checklistId: req.params.id,
                 workspaceId: req.auth.workspaceId,
+                actorId: req.auth.sub,
                 text,
                 assigneeId: assignee_id ?? null,
                 parentItemId: parent_item_id ?? null,
@@ -105,6 +108,7 @@ class ChecklistsController {
             const items = await this.service.bulkAddItems({
                 checklistId: req.params.id,
                 workspaceId: req.auth.workspaceId,
+                actorId: req.auth.sub,
                 texts,
             });
             res.status(201).json(items);
@@ -153,6 +157,7 @@ class ChecklistsController {
             await this.service.deleteItem({
                 id: req.params.id,
                 workspaceId: req.auth.workspaceId,
+                actorId: req.auth.sub,
             });
             res.sendStatus(204);
         }

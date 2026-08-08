@@ -208,6 +208,21 @@ class ListsRepo {
      * shape). Pass `exec` to run inside the update tx. Caller guarantees `patch`
      * is non-empty.
      */
+    /**
+     * One list by NAME within a space — the pre-check for F27's
+     * `uq_lists_space_name`. Matching is whatever the column's collation says,
+     * and `lists.name` is `utf8mb4_unicode_ci`, so "Bugs" finds "bugs" for free.
+     * Archived lists are included on purpose: the index covers them too, so an
+     * archived list still owns its name.
+     */
+    async findByNameInSpace(spaceId, name, exec = this.db) {
+        const rows = await exec
+            .select({ id: schema_1.lists.id })
+            .from(schema_1.lists)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.lists.spaceId, spaceId), (0, drizzle_orm_1.eq)(schema_1.lists.name, name)))
+            .limit(1);
+        return rows[0] ?? null;
+    }
     async update(listId, patch, exec = this.db) {
         const setValues = {};
         if (patch.name !== undefined)
@@ -220,6 +235,8 @@ class ListsRepo {
             setValues.color = patch.color;
         if (patch.defaultTaskTypeId !== undefined)
             setValues.defaultTaskTypeId = patch.defaultTaskTypeId;
+        if (patch.spaceId !== undefined)
+            setValues.spaceId = patch.spaceId;
         await exec.update(schema_1.lists).set(setValues).where((0, drizzle_orm_1.eq)(schema_1.lists.id, listId));
     }
     /**
@@ -305,6 +322,25 @@ class ListsRepo {
             .update(schema_1.lists)
             .set({ archivedAt: asOf })
             .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.lists.spaceId, spaceId), (0, drizzle_orm_1.isNull)(schema_1.lists.archivedAt)));
+    }
+    /**
+     * F16 (ISS-041): restore exactly the lists the matching space-archive took
+     * down — the ones whose `archived_at` equals the space's own `archived_at`
+     * instant. The cascade above stamps every list with the SAME `asOf` the
+     * space gets, and it skips lists that were already archived, so those keep
+     * their earlier timestamp and this equality can never resurrect a list a
+     * user archived independently. That was the stated reason unarchive did not
+     * cascade at all — and the result was a space that came back EMPTY: P8
+     * archived Marketing for two seconds and its three boards were invisible
+     * for ninety minutes until someone noticed. Returns the restored count for
+     * the activity row.
+     */
+    async unarchiveBySpaceArchivedAt(spaceId, asOf, exec = this.db) {
+        const [result] = await exec
+            .update(schema_1.lists)
+            .set({ archivedAt: null })
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.lists.spaceId, spaceId), (0, drizzle_orm_1.eq)(schema_1.lists.archivedAt, asOf)));
+        return result.affectedRows;
     }
     /**
      * Count ALL lists in a space (archived and non-archived). Backed by

@@ -1,0 +1,62 @@
+────────────────────────────────────────────────────────────────────────────────────────────────
+ENCRYPTION_KEY absent          BOOTED   exit=null   expected: boots + WARNS
+      10:01:09 warn ENCRYPTION_KEY missing — public form submissions will return 503 until it is set
+      10:01:09 info Database connected successfully.
+      10:01:09 info Permission catalog synced {"permissions":56}
+      10:01:09 info Listening on port 5511
+────────────────────────────────────────────────────────────────────────────────────────────────
+ENCRYPTION_KEY malformed       NO BOOT  exit=1   expected: HARD NO-BOOT
+      10:01:18 error ENCRYPTION_KEY is set but malformed — need 64 hex chars (256-bit)
+────────────────────────────────────────────────────────────────────────────────────────────────
+ENCRYPTION_KEY 63 hex          NO BOOT  exit=1   expected: HARD NO-BOOT
+      10:01:20 error ENCRYPTION_KEY is set but malformed — need 64 hex chars (256-bit)
+────────────────────────────────────────────────────────────────────────────────────────────────
+ACCESS_TOKEN_SECRET missing    NO BOOT  exit=1   expected: ?
+      10:01:22 info Database connected successfully.
+      10:01:22 info Permission catalog synced {"permissions":56}
+      10:01:22 error express-jwt: `secret` is a required option
+────────────────────────────────────────────────────────────────────────────────────────────────
+REFRESH_TOKEN_SECRET missing   BOOTED   exit=null   expected: ?
+      10:01:24 info Database connected successfully.
+      10:01:24 info Permission catalog synced {"permissions":56}
+      10:01:25 info Listening on port 5515
+────────────────────────────────────────────────────────────────────────────────────────────────
+COOKIE_SECRET missing          BOOTED   exit=null   expected: ?
+      10:01:33 info Database connected successfully.
+      10:01:33 info Permission catalog synced {"permissions":56}
+      10:01:34 info Listening on port 5516
+────────────────────────────────────────────────────────────────────────────────────────────────
+INTERNAL_JOB_TOKEN missing     BOOTED   exit=null   expected: boots, jobs closed
+      10:01:42 info Database connected successfully.
+      10:01:42 info Permission catalog synced {"permissions":56}
+      10:01:43 info Listening on port 5517
+────────────────────────────────────────────────────────────────────────────────────────────────
+DB_PASSWORD wrong              NO BOOT  exit=1   expected: NO BOOT
+      10:01:52 error Access denied for user 'root'@'localhost' (using password: YES)
+────────────────────────────────────────────────────────────────────────────────────────────────
+DB_NAME nonexistent            NO BOOT  exit=1   expected: NO BOOT
+      10:01:54 error Unknown database 'no_such_db_p1'
+────────────────────────────────────────────────────────────────────────────────────────────────
+DB_TIMEZONE named zone         NO BOOT  exit=1   expected: NO BOOT (offset only)
+      E:\Task Management System\server\dist\db\client.js:57
+      throw new Error(`DB_TIMEZONE must be a fixed offset like "+06:00" (got "${raw}")`);
+      ^
+      
+      Error: DB_TIMEZONE must be a fixed offset like "+06:00" (got "Asia/Dhaka")
+      at E:\Task Management System\server\dist\db\client.js:57:15
+────────────────────────────────────────────────────────────────────────────────────────────────
+DB_TIMEZONE +06:00             BOOTED   exit=null   expected: boots
+      10:01:56 info Database connected successfully.
+      10:01:56 info Permission catalog synced {"permissions":56}
+      10:01:57 info Listening on port 5521
+────────────────────────────────────────────────────────────────────────────────────────────────
+DB_TIMEZONE garbage            NO BOOT  exit=1   expected: NO BOOT
+      E:\Task Management System\server\dist\db\client.js:57
+      throw new Error(`DB_TIMEZONE must be a fixed offset like "+06:00" (got "${raw}")`);
+      ^
+      
+      Error: DB_TIMEZONE must be a fixed offset like "+06:00" (got "6")
+      at E:\Task Management System\server\dist\db\client.js:57:15
+────────────────────────────────────────────────────────────────────────────────────────────────
+DB_SOCKET_PATH bogus           NO BOOT  exit=1   expected: NO BOOT (socket branch taken)
+      10:02:06 error connect ENOENT /tmp/nope.sock

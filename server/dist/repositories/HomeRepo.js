@@ -55,15 +55,30 @@ class HomeRepo {
             .groupBy(DAY);
     }
     /**
-     * awaitingReview: tasks where I am the reviewer and the PR is open. The
-     * mock returned 0 (placeholder) but `reviewer_id` + `pr_status` are wired,
-     * so this is computed for real.
+     * awaitingReview: completed tasks waiting on THIS person to review them —
+     * as the head of the space they live in, or as their named reviewer.
      */
     async awaitingReviewSeries(workspaceId, userId) {
+        // F24 (ISS-059): count the review queue THIS COMPANY uses.
+        //
+        // It used to count `pr_status = 'open'` — the GitHub pull-request
+        // field, NULL on every one of the 51 live tasks, so the tile read 0
+        // for everyone forever. Meanwhile the review workflow the product
+        // actually shipped (a department head approves or flags a completed
+        // task) had 11 tasks genuinely waiting.
+        //
+        // "Waiting on me" = a COMPLETED task, not yet reviewed
+        // (`review_status IS NULL` — the enum has no pending state; a row
+        // exists only once the head has acted), in a space THIS USER HEADS.
+        // The per-task `reviewer_id` arm is kept: an explicitly named reviewer
+        // is also waiting on that person. Either arm counts.
         return this.db
             .select({ day: DAY, cnt: (0, drizzle_orm_1.count)() })
             .from(schema_1.tasks)
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId), (0, drizzle_orm_1.eq)(schema_1.tasks.reviewerId, userId), (0, drizzle_orm_1.eq)(schema_1.tasks.prStatus, "open"), (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt)))
+            .innerJoin(schema_1.statuses, (0, drizzle_orm_1.eq)(schema_1.statuses.id, schema_1.tasks.statusId))
+            .innerJoin(schema_1.lists, (0, drizzle_orm_1.eq)(schema_1.lists.id, schema_1.tasks.primaryListId))
+            .innerJoin(schema_1.spaces, (0, drizzle_orm_1.eq)(schema_1.spaces.id, schema_1.lists.spaceId))
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId), (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt), (0, drizzle_orm_1.inArray)(schema_1.statuses.statusGroup, CLOSED_GROUPS), (0, drizzle_orm_1.isNull)(schema_1.tasks.reviewStatus), (0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.spaces.headUserId, userId), (0, drizzle_orm_1.eq)(schema_1.tasks.reviewerId, userId))))
             .groupBy(DAY);
     }
     /** openTeamTasks: every open task in the workspace (no assignee filter). */

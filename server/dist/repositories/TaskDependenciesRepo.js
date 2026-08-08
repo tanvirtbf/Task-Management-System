@@ -4,6 +4,8 @@ exports.TaskDependenciesRepo = void 0;
 const drizzle_orm_1 = require("drizzle-orm");
 const schema_1 = require("../db/schema");
 const utils_1 = require("../utils");
+const context_1 = require("../rbac/context");
+const ownEscape_1 = require("../rbac/ownEscape");
 const EDGE_COLUMNS = {
     id: schema_1.taskDependencies.id,
     taskId: schema_1.taskDependencies.taskId,
@@ -55,7 +57,14 @@ class TaskDependenciesRepo {
         return this.db
             .select()
             .from(schema_1.tasks)
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.inArray)(schema_1.tasks.id, ids), (0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId)));
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.inArray)(schema_1.tasks.id, ids), (0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId), 
+        // F9 (ISS-053): the other-end hydration was the ONE read
+        // path that skipped the caller's visibility — a
+        // cross-space edge served the full 50-field task of a
+        // space the caller cannot open. Same filter + own-escape
+        // as SearchRepo; an invisible other end simply does not
+        // hydrate, and the service drops the edge.
+        await (0, context_1.listScopeFilter)(schema_1.tasks.primaryListId, await (0, ownEscape_1.taskOwnEscape)())));
     }
     /**
      * Out-neighbours of a frontier for cycle detection: the `related_task_id`s of

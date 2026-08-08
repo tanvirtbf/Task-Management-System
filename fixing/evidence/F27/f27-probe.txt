@@ -1,0 +1,40 @@
+
+  === F27 — names and duplicates (D11: create AND rename) ===
+
+  --- the three indexes exist, on the same collation ---
+  OK    spaces  uq_spaces_workspace_name                            utf8mb4_unicode_ci (case-insensitive)
+  OK    lists   uq_lists_space_name                                 utf8mb4_unicode_ci (case-insensitive)
+  OK    roles   uq_roles_workspace_name                             utf8mb4_unicode_ci (case-insensitive)
+
+  --- ISS-033: spaces ---
+  OK    first create succeeds (201)                                 got 201
+  OK    a second with the SAME name -> 409 (was: 201, two in the sidebar)got 409 space.duplicate
+  OK    …case-insensitively (the collation does the work)           got 409
+  OK    RENAMING onto a collision -> 409 too (D11)                  got 409
+  OK    …a non-colliding rename still works (200)                   got 200
+
+  --- ISS-035: lists ---
+  OK    first create succeeds (201)                                 got 201
+  OK    same name in the SAME space -> 409 (was: 201, identical children)got 409 list.duplicate
+  OK    …but the same name in ANOTHER space is fine (201) — scope is the spacegot 201
+  OK    RENAMING onto a collision -> 409 (D11)                      got 409
+
+  --- ISS-027 + ISS-026: roles ---
+  OK    first create succeeds (201)                                 got 201
+  OK    a second with the same NAME -> 409 (was: 201 with a suffixed key)got 409 role.name_taken
+  OK    RENAMING onto a collision -> 409 (D11)                      got 409
+  OK    a SYSTEM role cannot be renamed -> 403, same as DELETE (was: 200)got 403 role.system_immutable
+  OK    …and DELETE answers identically (the guard pair is consistent)got 403
+  OK    …and its name is untouched                                  Admin
+  OK    …while its DESCRIPTION stays editable (cosmetic, not an identifier)got 200
+  OK    …and a no-op rename to its OWN name is not an error         got 200
+
+  --- the three that ALREADY worked, unchanged ---
+  OK    tags still 409 on a duplicate (the model implementation)    got 409
+  OK    task types still 409                                        got 409
+
+  === CLEANUP ===
+  spaces 6 (6) | lists 13 (13) | roles 5 | tags 8 (8) | task_types 7 | statuses 65 (65)
+
+  PASS — the five navigation resources now enforce what the three catalog ones always did.
+

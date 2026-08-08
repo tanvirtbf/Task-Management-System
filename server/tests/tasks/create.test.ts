@@ -47,7 +47,7 @@ const signAccess = (
     jwt.sign(
         { sub: user.id, role: user.role, workspaceId: user.workspaceId },
         secret,
-        { algorithm: "HS256", ...opts },
+        { algorithm: "HS256", expiresIn: "15m", ...opts },
     );
 
 const db = () => getDb();
@@ -288,7 +288,54 @@ describe("POST /api/v1/tasks", () => {
 
     // ─── SLA + completed_at ──────────────────────────────────────────────────
     describe("SLA + completed_at", () => {
-        it("defaults a Bug task's severity to S2 and sets a ~7d SLA", async () => {
+        /**
+         * F28 (ISS-029, decision D12.2). These specs used to assert an
+         * arithmetic offset — "within 5 minutes of now + 2 hours". That is
+         * exactly the behaviour the issue was filed about: a Bug S0 raised at
+         * 17:30 on a Thursday got a 19:30-Thursday deadline, after hours on the
+         * last working day before a Friday-Saturday weekend, and the team was
+         * measured against a deadline nobody was at work for.
+         *
+         * SLA durations are now counted on the BUSINESS clock, so the assertion
+         * that survives is the PROPERTY the fix delivers — the deadline always
+         * lands inside a working window — rather than an offset whose truth
+         * depends on which day the suite happens to run. The workspace factory
+         * seeds the schema defaults: sun–thu, 09:00–18:00, Asia/Dhaka.
+         */
+        const dhakaParts = (iso: string) => {
+            const parts = new Intl.DateTimeFormat("en-GB", {
+                timeZone: "Asia/Dhaka",
+                weekday: "short",
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: false,
+            }).formatToParts(new Date(iso));
+            const get = (t: string) =>
+                parts.find((p) => p.type === t)?.value ?? "";
+            return {
+                day: get("weekday").toLowerCase(),
+                minutes: Number(get("hour")) * 60 + Number(get("minute")),
+            };
+        };
+
+        const expectWithinBusinessHours = (
+            iso: string | null,
+            maxDaysAhead: number,
+        ) => {
+            expect(iso).not.toBeNull();
+            const { day, minutes } = dhakaParts(iso as string);
+            expect(["sun", "mon", "tue", "wed", "thu"]).toContain(day);
+            expect(minutes).toBeGreaterThanOrEqual(9 * 60);
+            expect(minutes).toBeLessThanOrEqual(18 * 60);
+            // sanity bound: the business clock must not run away
+            const ahead =
+                (new Date(iso as string).getTime() - Date.now()) /
+                (24 * 3600 * 1000);
+            expect(ahead).toBeGreaterThan(0);
+            expect(ahead).toBeLessThan(maxDaysAhead);
+        };
+
+        it("defaults a Bug task's severity to S2 and sets a 7-working-day SLA", async () => {
             const ctx = await seed();
             const bug = await makeTaskType({ workspaceId: ctx.ws.id, name: "Bug" });
 
@@ -298,13 +345,11 @@ describe("POST /api/v1/tasks", () => {
 
             expect(res.status).toBe(201);
             expect(res.body.bug_severity).toBe("S2");
-            expect(res.body.sla_due_at).not.toBeNull();
-            const sla = new Date(res.body.sla_due_at).getTime();
-            const sevenDays = Date.now() + 7 * 24 * 3600 * 1000;
-            expect(Math.abs(sla - sevenDays)).toBeLessThan(5 * 60 * 1000);
+            // 7 working days over a 5-day week is at most ~11 calendar days.
+            expectWithinBusinessHours(res.body.sla_due_at, 12);
         });
 
-        it("sets a 2h SLA for a Bug S0", async () => {
+        it("sets a 2-business-hour SLA for a Bug S0, inside working hours", async () => {
             const ctx = await seed();
             const bug = await makeTaskType({ workspaceId: ctx.ws.id, name: "Bug" });
 
@@ -312,10 +357,8 @@ describe("POST /api/v1/tasks", () => {
                 .post(PATH)
                 .send(body(ctx, { task_type_id: bug.id, bug_severity: "S0" }));
 
-            const sla = new Date(res.body.sla_due_at).getTime();
-            expect(Math.abs(sla - (Date.now() + 2 * 3600 * 1000))).toBeLessThan(
-                5 * 60 * 1000,
-            );
+            // Worst case: filed Thursday at close -> Sunday morning (~2.7 days).
+            expectWithinBusinessHours(res.body.sla_due_at, 4);
         });
 
         it("leaves sla_due_at null for a non-Bug/Complaint type", async () => {
@@ -351,6 +394,8 @@ describe("POST /api/v1/tasks", () => {
             ["priority out of range", { priority: 5 }],
             ["bad recurrence_pattern", { recurrence_pattern: "monthly" }],
             ["bad bug_severity", { bug_severity: "S9" }],
+            // F29 (ISS-045): a javascript: href in the Git panel was stored verbatim.
+            ["javascript pr_url", { pr_url: "javascript:alert(1)" }],
             ["bad due_date", { due_date: "15-06-2026" }],
             ["custom_id too long (41)", { custom_id: "a".repeat(41) }],
         ];
@@ -403,22 +448,44 @@ describe("POST /api/v1/tasks", () => {
         });
     });
 
-    // ─── d. Authorization (🔐 any member, incl. guest) ───────────────────────
+    // ─── d. Authorization (🔐 any INTERNAL member; a guest may not) ──────────
     describe("Authorization", () => {
-        it("allows a guest to create a task (201)", async () => {
+        const seedFor = async (role: "member" | "guest") => {
             const ws = await makeWorkspace();
             const owner = await makeUser({ workspaceId: ws.id, role: "owner" });
             const list = await makeList({ workspaceId: ws.id, createdBy: owner.id });
             const taskType = await makeTaskType({ workspaceId: ws.id });
             await makeStatus({ scopeId: list.id, statusGroup: "not_started" });
-            const guest = await makeUser({ workspaceId: ws.id, role: "guest" });
-            const client = await makeLoggedInClient(guest);
+            const actor = await makeUser({ workspaceId: ws.id, role });
+            return {
+                client: await makeLoggedInClient(actor),
+                body: {
+                    primary_list_id: list.id,
+                    name: "G",
+                    task_type_id: taskType.id,
+                },
+            };
+        };
 
-            const res = await client
-                .post(PATH)
-                .send({ primary_list_id: list.id, name: "G", task_type_id: taskType.id });
-
+        it("allows a member to create a task (201)", async () => {
+            const { client, body: b } = await seedFor("member");
+            const res = await client.post(PATH).send(b);
             expect(res.status).toBe(201);
+        });
+
+        /**
+         * F28 (ISS-094, decision D12.1). This spec asserted 201 — the seeded
+         * Guest role held `task.create` (and edit/assign/archive/DELETE) at
+         * scope=all, because the seeded roles reproduced pre-RBAC behaviour,
+         * where any authenticated user could do all of it. F7 made those gates
+         * real; D12.1 cut Guest to a read-and-comment persona. An external
+         * collaborator creating tasks anywhere in the workspace is not a guest
+         * capability.
+         */
+        it("REFUSES a guest — creating tasks is not a guest capability (403)", async () => {
+            const { client, body: b } = await seedFor("guest");
+            const res = await client.post(PATH).send(b);
+            expect(res.status).toBe(403);
         });
     });
 
@@ -633,5 +700,122 @@ describe("POST /api/v1/tasks", () => {
             expect(res.headers["x-request-id"]).toMatch(/^req_/);
             expect(res.headers.etag).toBeDefined();
         });
+    });
+});
+
+// ─── F29 (ISS-039 + ISS-045): the engineering-field gate ─────────────────────
+describe("POST /api/v1/tasks — engineering fields (F29)", () => {
+    /**
+     * `schema/tasks.ts` has promised since P11 that the git/planning columns
+     * are "NULL for non-dev task types and gated by `task_types.is_dev_type`
+     * in the application layer" — and nothing enforced it, so a Marketing
+     * "Campaign" could carry a branch, a PR link and S1 severity (ISS-039's
+     * verified repro). The gate refuses with 422 rather than silently nulling:
+     * dropping a field the caller explicitly sent is the family of lie Block F
+     * existed to remove.
+     *
+     * Severity is keyed on the BUG NAME, not the dev flag — the same key the
+     * §29 SLA switch and the S2 default have always used — so severity and its
+     * SLA travel together and the issue's sharpest wrinkle (a record that
+     * looks like an S1 but is invisible to every SLA view) is unrepresentable.
+     */
+    it("REFUSES git/planning fields on a non-dev type (422 task.not_dev_type)", async () => {
+        const ctx = await seed(); // the default factory type is non-dev
+
+        const res = await ctx.client.post(PATH).send(
+            body(ctx, {
+                story_points: 5,
+                branch_name: "feat/checkout",
+                pr_url: "https://github.com/x/y/pull/1",
+            }),
+        );
+
+        expect(res.status).toBe(422);
+        expect(res.body.error.code).toBe("task.not_dev_type");
+        const fields = (
+            res.body.error.details as Array<{ field: string }>
+        ).map((d) => d.field);
+        expect(fields.sort()).toEqual(
+            ["branch_name", "pr_url", "story_points"].sort(),
+        );
+    });
+
+    it("REFUSES bug_severity on a non-bug type (422 task.severity_requires_bug_type)", async () => {
+        const ctx = await seed();
+
+        const res = await ctx.client
+            .post(PATH)
+            .send(body(ctx, { bug_severity: "S1" }));
+
+        expect(res.status).toBe(422);
+        expect(res.body.error.code).toBe("task.severity_requires_bug_type");
+    });
+
+    it("a DEV type carries the git fields (201) and stores them", async () => {
+        const ctx = await seed();
+        const feature = await makeTaskType({
+            workspaceId: ctx.ws.id,
+            name: "Feature",
+            isDevType: true,
+        });
+
+        const res = await ctx.client.post(PATH).send(
+            body(ctx, {
+                task_type_id: feature.id,
+                story_points: 8,
+                branch_name: "feat/checkout",
+                pr_url: "https://github.com/x/y/pull/1",
+            }),
+        );
+
+        expect(res.status).toBe(201);
+        expect(res.body.story_points).toBe(8);
+        expect(res.body.branch_name).toBe("feat/checkout");
+        expect(res.body.pr_url).toBe("https://github.com/x/y/pull/1");
+    });
+
+    it("severity needs the BUG NAME even on a dev type — SLA and severity travel together", async () => {
+        const ctx = await seed();
+        const feature = await makeTaskType({
+            workspaceId: ctx.ws.id,
+            name: "Feature",
+            isDevType: true,
+        });
+
+        const res = await ctx.client
+            .post(PATH)
+            .send(body(ctx, { task_type_id: feature.id, bug_severity: "S1" }));
+
+        expect(res.status).toBe(422);
+        expect(res.body.error.code).toBe("task.severity_requires_bug_type");
+    });
+
+    it("a bug-NAMED type keeps severity + SLA regardless of the dev flag (§29's name key)", async () => {
+        const ctx = await seed();
+        const bug = await makeTaskType({ workspaceId: ctx.ws.id, name: "Bug" });
+
+        const res = await ctx.client
+            .post(PATH)
+            .send(body(ctx, { task_type_id: bug.id, bug_severity: "S1" }));
+
+        expect(res.status).toBe(201);
+        expect(res.body.bug_severity).toBe("S1");
+        expect(res.body.sla_due_at).not.toBeNull();
+    });
+
+    it("explicit NULLs pass on a non-dev type — null is the columns' rest state", async () => {
+        const ctx = await seed();
+
+        const res = await ctx.client.post(PATH).send(
+            body(ctx, {
+                story_points: null,
+                branch_name: null,
+                pr_url: null,
+                bug_severity: null,
+            }),
+        );
+
+        expect(res.status).toBe(201);
+        expect(res.body.branch_name).toBeNull();
     });
 });

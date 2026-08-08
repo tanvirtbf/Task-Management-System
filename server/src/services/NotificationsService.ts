@@ -1,4 +1,5 @@
 import { MySql2Database } from "drizzle-orm/mysql2";
+import { strictDecodeCursor } from "../utils/pagination";
 import * as schema from "../db/schema";
 import { AppError } from "../errors";
 import {
@@ -245,6 +246,8 @@ const encodeCursor = (c: NotificationCursor): string =>
  * not a 422 — the client cannot "fix" an opaque token, only drop it and restart.
  */
 const decodeCursor = (cursor: string): NotificationCursor => {
+    // F23 (ISS-008): refuse any cursor that does not round-trip byte-exact.
+    strictDecodeCursor(cursor);
     if (!/^[A-Za-z0-9_-]+$/.test(cursor)) {
         throw AppError.badRequest(
             "pagination.invalid_cursor",

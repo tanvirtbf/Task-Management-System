@@ -1,15 +1,26 @@
+import { Link } from "react-router-dom";
 import type { HomeKpi } from "../../types";
 import { CountUp } from "../../components/ui/CountUp";
-import { Sparkline } from "../../components/ui/Sparkline";
-import { Trend } from "../../components/ui/Trend";
 import { tokens } from "../../theme";
 
 interface KpiCardProps {
     kpi: HomeKpi;
     color?: string;
+    /**
+     * F28 (ISS-082, D12.4): where this number can be inspected. F24 made these
+     * tiles truthful; a truthful number that cannot be opened is still a dead
+     * end, so `slaBreaches` now points at `/sla`. Tiles with no queue behind
+     * them stay plain `div`s rather than getting an invented destination.
+     */
+    to?: string;
 }
 
-export const KpiCard = ({ kpi, color = tokens.colors.primary }: KpiCardProps) => (
+export const KpiCard = ({
+    kpi,
+    color = tokens.colors.primary,
+    to,
+}: KpiCardProps) => {
+    const card = (
     <div
         style={{
             background: tokens.colors.bgSurface,
@@ -20,37 +31,33 @@ export const KpiCard = ({ kpi, color = tokens.colors.primary }: KpiCardProps) =>
             flexDirection: "column",
             gap: tokens.spacing[3],
             transition: "all var(--transition-base)",
+            cursor: to ? "pointer" : undefined,
+            height: "100%",
         }}
     >
-        <div
+        {/* F24 (ISS-057): no Trend badge. It rendered "— 0.0%" on every card
+            from server values hardcoded to 0/flat/false, which reads as a
+            measured "no change" rather than "not computed". */}
+        <span
             style={{
-                display: "flex",
-                alignItems: "flex-start",
-                justifyContent: "space-between",
+                fontSize: tokens.typography.fontSize.sm,
+                color: tokens.colors.textSecondary,
+                fontWeight: 500,
             }}
         >
-            <span
-                style={{
-                    fontSize: tokens.typography.fontSize.sm,
-                    color: tokens.colors.textSecondary,
-                    fontWeight: 500,
-                }}
-            >
-                {kpi.label}
-            </span>
-            <Trend
-                value={kpi.trend}
-                direction={kpi.trendDirection}
-                isPositive={kpi.isPositive}
-            />
-        </div>
+            {kpi.label}
+        </span>
 
         <div
             style={{
                 fontFamily: tokens.typography.fontFamilyMono,
                 fontSize: tokens.typography.fontSize["3xl"],
                 fontWeight: 700,
-                color: tokens.colors.textPrimary,
+                // The per-tile accent used to colour the sparkline (removed in
+                // F24). Kept on the number, so each caller's intent — danger
+                // for Overdue and SLA, success for the team total — survives
+                // without carrying any invented data.
+                color,
                 lineHeight: 1,
                 letterSpacing: "-0.03em",
             }}
@@ -76,8 +83,14 @@ export const KpiCard = ({ kpi, color = tokens.colors.primary }: KpiCardProps) =>
             )}
         </div>
 
-        <div style={{ marginTop: "auto" }}>
-            <Sparkline data={kpi.sparkline} width={220} height={36} color={color} />
-        </div>
     </div>
-);
+    );
+
+    return to ? (
+        <Link to={to} style={{ textDecoration: "none", display: "block" }}>
+            {card}
+        </Link>
+    ) : (
+        card
+    );
+};

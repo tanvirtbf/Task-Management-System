@@ -1,0 +1,63 @@
+F32 solo re-measure — Sat Aug  8 12:15:16 BST 2026
+=== customfields :: custom-fields/list.test ===
+FAIL tests/custom-fields/list.test.ts (58.811 s)
+  ● GET /api/v1/custom-fields › Happy path › returns the workspace's fields as a bare array in the exact wire shape
+  ● GET /api/v1/custom-fields › Happy path › returns an empty array when the workspace has no fields
+  ● GET /api/v1/custom-fields › Happy path › inlines options for a dropdown field (and omits options for others)
+  ● GET /api/v1/custom-fields › Happy path › responds as JSON with an X-Request-Id header
+  ● GET /api/v1/custom-fields › Scope filter › narrows by ?scope_type and ?scope_id
+  ● GET /api/v1/custom-fields › Scope filter › returns 422 for an invalid scope_type
+  ● GET /api/v1/custom-fields › Authentication › returns 401 without a token
+  ● GET /api/v1/custom-fields › Authentication › returns 401 for an expired token
+  ● GET /api/v1/custom-fields › Authorization (🔐 any member) › allows a owner to list (200)
+  ● GET /api/v1/custom-fields › Authorization (🔐 any member) › allows a admin to list (200)
+  ● GET /api/v1/custom-fields › Authorization (🔐 any member) › allows a member to list (200)
+  ● GET /api/v1/custom-fields › Authorization (🔐 any member) › allows a guest to list (200)
+  ● GET /api/v1/custom-fields › Tenant isolation › returns only the caller's workspace fields
+Test Suites: 1 failed, 1 total
+Tests:       13 failed, 13 total
+=== deptreview :: head-assignment|reports-actions ===
+PASS tests/dept-review/reports-actions.test.ts (34.541 s)
+PASS tests/dept-review/head-assignment.test.ts (9.733 s)
+Test Suites: 2 passed, 2 total
+Tests:       24 passed, 24 total
+=== lists :: lists/create.test ===
+PASS tests/lists/create.test.ts (47.705 s)
+Test Suites: 1 passed, 1 total
+Tests:       60 passed, 60 total
+=== membership :: assignees.remove ===
+PASS tests/membership/assignees.remove.test.ts (33.093 s)
+Test Suites: 1 passed, 1 total
+Tests:       19 passed, 19 total
+=== notifications :: preferences ===
+FAIL tests/notifications/preferences.test.ts (41.997 s)
+  ● PUT /api/v1/notifications/preferences › Validation › 422 when a dropped type (overdue)
+Test Suites: 1 failed, 1 total
+Tests:       1 failed, 17 passed, 18 total
+=== rbac :: rbac/can.test ===
+PASS tests/rbac/can.test.ts (36.383 s)
+Test Suites: 1 passed, 1 total
+Tests:       96 passed, 96 total
+=== sla :: breached ===
+PASS tests/sla/breached.test.ts (40.106 s)
+Test Suites: 1 passed, 1 total
+Tests:       12 passed, 12 total
+=== spaces :: spaces/create.test ===
+PASS tests/spaces/create.test.ts (41.408 s)
+Test Suites: 1 passed, 1 total
+Tests:       38 passed, 38 total
+=== SOLO RE-MEASURE COMPLETE ===
+
+──────── POST-ANALYSIS (2026-08-08) ────────
+Of the sweep's 9 red files:
+  7 = POOL FLAKE (green solo, F23 caveat): customfields/list 13/13 · deptreview
+      head-assignment+reports-actions 24/24 · lists/create 60/60 ·
+      membership/assignees.remove 19/19 · rbac/can 96/96 · sla/breached 12/12 ·
+      spaces/create 38/38.
+  2 = REAL STALE, from the PARALLEL overdue-alerts build (upgrade 014 re-added the
+      `overdue` notification type mid-sweep, so early modules saw 7 types and late
+      ones saw 8): notifications/preferences (dropped-type 422 case) and
+      dept-review/notifications-ux (pinned 7-type list). Both updated to the
+      8-type reality → notifications 17/17, deptreview/notifications-ux 3/3.
+  membership re-run AFTER the F34 ISS-095 gate: 102/102 (two role-loops flipped
+  to guest-403).

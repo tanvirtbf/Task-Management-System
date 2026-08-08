@@ -850,8 +850,25 @@ export const createTaskValidator = checkSchema({
     pr_url: {
         in: ["body"],
         optional: optNullable,
-        isString: { errorMessage: "pr_url must be a string or null" },
-        isLength: { options: { max: 500 } },
+        // F29 (ISS-045): checked as a URL, not a string. `logo_url` (P6) and
+        // `avatar_url` (P7) have refused `javascript:` since their phases;
+        // this field — which the drawer's Git panel renders as a clickable
+        // link — accepted it verbatim. Same rule as those two: http(s) only.
+        custom: {
+            options: (value: unknown): boolean => {
+                if (value === null) return true;
+                if (typeof value !== "string") {
+                    throw new Error("pr_url must be a string or null");
+                }
+                if (value.length > 500) {
+                    throw new Error("pr_url must be at most 500 characters");
+                }
+                if (!/^https?:\/\//i.test(value)) {
+                    throw new Error("pr_url must be an http(s) URL");
+                }
+                return true;
+            },
+        },
     },
     pr_status: {
         in: ["body"],
@@ -1070,8 +1087,25 @@ export const updateTaskValidator = checkSchema({
     pr_url: {
         in: ["body"],
         optional: optNullable,
-        isString: { errorMessage: "pr_url must be a string or null" },
-        isLength: { options: { max: 500 } },
+        // F29 (ISS-045): checked as a URL, not a string. `logo_url` (P6) and
+        // `avatar_url` (P7) have refused `javascript:` since their phases;
+        // this field — which the drawer's Git panel renders as a clickable
+        // link — accepted it verbatim. Same rule as those two: http(s) only.
+        custom: {
+            options: (value: unknown): boolean => {
+                if (value === null) return true;
+                if (typeof value !== "string") {
+                    throw new Error("pr_url must be a string or null");
+                }
+                if (value.length > 500) {
+                    throw new Error("pr_url must be at most 500 characters");
+                }
+                if (!/^https?:\/\//i.test(value)) {
+                    throw new Error("pr_url must be an http(s) URL");
+                }
+                return true;
+            },
+        },
     },
     pr_status: {
         in: ["body"],

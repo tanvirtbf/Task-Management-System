@@ -1,5 +1,6 @@
 import type {
     Credentials,
+    SlaBreach,
     Folder,
     DeptReport,
     DeptReportListItem,
@@ -587,8 +588,23 @@ export const tasksApi = {
     archive: async (id: string): Promise<void> => {
         await api.post(`/tasks/${id}/archive`);
     },
-    delete: async (id: string): Promise<void> => {
-        await api.delete(`/tasks/${id}`);
+    /**
+     * F25 (ISS-050): the way back. `POST /tasks/:id/unarchive` has always
+     * worked server-side (204, idempotent) and had ZERO callers in this
+     * client, which is what made archiving one-way.
+     */
+    unarchive: async (id: string): Promise<void> => {
+        await api.post(`/tasks/${id}/unarchive`);
+    },
+    /**
+     * F25 (ISS-050): `DELETE /tasks/:id` is a SOFT delete — it sets
+     * `archived_at` and the task stays fully readable. It is the same
+     * operation as `archive`, which is why the UI no longer offers both.
+     * `?hard=true` is the permanent one (owner/admin only) and is what the
+     * "Delete permanently" action sends.
+     */
+    delete: async (id: string, hard = false): Promise<void> => {
+        await api.delete(`/tasks/${id}${hard ? "?hard=true" : ""}`);
     },
     // ─ §11 membership: delta mutations (204). PATCH does NOT accept these ─────
     addAssignees: async (id: string, userIds: string[]): Promise<void> => {
@@ -830,13 +846,20 @@ export const checklistsApi = {
     deleteChecklist: async (id: string): Promise<void> => {
         await api.delete(`/checklists/${id}`);
     },
+    /**
+     * F25 (ISS-069): `parentItemId` is forwarded now. The server has always
+     * accepted `parent_item_id` (and nests to any depth); this wrapper simply
+     * never sent it, so no sub-item could be created from the UI.
+     */
     addItem: async (
         checklistId: string,
         text: string,
+        parentItemId?: string | null,
     ): Promise<ChecklistItem> =>
         (
             await api.post<ChecklistItem>(`/checklists/${checklistId}/items`, {
                 text,
+                ...(parentItemId ? { parent_item_id: parentItemId } : {}),
             })
         ).data,
     bulkAddItems: async (
@@ -957,22 +980,48 @@ export const notificationsApi = {
         await api.delete(`/notifications/${id}`);
     },
     getPreferences: async (): Promise<
-        Record<string, { inAppEnabled: boolean; emailEnabled: boolean }>
+        Record<string, { inAppEnabled: boolean }>
     > =>
         (
             await api.get<
-                Record<string, { inAppEnabled: boolean; emailEnabled: boolean }>
+                Record<string, { inAppEnabled: boolean }>
             >("/notifications/preferences")
         ).data,
     updatePreferences: async (
-        prefs: Record<string, { inAppEnabled: boolean; emailEnabled: boolean }>,
+        prefs: Record<string, { inAppEnabled: boolean }>,
     ): Promise<
-        Record<string, { inAppEnabled: boolean; emailEnabled: boolean }>
+        Record<string, { inAppEnabled: boolean }>
     > =>
         (
             await api.put<
-                Record<string, { inAppEnabled: boolean; emailEnabled: boolean }>
+                Record<string, { inAppEnabled: boolean }>
             >("/notifications/preferences", prefs)
+        ).data,
+};
+
+// ─── SLA (§29) ─ bare SlaBreach[]; no pagination envelope (the §29 contract) ──
+/**
+ * F28 (ISS-082, decision D12.4). `GET /sla/breached` had no client caller at
+ * all — the escalation feature existed only as a per-task badge, and the Home
+ * `slaBreaches` KPI was a number that linked nowhere. This is the missing half.
+ *
+ * The endpoint is 🔐 any authenticated member (a dashboard read); there is no
+ * `sla.view` key in the RBAC catalog, and inventing one would be an RBAC change
+ * rather than the UI fix this decision asked for. `task.sla_override` is the
+ * only SLA permission and it guards the ADMIN override, not the queue.
+ */
+export const slaApi = {
+    breached: async (filters?: {
+        team?: string;
+        severity?: string;
+    }): Promise<SlaBreach[]> =>
+        (
+            await api.get<SlaBreach[]>("/sla/breached", {
+                params: {
+                    ...(filters?.team ? { team: filters.team } : {}),
+                    ...(filters?.severity ? { severity: filters.severity } : {}),
+                },
+            })
         ).data,
 };
 

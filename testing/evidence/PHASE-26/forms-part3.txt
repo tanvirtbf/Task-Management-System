@@ -1,0 +1,48 @@
+=== 1. CUSTOM FIELD with the real keys (scope_type / scope_id) ===
+  POST /custom-fields -> 201      id: cf-K8q5azMJgDvKDEgNIL3KVA
+  add it as a form field -> 201
+  on the PUBLIC page it renders as: {"field_kind":"custom_field","field_key":"cf-K8q5azMJgDvKDEgNIL3KVA","label":"Phone","help_text":null,"placeholder":null,"is_required":true,"default_value":null,"position":1,"value_type":"phone","options":null,"config":null}
+
+=== 2. SUBMIT with a custom field ===
+  valid (right envelope)     -> 201     
+     task name: "TEST-p26c real request" <- the submitted name, not a fallback
+     custom field on the task: {"text":"+8801733333333"}
+  wrong envelope (raw str)   -> 422 validation.failed
+  missing the required cf    -> 422 validation.failed
+  cf key not on the form     -> 201
+
+=== 3. CLOSED form — the real settings key is `submission_open` ===
+  settings {closed:true}          -> 200      then submit: 201   <- `closed` is not the key the service reads
+  settings {submission_open:false} -> submit: 403 form.submission_closed
+  and the public READ             -> 200
+
+=== 4. NO ENCRYPTION_KEY (a second API on :5712, key removed) ===
+  that instance is up: 200
+  GET /public/forms/:slug  -> 200      (reading a form needs no key)
+  POST submit              -> 201                                *** expected 503 form.encryption_unavailable ***
+     body: {"submission_id":"fsub-hKu7lbp997RqcdEVjAI01A","task_id":"t-kGyj_iXXzzebyEY-cfCIbA","message":"Thank you"}
+     tasks on the form's list after the refused submit: 3 (gap-scan C4: no orphan intake task)
+  GET /forms/:id/submissions on the keyless box -> 200      rows: 4 — decrypt of existing rows: readable?
+
+=== 5. submission_count vs the retention job (correct dry_run=true this time) ===
+  rows: 6 | submission_count: 6
+  ?dry_run=true  -> {"ok":true,"dry_run":true,"processed":1,"wouldDelete":1} | rows now: 6 (unchanged = a real dry run)
+  ?dry_run=1     -> {"ok":true,"dry_run":false,"processed":1,"deleted":1} | rows now: 5 *** deleted for real ***
+  after the purge: rows 5 | submission_count 6 *** drifted ***
+
+=== CLEANUP ===
+node:internal/process/promises:394
+    triggerUncaughtException(err, true /* fromPromise */);
+    ^
+
+Error: Cannot delete or update a parent row: a foreign key constraint fails (`taskmanagement`.`tasks`, CONSTRAINT `fk_tasks_list` FOREIGN KEY (`primary_list_id`) REFERENCES `lists` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE)
+    at C:\Users\Tanvir\AppData\Local\Temp\claude\E--Task-Management-System\0c5a6be8-84af-4c0b-91a3-1cb6f5c4eb9d\scratchpad\p26c.cjs:105:14
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5) {
+  code: 'ER_ROW_IS_REFERENCED_2',
+  errno: 1451,
+  sqlState: '23000',
+  sqlMessage: 'Cannot delete or update a parent row: a foreign key constraint fails (`taskmanagement`.`tasks`, CONSTRAINT `fk_tasks_list` FOREIGN KEY (`primary_list_id`) REFERENCES `lists` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE)',
+  sql: "DELETE FROM lists WHERE name LIKE 'TEST-p26c%'"
+}
+
+Node.js v22.21.1

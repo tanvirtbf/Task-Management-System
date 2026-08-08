@@ -55,6 +55,7 @@ const insertSpace = async (
     return id;
 };
 
+let listSeq = 0;
 const insertList = async (
     spaceId: string,
     createdBy: string,
@@ -62,10 +63,14 @@ const insertList = async (
 ): Promise<string> => {
     const db = getDb();
     const id = overrides.id ?? fakeId("l");
+    // F27 (ISS-035): list names are unique per SPACE now, and several specs
+    // here put a second list in the same space to prove status scoping. The
+    // name is irrelevant to what they test, so make it distinct.
+    listSeq += 1;
     await db.insert(lists).values({
         id,
         spaceId,
-        name: "Test List",
+        name: `Test List ${listSeq}`,
         createdBy,
         archivedAt: overrides.archivedAt ?? null,
     });

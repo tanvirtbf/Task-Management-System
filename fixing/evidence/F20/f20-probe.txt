@@ -1,0 +1,30 @@
+
+  === F20 — search (D9: better LIKE) ===
+
+  --- fixture ---
+  OK    7 fixture tasks created                                     
+
+  --- ISS-074: the description is searched ---
+  OK    the description-only task IS found (was: invisible)         4 hits
+  OK    an SKU buried in a description resolves                     
+
+  --- ISS-075: relevance, not insertion order ---
+  OK    the EXACT-name match is FIRST (was: oldest first)           first: ZQXJV
+  OK    a NAME match ranks above a description-only match           name@2 desc@3
+  OK    an exact custom_id hit floats to the top                    first: F20 order task
+
+  --- ISS-076: metacharacters + minimum length ---
+  OK    "100%" matches the literal task (trailing % no longer a wildcard)2 hits
+  OK    snake_case matches literally (_ no longer any-char)         1 hits
+  OK    a lone "%" is refused by the minimum (was: matched rows)    got 422
+  OK    one character -> 422 (was: five full-table scans)           got 422
+  OK    two characters still allowed                                got 200
+
+  --- latency vs the P40 figure (125 ms) ---
+  OK    p50 within 2x of the old figure (relevance sort not a regression)p50 32ms, max 38ms
+
+  === CLEANUP ===
+  tasks 46 (46)
+
+  PASS — descriptions searched, relevance first, metacharacters literal.
+

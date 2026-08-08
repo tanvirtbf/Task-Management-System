@@ -3,6 +3,7 @@ import { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../db/schema";
 import { forms, lists, spaces } from "../db/schema";
 import type { Form, NewForm } from "../db/schema";
+import { listScopeFilter } from "../rbac/context";
 import type { DbExecutor } from "./types";
 
 /**
@@ -15,7 +16,16 @@ import type { DbExecutor } from "./types";
 export class FormsRepo {
     constructor(private db: MySql2Database<typeof schema>) {}
 
-    /** Workspace-scoped single-form lookup (404 source for the admin endpoints). */
+    /**
+     * Workspace-scoped single-form lookup (404 source for the admin endpoints).
+     *
+     * F9 (ISS-084): also filtered by the caller's space visibility — a form's
+     * title and field list describe what a department collects, and this read
+     * (with `listByWorkspace`) was serving them across departments while the
+     * per-list route and every write were already scoped. Invisible → 404,
+     * same as `GET /tasks/:id` (D-9). The anonymous public path resolves by
+     * slug, not through here, and is untouched.
+     */
     async findByIdInWorkspace(
         formId: string,
         workspaceId: string,
@@ -30,20 +40,26 @@ export class FormsRepo {
                 and(
                     eq(forms.id, formId),
                     eq(spaces.workspaceId, workspaceId),
+                    await listScopeFilter(forms.listId),
                 ),
             )
             .limit(1);
         return row?.form ?? null;
     }
 
-    /** All forms in the workspace (newest first). */
+    /** All forms VISIBLE to the caller (newest first) — F9/ISS-084 scoped. */
     async listByWorkspace(workspaceId: string): Promise<Form[]> {
         const rows = await this.db
             .select({ form: forms })
             .from(forms)
             .innerJoin(lists, eq(lists.id, forms.listId))
             .innerJoin(spaces, eq(spaces.id, lists.spaceId))
-            .where(eq(spaces.workspaceId, workspaceId))
+            .where(
+                and(
+                    eq(spaces.workspaceId, workspaceId),
+                    await listScopeFilter(forms.listId),
+                ),
+            )
             .orderBy(desc(forms.createdAt));
         return rows.map((r) => r.form);
     }

@@ -1,0 +1,115 @@
+=== 1. IDOR — ids harvested as OWNER, replayed as a space-scoped user ===
+  GET  /tasks/:id                   404 task.not_found        denied
+  GET  /tasks/:id/comments          404 task.not_found        denied
+  GET  /tasks/:id/checklists        404 task.not_found        denied
+  GET  /tasks/:id/attachments       404 task.not_found        denied
+  GET  /tasks/:id/activity          404 task.not_found        denied
+  GET  /tasks/:id/dependencies      404 task.not_found        denied
+  GET  /tasks/:id/subtasks          404 task.not_found        denied
+  PATCH /tasks/:id                  404 task.not_found        denied
+  DELETE /tasks/:id                 404 task.not_found        denied
+  PATCH /comments/:id               404 comment.not_found     denied
+  DELETE /comments/:id              404 comment.not_found     denied
+  PATCH /checklists/:id             404 checklist.not_found   denied
+  POST /checklist-items/:id/toggle  404 checklist_item.not_founddenied
+  GET  /lists/:id                   404 list.not_found        denied
+  GET  /lists/:id/tasks             404 list.not_found        denied
+  PATCH /lists/:id                  403 auth.forbidden        denied
+  GET  /spaces/:id                  404 space.not_found       denied
+  PATCH /spaces/:id                 403 auth.forbidden        denied
+  PATCH /statuses/:id               403 auth.forbidden        denied
+  GET  /attachments/:id/download    404 attachment.not_found  denied
+  GET  /forms/:id                   200                       *** ALLOWED ***
+  GET  /forms/:id/submissions       500 internal              *** ALLOWED ***
+  GET  /reports/:id                 403 report.forbidden      denied
+  PATCH /reports/:id                403 report.forbidden      denied
+  GET  /sprints/:id                 200                       *** ALLOWED ***
+  POST /sprints/:id/close           403 auth.forbidden        denied
+  PATCH /users/:id                  403 user.forbidden_edit   denied
+  POST /users/:id/deactivate        403 auth.forbidden        denied
+  PATCH /users/:id/role             403 auth.forbidden        denied
+  -> 3 of 29 reachable by a user with no access to that space
+
+=== 2. JWT TAMPERING ===
+  header: {"alg":"HS256","typ":"JWT"} | payload keys: ["sub","role","workspaceId","id","iat","exp","iss"]
+  alg=none, no signature          -> 401 auth.invalid_token    rejected
+  alg=none, sig kept              -> 401 auth.invalid_token    rejected
+  a wrong signature               -> 401 auth.invalid_token    rejected
+  signature removed               -> 401 auth.invalid_token    rejected
+  sub swapped to another user     -> 401 auth.invalid_token    rejected
+  exp extended by a year          -> 401 auth.invalid_token    rejected
+  role escalated to owner         -> 200                       *** ACCEPTED ***
+  a different workspace_id        -> 401 auth.invalid_token    rejected
+  garbage                         -> 401 auth.invalid_token    rejected
+  empty                           -> 401 auth.missing_token    rejected
+  a scoped user's payload: {"sub":"u-U_auxRGRCzp-iy2AYYCPlA","role":"member","workspaceId":"ws-tcCcv1k2HdlflPAeyTGZIA","id":"ses-u9tv0IDtf8EMNml1foNvYQ","iat":1785405869,"exp":1785406769,"iss":"task-manageme
+
+=== 3. STORED XSS — payloads in, then read back ===
+  script tag              200     stored + returned VERBATIM (no server-side escaping)
+  img onerror             200     stored + returned VERBATIM (no server-side escaping)
+  javascript: URL         200     stored + returned VERBATIM (no server-side escaping)
+  svg onload              200     stored + returned VERBATIM (no server-side escaping)
+  attribute break-out     200     stored + returned VERBATIM (no server-side escaping)
+  template injection      200     stored + returned VERBATIM (no server-side escaping)
+  comment body -> 201 | tag name -> 201
+  (the RENDER side is the question — checked separately in the client source, §9)
+
+=== 4. INJECTION into filters / sort / search ===
+  "' OR 1=1--"              200 200 200 200 422
+  "1; DROP TABLE tasks--"   200 200 200 200 422
+  "\" OR \"\"=\""           200 200 200 200 422
+  "{$ne:null}"              200 200 200 200 422
+  "../../etc/passwd"        200 200 200 200 422
+  "%00"                     200 200 200 200 422
+  "\\"                      200 200 200 200 422
+  "1 UNION SELECT 1,2,3"    200 200 200 200 422
+  tasks table intact: 53 rows
+
+=== 5. MASS ASSIGNMENT ===
+  PATCH task id                    -> 422 validation.failed
+  PATCH task workspace_id          -> 422 validation.failed
+  PATCH task created_by            -> 422 validation.failed
+  PATCH task created_at            -> 422 validation.failed
+  PATCH task task_number           -> 422 validation.failed
+  PATCH task a valid field + id    -> 200
+  PATCH /me  role via PATCH /me    -> 404 route.not_found
+  PATCH /me  status via PATCH /me  -> 404 route.not_found
+  PATCH /me  workspace_id via PATCH /me-> 404 route.not_found
+  PATCH /me  id via PATCH /me      -> 404 route.not_found
+
+=== 6. RATE-LIMIT BYPASS (note: this harness runs with DISABLE_RATE_LIMIT=1) ===
+  a bad login -> 401 | RateLimit headers present: none
+  -> limiter behaviour itself is carried to a run WITHOUT the flag (recorded in the phase file)
+
+=== 7. CORS + RESPONSE HEADERS ===
+  hostile Origin -> status 500 | ACAO: null | ACAC: null
+  allowed Origin -> ACAO: "http://localhost:5173"
+  preflight from evil -> status 500 | ACAO: null
+  security headers on the API:
+     x-content-type-options        "nosniff"
+     x-frame-options               "DENY"
+     strict-transport-security     null
+     content-security-policy       null
+     referrer-policy               "no-referrer"
+     x-powered-by                  "Express"
+     x-dns-prefetch-control        null
+     cross-origin-opener-policy    null
+
+=== 8. SECRETS in responses / errors ===
+  a 404 body: {"error":{"code":"task.not_found","message":"Task definitely-not-a-real-id-xxxxx does not exist","request_id":"req_01760b7a-56fb-4549-a938-aaaff9d01d55"}}
+  /auth/me leaks any of ["password","password_hash","token_hash","ENCRYPTION_KEY","secret","JWT"]? no
+  /auth/me keys: ["id","first_name","last_name","email","role","avatar_url","status","timezone","created_at","last_login_at"]
+  /users row keys: ["id","first_name","last_name","email","role","avatar_url","status","timezone","created_at","last_login_at"]
+
+=== 9. LOGIN TIMING + password policy ===
+  known email + wrong password:  68.3 ms
+  unknown email:                 72.9 ms
+  -> no usable timing difference
+  stored hash prefix: $2b$10$ | cost: 10
+  change-password 5 chars           -> 422 validation.failed
+  change-password no digit/upper    -> 204
+  change-password digits only       -> 422 auth.incorrect_password
+  change-password 4 chars           -> 422 validation.failed
+
+=== CLEANUP ===
+  tasks 51 (51) | lists 14 (14) | statuses 70 (70) | tags 8 (8) | notifications 65 (65)

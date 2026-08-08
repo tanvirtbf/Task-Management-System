@@ -363,10 +363,11 @@ export class AuthService {
     /**
      * Change the authenticated user's password. The CURRENT password is
      * re-verified first, so a stolen ≤15-min access token alone cannot rotate
-     * the credential. The current session is intentionally left intact (no
-     * global sign-out on a self-initiated change — V1 choice); the short-lived
-     * access token expires naturally. `userId` is the verified JWT `sub`, never
-     * client input, so there is no IDOR surface.
+     * the credential. On success EVERY refresh session is revoked (F10 /
+     * ISS-015 — mirroring the reset path; the old "leave sessions intact" V1
+     * choice meant a password change did not evict whoever prompted it).
+     * `userId` is the verified JWT `sub`, never client input, so there is no
+     * IDOR surface.
      */
     async changePassword(input: ChangePasswordInput): Promise<void> {
         const user = await this.users.findById(input.userId);
@@ -394,6 +395,12 @@ export class AuthService {
         }
         const passwordHash = await this.creds.hashPassword(input.newPassword);
         await this.users.updatePassword(input.userId, passwordHash);
+        // F10 (ISS-015): rotating the credential revokes every refresh session,
+        // exactly as the reset path always has — the two password paths agreed
+        // on everything except this, and the more common one was the unsafe
+        // one. The caller's own device keeps its ≤15-min access token and then
+        // signs in again with the new password (same UX as reset).
+        await this.tokens.revokeAllForUser(input.userId);
     }
 
     /**

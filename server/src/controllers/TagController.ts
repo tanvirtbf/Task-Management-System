@@ -1,4 +1,5 @@
 import type { NextFunction, Response } from "express";
+import { paginateArray } from "../utils/pagination";
 import type { Logger } from "winston";
 import { TagService } from "../services/TagService";
 import type { AuthRequest } from "../types";
@@ -62,14 +63,11 @@ export class TagController {
                 count: rows.length,
             });
 
-            res.status(200).json({
-                data: rows.map(toWireTag),
-                pagination: {
-                    next_cursor: null,
-                    has_more: false,
-                    total_estimate: rows.length,
-                },
-            });
+            res.status(200).json(
+                    // F23 (ISS-007): a real limit + a working cursor —
+                    // this envelope used to say has_more:false no matter what.
+                    paginateArray(rows.map(toWireTag), req.query.limit, req.query.cursor),
+                );
         } catch (err) {
             next(err);
         }

@@ -1,0 +1,63 @@
+  (the seed already has an ACTIVE sprint: "Sprint 12 — Checkout & Payments")
+
+=== 1. CRUD ===
+  create -> 201      keys: ["id","name","goal","start_date","end_date","status","committed_points"]
+     status on create: planned
+  DUPLICATE name -> 409 sprint.duplicate
+  end before start -> 422 validation.failed
+  missing dates    -> 422 validation.failed
+  empty name       -> 422 validation.failed
+  GET list -> 200      | GET one -> 200
+  GET unknown -> 404 sprint.not_found
+  PATCH goal -> 200
+  PATCH unknown -> 404 sprint.not_found
+
+=== 2. LIFECYCLE ===
+  start while another sprint is ACTIVE -> 422 sprint.another_active
+  close the SEEDED active sprint       -> 200
+  now start ours                       -> 200      status: active
+  start it AGAIN (already active)      -> 200
+  start a SECOND sprint                -> 422 sprint.another_active
+  GET /sprints/active -> 200      name: "TEST-p28 Sprint A"
+  v_active_sprint view says: "TEST-p28 Sprint A" matches the endpoint
+  rows in the view: 1 | active sprints in the table: 1
+
+=== 3. TASK MEMBERSHIP ===
+  add 2 tasks -> 204
+  add the SAME two again -> 204
+  add an unknown task -> 404 task.not_found
+  add a task from ANOTHER space -> 204
+  empty array -> 422 validation.failed
+  GET sprint tasks -> 200      count: 5
+  remove one -> 204
+  remove it again -> 404 sprint.task_not_in_sprint
+  remove a task never in the sprint -> 404 sprint.task_not_in_sprint
+  activity rows: [{"action":"sprint_added","n":2},{"action":"task_created","n":2},{"action":"sprint_removed","n":1}]
+
+=== 4. STORY-POINT ROLLUP ===
+  tasks in the sprint: 6 | their story_points sum: 21
+  sprints.committed_points: 0 | on the wire: [["committed_points",0]]
+  -> *** committed_points is NOT the sum of member story points ***
+
+=== 5. CLOSE + CARRY-OVER ===
+  t1 marked Done; t2/t3 still open
+  members before close: 6
+  close -> 200      body: {"rolled_over":5}
+  members still pointing at the closed sprint: 1
+  where the 3 tasks now point: [{"sprint_id":"spr-rR_bIqMmWnD8JMEKKSTbYA","n":1},{"sprint_id":"spr-cC6bbSnASyfYHAHIyrW7Pg","n":2}]
+  sprint_rolled_over activity rows: 7
+  close it again        -> 200
+  start a CLOSED sprint -> 409 sprint.invalid_status
+  add a task to a CLOSED sprint -> 409 sprint.invalid_status
+
+=== 6. PERMISSIONS: sprint.manage vs sprint.assign_tasks ===
+  guest  creates a sprint -> 403 auth.forbidden
+  guest  adds tasks       -> 204
+  member creates a sprint -> 403 auth.forbidden
+  member adds tasks       -> 204
+  member closes a sprint  -> 403 auth.forbidden
+  no token                -> 401
+
+=== CLEANUP ===
+  seeded sprint restored to ACTIVE: active
+  orphan statuses 0 | tasks 51 (51) | lists 14 (14) | statuses 70 (70) | sprints 1 (1)

@@ -137,6 +137,7 @@ router.delete(
 router.post(
     "/:id/apply",
     authenticate,
+    requirePermission("template.apply"),
     applyTemplateValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>

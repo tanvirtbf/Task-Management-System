@@ -1,0 +1,13 @@
+
+=== F30 EXPLAIN — taskmanagement_perf — before ===
+  query                   type    key used                                rows    Extra
+  list tasks              ref     uq_tasks_list_number                    125     Using where; Using filesort   <-- FILESORT
+  task comments           ref     idx_comments_task_time                  4       Using filesort   <-- FILESORT
+  task activity           ref     idx_task_activity_task_time             10      Using filesort   <-- FILESORT
+  workspace activity      ref     idx_workspace_activity_workspace_time   1       Using filesort   <-- FILESORT
+  my open tasks           ref     idx_task_assignees_user                 125     Using index
+  search tasks (LIKE)     ref     uq_tasks_custom_id                      2226    Using where
+  overdue count           ALL                                             4452    Using where
+  volume: comments=20034  task_activity=47218  tasks=4452  workspace_activity=0
+
+  (before run — filesorts on ISS-088 rows: 4)

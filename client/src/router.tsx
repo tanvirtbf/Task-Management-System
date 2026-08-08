@@ -53,6 +53,7 @@ const ReportsListPage = lazy(() => import("./pages/reports/ReportsListPage"));
 const ReportDetailPage = lazy(
     () => import("./pages/reports/ReportDetailPage"),
 );
+const SlaQueuePage = lazy(() => import("./pages/sla/SlaQueuePage"));
 const EngineeringHomePage = lazy(
     () => import("./pages/engineering/EngineeringHomePage"),
 );
@@ -132,6 +133,13 @@ export const router = createBrowserRouter([
                             {
                                 path: "reports/:reportId",
                                 element: lazyRoute(<ReportDetailPage />),
+                            },
+                            {
+                                // F28 (ISS-082, D12.4) — the breached-SLA queue.
+                                // GET /sla/breached had no caller at all until
+                                // this page existed.
+                                path: "sla",
+                                element: lazyRoute(<SlaQueuePage />),
                             },
                             {
                                 path: "eng",

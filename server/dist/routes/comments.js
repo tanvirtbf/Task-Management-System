@@ -13,6 +13,7 @@ const NotificationsRepo_1 = require("../repositories/NotificationsRepo");
 const client_1 = require("../db/client");
 const logger_1 = __importDefault(require("../config/logger"));
 const authenticate_1 = __importDefault(require("../middlewares/authenticate"));
+const requirePermission_1 = require("../middlewares/requirePermission");
 const validate_1 = require("../middlewares/validate");
 const comments_1 = require("../validators/comments");
 /**
@@ -36,7 +37,7 @@ router.get("/tasks/:id/comments", authenticate_1.default, comments_1.listComment
 // ─── POST /api/v1/tasks/:id/comments ──────────────────────────────────────────
 // 🔐 any member. Adds a comment or a 1-level reply; parses `@handle` mentions
 // (→ `mentioned` notifications) and `#TASK-ID` refs (→ cross-task activity). 201.
-router.post("/tasks/:id/comments", authenticate_1.default, comments_1.createCommentValidator, validate_1.validate, (req, res, next) => controller.create(req, res, next));
+router.post("/tasks/:id/comments", authenticate_1.default, (0, requirePermission_1.requirePermission)("comment.create"), comments_1.createCommentValidator, validate_1.validate, (req, res, next) => controller.create(req, res, next));
 // ─── PATCH /api/v1/comments/:id ───────────────────────────────────────────────
 // 🔐 author only, within the 15-minute edit window (else 403). Sets `edited_at`.
 router.patch("/comments/:id", authenticate_1.default, comments_1.updateCommentValidator, validate_1.validate, (req, res, next) => controller.update(req, res, next));

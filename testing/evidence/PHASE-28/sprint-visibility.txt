@@ -1,0 +1,8 @@
+=== a Politics task placed in a workspace-wide sprint ===
+  owner GET /sprints/:id/tasks -> 0 tasks
+  marketing.only -> 200 | tasks visible: 0 Politics task filtered out
+     direct GET of that task -> 404 task.not_found
+  guest -> 200 | tasks visible: 1
+  marketing.only GET /sprints -> 200 | sprints listed: 0
+
+CLEANUP: orphans 0 | tasks 51 (51) | lists 14 (14) | sprints 1 (1)

@@ -1,0 +1,47 @@
+=== 1. LOGIN MATRIX ===
+  valid owner                -> 200      OK
+  wrong password             -> 401      auth.invalid_credentials
+  unknown email              -> 401      auth.invalid_credentials
+  email case-insensitive     -> 200      OK
+  email with spaces          -> 200      OK
+  invited-not-accepted       -> 401      auth.invalid_credentials
+  empty body                 -> 422      validation.failed
+  missing password           -> 422      validation.failed
+  null password              -> 422      validation.failed
+  non-string password        -> 422      validation.failed
+  array injection            -> 422      validation.failed
+  object injection           -> 422      validation.failed
+  sql-ish email              -> 422      validation.failed
+  very long password         -> 422 (want 401) validation.failed
+
+=== 2. TIMING: known vs unknown email (user-enumeration oracle?) ===
+  median wrong-password time, KNOWN email   : 57.1 ms
+  median wrong-password time, UNKNOWN email : 57.9 ms
+  ratio 0.99x  comparable
+
+=== 3. LOGIN RESPONSE SHAPE + bb_refresh COOKIE ===
+  body keys: access_token, expires_in, user
+  user keys: id, first_name, last_name, email, role, avatar_url, status, timezone, created_at, last_login_at
+  password field leaked? no
+  Set-Cookie count: 1
+    bb_refresh=<token>; Max-Age=2592000; Path=/api/v1/auth; Expires=Sat, 29 Aug 2026 04:46:15 GMT; HttpOnly; SameSite=Strict
+      HttpOnly: true | SameSite: Strict | Secure: false (dev: expected false) | Path: /api/v1/auth | Max-Age: 2592000
+
+=== 4. ACCESS TOKEN CLAIMS + TTL ===
+  header : {"alg":"HS256","typ":"JWT"}
+  payload: {"sub":"u-ohsNaae2ShvNIZpMlJHVRQ","role":"owner","workspaceId":"ws-tcCcv1k2HdlflPAeyTGZIA","id":"ses-ZTkrI-0mt6Ua8EoUnbsNpA","iat":1785386775,"exp":1785387675,"iss":"task-management-server"}
+  TTL    : 900s = 15 min  (15 min, as documented)
+  refresh payload: {"sub":"u-ohsNaae2ShvNIZpMlJHVRQ","role":"owner","workspaceId":"ws-tcCcv1k2HdlflPAeyTGZIA","id":"ses-ZTkrI-0mt6Ua8EoUnbsNpA","iat":1785386775,"exp":1787978775,"iss":"task-management-server","jti":"ses-ZTkrI-0mt6Ua8EoUnbsNpA"}
+  refresh TTL: 2592000s = 30.0 days
+
+=== 5. JWT ATTACK SURFACE (against GET /auth/me) ===
+E:\Task Management System\server\node_modules\jsonwebtoken\sign.js:111
+    return failure(new Error('secretOrPrivateKey must have a value'));
+                   ^
+
+Error: secretOrPrivateKey must have a value
+    at module.exports [as sign] (E:\Task Management System\server\node_modules\jsonwebtoken\sign.js:111:20)
+    at C:\Users\Tanvir\AppData\Local\Temp\claude\E--Task-Management-System\0c5a6be8-84af-4c0b-91a3-1cb6f5c4eb9d\scratchpad\p3_login.cjs:100:42
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+
+Node.js v22.21.1

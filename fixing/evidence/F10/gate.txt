@@ -1,0 +1,6 @@
+F10 gate — auth + users + rbac + jobs, serial, FINAL code — 2026-08-04T16:29:38+06:00
+auth     Test Suites: 9 passed, 9 total|Tests:       339 passed, 339 total|
+users    Test Suites: 1 failed, 7 passed, 8 total|Tests:       1 failed, 278 passed, 279 total|
+rbac     Test Suites: 11 passed, 11 total|Tests:       286 passed, 286 total|
+jobs     Test Suites: 5 passed, 5 total|Tests:       32 passed, 32 total|
+gate finished 2026-08-04T16:43:15+06:00

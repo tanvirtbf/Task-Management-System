@@ -1,0 +1,14 @@
+server up after ~17750ms
+
+baseline (pool free)                     HTTP 200 in    9ms  {"status":"ready","checks":{"database":"ok"}}
+
+row-locked task t-_iBdK5GPjam63r-YU42IbA from an outside txn
+
+--- pool is now exhausted (1/1 held by a blocked write) ---
+during pool exhaustion                   HTTP 503 in  515ms  {"status":"not_ready","checks":{"database":"down"}}
+during pool exhaustion (2nd)             HTTP 503 in  515ms  {"status":"not_ready","checks":{"database":"down"}}
+
+releasing the lock...
+  blocked PATCH finished -> 200
+after release                            HTTP 200 in    4ms  {"status":"ready","checks":{"database":"ok"}}
+REVERTED -> "Reach out to 10 beauty influencers"

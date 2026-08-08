@@ -1,0 +1,50 @@
+=== 1. ARCHIVE / UNARCHIVE ===
+  archive               -> 204
+  archive AGAIN         -> 204
+  in the list by default? hidden ✓
+  with ?include_archived=true? included ✓ (resolves the P9 deferral)
+  direct GET while archived -> 200
+  PATCH while archived      -> 409 task.archived
+  comment while archived    -> 201
+  add assignee while archived -> 409 task.archived
+  unarchive             -> 204
+  unarchive AGAIN       -> 204
+  PATCH after unarchive -> 200
+
+=== 2. SOFT vs HARD delete ===
+  DELETE (soft)          -> 204
+     row still present: true | archived_at: set
+  GET after soft delete  -> 200
+  DELETE again (soft)    -> 204
+  member tries hard      -> 403 auth.forbidden
+  owner hard delete      -> 204
+     row after hard delete: GONE ✓
+  hard delete a NON-archived task ->
+     -> 204
+
+=== 3. CASCADES on hard delete ===
+  before: {"assignees":1,"watchers":2,"tags":1,"comments":1,"checklists":1,"activity":4,"deps":1,"cfvalues":0,"reviews":0}
+  hard delete -> 204
+  after : {"assignees":0,"watchers":0,"tags":0,"comments":0,"checklists":0,"activity":0,"deps":0,"cfvalues":0,"reviews":0}
+  the OTHER side of the dependency survived: yes ✓
+
+=== 4. PARENT / CHILD deletion ===
+  soft-delete the PARENT -> 204
+     child archived too? yes (cascade)
+     child still points at the parent: true
+  hard-delete the PARENT -> 204
+     child after parent hard delete: DELETED (cascade)
+
+=== 5. DELETE a task another task DEPENDS ON ===
+  hard-delete the blocker -> 204
+     dependency rows left on the blocked task: 0
+     the blocked task itself survived: true
+
+=== 6. SCAN-L5 — is unarchive wired in the client? ===
+  tasksApi archive/unarchive lines:
+    588:        await api.post(`/tasks/${id}/archive`);
+  client callers of a task unarchive: 0
+
+=== CLEANUP ===
+  delete list: 204
+  orphan statuses 0 | tasks 51 (51) | lists 14 (14) | statuses 70 (70)

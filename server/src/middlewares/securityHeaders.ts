@@ -20,6 +20,21 @@ export const securityHeaders = (
     res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("Referrer-Policy", "no-referrer");
     res.setHeader("X-Permitted-Cross-Domain-Policies", "none");
+    // F13 (ISS-086): a CSP for a JSON API. This origin serves no HTML, no
+    // scripts and no styles, so the honest policy is "nothing is allowed to
+    // load from here" — `default-src 'none'` plus `frame-ancestors 'none'`
+    // (the modern replacement for X-Frame-Options, which stays for older
+    // browsers). If an XSS ever lands in a JSON error string, there is nothing
+    // for it to reach. The SPA origin is a SEPARATE server (nginx) and needs
+    // its own, much looser policy — that is not this middleware's job, and the
+    // issue says the same.
+    res.setHeader(
+        "Content-Security-Policy",
+        "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+    );
+    res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+    res.setHeader("Cross-Origin-Resource-Policy", "same-site");
+    res.setHeader("X-DNS-Prefetch-Control", "off");
     if (Config.IS_PROD || process.env.FORCE_SECURE === "true") {
         res.setHeader(
             "Strict-Transport-Security",

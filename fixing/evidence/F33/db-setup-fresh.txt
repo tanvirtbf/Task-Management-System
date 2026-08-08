@@ -1,0 +1,3 @@
+00:29:09 [32minfo[39m Ensuring database taskmanagement_f33 exists
+00:29:09 [32minfo[39m Applying schema.sql (E:\Task Management System\database\schema.sql)
+00:29:12 [32minfo[39m Database setup complete {"db":"taskmanagement_f33","tables":42,"views":5,"triggers":9}

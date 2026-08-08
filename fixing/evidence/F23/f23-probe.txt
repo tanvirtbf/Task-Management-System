@@ -1,0 +1,52 @@
+
+  === F23 — API contract consistency ===
+
+  --- ISS-007: limit is real on the four §1 endpoints ---
+  OK    /lists?limit=2 -> 2 rows, has_more, cursor                    2 rows, has_more true, total 13/13
+  OK    /spaces?limit=2 -> 2 rows, has_more, cursor                   2 rows, has_more true, total 6/6
+  OK    /tags?limit=2 -> 2 rows, has_more, cursor                     2 rows, has_more true, total 8/8
+  OK    /task-types?limit=2 -> 2 rows, has_more, cursor               2 rows, has_more true
+  OK    following the cursor pages WITHOUT overlap                    5 + 5
+  OK    limit above the row count -> everything, has_more false       13 rows
+  OK    limit=0 -> 422 (bounds enforced)                              got 422
+
+  --- ISS-008: every foreign cursor is a 400 ---
+  OK    garbage -> 400 pagination.invalid_cursor                      got 400 pagination.invalid_cursor
+  OK    tampered valid+XX -> 400 pagination.invalid_cursor            got 400 pagination.invalid_cursor
+  OK    base64 of junk -> 400 pagination.invalid_cursor               got 400 pagination.invalid_cursor
+  OK    offset cursor tampered -> 400 pagination.invalid_cursor       got 400 pagination.invalid_cursor
+  OK    activity feed garbage -> 400 pagination.invalid_cursor        got 400 pagination.invalid_cursor
+  OK    notifications garbage -> 400 pagination.invalid_cursor        got 400 pagination.invalid_cursor
+  OK    a cursor the server DID issue still works                     got 200
+
+  --- ISS-014: a mistyped filter is a 422, not the full set ---
+  OK    /users?search= -> 422 naming the parameter (was: all 15 rows) got 422
+  OK    /users?q= (the real filter) still works                       got 200
+
+  --- ISS-067: checklist-item PATCH is a closed set ---
+  OK    is_completed -> 422 pointing at /toggle (was: 200 ignored)    got 422
+  OK    an unknown field -> 422 naming the accepted set               got 422
+  OK    a legitimate PATCH still works (200)                          got 200
+  OK    …and is_completed was never silently set                      
+
+  --- ISS-040: POST refuses what PATCH refuses ---
+  OK    POST /task-types with is_system -> 422 (was: 201, dropped to 0)got 422
+  OK    without the server-owned field -> 201 as before               got 201
+
+  --- ISS-048: misdirected task-PATCH fields get real answers ---
+  OK    {assignees} -> 422 naming POST /tasks/:id/assignees           got 422
+  OK    {tags} -> 422 naming the tags endpoints                       got 422
+  OK    {parent_task_id} -> 422 saying it is create-only              got 422
+  OK    a genuinely empty body keeps the old message                  got 422
+
+  --- ISS-012 / ISS-010: the documentation tells the truth ---
+  OK    §1 documents the four response families (D10)                 
+  OK    /activity/recent spec now says {data} (the real shape)        
+  OK    the §32 catalog is regenerated from code (129 codes >= 120)   129 listed
+  OK    …and /activity/recent really returns {data}                   
+
+  === CLEANUP ===
+  tasks 46 (46) | task_types 7 (baseline) | tags 8 (8)
+
+  PASS — the contract says what it does and does what it says.
+

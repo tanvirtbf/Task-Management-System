@@ -54,6 +54,7 @@ export const BoardColumnHeader = ({
         >
             <button
                 onClick={onToggleCollapse}
+                aria-label={collapsed ? "Expand column" : "Collapse column"}
                 style={{
                     background: "none",
                     border: 0,

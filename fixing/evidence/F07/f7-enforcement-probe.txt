@@ -1,0 +1,50 @@
+  OK    probe users log in (member + legacy-admin)                        
+  OK    custom roles created                                              rol-hr_NgTPbEF1fkYsquG_yFQ rol-97XgzD35rofaT9EtnL7Vog
+  OK    roles assigned workspace-wide                                     201 201
+
+  === PHASE A — the 17 route-gated keys, two passes each ===
+
+  PERMISSION              no-grant    with-grant  VERDICT
+  member.view             403         200         ENFORCED
+  task.create             403         201         ENFORCED
+  task.edit               403         200         ENFORCED
+  task.assign             403         204         ENFORCED
+  task.archive            403         204         ENFORCED
+  task.delete             403         204         ENFORCED
+  comment.create          403         201         ENFORCED
+  checklist.manage        403         422         ENFORCED
+  attachment.upload       403         422         ENFORCED
+  dependency.manage       403         201         ENFORCED
+  customfield.set_value   403         404         ENFORCED
+  template.apply          403         422         ENFORCED
+  sprint.assign_tasks     403         422         ENFORCED
+  bug.report              403         201         ENFORCED
+  postmortem.manage       403         422         ENFORCED
+  activity.view           403         200         ENFORCED
+  form.view_submissions   403         404         ENFORCED
+
+  === PHASE B — the composed toggles (D3.1) ===
+
+  OK    task.delete_hard: admin with toggle OFF is refused                got 403
+  OK    task.delete_hard: toggle ON deletes (204)                         got 204
+  OK    compose cannot WIDEN: member + grant still refused (403)          got 403
+  OK    comment.delete_any: toggle OFF refused (403)                      got 403 comment.forbidden_delete
+  OK    comment.delete_any: toggle ON deletes (204)                       got 204
+  OK    member.edit_profile: toggle OFF, other's profile refused          got 403
+  OK    member.edit_profile: SELF-edit stays free with toggle OFF         got 200
+  OK    member.edit_profile: toggle ON edits another's profile            got 200
+  OK    report.view: toggle OFF -> head-scoped fallback (empty list)      200, 0 row(s)
+  OK    report.view: toggle OFF -> direct read refused (403)              got 403
+  OK    report.view: toggle ON -> all departments listed                  200, 12 row(s)
+  OK    report.view: toggle ON -> direct read 200                         got 200
+  OK    a department head still sees their reports (no report.view)       200, 2 row(s)
+  OK    space.head_assign: toggle OFF -> head change refused (403)        got 403 space.forbidden
+  OK    space.head_assign: general edit unaffected (space.edit only)      got 200
+  OK    space.head_assign: toggle ON -> head change 200                   got 200
+  note: attachment.delete_any compose is covered by the attachments jest module (same one-line pattern)
+
+  === CLEANUP ===
+  users 15 (15) | roles(active) 5 (5) | tasks 46 (46) | comments 7 (7)
+
+  PASS — every toggle is real: 17 route gates enforce, the composes narrow and cannot widen.
+

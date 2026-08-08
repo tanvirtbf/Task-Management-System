@@ -75,6 +75,58 @@ export class MailService {
         });
     }
 
+    /**
+     * Tell `to` they were just assigned a task (2026-08-08 feature). Fired by
+     * `TaskEmailService` post-commit for exactly the recipients the in-app
+     * `assigned` notification reached — never awaited by a request handler.
+     */
+    async sendTaskAssignedEmail(
+        to: string,
+        p: {
+            taskName: string;
+            taskUrl: string;
+            assignerName: string;
+            dueYmd?: string | null;
+        },
+    ): Promise<void> {
+        this.logger.debug("mail.task_assigned.sending", {
+            to,
+            taskUrl: p.taskUrl,
+        });
+        const dueLine = p.dueYmd ? ` Due date: ${p.dueYmd}.` : "";
+        await this.send({
+            to,
+            subject: `New task assigned: ${subjectName(p.taskName)}`,
+            html: taskAssignedHtml(p),
+            text:
+                `${p.assignerName} assigned you a task on BeautyBooth Tasks: "${p.taskName}".${dueLine}\n` +
+                `আপনাকে একটি নতুন কাজ দেওয়া হয়েছে — দয়া করে দেখে নিন।\n\n${p.taskUrl}`,
+        });
+    }
+
+    /**
+     * Tell `to` their task is past its due date (overdue-alert job). Sent at
+     * most once per task per deadline — the job's `overdue_notified_at` claim
+     * guarantees it, so this method never needs its own dedupe.
+     */
+    async sendTaskOverdueEmail(
+        to: string,
+        p: { taskName: string; taskUrl: string; dueYmd: string },
+    ): Promise<void> {
+        this.logger.debug("mail.task_overdue.sending", {
+            to,
+            taskUrl: p.taskUrl,
+        });
+        await this.send({
+            to,
+            subject: `Overdue: ${subjectName(p.taskName)}`,
+            html: taskOverdueHtml(p),
+            text:
+                `Your task "${p.taskName}" passed its due date (${p.dueYmd}) and is still open.\n` +
+                `আপনার কাজের নির্ধারিত সময় পার হয়ে গেছে — দয়া করে যত দ্রুত সম্ভব কাজটি শেষ করুন।\n\n${p.taskUrl}`,
+        });
+    }
+
     private async send(msg: {
         to: string;
         subject: string;
@@ -142,4 +194,49 @@ const inviteHtml = (url: string): string =>
         "You're invited",
         "You've been invited to join your team's workspace on BeautyBooth. Click below to accept the invitation and set up your account.",
         { url, label: "Accept invitation" },
+    );
+
+// Task names (and assigner names) are USER input interpolated into HTML —
+// escape them. The reset/invite templates above interpolate only our own URLs.
+const escapeHtml = (s: string): string =>
+    s
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+
+/** Subject-line variant of the task name: single line, bounded length. */
+const subjectName = (name: string): string => {
+    const flat = name.replace(/\s+/g, " ").trim();
+    return flat.length > 120 ? `${flat.slice(0, 119)}…` : flat;
+};
+
+const taskAssignedHtml = (p: {
+    taskName: string;
+    assignerName: string;
+    taskUrl: string;
+    dueYmd?: string | null;
+}): string =>
+    shell(
+        "You have a new task",
+        `<strong>${escapeHtml(p.assignerName)}</strong> assigned you a task on BeautyBooth Tasks:<br>` +
+            `<strong>"${escapeHtml(p.taskName)}"</strong>${
+                p.dueYmd ? `<br>Due date: <strong>${escapeHtml(p.dueYmd)}</strong>` : ""
+            }<br><br>` +
+            "আপনাকে একটি নতুন কাজ দেওয়া হয়েছে — দয়া করে দেখে নিন।",
+        { url: p.taskUrl, label: "Open task" },
+    );
+
+const taskOverdueHtml = (p: {
+    taskName: string;
+    taskUrl: string;
+    dueYmd: string;
+}): string =>
+    shell(
+        "Your task is overdue",
+        `Your task <strong>"${escapeHtml(p.taskName)}"</strong> passed its due date ` +
+            `(<strong>${escapeHtml(p.dueYmd)}</strong>) and is still open.<br><br>` +
+            "আপনার কাজের নির্ধারিত সময় পার হয়ে গেছে — দয়া করে যত দ্রুত সম্ভব কাজটি শেষ করুন।",
+        { url: p.taskUrl, label: "Open task" },
     );

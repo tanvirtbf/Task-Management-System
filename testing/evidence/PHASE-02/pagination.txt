@@ -1,0 +1,44 @@
+=== 3. CURSOR PAGING: no duplicates, no skips (limit=2 walk vs full fetch) ===
+  /users           full=16  walked=16  pages=8   OK ✓
+  /lists           full=14  walked=14  pages=1   OK ✓
+  /spaces          full=9   walked=9   pages=1   OK ✓
+  /activity        full=6   walked=6   pages=3   OK ✓
+  /notifications   full=15  walked=15  pages=8   OK ✓
+  /reports         full=12  walked=12  pages=6   OK ✓
+
+=== 4. has_more / total_estimate correctness ===
+  /users     real=16
+      page1(limit2): has_more=true (expect true)  total_estimate=16 (real 16)  next_cursor=present
+      full(limit200): has_more=false (expect false)  next_cursor=null ✓
+  /lists     real=14
+      page1(limit2): has_more=false (expect true)  total_estimate=14 (real 14)  next_cursor=NULL
+      full(limit200): has_more=false (expect false)  next_cursor=null ✓
+  /spaces    real=9
+      page1(limit2): has_more=false (expect true)  total_estimate=9 (real 9)  next_cursor=NULL
+      full(limit200): has_more=false (expect false)  next_cursor=null ✓
+
+=== 5. EMPTY result set ===
+  /users?search=<nomatch> -> 200 {"data":[{"id":"u-76AuOtG-wzFTpMxhix2_qA","first_name":"Guest","last_name":"Collaborator","email":"guest@beautybooth.com.bd","role":"guest","avatar_url":null,"s
+
+=== 6. LIMIT BOUNDS ===
+  /users?limit=0               -> 422  items=-      {"error":{"code":"validation.failed","message":"One or more fields failed validation","request_id":"req_353357
+  /users?limit=1               -> 200  items=1      
+  /users?limit=200             -> 200  items=16     
+  /users?limit=201             -> 200  items=16     
+  /users?limit=-1              -> 422  items=-      {"error":{"code":"validation.failed","message":"One or more fields failed validation","request_id":"req_86e33b
+  /users?limit=abc             -> 422  items=-      {"error":{"code":"validation.failed","message":"One or more fields failed validation","request_id":"req_0ba098
+  /users?limit=1000            -> 200  items=16     
+  /notifications?limit=100     -> 200  items=15     
+  /notifications?limit=101     -> 200  items=15     
+  /search?q=a&limit=50         -> 200  items=multi  
+  /search?q=a&limit=51         -> 200  items=multi  
+
+=== 7. CURSOR TAMPERING ===
+  a valid cursor looks like: "dS1iYThMNjRkVm1FVzAzNExxVUVxNFdB" -> decoded: u-ba8L64dVmEW034LqUEq4WA
+  cursor="garbage"                                    -> 200  items=2
+  cursor="!!!!"                                       -> 400  "pagination.invalid_cursor"
+  cursor="eyJpZCI6ImRyb3AifQ=="                       -> 400  "pagination.invalid_cursor"
+  cursor="eyJpbnRlcm5hbF9pZCI6OTk5OTk5OTk5fQ=="       -> 400  "pagination.invalid_cursor"
+  cursor="bm90IGpzb24="                               -> 400  "pagination.invalid_cursor"
+  cursor="dS1iYThMNjRkVm1FVzAzNExxVUVxNFdBXX"         -> 200  items=2
+  cursor=""                                           -> 422  "validation.failed"

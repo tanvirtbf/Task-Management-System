@@ -1,0 +1,10 @@
+TIMELINE (ms from spawn)
+     395  OUT 09:59:52 info Database connected successfully.
+     403  OUT 09:59:52 info Permission catalog synced {"permissions":56}
+    1247  OUT 09:59:52 info Listening on port 5504
+    1267  >>> TCP PORT ACCEPTS CONNECTIONS <<<
+    1732  first /health -> 200 (49ms)
+
+post-SIGTERM output:
+    1733  OUT 09:59:53 info [req_3ed380ef-9f20-4041-a00b-bafa71cd8b78] request {"method":"GET","path":"/health","status":200,"durationMs":5.04,"userAgent":"node","ip":"::ffff:127.0.0.1"}
+  exited=true exitCode=null

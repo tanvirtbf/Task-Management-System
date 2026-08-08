@@ -1,0 +1,22 @@
+  job token loaded: yes
+  MySQL NOW(): 2026-07-30 15:06:17
+  unread before: 2
+
+=== snooze for +1 hour (a normal user action) ===
+  POST /snooze {snoozed_until:2026-07-30T10:06:17.289Z} -> 200
+  row now: is_read=1 snoozed_until=2026-07-30 10:06:17  (asked for 10:06:17Z = 16:06:17 Dhaka)
+  unread count after snoozing: 1 (the badge dropped - snooze works)
+  snooze-wake --dry-run -> 200      {"ok":true,"dry_run":false,"processed":0,"woken":0}
+  snooze-wake (real)    -> 200      {"ok":true,"dry_run":false,"processed":0,"woken":0}
+  row after the job: is_read=1 snoozed_until=2026-07-30 10:06:17
+  unread count after the job: 1
+  => still snoozed - correct
+
+=== how long must a snooze be to survive one job run? ===
+  snooze +3h  then run the job -> is_read=1  survived
+  snooze +5h  then run the job -> is_read=1  survived
+  snooze +6h  then run the job -> is_read=1  survived
+  snooze +7h  then run the job -> is_read=1  survived
+  snooze +8h  then run the job -> is_read=1  survived
+
+CLEANUP: notifications 65 (65), all reset to unread/un-snoozed

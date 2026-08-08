@@ -1,0 +1,26 @@
+=== 1. BULK, multi-field, using only keys the controller accepts ===
+  3 tasks x 3 fields          -> 200      +3 rows 1 per task, not per field OK
+  3 tasks x tag+assignee adds -> 200      +3 rows (a single PATCH writes assignee_added AND tag_added separately)
+  what bulk records: [{"action":"task_updated","context":{"bulk":true}},{"action":"task_updated","context":{"bulk":true}},{"action":"task_created","context":{"name":"TEST-p20c-b1","list_id":"l-GAh_I5Ej93PXelbjWC6CTQ"}}]
+  compare — a single PATCH records: {"fields":[...]}, and membership writes its own row
+
+=== 2. CHECKLIST — which parts write activity ===
+  create checklist -> 201      | add item -> 422 validation.failed | toggle -> 404 checklist_item.not_found | rename -> 200      | delete item -> 404 checklist_item.not_found
+  activity rows written by:  toggle +0 | rename +0 | delete item +0
+  full trail: ["task_created"]
+  -> create/add-item/rename/delete leave no trace; only the toggle does
+
+=== 3. DEACTIVATED actor — correct route this time ===
+  arif edits -> 200
+  POST /users/:id/deactivate -> 204      | DB status now: deactivated
+  their activity row: actor hydrated — Arif, status=deactivated OK
+  the deactivation itself in /activity/recent: ["deactivated user"]
+  reactivated -> 204 | status: active
+
+=== 4. Does a HARD-DELETED actor break hydration? ===
+  invite a throwaway user -> 201
+  row with an INVITED (never-active) actor: hydrated, status=invited
+  after the user row is DELETED: row survives, actor=null
+
+=== CLEANUP ===
+  orphan statuses 0 | tasks 51 (51) | lists 14 (14) | users 16 (16) | active 15

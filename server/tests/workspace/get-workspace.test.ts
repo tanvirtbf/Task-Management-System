@@ -52,7 +52,7 @@ const getWithToken = async (token: string) =>
 
 /**
  * Patch a workspace row directly — for boundary fixtures the factory does not
- * expose (working_days, week_starts_on, fiscal_year_start_month).
+ * expose (working_days, week_starts_on).
  */
 const setWorkspace = async (
     id: string,
@@ -61,7 +61,6 @@ const setWorkspace = async (
         logoUrl: string | null;
         workingDays: WeekDay[];
         weekStartsOn: number;
-        fiscalYearStartMonth: number;
     }>,
 ) => {
     const db = getDb();
@@ -93,7 +92,6 @@ const EXPECTED_KEYS = [
     "working_days",
     "business_hours_start",
     "business_hours_end",
-    "fiscal_year_start_month",
 ].sort();
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -118,11 +116,10 @@ describe("GET /api/v1/workspace", () => {
                 working_days: ["sun", "mon", "tue", "wed", "thu"],
                 business_hours_start: "09:00:00",
                 business_hours_end: "18:00:00",
-                fiscal_year_start_month: 7,
             });
         });
 
-        it("returns exactly the 10 Appendix-A keys (no created_at/updated_at/workspace_id)", async () => {
+        it("returns exactly the 9 Appendix-A keys (no created_at/updated_at/workspace_id)", async () => {
             const u = await makeUser();
             const client = await makeLoggedInClient(u);
 
@@ -160,14 +157,13 @@ describe("GET /api/v1/workspace", () => {
             expect(res.body.business_hours_end).toBe("18:00:00");
         });
 
-        it("returns week_starts_on and fiscal_year_start_month as numbers", async () => {
+        it("returns week_starts_on as a number", async () => {
             const u = await makeUser();
             const client = await makeLoggedInClient(u);
 
             const res = await client.get(PATH);
 
             expect(typeof res.body.week_starts_on).toBe("number");
-            expect(typeof res.body.fiscal_year_start_month).toBe("number");
         });
 
         it("returns logo_url as null (present, not omitted) when unset", async () => {
@@ -425,18 +421,18 @@ describe("GET /api/v1/workspace", () => {
             expect(res.body.week_starts_on).toBe(0);
         });
 
-        it("returns fiscal_year_start_month at both boundaries (1 and 12)", async () => {
+        // F28 (ISS-029, D12.2): fiscal_year_start_month was dropped from the
+        // schema — it was validated 1-12 and read by nothing. The boundary
+        // case it used to prove is gone with the column; this asserts the
+        // removal instead, because a key that quietly comes BACK on the wire is
+        // the regression worth catching.
+        it("does NOT expose fiscal_year_start_month — the column is gone", async () => {
             const ws = await makeWorkspace();
             const u = await makeUser({ workspaceId: ws.id });
             const client = await makeLoggedInClient(u);
 
-            await setWorkspace(ws.id, { fiscalYearStartMonth: 1 });
-            const low = await client.get(PATH);
-            expect(low.body.fiscal_year_start_month).toBe(1);
-
-            await setWorkspace(ws.id, { fiscalYearStartMonth: 12 });
-            const high = await client.get(PATH);
-            expect(high.body.fiscal_year_start_month).toBe(12);
+            const res = await client.get(PATH);
+            expect(res.body).not.toHaveProperty("fiscal_year_start_month");
         });
     });
 

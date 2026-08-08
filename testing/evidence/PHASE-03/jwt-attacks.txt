@@ -1,0 +1,24 @@
+=== 5. JWT ATTACK SURFACE (against GET /auth/me) ===
+  valid token                  -> 200  OK user=owner@company.local
+  expired (exp 1h ago)         -> 401  auth.expired_token
+  alg=none                     -> 401  auth.invalid_token
+  wrong signature              -> 401  auth.invalid_token
+  signed with REFRESH secret   -> 401  auth.invalid_token
+  HS512 alg confusion          -> 401  auth.invalid_token
+  nonexistent sub              -> 404  user.not_found
+  ROLE ESCALATED to owner      -> 200  OK user=owner@company.local
+  no exp claim                 -> 200  OK user=owner@company.local
+  empty string token           -> 401  auth.missing_token
+  literal 'undefined'          -> 401  auth.missing_token
+  literal 'null'               -> 401  auth.invalid_token
+
+=== 6. Authorization HEADER SCHEME HANDLING ===
+  Bearer <tok>             -> 200  OK
+  bearer lowercase         -> 200  OK
+  BEARER upper             -> 200  OK
+  Basic <tok>              -> 401  auth.missing_token
+  Token <tok>              -> 401  auth.missing_token
+  no scheme, raw token     -> 401  auth.missing_token
+  Bearer with 2 spaces     -> 401  auth.missing_token
+  Bearer undefined         -> 401  auth.missing_token
+  empty header             -> 401  auth.missing_token

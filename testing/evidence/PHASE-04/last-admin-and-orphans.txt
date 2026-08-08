@@ -1,0 +1,32 @@
+=== K. does hard-deleting a task ORPHAN its R2 objects? ===
+  attachments -> tasks FK ON DELETE: CASCADE
+  r2-purge job scans: attachments WHERE deleted_at < cutoff
+  => a CASCADE-removed attachment row is never seen by the purge job,
+     so its R2 object is orphaned permanently. (4 such objects were created and
+     manually removed during this phase — see r2-cleanup.txt)
+
+=== L. review-queue: correct params, who can reach it? ===
+  bucket param that works: ?bucket=needs_review
+    owner   -> 200
+    admin   -> 200
+    member  -> 403 review.not_head
+    guest   -> 403 review.not_head
+
+=== M. LAST-ADMIN RULE (role.last_admin) ===
+  active admins: farhana@beautybooth.com.bd, rakib@beautybooth.com.bd, tanvir@beautybooth.com.bd
+  demote farhana@beautybooth.com.bd     -> 200
+  demote rakib@beautybooth.com.bd       -> 200
+  demote the LAST admin tanvir@beautybooth.com.bd -> 200
+  deactivate the LAST admin           -> 204
+  last admin still: member deactivated
+  --- restoring ---
+  restore farhana@beautybooth.com.bd     -> 200
+  restore rakib@beautybooth.com.bd       -> 200
+┌─────────┬──────────────────────────────┬──────────┬───────────────┐
+│ (index) │ email                        │ role     │ status        │
+├─────────┼──────────────────────────────┼──────────┼───────────────┤
+│ 0       │ 'farhana@beautybooth.com.bd' │ 'admin'  │ 'active'      │
+│ 1       │ 'rakib@beautybooth.com.bd'   │ 'admin'  │ 'active'      │
+│ 2       │ 'tanver018765@gmail.com'     │ 'admin'  │ 'invited'     │
+│ 3       │ 'tanvir@beautybooth.com.bd'  │ 'member' │ 'deactivated' │
+└─────────┴──────────────────────────────┴──────────┴───────────────┘

@@ -1,0 +1,34 @@
+node TZ            : Asia/Dhaka
+real now (UTC)     : 2026-07-30T04:12:56.665Z
+
+mysql2 `timezone`  | SET time_zone | NOW() as JS Date (.toISOString())      | correct?
+------------------------------------------------------------------------------------------------
+(default)          | SYSTEM        | 2026-07-30T04:12:56.000Z               | OK ✓
+(default)          | +06:00        | 2026-07-30T04:12:56.000Z               | OK ✓
+(default)          | +00:00        | 2026-07-29T22:12:56.000Z               | *** -6h OFF ***
+local              | SYSTEM        | 2026-07-30T04:12:56.000Z               | OK ✓
+local              | +06:00        | 2026-07-30T04:12:56.000Z               | OK ✓
+local              | +00:00        | 2026-07-29T22:12:56.000Z               | *** -6h OFF ***
++06:00             | SYSTEM        | 2026-07-30T04:12:56.000Z               | OK ✓
++06:00             | +06:00        | 2026-07-30T04:12:56.000Z               | OK ✓
++06:00             | +00:00        | 2026-07-29T22:12:56.000Z               | *** -6h OFF ***
++00:00             | SYSTEM        | 2026-07-30T10:12:56.000Z               | *** 6h OFF ***
++00:00             | +06:00        | 2026-07-30T10:12:56.000Z               | *** 6h OFF ***
++00:00             | +00:00        | 2026-07-30T04:12:56.000Z               | OK ✓
+Z                  | SYSTEM        | 2026-07-30T10:12:56.000Z               | *** 6h OFF ***
+Z                  | +06:00        | 2026-07-30T10:12:56.000Z               | *** 6h OFF ***
+Z                  | +00:00        | 2026-07-30T04:12:56.000Z               | OK ✓
+
+=== what does the app's serializer do? ===
+  exports: toWireTask
+  date-ish lines in taskSerializer.ts:
+    * components: the mysql2 driver materialises a DATE as a Date at local
+    * midnight, so `toISOString()` could shift it across the UTC boundary. Accepts
+    const toWireDate = (value: Date | string | null): string | null => {
+    const day = String(value.getDate()).padStart(2, "0");
+    const toWireTimestamp = (value: Date | null): string | null =>
+    value ? value.toISOString() : null;
+    start_date: toWireDate(t.startDate),
+    due_date: toWireDate(t.dueDate),
+    recurrence_ends_at: toWireDate(t.recurrenceEndsAt),
+    created_at: t.createdAt.toISOString(),

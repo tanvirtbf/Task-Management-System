@@ -1,4 +1,5 @@
 import type { NextFunction, Response } from "express";
+import { paginateArray } from "../utils/pagination";
 import type { Logger } from "winston";
 import { ListService } from "../services/ListService";
 import { AppError } from "../errors";
@@ -103,14 +104,11 @@ export class ListController {
                 count: rows.length,
             });
 
-            res.status(200).json({
-                data: rows.map(toWireList),
-                pagination: {
-                    next_cursor: null,
-                    has_more: false,
-                    total_estimate: rows.length,
-                },
-            });
+            res.status(200).json(
+                    // F23 (ISS-007): a real limit + a working cursor —
+                    // this envelope used to say has_more:false no matter what.
+                    paginateArray(rows.map(toWireList), req.query.limit, req.query.cursor),
+                );
         } catch (err) {
             next(err);
         }
@@ -158,14 +156,11 @@ export class ListController {
                 count: rows.length,
             });
 
-            res.status(200).json({
-                data: rows.map(toWireList),
-                pagination: {
-                    next_cursor: null,
-                    has_more: false,
-                    total_estimate: rows.length,
-                },
-            });
+            res.status(200).json(
+                    // F23 (ISS-007): a real limit + a working cursor —
+                    // this envelope used to say has_more:false no matter what.
+                    paginateArray(rows.map(toWireList), req.query.limit, req.query.cursor),
+                );
         } catch (err) {
             next(err);
         }
@@ -250,17 +245,35 @@ export class ListController {
      * role gate runs in the route's `canAccess` middleware).
      *
      * Reads only the whitelisted body fields (`name`, `description`, `icon`,
-     * `color`, `default_task_type_id`); `space_id` / `is_private` / `position` /
+     * `color`, `default_task_type_id`, `space_id`); `is_private` / `position` /
      * `created_by` / `id` are never patchable here. At least one updatable field
      * must be present (422 otherwise). `description` / `default_task_type_id`
      * accept an explicit `null` to clear. Identity comes from `req.auth`. Returns
      * `200` with the updated `List` as a bare object.
+     *
+     * **F28 (ISS-036, decision D12.7): `space_id` MOVES the list.** A list
+     * created in the wrong department used to be permanently stuck there. The
+     * target must be a live space in this workspace and must not already hold a
+     * list of the same name (409 `list.duplicate`, F27's index). Note that reach
+     * is space-scoped, so a move changes **who can see the list's tasks**.
+     *
+     * `is_private` stays unpatchable ON PURPOSE and this is not an oversight:
+     * `rbac/scope.ts` records that `lists.is_private` is enforced nowhere, so
+     * offering the toggle would ship a control a user can switch on while every
+     * member keeps seeing the list. (`SpacesController` does accept it for a
+     * SPACE — that inconsistency is now deliberate and documented.)
      */
     async update(req: UpdateListRequest, res: Response, next: NextFunction) {
         try {
             const { id } = req.params;
-            const { name, description, icon, color, default_task_type_id } =
-                req.body;
+            const {
+                name,
+                description,
+                icon,
+                color,
+                default_task_type_id,
+                space_id,
+            } = req.body;
 
             // Count an explicit `null` as "provided" (it clears the field), so a
             // `null`-only patch is a valid update, not an empty one.
@@ -271,10 +284,11 @@ export class ListController {
             if (color !== undefined) fields.push("color");
             if (default_task_type_id !== undefined)
                 fields.push("default_task_type_id");
+            if (space_id !== undefined) fields.push("space_id");
             if (fields.length === 0) {
                 throw AppError.validationFailed([
                     {
-                        issue: "Provide at least one field to update: name, description, icon, color, or default_task_type_id",
+                        issue: "Provide at least one field to update: name, description, icon, color, default_task_type_id, or space_id",
                     },
                 ]);
             }
@@ -288,6 +302,7 @@ export class ListController {
                 icon,
                 color,
                 defaultTaskTypeId: default_task_type_id,
+                spaceId: space_id,
                 fields,
             });
 

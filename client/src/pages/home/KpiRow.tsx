@@ -49,7 +49,12 @@ export const KpiRow = () => {
             <KpiCard kpi={data.overdue} color={tokens.colors.danger} />
             <KpiCard kpi={data.awaitingReview} color={tokens.colors.primary} />
             <KpiCard kpi={data.openTeamTasks} color={tokens.colors.success} />
-            <KpiCard kpi={data.slaBreaches} color={tokens.colors.danger} />
+            {/* F28 (ISS-082, D12.4): the only tile with a real queue behind it. */}
+            <KpiCard
+                kpi={data.slaBreaches}
+                color={tokens.colors.danger}
+                to="/sla"
+            />
         </div>
     );
 };

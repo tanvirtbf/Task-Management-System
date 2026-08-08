@@ -168,5 +168,33 @@ class TokenService {
             .where((0, drizzle_orm_1.lt)(schema_1.sessions.expiresAt, cutoff));
         return result.affectedRows;
     }
+    /**
+     * F10 (ISS-017): revoked rows used to survive until `expires_at + 30d`
+     * (~60 days for a rotated refresh), which at 100 users' refresh cadence is
+     * a steady state near 190k rows. A revoked session can never authenticate
+     * again, so after a short forensic window it is pure dead weight — these
+     * two let the cleanup job prune it early.
+     */
+    async countRevokedBefore(cutoff) {
+        const [row] = await this.db
+            .select({ value: (0, drizzle_orm_1.count)() })
+            .from(schema_1.sessions)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.isNotNull)(schema_1.sessions.revokedAt), (0, drizzle_orm_1.lt)(schema_1.sessions.revokedAt, cutoff)));
+        return row?.value ?? 0;
+    }
+    async deleteRevokedBefore(cutoff) {
+        const [result] = await this.db
+            .delete(schema_1.sessions)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.isNotNull)(schema_1.sessions.revokedAt), (0, drizzle_orm_1.lt)(schema_1.sessions.revokedAt, cutoff)));
+        return result.affectedRows;
+    }
+    /** Dry-run companion: rows either rule would remove, counted ONCE. */
+    async countPrunable(expiryCutoff, revokedCutoff) {
+        const [row] = await this.db
+            .select({ value: (0, drizzle_orm_1.count)() })
+            .from(schema_1.sessions)
+            .where((0, drizzle_orm_1.or)((0, drizzle_orm_1.lt)(schema_1.sessions.expiresAt, expiryCutoff), (0, drizzle_orm_1.and)((0, drizzle_orm_1.isNotNull)(schema_1.sessions.revokedAt), (0, drizzle_orm_1.lt)(schema_1.sessions.revokedAt, revokedCutoff))));
+        return row?.value ?? 0;
+    }
 }
 exports.TokenService = TokenService;

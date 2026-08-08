@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.taskPostmortems = exports.attachments = exports.checklistItems = exports.checklists = exports.comments = void 0;
+exports.taskPostmortems = exports.r2PurgeQueue = exports.attachments = exports.checklistItems = exports.checklists = exports.comments = void 0;
 // =============================================================================
 // Task content — comments, checklists, checklist_items, attachments (4 tables)
 //   Mirrors `database/schema.sql §21-24`.
@@ -43,6 +43,10 @@ exports.comments = (0, mysql_core_1.mysqlTable)("comments", {
         .onUpdate("cascade"),
     taskTimeIdx: (0, mysql_core_1.index)("idx_comments_task_time").on(t.taskId, t.createdAt),
     parentIdx: (0, mysql_core_1.index)("idx_comments_parent").on(t.parentCommentId),
+    // F30 (ISS-088): `listByTask` orders by (created_at, internal_id) —
+    // the tie-break column is what pushed MySQL off `idx_comments_task_time`
+    // into a filesort. This index carries the FULL order.
+    taskCreatedInternalIdx: (0, mysql_core_1.index)("idx_comments_task_created_internal").on(t.taskId, t.createdAt, t.internalId),
 }));
 // ─── checklists ───────────────────────────────────────────────────────────────
 exports.checklists = (0, mysql_core_1.mysqlTable)("checklists", {
@@ -134,6 +138,23 @@ exports.attachments = (0, mysql_core_1.mysqlTable)("attachments", {
         .default("pending"),
 }, (t) => ({
     taskIdx: (0, mysql_core_1.index)("idx_attachments_task").on(t.taskId, t.uploadedAt),
+}));
+// ─── r2_purge_queue ─ F16 (ISS-022) ──────────────────────────────────────────
+// R2 object keys awaiting deletion, for the ONE case the soft-delete flow
+// cannot see: a task hard delete. `attachments.task_id` is ON DELETE CASCADE,
+// so the rows vanish with the task — and the r2-purge job, which finds objects
+// by reading soft-deleted attachment rows, never learns those objects exist.
+// The bytes stayed in the bucket forever (P4 proved it with four stranded
+// objects). The hard-delete transaction now copies the subtree's keys here
+// BEFORE deleting the task row; the same job drains the queue. Grace period
+// does not apply — the task is already permanently gone, so its files are too.
+exports.r2PurgeQueue = (0, mysql_core_1.mysqlTable)("r2_purge_queue", {
+    id: (0, mysql_core_1.varchar)("id", { length: _shared_1.ID_LENGTH }).primaryKey(),
+    storageKey: (0, mysql_core_1.varchar)("storage_key", { length: _shared_1.URL_LENGTH }).notNull(),
+    thumbnailKey: (0, mysql_core_1.varchar)("thumbnail_key", { length: _shared_1.URL_LENGTH }),
+    queuedAt: (0, mysql_core_1.timestamp)("queued_at").notNull().defaultNow(),
+}, (t) => ({
+    queuedIdx: (0, mysql_core_1.index)("idx_r2_purge_queued").on(t.queuedAt),
 }));
 // ─── task_postmortems ─ §22 postmortem checklist on a resolved Incident ───────
 // One row per Incident task (PK = task_id). `items` is the checklist

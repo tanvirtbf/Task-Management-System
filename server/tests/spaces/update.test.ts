@@ -620,7 +620,10 @@ describe("PATCH /api/v1/spaces/:id", () => {
             expect(res.body.error.code).toBe("space.not_found");
         });
 
-        it("updates an archived space (archived != deleted) and keeps archived_at", async () => {
+        it("refuses to edit an archived space — unarchive first (F22/ISS-034)", async () => {
+            // Pre-F22 this spec asserted the bug: an archived space stayed
+            // fully editable while archived LISTS were frozen. Lists were the
+            // model; archived now means frozen everywhere.
             const u = await makeUser({ role: "admin" });
             const id = await seedSpace(u, {
                 name: "Archived",
@@ -632,15 +635,17 @@ describe("PATCH /api/v1/spaces/:id", () => {
                 .patch(spacePath(id))
                 .send({ name: "Renamed while archived" });
 
-            expect(res.status).toBe(200);
-            expect(res.body.name).toBe("Renamed while archived");
-            expect(res.body.archived_at).toMatch(/^2026-01-02T03:04:05/);
+            expect(res.status).toBe(409);
+            expect(res.body.error.code).toBe("space.archived");
         });
     });
 
     // ─── f. Conflict (none — no unique constraint) ────────────────────────────
-    describe("No conflict (duplicate names allowed)", () => {
-        it("allows renaming a space to match another space's name (no 409)", async () => {
+    describe("Name conflict (F27/ISS-033)", () => {
+        it("refuses renaming a space onto another space's name", async () => {
+            // D11: the rule holds on RENAME as well as create — this spec used
+            // to assert the opposite, and the duplicate "Marketing" ISS-033
+            // records is exactly one PATCH away without it.
             const u = await makeUser({ role: "admin" });
             await seedSpace(u, { name: "Shared" });
             const second = await seedSpace(u, { name: "Other" });
@@ -650,8 +655,21 @@ describe("PATCH /api/v1/spaces/:id", () => {
                 .patch(spacePath(second))
                 .send({ name: "Shared" });
 
+            expect(res.status).toBe(409);
+            expect(res.body.error.code).toBe("space.duplicate");
+        });
+
+        it("still allows a rename that collides with nothing", async () => {
+            const u = await makeUser({ role: "admin" });
+            const only = await seedSpace(u, { name: "Only" });
+            const client = await makeLoggedInClient(u);
+
+            const res = await client
+                .patch(spacePath(only))
+                .send({ name: "Only, renamed" });
+
             expect(res.status).toBe(200);
-            expect(res.body.name).toBe("Shared");
+            expect(res.body.name).toBe("Only, renamed");
         });
     });
 

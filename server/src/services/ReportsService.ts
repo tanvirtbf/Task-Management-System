@@ -2,6 +2,9 @@ import { MySql2Database } from "drizzle-orm/mysql2";
 import type { Logger } from "winston";
 import * as schema from "../db/schema";
 import { AppError } from "../errors";
+import { holds } from "../rbac/can";
+import { liveLegacyRole } from "../rbac/scopeGuard";
+import { currentActor } from "../rbac/context";
 import {
     DepartmentReportsRepo,
     type DeptReportRecord,
@@ -244,7 +247,16 @@ export class ReportsService {
         const afterKey = input.cursor
             ? decodeReportCursor(input.cursor)
             : undefined;
-        const headVisibility = this.isAdmin(input.role)
+        // F7 / D3.1 compose: head-scoped visibility is feature logic (D-5) and
+        // is untouched; the "admins see every department" fast-path now also
+        // requires the `report.view` grant. An admin whose role has the toggle
+        // off falls back to head scoping (usually an empty list) — the toggle
+        // is real, and department heads are unaffected. NEVER make this a
+        // route gate: heads are legacy `member`s and would lose dept-review.
+        const adminSeesAll =
+            this.isAdmin(await liveLegacyRole(input.role) as Role) &&
+            holds(await currentActor(), "report.view");
+        const headVisibility = adminSeesAll
             ? undefined
             : {
                   userId: input.userId,
@@ -305,7 +317,12 @@ export class ReportsService {
                 `Report ${input.id} does not exist`,
             );
         }
-        if (!this.isAdmin(input.role)) {
+        // Same compose as `list` — the admin fast-path needs the grant; the
+        // snapshot-head / current-head branches are feature logic, untouched.
+        const adminSeesAll =
+            this.isAdmin(await liveLegacyRole(input.role) as Role) &&
+            holds(await currentActor(), "report.view");
+        if (!adminSeesAll) {
             const snapshotHead = row.headUserId === input.userId;
             let currentHead = false;
             if (!snapshotHead) {
@@ -386,7 +403,7 @@ export class ReportsService {
             );
         }
         if (
-            !this.isAdmin(input.role) &&
+            !this.isAdmin(await liveLegacyRole(input.role) as Role) &&
             space.headUserId !== input.userId
         ) {
             throw AppError.forbidden(

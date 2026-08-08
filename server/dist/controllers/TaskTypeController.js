@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TaskTypeController = void 0;
+const pagination_1 = require("../utils/pagination");
 const toWireTaskType = (t) => ({
     id: t.id,
     name: t.name,
@@ -40,14 +41,10 @@ class TaskTypeController {
                 workspaceId,
                 count: rows.length,
             });
-            res.status(200).json({
-                data: rows.map(toWireTaskType),
-                pagination: {
-                    next_cursor: null,
-                    has_more: false,
-                    total_estimate: rows.length,
-                },
-            });
+            res.status(200).json(
+            // F23 (ISS-007): a real limit + a working cursor —
+            // this envelope used to say has_more:false no matter what.
+            (0, pagination_1.paginateArray)(rows.map(toWireTaskType), req.query.limit, req.query.cursor));
         }
         catch (err) {
             next(err);

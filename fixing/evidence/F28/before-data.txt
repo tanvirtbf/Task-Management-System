@@ -1,0 +1,79 @@
+================ F28 DECISION DATA (demo DB) ================
+
+--- ISS-029 / ISS-028 : the workspace settings row ---
+  name=BeautyBooth  tz=Asia/Dhaka
+  default_locale       = en-US
+  week_starts_on       = 6   (USED by client calendar)
+  working_days         = "sun,mon,tue,wed,thu"
+  business_hours       = 09:00:00 .. 18:00:00
+  fiscal_year_start_month = 7
+
+--- ISS-029 : how many SLA deadlines land off-hours / off-days? ---
+  tasks with an SLA deadline : 0
+    deadline on a NON-WORKING DAY   : 0
+    deadline OUTSIDE business hours : 0
+    deadline inside working hours   : 0
+  => 0% of SLA deadlines fall when nobody is at work.
+
+--- ISS-082 : is there a breach queue to show? ---
+  tasks currently past sla_due_at (not archived): 0
+
+--- ISS-070 : checklist items, and how many are assigned ---
+  checklist_items total = 14 | with an assignee = 0 | completed = 5
+  checklists = 3
+
+--- ISS-013 : sprints, and what a delete would touch ---
+  Sprint 12 — Checkout & Payments  [active]  Thu Jul 30 .. Thu Aug 13  tasks=2
+  FK -> tasks.sprint_id  ON DELETE SET NULL
+
+--- ISS-036 : lists, is_private usage, and the F27 collision risk ---
+  lists = 13 | is_private=1 : 0 | archived : 0
+  list names that exist in MORE THAN ONE space (a move would 409 under F27's uq_lists_space_name):
+    none
+
+--- ISS-094 : the full seeded grant matrix ---
+  [Owner / owner] system=1  grants=56
+  [Admin / admin] system=1  grants=53
+  [Member / member] system=1  grants=20
+  [Guest / guest] system=1  grants=19
+        activity.view                scope=all
+        assistant.use                scope=all
+        bug.report                   scope=all
+        checklist.manage             scope=all
+        comment.create               scope=all
+        customfield.set_value        scope=all
+        dependency.manage            scope=all
+        form.view_submissions        scope=all
+        member.view                  scope=all
+        postmortem.manage            scope=all
+        space.view                   scope=all
+        sprint.assign_tasks          scope=all
+        task.archive                 scope=all
+        task.assign                  scope=all
+        task.create                  scope=all
+        task.delete                  scope=all
+        task.edit                    scope=all
+        task.view                    scope=all
+        template.apply               scope=all
+  [Department Only / department-only] system=0  grants=8
+
+  WRITE-shaped grants held by GUEST (the ISS-094 question, widened to every key):
+        assistant.use                scope=all
+        bug.report                   scope=all
+        checklist.manage             scope=all
+        comment.create               scope=all
+        customfield.set_value        scope=all
+        dependency.manage            scope=all
+        form.view_submissions        scope=all
+        postmortem.manage            scope=all
+        sprint.assign_tasks          scope=all
+        task.archive                 scope=all
+        task.assign                  scope=all
+        task.create                  scope=all
+        task.delete                  scope=all
+        task.edit                    scope=all
+        template.apply               scope=all
+
+--- ISS-094 : same check on MEMBER (the note said audit the others too) ---
+  admin-shaped keys held by member:
+        member.view                  scope=all

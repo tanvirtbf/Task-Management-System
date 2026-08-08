@@ -1,0 +1,41 @@
+=== 1. A NON-ADMIN head reviewing ANOTHER department's task ===
+  the O&F head (member) reviews a MARKETING task -> 403 review.not_head
+  the MARKETING head reviews it                  -> 201
+  -> the earlier 201 from the 'other head' was tanvir, whose legacy role is ADMIN (the documented override)
+
+=== 2. review-queue needs ?filter= ===
+  (no filter)           -> 422 validation.failed     
+  ?filter=needs_review  -> 422 validation.failed     
+  ?filter=flagged       -> 422 validation.failed     
+  ?filter=overdue       -> 422 validation.failed     
+  ?filter=due_today     -> 422 validation.failed     
+  ?filter=bogus         -> 422 validation.failed     
+  needs_review api: 0 | hand-count (completed, no verdict): 7 differs
+  a plain member -> 422 validation.failed
+
+=== 3. ACK is an owner/admin action (requirePermission report.ack) ===
+  the HEAD acks   -> 403 auth.forbidden (route header says owner/admin only)
+  the OWNER acks  -> 200     
+     acknowledged_by set: true | at: 2026-07-30 09:52:07
+  ack AGAIN       -> 200      timestamp unchanged? yes — first ack sticks
+
+=== 4. GET /reports as a plain member ===
+  member GET /reports -> 200      rows: 0 empty — the list is scoped, the detail is 403
+  head GET /reports   -> 200      rows: 3 (their own department only)
+
+=== CLEANUP ===
+  department_reports removed: 8
+  tasks 51 (51) | spaces 9 (9) | task_reviews 9 (9) | department_reports 12 (12) | notifications 66 (65)
+=== review-queue with the real param (bucket) ===
+  bucket=needs_review  -> 200 7 rows
+  bucket=flagged       -> 200 0 rows
+  bucket=overdue       -> 200 4 rows
+  bucket=due_today     -> 200 0 rows
+  bucket=bogus         -> 422 "validation.failed"
+  hand-counts: needs_review=7 flagged=0 overdue=4
+  a plain member  -> 403 "review.not_head"
+  a guest         -> 403 "review.not_head"
+  the owner       -> 200 "ok"
+
+FINAL: removed 1 stray notifications
+  tasks 51 (51) | spaces 9 (9) | task_reviews 9 (9) | department_reports 12 (12) | notifications 65 (65)

@@ -1,0 +1,49 @@
+=== 1. READS ===
+  GET /on-call/current -> 200      body: null
+  GET /on-call/schedule -> 200      rows: 1 | a row: {"id":"ocs-9rTMbx5xasgDTJZS6p7myQ","week_start":"2026-07-20","week_end":"2026-07-26","engineer":{"id":"u-RFc1GIoS_nvSDOHovy9UVQ","first_name":"Jhankar","last_name":"Mahbub","email":"jhankar@beautybooth.com.bd","role":"member","avatar_url":null,"status":"active","timezone":"Asia/Dhaka","created_at":"2026-07-23T14:23:07.000Z","last_login_at":null}}
+  v_current_on_call rows: 0 | CURDATE() 2026-07-30 | UTC_DATE() 2026-07-30 (same today)
+
+=== 2. PUT /on-call/:weekStart ===
+  a Monday (2026-08-03) -> 200      body: {"id":"ocs-p2mbKAps2b3l8mAvrp-BHQ","week_start":"2026-08-03","week_end":"2026-08-09","engineer":{"id":"u-76AuOtG-wzFTpMxhix2_qA","first_name":"Guest",
+     stored week_start: 2026-08-03 week_end: 2026-08-09 (a 7-day span? 7 days)
+  a mid-week date (2026-08-06) -> 422 validation.failed          
+  OVERWRITE the same week -> 200      shifts for that week now: 1
+  unknown engineer  -> 422 on_call.invalid_engineer
+  an INVITED user   -> 422 on_call.invalid_engineer (tanver018765@gmail.com)
+  malformed date    -> 422 validation.failed
+  missing engineer  -> 422 validation.failed
+  a member does it  -> 403 auth.forbidden
+  a guest does it   -> 403 auth.forbidden
+
+=== 3. DELETE ===
+  delete the week we set -> 204
+  delete it again        -> 404 on_call.not_found
+  delete a week that was never set -> 404 on_call.not_found
+
+=== 4. POST /eng/report-bug ===
+  owner         -> 422 validation.failed
+  member        -> 422 validation.failed
+  space-scoped  -> 422 validation.failed
+  guest         -> 422 validation.failed
+  missing title    -> 422 validation.failed
+  bad severity     -> 422 validation.failed
+
+=== 5. GET /eng/home ===
+  -> 200      keys: ["open_bugs","my_sprint_tasks","prs_awaiting_me","open_incidents","stale_tickets","current_on_call","active_sprint"]
+  body: {"open_bugs":{"count":3,"top":[{"id":"t-PH-imGF2l8mVnXKMKBOvxA","custom_id":null,"task_number":4,"workspace_id":"ws-tcCcv1k2HdlflPAeyTGZIA","primary_list_id":"l-aX8URaC5r8OHUUuctnCOSA","name":"hsfh","description":null,"status_id":"st-t6xDgEGbbTNeifBgWwhQig","priority":1,"task_type_id":"tt-pkGgglLMAeouAcD9mAm0bg","parent_task_id":null,"nesting_depth":0,"is_milestone":false,"start_date":null,"due_da
+  hand-count of open Bug tasks in Engineering: 3
+  guest  /eng/home -> 200     
+  member /eng/home -> 200
+
+=== 6. POSTMORTEM ===
+  postmortem on a BUG (not an incident) -> 422 validation.failed
+  postmortem on an OPEN incident        -> 422 validation.failed
+  postmortem on a RESOLVED incident     -> 422 validation.failed keys: ["error"]
+  read it back -> 200     
+     item labels sent: ["What happened","Root cause","Action items","snake_case_label","UPPER Label"]
+     item labels read: []
+     labels preserved verbatim? *** TRANSFORMED ***
+  read a postmortem that does not exist -> 404 task.not_found
+
+=== CLEANUP ===
+  tasks 51 (51) | on_call_shifts 1 (1) | postmortems 0

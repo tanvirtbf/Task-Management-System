@@ -1,0 +1,15 @@
+  BEFORE: taskmanagement form_submissions has 0/2 retention columns  <- the ISS-025 drift
+  BEFORE: taskmanagement_qa  has 2/2
+
+  === F17 (BEFORE) — ISS-025, the three failure surfaces ===
+
+  OK    GET /forms/:id/submissions is a 500 (Unknown column)      got 500
+  OK    PUBLIC INTAKE is dead too (500)                           got 500
+  OK    the retention job fails with the column error             Unknown column 'form_submissions.expires_at' in 
+
+  (the whole Forms feature is unusable on a drifted box)
+
+  cleanup: tasks 46 (46) | forms 0 (0)
+
+  BEFORE PASS
+

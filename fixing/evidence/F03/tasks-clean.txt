@@ -1,0 +1,30 @@
+F3 — the `tasks` module re-run cleanly against FINAL code
+(nothing else running; --runInBand --testTimeout=60000; jest.tasks.config.cjs)
+
+BEFORE the my-work fixture repair — 2026-08-03 16:38
+  ● GET /api/v1/lists/:listId/tasks › Concurrency › serves 50 parallel reads   Expected 200, Received 500
+        tests/tasks/list-by-list.test.ts:1115          <- ISS-087, pre-existing
+  ● GET /api/v1/tasks/my-work › Bucketing › places each assigned task in the correct bucket
+        tests/tasks/my-work.test.ts:99                 <- stale DATE fixture
+  ● GET /api/v1/tasks/my-work › Bucketing › returns hydrated Task objects
+        tests/tasks/my-work.test.ts:119                <- stale DATE fixture
+  ● GET /api/v1/tasks/my-work › Single bucket › returns only the requested bucket when ?bucket= is given
+        tests/tasks/my-work.test.ts:182                <- stale DATE fixture
+  Test Suites: 2 failed, 8 passed, 10 total
+  Tests:       4 failed, 355 passed, 359 total
+
+The three my-work cases were the fixture, not the service: `dayOffset()` built a LOCAL-midnight Date
+via setHours(0,0,0,0), which a DATE column stores as the PREVIOUS day under the +00:00 driver, so a
+task seeded "due today" arrived "due yesterday" and bucketed as overdue. The end-to-end probe
+(mywork-buckets.cjs) put all five buckets right the whole time, in both TZ frames.
+
+AFTER (dayOffset -> dhakaDayOffset) — 2026-08-03 16:58
+  ● GET /api/v1/lists/:listId/tasks › Concurrency › serves 50 parallel reads   Expected 200, Received 500
+        tests/tasks/list-by-list.test.ts:1115          <- ISS-087, pre-existing, unrelated to the clock
+  Test Suites: 1 failed, 9 passed, 10 total
+  Tests:       1 failed, 358 passed, 359 total
+
+VERDICT: zero F3 regressions in `tasks`. The single remaining failure is ISS-087 (50 concurrent
+reads exhaust the connection-pool queue and return 500s) — already filed, already re-verified as
+reproducing in PHASE-42, and owned by a later phase. It reproduces on an otherwise idle box, so it
+is a real defect rather than a contention artefact.

@@ -1,0 +1,48 @@
+=== 1. DB TRIGGERS trg_task_dependencies_no_self_* (redo — column is dep_type, not type) ===
+  raw INSERT self  -> blocked by trigger: task_dependencies: task cannot depend on itself
+  raw UPDATE self  -> blocked by trigger: task_dependencies: task cannot depend on itself
+
+=== 2. CROSS-SPACE dependency (redo with the only valid type = blocks) ===
+  Politics task blocks a Marketing task -> 201 ALLOWED (workspace-scoped, not space-scoped)
+
+=== 3. Can a SPACE-SCOPED user see / make cross-space dependency edges? ===
+  marketing.only GETs deps of the Marketing task -> 200
+     edges returned: 1 | hydrated names: ["TEST-p18b-depA"]
+     -> the Politics task is *** VISIBLE to a user with no Politics access ***
+  marketing.only GETs the Politics task directly -> 404 task.not_found
+  marketing.only LINKS their task to an unseeable Politics task -> 404 task.not_found 
+  GUEST creates a dependency -> 201 *** ALLOWED (dependency.manage ungated — ISS-024) ***
+  GUEST deletes it -> 204
+
+=== 4. GET /tasks/:id/subtasks ===
+  -> 200 | shape: bare array ✓ | count: 3 (expect 3 direct children)
+     names: ["TEST-p18b-kid1","TEST-p18b-kid2","TEST-p18b-kid-otherlist"]
+     includes the cross-list child? yes
+     grandchild leaked in? no ✓
+     hydrated fields on a child: 50 keys
+  after archiving kid2: default 2 | ?include_archived=true 3
+  subtasks of a LEAF task    -> 200 []
+  subtasks of an UNKNOWN id  -> 404 task.not_found
+  bad include_archived value -> 422 validation.failed
+
+=== 5. subtasks_count / subtasks_completed (ISS-046 evidence) ===
+  with 3 children, 1 done: db = {"sc":0,"sd":0} (was {"sc":0,"sd":0})
+  on the wire: subtasks_count = 0 subtasks_completed = 0
+  -> the client's progress bar would read 0/0 for a parent with 3 subtasks
+
+=== 6. RE-PARENTING via PATCH ===
+  PATCH parent_task_id -> 422 validation.failed (P15: protected field)
+  -> a task can only ever be parented at CREATE time
+
+=== 7. DEPENDENCY on / of an ARCHIVED task ===
+  link a live task to an ARCHIVED task -> 201
+  it shows up in the live task's deps  -> 200 1 edges
+
+=== 8. PARENT <-> CHILD dependency ===
+  parent blocks its own child -> 201 allowed (deadlock-shaped, but not a cycle in the dep graph)
+
+=== 9. EMPTY dependency shape ===
+  -> {"blocks":[],"blocked_by":[]}
+
+=== CLEANUP ===
+  orphan statuses 0 | tasks 51 (51) | lists 14 (14) | statuses 70 (70) | deps 0 (0)

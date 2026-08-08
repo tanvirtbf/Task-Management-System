@@ -112,6 +112,22 @@ export const CommentsSection = ({ taskId }: { taskId: string }) => {
                         >
                             {timeAgo(c.createdAt)}
                         </span>
+                        {/* ISS-063 (F5): edits must be visible — this is the
+                            accountability surface. `editedAt` was on the wire
+                            all along; nothing rendered it. Deleted tombstones
+                            stay bare. */}
+                        {c.editedAt && !c.deletedAt && (
+                            <span
+                                style={{
+                                    fontSize: 11,
+                                    fontStyle: "italic",
+                                    color: tokens.colors.textMuted,
+                                }}
+                                title={`Edited ${new Date(c.editedAt).toLocaleString()}`}
+                            >
+                                (edited)
+                            </span>
+                        )}
                         {!isReply && user && (
                             <button
                                 onClick={() =>

@@ -1,0 +1,39 @@
+=== 3. LIST + wire shape ===
+  GET -> 200      shape: bare array | count: 4
+  keys: ["id","task_id","name","url","mime_type","size_bytes","thumbnail_url","uploaded_by","uploaded_at"]
+  attachments_count on the task: 4
+  pending rows visible in the list? 0 pending in DB vs 4 returned
+
+=== 4. PRESIGN FLOW ===
+  POST /uploads/sign -> 422 validation.failed          keys: ["error"]
+  bad MIME          -> 422 validation.failed
+  over 25 MB        -> 422 validation.failed
+  scope=comment     -> 422 validation.failed
+  unknown task      -> 422 validation.failed
+  negative size     -> 422 validation.failed
+  guest signs -> 422 validation.failed
+
+=== 5. DOWNLOAD ===
+  owner  -> 200      keys: ["0","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26","27","28","29","30","31","32","33","34","35","36","37","38","39","40","41","42","43","44","45","46","47","48","49","50","51","52","53","54","55","56","57","58","59","60","61","62","63","64","65","66","67","68","69"]
+  another member -> 200
+  a guest        -> 200
+  no token       -> 401
+  unknown id     -> 404 attachment.not_found
+
+=== 6. DELETE ===
+  attachments_count before: 1
+  a NON-uploader member deletes -> 403 auth.forbidden
+  the uploader deletes          -> 204
+     row after delete: {"d":"2026-07-30 08:56:31","u":"complete"} | MySQL NOW(): 2026-07-30 14:56:31
+  attachments_count after: 0
+  delete again                  -> 404 attachment.not_found
+  download a deleted attachment -> 404 attachment.not_found
+  it still appears in the list?  0 returned
+  delete unknown -> 404 attachment.not_found
+
+=== 7. GUEST cannot upload ===
+  guest proxied upload -> 403 auth.forbidden
+
+=== CLEANUP ===
+  orphan statuses 10 | orphan attachments 0 | tasks 51 (51) | lists 14 (14) | attachments 1 (1)
+  NOTE: objects written to R2 by this phase are NOT removed by the API (soft delete only).

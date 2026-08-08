@@ -73,6 +73,24 @@ exports.spaceIdParamValidator = (0, express_validator_1.checkSchema)({
  * the body — they come from `req.auth` — so stray fields are simply ignored.
  */
 exports.createSpaceValidator = (0, express_validator_1.checkSchema)({
+    // F18 (ISS-032): the SAME rule the update validator has. POST used to have
+    // no rule at all, and the service silently dropped the value — 201 with
+    // head_user_id NULL while PATCH refuses the identical body with 422.
+    head_user_id: {
+        in: ["body"],
+        optional: { options: { nullable: true } },
+        custom: {
+            options: (value) => {
+                if (typeof value !== "string") {
+                    throw new Error("head_user_id must be a user id string or null");
+                }
+                if (value.length === 0 || value.length > 64) {
+                    throw new Error("head_user_id must be 1-64 characters");
+                }
+                return true;
+            },
+        },
+    },
     name: {
         in: ["body"],
         isString: { errorMessage: "name must be a string", bail: true },

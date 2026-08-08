@@ -122,9 +122,11 @@ CREATE OR REPLACE VIEW v_open_bugs AS
 CREATE OR REPLACE VIEW v_active_sprint AS
     SELECT * FROM sprints WHERE status = 'active';
 
+-- Dhaka business days vs a UTC session — see database/upgrades/005_clock_views.sql.
 CREATE OR REPLACE VIEW v_current_on_call AS
     SELECT s.* FROM on_call_shifts s
-     WHERE UTC_DATE() BETWEEN s.week_start AND s.week_end;
+     WHERE DATE(UTC_TIMESTAMP() + INTERVAL 6 HOUR)
+           BETWEEN s.week_start AND s.week_end;
 
 CREATE OR REPLACE VIEW v_breached_sla AS
     SELECT t.id, t.workspace_id, t.primary_list_id, t.custom_id, t.name,

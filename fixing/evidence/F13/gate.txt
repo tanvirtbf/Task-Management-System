@@ -1,0 +1,5 @@
+F12+F13 gate — auth + users + health, serial, FINAL code — 2026-08-05T22:54:09+06:00
+auth     Test Suites: 9 passed, 9 total|Tests:       339 passed, 339 total|
+users    Test Suites: 8 passed, 8 total|Tests:       282 passed, 282 total|
+health   Test Suites: 2 passed, 2 total|Tests:       14 passed, 14 total|
+gate finished 2026-08-05T23:03:32+06:00

@@ -49,6 +49,10 @@ exports.spaces = (0, mysql_core_1.mysqlTable)("spaces", {
     })
         .onDelete("set null")
         .onUpdate("cascade"),
+    /** F27 (ISS-033): two spaces called "Marketing" rendered identically
+     *  in the sidebar. Case-insensitive via the column collation, like the
+     *  catalog resources that already got this right. */
+    workspaceNameUq: (0, mysql_core_1.uniqueIndex)("uq_spaces_workspace_name").on(t.workspaceId, t.name),
     headIdx: (0, mysql_core_1.index)("idx_spaces_head").on(t.headUserId),
     workspaceArchivedIdx: (0, mysql_core_1.index)("idx_spaces_workspace_archived").on(t.workspaceId, t.archivedAt, t.position),
     colorCk: (0, mysql_core_1.check)("ck_spaces_color", (0, drizzle_orm_1.sql) `${t.color} REGEXP '^#[0-9A-Fa-f]{6}$'`),
@@ -116,6 +120,8 @@ exports.lists = (0, mysql_core_1.mysqlTable)("lists", {
     })
         .onDelete("set null")
         .onUpdate("cascade"),
+    /** F27 (ISS-035): the same trap one level deeper in the tree. */
+    spaceNameUq: (0, mysql_core_1.uniqueIndex)("uq_lists_space_name").on(t.spaceId, t.name),
     spaceArchivedIdx: (0, mysql_core_1.index)("idx_lists_space_archived").on(t.spaceId, t.archivedAt, t.position),
     defaultTaskTypeIdx: (0, mysql_core_1.index)("idx_lists_default_task_type").on(t.defaultTaskTypeId),
 }));

@@ -1,0 +1,41 @@
+
+  === F22 — the promised business rules ===
+
+  --- ISS-011a: tag.in_use ---
+  OK    deleting an in-use tag -> 409 tag.in_use (was: silent strip)  got 409 tag.in_use
+  OK    …and the task KEPT its tag                                    links 1
+  OK    an unused tag still deletes (204)                             got 204
+
+  --- ISS-011b: task.cannot_complete_blocked ---
+  OK    dependency created (blocker blocks blocked)                   got 201
+  OK    completing the BLOCKED task -> 409 (was: 200)                 got 409 task.cannot_complete_blocked
+  OK    …the BULK path refuses too                                    got 409
+  OK    complete the blocker first -> the blocked task completes (200)got 200
+
+  --- ISS-011c: sprint.overlap ---
+  OK    a disjoint sprint creates (201)                               got 201
+  OK    an OVERLAPPING sprint -> 409 sprint.overlap (was: 201)        got 409 sprint.overlap
+  OK    back-to-back (no overlap) still fine (201)                    got 201
+
+  --- ISS-019: headship SURVIVES deactivation ---
+  OK    deactivate the Marketing head -> headship KEPT (was: NULLed)  head kept
+  OK    reactivate -> the department is exactly as it was             
+
+  --- ISS-020: the last-admin backstop ---
+  OK    demoting an admin WITH an active owner present -> 200 (owner can fix things)got 200
+  OK    with NO other active admin-capable account -> 409 role.last_admingot 409 role.last_admin
+  OK    …and deactivating them is refused the same way                got 409
+
+  --- ISS-034: an archived space is frozen ---
+  OK    PATCH an archived space -> 409 space.archived (was: 200)      got 409 space.archived
+  OK    unarchive first -> the edit works (200)                       got 200
+
+  --- ISS-051: an archived task is frozen for ALL writes ---
+  OK    comment on an archived task -> 409 task.archived (was: 201)   got 409 task.archived
+  OK    dependency onto an archived task -> 409 (was: 201, edge rendered)got 409 task.archived
+
+  === CLEANUP ===
+  tasks 46 (46) | sprints 1 (1) | spaces 6 (6) | tags 8 (baseline) | active admins 3 (3) | statuses 65 (65)
+
+  PASS — the spec's promises are enforced.
+

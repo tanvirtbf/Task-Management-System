@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TagController = void 0;
+const pagination_1 = require("../utils/pagination");
 /** Schema default for `tags.color` — applied when the body omits `color`. */
 const DEFAULT_TAG_COLOR = "#94A3B8";
 const toWireTag = (t) => ({
@@ -32,14 +33,10 @@ class TagController {
                 workspaceId,
                 count: rows.length,
             });
-            res.status(200).json({
-                data: rows.map(toWireTag),
-                pagination: {
-                    next_cursor: null,
-                    has_more: false,
-                    total_estimate: rows.length,
-                },
-            });
+            res.status(200).json(
+            // F23 (ISS-007): a real limit + a working cursor —
+            // this envelope used to say has_more:false no matter what.
+            (0, pagination_1.paginateArray)(rows.map(toWireTag), req.query.limit, req.query.cursor));
         }
         catch (err) {
             next(err);

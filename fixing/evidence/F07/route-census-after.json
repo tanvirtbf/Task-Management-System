@@ -1,0 +1,1739 @@
+{
+ "counts": {
+  "catalog": 56,
+  "routesTotal": 181,
+  "gatedByPermission": 95,
+  "legacyCanAccess": 0,
+  "authenticateOnly": 70,
+  "public": 16,
+  "distinctKeysGated": 44,
+  "keysWithNoRoute": 12
+ },
+ "keysWithNoRoute": [
+  "member.edit_profile",
+  "space.view",
+  "space.head_assign",
+  "task.view",
+  "task.delete_hard",
+  "comment.delete_any",
+  "attachment.delete_any",
+  "review.perform",
+  "review.read",
+  "report.view",
+  "report.generate",
+  "report.note"
+ ],
+ "routes": [
+  {
+   "file": "assistant",
+   "method": "POST",
+   "path": "/assistant/chat",
+   "gate": "perm:assistant.use",
+   "extras": []
+  },
+  {
+   "file": "assistant",
+   "method": "GET",
+   "path": "/assistant/conversations",
+   "gate": "perm:assistant.use",
+   "extras": []
+  },
+  {
+   "file": "assistant",
+   "method": "GET",
+   "path": "/assistant/conversations/:id",
+   "gate": "perm:assistant.use",
+   "extras": []
+  },
+  {
+   "file": "attachments",
+   "method": "POST",
+   "path": "/uploads/sign",
+   "gate": "perm:attachment.upload",
+   "extras": []
+  },
+  {
+   "file": "attachments",
+   "method": "POST",
+   "path": "/attachments/:id/finalize",
+   "gate": "perm:attachment.upload",
+   "extras": []
+  },
+  {
+   "file": "attachments",
+   "method": "GET",
+   "path": "/attachments/:id/download",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "attachments",
+   "method": "DELETE",
+   "path": "/attachments/:id",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "attachments",
+   "method": "GET",
+   "path": "/tasks/:id/attachments",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "attachments",
+   "method": "POST",
+   "path": "/tasks/:id/attachments",
+   "gate": "perm:attachment.upload",
+   "extras": []
+  },
+  {
+   "file": "auth",
+   "method": "POST",
+   "path": "/auth/login",
+   "gate": "public",
+   "extras": []
+  },
+  {
+   "file": "auth",
+   "method": "POST",
+   "path": "/auth/forgot-password",
+   "gate": "public",
+   "extras": []
+  },
+  {
+   "file": "auth",
+   "method": "POST",
+   "path": "/auth/reset-password",
+   "gate": "public",
+   "extras": []
+  },
+  {
+   "file": "auth",
+   "method": "POST",
+   "path": "/auth/refresh",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "auth",
+   "method": "POST",
+   "path": "/auth/logout",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "auth",
+   "method": "POST",
+   "path": "/auth/logout-all",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "auth",
+   "method": "GET",
+   "path": "/auth/me",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "auth",
+   "method": "POST",
+   "path": "/auth/change-password",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "auth",
+   "method": "GET",
+   "path": "/auth/invitation/:token",
+   "gate": "public",
+   "extras": []
+  },
+  {
+   "file": "auth",
+   "method": "POST",
+   "path": "/auth/accept-invitation",
+   "gate": "public",
+   "extras": []
+  },
+  {
+   "file": "checklists",
+   "method": "GET",
+   "path": "/tasks/:id/checklists",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "checklists",
+   "method": "POST",
+   "path": "/tasks/:id/checklists",
+   "gate": "perm:checklist.manage",
+   "extras": []
+  },
+  {
+   "file": "checklists",
+   "method": "PATCH",
+   "path": "/checklists/:id",
+   "gate": "perm:checklist.manage",
+   "extras": []
+  },
+  {
+   "file": "checklists",
+   "method": "DELETE",
+   "path": "/checklists/:id",
+   "gate": "perm:checklist.manage",
+   "extras": []
+  },
+  {
+   "file": "checklists",
+   "method": "POST",
+   "path": "/checklists/:id/items",
+   "gate": "perm:checklist.manage",
+   "extras": []
+  },
+  {
+   "file": "checklists",
+   "method": "POST",
+   "path": "/checklists/:id/items/bulk",
+   "gate": "perm:checklist.manage",
+   "extras": []
+  },
+  {
+   "file": "checklists",
+   "method": "PATCH",
+   "path": "/checklist-items/:id",
+   "gate": "perm:checklist.manage",
+   "extras": []
+  },
+  {
+   "file": "checklists",
+   "method": "POST",
+   "path": "/checklist-items/:id/toggle",
+   "gate": "perm:checklist.manage",
+   "extras": []
+  },
+  {
+   "file": "checklists",
+   "method": "DELETE",
+   "path": "/checklist-items/:id",
+   "gate": "perm:checklist.manage",
+   "extras": []
+  },
+  {
+   "file": "comments",
+   "method": "GET",
+   "path": "/tasks/:id/comments",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "comments",
+   "method": "POST",
+   "path": "/tasks/:id/comments",
+   "gate": "perm:comment.create",
+   "extras": []
+  },
+  {
+   "file": "comments",
+   "method": "PATCH",
+   "path": "/comments/:id",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "comments",
+   "method": "DELETE",
+   "path": "/comments/:id",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "customFields",
+   "method": "GET",
+   "path": "/custom-fields",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "customFields",
+   "method": "GET",
+   "path": "/lists/:listId/custom-fields",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "customFields",
+   "method": "POST",
+   "path": "/custom-fields",
+   "gate": "perm:catalog.custom_fields",
+   "extras": []
+  },
+  {
+   "file": "customFields",
+   "method": "PATCH",
+   "path": "/custom-fields/:id",
+   "gate": "perm:catalog.custom_fields",
+   "extras": []
+  },
+  {
+   "file": "customFields",
+   "method": "DELETE",
+   "path": "/custom-fields/:id",
+   "gate": "perm:catalog.custom_fields",
+   "extras": []
+  },
+  {
+   "file": "customFields",
+   "method": "PUT",
+   "path": "/tasks/:id/custom-fields/:fieldId",
+   "gate": "perm:customfield.set_value",
+   "extras": []
+  },
+  {
+   "file": "customFields",
+   "method": "DELETE",
+   "path": "/tasks/:id/custom-fields/:fieldId",
+   "gate": "perm:customfield.set_value",
+   "extras": []
+  },
+  {
+   "file": "engineering",
+   "method": "POST",
+   "path": "/eng/report-bug",
+   "gate": "perm:bug.report",
+   "extras": []
+  },
+  {
+   "file": "engineering",
+   "method": "GET",
+   "path": "/eng/home",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "engineering",
+   "method": "GET",
+   "path": "/eng/incidents/:id/postmortem",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "engineering",
+   "method": "POST",
+   "path": "/eng/incidents/:id/postmortem",
+   "gate": "perm:postmortem.manage",
+   "extras": []
+  },
+  {
+   "file": "forms",
+   "method": "GET",
+   "path": "/forms",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "forms",
+   "method": "GET",
+   "path": "/lists/:listId/forms",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "forms",
+   "method": "POST",
+   "path": "/forms",
+   "gate": "perm:form.manage",
+   "extras": []
+  },
+  {
+   "file": "forms",
+   "method": "PATCH",
+   "path": "/forms/:id/fields/reorder",
+   "gate": "perm:form.manage",
+   "extras": []
+  },
+  {
+   "file": "forms",
+   "method": "POST",
+   "path": "/forms/:id/fields",
+   "gate": "perm:form.manage",
+   "extras": []
+  },
+  {
+   "file": "forms",
+   "method": "GET",
+   "path": "/forms/:id/submissions",
+   "gate": "perm:form.view_submissions",
+   "extras": []
+  },
+  {
+   "file": "forms",
+   "method": "GET",
+   "path": "/forms/:id",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "forms",
+   "method": "PATCH",
+   "path": "/forms/:id",
+   "gate": "perm:form.manage",
+   "extras": []
+  },
+  {
+   "file": "forms",
+   "method": "DELETE",
+   "path": "/forms/:id",
+   "gate": "perm:form.manage",
+   "extras": []
+  },
+  {
+   "file": "forms",
+   "method": "PATCH",
+   "path": "/form-fields/:id",
+   "gate": "perm:form.manage",
+   "extras": []
+  },
+  {
+   "file": "forms",
+   "method": "DELETE",
+   "path": "/form-fields/:id",
+   "gate": "perm:form.manage",
+   "extras": [
+    "public-surface"
+   ]
+  },
+  {
+   "file": "forms",
+   "method": "GET",
+   "path": "/public/forms/:slug",
+   "gate": "public",
+   "extras": [
+    "public-surface"
+   ]
+  },
+  {
+   "file": "forms",
+   "method": "POST",
+   "path": "/public/forms/:slug/submit",
+   "gate": "public",
+   "extras": [
+    "public-surface"
+   ]
+  },
+  {
+   "file": "health",
+   "method": "GET",
+   "path": " (app root)/health/ready",
+   "gate": "public",
+   "extras": []
+  },
+  {
+   "file": "health",
+   "method": "GET",
+   "path": " (app root)/health/version",
+   "gate": "public",
+   "extras": []
+  },
+  {
+   "file": "health",
+   "method": "GET",
+   "path": " (app root)/metrics",
+   "gate": "public",
+   "extras": []
+  },
+  {
+   "file": "home",
+   "method": "GET",
+   "path": "/home/kpis",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "home",
+   "method": "GET",
+   "path": "/home/agenda",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "jobs",
+   "method": "POST",
+   "path": "/jobs/session-cleanup",
+   "gate": "public",
+   "extras": []
+  },
+  {
+   "file": "jobs",
+   "method": "POST",
+   "path": "/jobs/attachment-janitor",
+   "gate": "public",
+   "extras": []
+  },
+  {
+   "file": "jobs",
+   "method": "POST",
+   "path": "/jobs/r2-purge",
+   "gate": "public",
+   "extras": []
+  },
+  {
+   "file": "jobs",
+   "method": "POST",
+   "path": "/jobs/snooze-wake",
+   "gate": "public",
+   "extras": []
+  },
+  {
+   "file": "jobs",
+   "method": "POST",
+   "path": "/jobs/department-report",
+   "gate": "public",
+   "extras": []
+  },
+  {
+   "file": "jobs",
+   "method": "POST",
+   "path": "/jobs/form-submission-expiry",
+   "gate": "public",
+   "extras": []
+  },
+  {
+   "file": "lists",
+   "method": "GET",
+   "path": "/spaces/:spaceId/lists",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "lists",
+   "method": "GET",
+   "path": "/lists",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "lists",
+   "method": "POST",
+   "path": "/lists",
+   "gate": "perm:list.create",
+   "extras": []
+  },
+  {
+   "file": "lists",
+   "method": "GET",
+   "path": "/lists/:id",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "lists",
+   "method": "PATCH",
+   "path": "/lists/:id",
+   "gate": "perm:list.edit",
+   "extras": []
+  },
+  {
+   "file": "lists",
+   "method": "POST",
+   "path": "/lists/:id/archive",
+   "gate": "perm:list.archive",
+   "extras": []
+  },
+  {
+   "file": "lists",
+   "method": "POST",
+   "path": "/lists/:id/unarchive",
+   "gate": "perm:list.archive",
+   "extras": []
+  },
+  {
+   "file": "lists",
+   "method": "DELETE",
+   "path": "/lists/:id",
+   "gate": "perm:list.delete",
+   "extras": []
+  },
+  {
+   "file": "lists",
+   "method": "GET",
+   "path": "/lists/:listId/tasks",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "me",
+   "method": "GET",
+   "path": "/me/permissions",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "notifications",
+   "method": "GET",
+   "path": "/notifications",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "notifications",
+   "method": "GET",
+   "path": "/notifications/unread-count",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "notifications",
+   "method": "POST",
+   "path": "/notifications/mark-all-read",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "notifications",
+   "method": "GET",
+   "path": "/notifications/preferences",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "notifications",
+   "method": "PUT",
+   "path": "/notifications/preferences",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "notifications",
+   "method": "POST",
+   "path": "/notifications/:id/read",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "notifications",
+   "method": "POST",
+   "path": "/notifications/:id/unread",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "notifications",
+   "method": "POST",
+   "path": "/notifications/:id/snooze",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "notifications",
+   "method": "DELETE",
+   "path": "/notifications/:id",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "onCall",
+   "method": "GET",
+   "path": "/on-call/current",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "onCall",
+   "method": "GET",
+   "path": "/on-call/schedule",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "onCall",
+   "method": "PUT",
+   "path": "/on-call/:weekStart",
+   "gate": "perm:oncall.manage",
+   "extras": []
+  },
+  {
+   "file": "onCall",
+   "method": "DELETE",
+   "path": "/on-call/:weekStart",
+   "gate": "perm:oncall.manage",
+   "extras": []
+  },
+  {
+   "file": "reports",
+   "method": "GET",
+   "path": "/reports",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "reports",
+   "method": "POST",
+   "path": "/reports/generate",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "reports",
+   "method": "GET",
+   "path": "/reports/:id",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "reports",
+   "method": "PATCH",
+   "path": "/reports/:id",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "reports",
+   "method": "POST",
+   "path": "/reports/:id/ack",
+   "gate": "perm:report.ack",
+   "extras": []
+  },
+  {
+   "file": "roles",
+   "method": "GET",
+   "path": "/roles/catalog",
+   "gate": "perm:role.manage",
+   "extras": []
+  },
+  {
+   "file": "roles",
+   "method": "GET",
+   "path": "/roles",
+   "gate": "perm:role.manage",
+   "extras": []
+  },
+  {
+   "file": "roles",
+   "method": "POST",
+   "path": "/roles",
+   "gate": "perm:role.manage",
+   "extras": []
+  },
+  {
+   "file": "roles",
+   "method": "PATCH",
+   "path": "/roles/:id",
+   "gate": "perm:role.manage",
+   "extras": []
+  },
+  {
+   "file": "roles",
+   "method": "PUT",
+   "path": "/roles/:id/permissions",
+   "gate": "perm:role.manage",
+   "extras": []
+  },
+  {
+   "file": "roles",
+   "method": "GET",
+   "path": "/roles/:id/holders",
+   "gate": "perm:role.manage",
+   "extras": []
+  },
+  {
+   "file": "roles",
+   "method": "DELETE",
+   "path": "/roles/:id",
+   "gate": "perm:role.manage",
+   "extras": []
+  },
+  {
+   "file": "roles",
+   "method": "GET",
+   "path": "/users/:id/roles",
+   "gate": "perm:role.assign",
+   "extras": []
+  },
+  {
+   "file": "roles",
+   "method": "POST",
+   "path": "/users/:id/roles",
+   "gate": "perm:role.assign",
+   "extras": []
+  },
+  {
+   "file": "roles",
+   "method": "DELETE",
+   "path": "/users/:id/roles/:assignmentId",
+   "gate": "perm:role.assign",
+   "extras": []
+  },
+  {
+   "file": "roles",
+   "method": "GET",
+   "path": "/spaces/:id/members",
+   "gate": "perm:space.members_manage",
+   "extras": []
+  },
+  {
+   "file": "search",
+   "method": "GET",
+   "path": "/search",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "sla",
+   "method": "GET",
+   "path": "/sla/breached",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "sla",
+   "method": "PATCH",
+   "path": "/tasks/:id/sla",
+   "gate": "perm:task.sla_override",
+   "extras": []
+  },
+  {
+   "file": "spaces",
+   "method": "GET",
+   "path": "/spaces",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "spaces",
+   "method": "POST",
+   "path": "/spaces",
+   "gate": "perm:space.create",
+   "extras": []
+  },
+  {
+   "file": "spaces",
+   "method": "GET",
+   "path": "/spaces/:id/review-summary",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "spaces",
+   "method": "GET",
+   "path": "/spaces/:id/review-queue",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "spaces",
+   "method": "GET",
+   "path": "/spaces/:id",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "spaces",
+   "method": "PATCH",
+   "path": "/spaces/:id",
+   "gate": "perm:space.edit",
+   "extras": []
+  },
+  {
+   "file": "spaces",
+   "method": "POST",
+   "path": "/spaces/:id/archive",
+   "gate": "perm:space.archive",
+   "extras": []
+  },
+  {
+   "file": "spaces",
+   "method": "POST",
+   "path": "/spaces/:id/unarchive",
+   "gate": "perm:space.archive",
+   "extras": []
+  },
+  {
+   "file": "spaces",
+   "method": "DELETE",
+   "path": "/spaces/:id",
+   "gate": "perm:space.delete",
+   "extras": []
+  },
+  {
+   "file": "sprints",
+   "method": "GET",
+   "path": "/sprints",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "sprints",
+   "method": "GET",
+   "path": "/sprints/active",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "sprints",
+   "method": "GET",
+   "path": "/sprints/:id",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "sprints",
+   "method": "GET",
+   "path": "/sprints/:id/tasks",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "sprints",
+   "method": "POST",
+   "path": "/sprints",
+   "gate": "perm:sprint.manage",
+   "extras": []
+  },
+  {
+   "file": "sprints",
+   "method": "PATCH",
+   "path": "/sprints/:id",
+   "gate": "perm:sprint.manage",
+   "extras": []
+  },
+  {
+   "file": "sprints",
+   "method": "POST",
+   "path": "/sprints/:id/start",
+   "gate": "perm:sprint.manage",
+   "extras": []
+  },
+  {
+   "file": "sprints",
+   "method": "POST",
+   "path": "/sprints/:id/close",
+   "gate": "perm:sprint.manage",
+   "extras": []
+  },
+  {
+   "file": "sprints",
+   "method": "POST",
+   "path": "/sprints/:id/tasks",
+   "gate": "perm:sprint.assign_tasks",
+   "extras": []
+  },
+  {
+   "file": "sprints",
+   "method": "DELETE",
+   "path": "/sprints/:id/tasks/:taskId",
+   "gate": "perm:sprint.assign_tasks",
+   "extras": []
+  },
+  {
+   "file": "sse",
+   "method": "GET",
+   "path": "/stream/inbox",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "statuses",
+   "method": "GET",
+   "path": "/lists/:listId/statuses",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "statuses",
+   "method": "POST",
+   "path": "/lists/:listId/statuses",
+   "gate": "perm:status.manage",
+   "extras": []
+  },
+  {
+   "file": "statuses",
+   "method": "PATCH",
+   "path": "/lists/:listId/statuses/reorder",
+   "gate": "perm:status.manage",
+   "extras": []
+  },
+  {
+   "file": "statuses",
+   "method": "PATCH",
+   "path": "/statuses/:id",
+   "gate": "perm:status.manage",
+   "extras": []
+  },
+  {
+   "file": "statuses",
+   "method": "DELETE",
+   "path": "/statuses/:id",
+   "gate": "perm:status.manage",
+   "extras": []
+  },
+  {
+   "file": "tags",
+   "method": "GET",
+   "path": "/tags",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "tags",
+   "method": "POST",
+   "path": "/tags",
+   "gate": "perm:catalog.tags",
+   "extras": []
+  },
+  {
+   "file": "tags",
+   "method": "PATCH",
+   "path": "/tags/:id",
+   "gate": "perm:catalog.tags",
+   "extras": []
+  },
+  {
+   "file": "tags",
+   "method": "DELETE",
+   "path": "/tags/:id",
+   "gate": "perm:catalog.tags",
+   "extras": []
+  },
+  {
+   "file": "taskDependencies",
+   "method": "GET",
+   "path": "/tasks/:id/dependencies",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "taskDependencies",
+   "method": "POST",
+   "path": "/task-dependencies",
+   "gate": "perm:dependency.manage",
+   "extras": []
+  },
+  {
+   "file": "taskDependencies",
+   "method": "DELETE",
+   "path": "/task-dependencies/:id",
+   "gate": "perm:dependency.manage",
+   "extras": []
+  },
+  {
+   "file": "tasks",
+   "method": "POST",
+   "path": "/tasks",
+   "gate": "perm:task.create",
+   "extras": []
+  },
+  {
+   "file": "tasks",
+   "method": "POST",
+   "path": "/tasks/bulk",
+   "gate": "perm:task.edit",
+   "extras": []
+  },
+  {
+   "file": "tasks",
+   "method": "POST",
+   "path": "/tasks/:id/assignees",
+   "gate": "perm:task.assign",
+   "extras": []
+  },
+  {
+   "file": "tasks",
+   "method": "DELETE",
+   "path": "/tasks/:id/assignees/:userId",
+   "gate": "perm:task.assign",
+   "extras": []
+  },
+  {
+   "file": "tasks",
+   "method": "POST",
+   "path": "/tasks/:id/watchers/self",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "tasks",
+   "method": "DELETE",
+   "path": "/tasks/:id/watchers/self",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "tasks",
+   "method": "POST",
+   "path": "/tasks/:id/tags",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "tasks",
+   "method": "DELETE",
+   "path": "/tasks/:id/tags/:tagId",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "tasks",
+   "method": "POST",
+   "path": "/tasks/:id/review",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "tasks",
+   "method": "GET",
+   "path": "/tasks/my-work",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "tasks",
+   "method": "GET",
+   "path": "/tasks/:id/subtasks",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "tasks",
+   "method": "GET",
+   "path": "/tasks/:id/activity",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "tasks",
+   "method": "GET",
+   "path": "/tasks/:id/reviews",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "tasks",
+   "method": "GET",
+   "path": "/tasks/:id",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "tasks",
+   "method": "PATCH",
+   "path": "/tasks/:id",
+   "gate": "perm:task.edit",
+   "extras": []
+  },
+  {
+   "file": "tasks",
+   "method": "POST",
+   "path": "/tasks/:id/archive",
+   "gate": "perm:task.archive",
+   "extras": []
+  },
+  {
+   "file": "tasks",
+   "method": "POST",
+   "path": "/tasks/:id/unarchive",
+   "gate": "perm:task.archive",
+   "extras": []
+  },
+  {
+   "file": "tasks",
+   "method": "DELETE",
+   "path": "/tasks/:id",
+   "gate": "perm:task.delete",
+   "extras": []
+  },
+  {
+   "file": "taskTypes",
+   "method": "GET",
+   "path": "/task-types",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "taskTypes",
+   "method": "POST",
+   "path": "/task-types",
+   "gate": "perm:catalog.task_types",
+   "extras": []
+  },
+  {
+   "file": "taskTypes",
+   "method": "PATCH",
+   "path": "/task-types/:id",
+   "gate": "perm:catalog.task_types",
+   "extras": []
+  },
+  {
+   "file": "taskTypes",
+   "method": "DELETE",
+   "path": "/task-types/:id",
+   "gate": "perm:catalog.task_types",
+   "extras": []
+  },
+  {
+   "file": "templates",
+   "method": "GET",
+   "path": "/templates",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "templates",
+   "method": "GET",
+   "path": "/templates/:id",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "templates",
+   "method": "POST",
+   "path": "/templates",
+   "gate": "perm:catalog.templates",
+   "extras": []
+  },
+  {
+   "file": "templates",
+   "method": "PATCH",
+   "path": "/templates/:id",
+   "gate": "perm:catalog.templates",
+   "extras": []
+  },
+  {
+   "file": "templates",
+   "method": "DELETE",
+   "path": "/templates/:id",
+   "gate": "perm:catalog.templates",
+   "extras": []
+  },
+  {
+   "file": "templates",
+   "method": "POST",
+   "path": "/templates/:id/apply",
+   "gate": "perm:template.apply",
+   "extras": []
+  },
+  {
+   "file": "users",
+   "method": "GET",
+   "path": "/users",
+   "gate": "perm:member.view",
+   "extras": []
+  },
+  {
+   "file": "users",
+   "method": "POST",
+   "path": "/users/invite",
+   "gate": "perm:member.invite",
+   "extras": []
+  },
+  {
+   "file": "users",
+   "method": "GET",
+   "path": "/users/:id",
+   "gate": "perm:member.view",
+   "extras": []
+  },
+  {
+   "file": "users",
+   "method": "PATCH",
+   "path": "/users/:id/role",
+   "gate": "perm:member.role_change",
+   "extras": []
+  },
+  {
+   "file": "users",
+   "method": "PATCH",
+   "path": "/users/:id",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "users",
+   "method": "POST",
+   "path": "/users/:id/deactivate",
+   "gate": "perm:member.deactivate",
+   "extras": []
+  },
+  {
+   "file": "users",
+   "method": "POST",
+   "path": "/users/:id/reactivate",
+   "gate": "perm:member.deactivate",
+   "extras": []
+  },
+  {
+   "file": "users",
+   "method": "POST",
+   "path": "/users/:id/reset-password",
+   "gate": "perm:member.reset_password",
+   "extras": []
+  },
+  {
+   "file": "workspace",
+   "method": "GET",
+   "path": "/workspace",
+   "gate": "authenticate-only",
+   "extras": []
+  },
+  {
+   "file": "workspace",
+   "method": "PATCH",
+   "path": "/workspace",
+   "gate": "perm:workspace.settings",
+   "extras": []
+  },
+  {
+   "file": "workspaceActivity",
+   "method": "GET",
+   "path": "/activity/recent",
+   "gate": "perm:activity.view",
+   "extras": []
+  },
+  {
+   "file": "workspaceActivity",
+   "method": "GET",
+   "path": "/activity",
+   "gate": "perm:activity.view",
+   "extras": []
+  }
+ ],
+ "catalog": [
+  {
+   "key": "workspace.settings",
+   "scopes": [
+    "all"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "member.view",
+   "scopes": [
+    "all"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "member.invite",
+   "scopes": [
+    "all"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "member.role_change",
+   "scopes": [
+    "all"
+   ],
+   "dangerous": true
+  },
+  {
+   "key": "member.deactivate",
+   "scopes": [
+    "all"
+   ],
+   "dangerous": true
+  },
+  {
+   "key": "member.reset_password",
+   "scopes": [
+    "all"
+   ],
+   "dangerous": true
+  },
+  {
+   "key": "member.edit_profile",
+   "scopes": [
+    "all"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "space.view",
+   "scopes": [
+    "all",
+    "space"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "space.create",
+   "scopes": [
+    "all"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "space.edit",
+   "scopes": [
+    "all",
+    "space"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "space.archive",
+   "scopes": [
+    "all",
+    "space"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "space.delete",
+   "scopes": [
+    "all",
+    "space"
+   ],
+   "dangerous": true
+  },
+  {
+   "key": "space.head_assign",
+   "scopes": [
+    "all",
+    "space"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "space.members_manage",
+   "scopes": [
+    "all",
+    "space"
+   ],
+   "dangerous": true
+  },
+  {
+   "key": "list.create",
+   "scopes": [
+    "all",
+    "space"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "list.edit",
+   "scopes": [
+    "all",
+    "space"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "list.archive",
+   "scopes": [
+    "all",
+    "space"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "list.delete",
+   "scopes": [
+    "all",
+    "space"
+   ],
+   "dangerous": true
+  },
+  {
+   "key": "status.manage",
+   "scopes": [
+    "all",
+    "space"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "task.view",
+   "scopes": [
+    "all",
+    "space",
+    "own"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "task.create",
+   "scopes": [
+    "all",
+    "space"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "task.edit",
+   "scopes": [
+    "all",
+    "space",
+    "own"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "task.assign",
+   "scopes": [
+    "all",
+    "space"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "task.archive",
+   "scopes": [
+    "all",
+    "space",
+    "own"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "task.delete",
+   "scopes": [
+    "all",
+    "space",
+    "own"
+   ],
+   "dangerous": true
+  },
+  {
+   "key": "task.delete_hard",
+   "scopes": [
+    "all",
+    "space"
+   ],
+   "dangerous": true
+  },
+  {
+   "key": "task.sla_override",
+   "scopes": [
+    "all",
+    "space"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "comment.create",
+   "scopes": [
+    "all",
+    "space"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "comment.delete_any",
+   "scopes": [
+    "all",
+    "space"
+   ],
+   "dangerous": true
+  },
+  {
+   "key": "checklist.manage",
+   "scopes": [
+    "all",
+    "space",
+    "own"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "attachment.upload",
+   "scopes": [
+    "all",
+    "space"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "attachment.delete_any",
+   "scopes": [
+    "all",
+    "space"
+   ],
+   "dangerous": true
+  },
+  {
+   "key": "dependency.manage",
+   "scopes": [
+    "all",
+    "space"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "customfield.set_value",
+   "scopes": [
+    "all",
+    "space",
+    "own"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "catalog.task_types",
+   "scopes": [
+    "all"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "catalog.tags",
+   "scopes": [
+    "all"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "catalog.custom_fields",
+   "scopes": [
+    "all"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "catalog.templates",
+   "scopes": [
+    "all"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "template.apply",
+   "scopes": [
+    "all",
+    "space"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "form.manage",
+   "scopes": [
+    "all",
+    "space"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "form.view_submissions",
+   "scopes": [
+    "all",
+    "space"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "sprint.manage",
+   "scopes": [
+    "all"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "sprint.assign_tasks",
+   "scopes": [
+    "all",
+    "space"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "oncall.manage",
+   "scopes": [
+    "all"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "bug.report",
+   "scopes": [
+    "all"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "postmortem.manage",
+   "scopes": [
+    "all",
+    "space"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "review.perform",
+   "scopes": [
+    "all",
+    "space"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "review.read",
+   "scopes": [
+    "all",
+    "space",
+    "own"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "report.view",
+   "scopes": [
+    "all",
+    "space"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "report.generate",
+   "scopes": [
+    "all",
+    "space"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "report.note",
+   "scopes": [
+    "all",
+    "space"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "report.ack",
+   "scopes": [
+    "all",
+    "space"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "activity.view",
+   "scopes": [
+    "all"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "assistant.use",
+   "scopes": [
+    "all"
+   ],
+   "dangerous": false
+  },
+  {
+   "key": "role.manage",
+   "scopes": [
+    "all"
+   ],
+   "dangerous": true
+  },
+  {
+   "key": "role.assign",
+   "scopes": [
+    "all"
+   ],
+   "dangerous": true
+  }
+ ]
+}

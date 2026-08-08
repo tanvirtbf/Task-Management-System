@@ -1,0 +1,50 @@
+=== can a member change their own email, and to what? ===
+  "nusrat@beautybooth.com.bd"       (ANOTHER USER's email)    -> 409 user.email_already_exists
+  "attacker@evil.com"               (an external domain)      -> 200 *** WRITTEN -> attacker@evil.com ***
+  "owner@company.local"             (the OWNER's email)       -> 409 user.email_already_exists
+  "not-an-email"                    (malformed)               -> 422 validation.failed
+  arif's email after the test: arif@beautybooth.com.bd restored ✓
+
+=== is there an email-verification step? ===
+  users columns: id, workspace_id, first_name, last_name, email, password_hash, role, avatar_url, status, timezone, last_login_at, created_at, updated_at
+  email_verified / pending_email column? NO — a new address is trusted immediately
+
+=== does ?sort= actually sort? ===
+  ?sort=name         -> IDENTICAL to default (param ignored)
+  ?sort=-name        -> IDENTICAL to default (param ignored)
+  ?sort=created_at   -> IDENTICAL to default (param ignored)
+  ?sort=-created_at  -> IDENTICAL to default (param ignored)
+  ?order=desc        -> IDENTICAL to default (param ignored)
+  ?sort_by=email     -> IDENTICAL to default (param ignored)
+  default order starts: guest@beautybooth.com.bd , tanvir@beautybooth.com.bd , sadia@beautybooth.com.bd
+
+=== idempotency codes on deactivate / reactivate ===
+  guest status before: active
+  deactivate       -> 204
+  deactivate AGAIN -> 204 (no error code — idempotent)
+  reactivate       -> 204
+  reactivate AGAIN -> 204 (no error code — idempotent)
+  guest status after: active restored ✓
+
+=== FINAL STATE ===
+  users: 16
+┌─────────┬─────────────────────────────────────┬──────────────────────┬──────────┬───────────┐
+│ (index) │ email                               │ name                 │ role     │ status    │
+├─────────┼─────────────────────────────────────┼──────────────────────┼──────────┼───────────┤
+│ 0       │ 'arif@beautybooth.com.bd'           │ 'Arif Chowdhury'     │ 'member' │ 'active'  │
+│ 1       │ 'cs.only@beautybooth.com.bd'        │ 'Shuvo Demo'         │ 'member' │ 'active'  │
+│ 2       │ 'farhana@beautybooth.com.bd'        │ 'Farhana Akter'      │ 'admin'  │ 'active'  │
+│ 3       │ 'guest@beautybooth.com.bd'          │ 'Guest Collaborator' │ 'guest'  │ 'active'  │
+│ 4       │ 'imran@beautybooth.com.bd'          │ 'Imran Kabir'        │ 'member' │ 'active'  │
+│ 5       │ 'jhankar@beautybooth.com.bd'        │ 'Jhankar Mahbub'     │ 'member' │ 'active'  │
+│ 6       │ 'marketing.only@beautybooth.com.bd' │ 'Mim Demo'           │ 'member' │ 'active'  │
+│ 7       │ 'mitu@beautybooth.com.bd'           │ 'Mitu Rahman'        │ 'member' │ 'active'  │
+│ 8       │ 'nusrat@beautybooth.com.bd'         │ 'Nusrat Jahan'       │ 'member' │ 'active'  │
+│ 9       │ 'owner@company.local'               │ 'Owner User'         │ 'owner'  │ 'active'  │
+│ 10      │ 'priya@beautybooth.com.bd'          │ 'Priya Das'          │ 'member' │ 'active'  │
+│ 11      │ 'rakib@beautybooth.com.bd'          │ 'Rakib Hasan'        │ 'admin'  │ 'active'  │
+│ 12      │ 'sadia@beautybooth.com.bd'          │ 'Sadia Islam'        │ 'member' │ 'active'  │
+│ 13      │ 'sumaiya@beautybooth.com.bd'        │ 'Sumaiya Haque'      │ 'member' │ 'active'  │
+│ 14      │ 'tanver018765@gmail.com'            │ 'Tanver Ahmed'       │ 'admin'  │ 'invited' │
+│ 15      │ 'tanvir@beautybooth.com.bd'         │ 'Tanvir Ahmed'       │ 'admin'  │ 'active'  │
+└─────────┴─────────────────────────────────────┴──────────────────────┴──────────┴───────────┘

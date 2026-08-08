@@ -7,9 +7,11 @@ import { EngineeringController } from "../controllers/EngineeringController";
 import { EngineeringService } from "../services/EngineeringService";
 import { EngineeringRepo } from "../repositories/EngineeringRepo";
 import { TaskWriteService } from "../services/TaskWriteService";
+import { WorkspaceRepo } from "../repositories/WorkspaceRepo";
 import { TasksService } from "../services/TasksService";
 import { UsersRepo } from "../repositories/UsersRepo";
 import { TasksRepo } from "../repositories/TasksRepo";
+import { AttachmentsRepo } from "../repositories/AttachmentsRepo";
 import { ListsRepo } from "../repositories/ListsRepo";
 import { StatusesRepo } from "../repositories/StatusesRepo";
 import { TaskTypesRepo } from "../repositories/TaskTypesRepo";
@@ -20,6 +22,7 @@ import { TagsRepo } from "../repositories/TagsRepo";
 import { getDb } from "../db/client";
 import logger from "../config/logger";
 import authenticate from "../middlewares/authenticate";
+import { requirePermission } from "../middlewares/requirePermission";
 import { validate } from "../middlewares/validate";
 import {
     reportBugValidator,
@@ -60,6 +63,8 @@ const taskWriteService = new TaskWriteService(
     tagsRepo,
     activityRepo,
     notificationsRepo,
+    new AttachmentsRepo(db),
+    new WorkspaceRepo(db),
     tasksService,
     logger,
 );
@@ -80,6 +85,7 @@ const controller = new EngineeringController(service, logger);
 router.post(
     "/eng/report-bug",
     authenticate,
+    requirePermission("bug.report"),
     reportBugValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -116,6 +122,7 @@ router.get(
 router.post(
     "/eng/incidents/:id/postmortem",
     authenticate,
+    requirePermission("postmortem.manage"),
     createPostmortemValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>

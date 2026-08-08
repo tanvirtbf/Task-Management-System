@@ -1,0 +1,21 @@
+=== multi-turn: does the server honour an incoming X-Conversation-Id? ===
+  turn 1 conversation id: conv-DAECVzveTkMXq3Q9nvXpkA
+  turn 2 conversation id: conv-La1AIvZJzOo-BKKQ_qW8zQ | SAME? *** NO - it forked ***
+  does turn 2 recall the name? no
+  turn 2 reply: "... .... .. Task Management ....... ..... ....... .... .... ... ......... .... .... ..... ..... ....."
+  conversation conv-DAECVzveTkMXq3Q9nvXpkA has 2 messages
+  conversation conv-La1AIvZJzOo-BKKQ_qW8zQ has 2 messages
+
+=== the conversations LIST vs by-id ===
+  GET /assistant/conversations -> {"conversations":[{"id":"conv-La1AIvZJzOo-BKKQ_qW8zQ","title":"Amar nam ki chilo?","createdAt":"2026-07-30T16:13:32.000Z","updatedAt":"2026-07-30T10:13:34.000Z"},{"id":"conv-DAECVzveTkMXq3Q9nvXpkA","title":"Amar nam Tanv
+  rows: undefined | but GET /conversations/conv-DAECVzveTkMXq3Q9nvXpkA returns 2 messages
+  -> list empty while by-id works? consistent
+=== multi-turn done the way the CLIENT does it: conversationId in the BODY ===
+  turn 1 id: conv-yj5XoiLnGdRp0enyNY3h3A
+  turn 2 id: conv-yj5XoiLnGdRp0enyNY3h3A | SAME? yes - one conversation
+  turn 2 recalls the name? no
+  turn 2 reply: "... ......, ...... ... ..... ... .... ... ... .... .. Task Management ....... ..... ....... .... .... ... ......... .... .... ..... ..... ....."
+  the conversation now holds 4 messages (expect 4)
+
+  client contract (stores/chat.ts:100 -> http/assistant.ts:74): reads the X-Conversation-Id RESPONSE header,
+  then sends it back as body.conversationId. The header is response-only; my earlier probe sent it as a request header.

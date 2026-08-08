@@ -11,7 +11,7 @@ import {
     makeTask,
 } from "../test-utils/factories";
 import { getDb } from "../../src/db/client";
-import { tasks, taskActivity } from "../../src/db/schema";
+import { tasks, taskActivity, taskTypes } from "../../src/db/schema";
 import { Config } from "../../src/config";
 import type { Role } from "../../src/constants";
 
@@ -40,7 +40,7 @@ const signAccess = (
     jwt.sign(
         { sub: user.id, role: user.role, workspaceId: user.workspaceId },
         secret,
-        { algorithm: "HS256", ...opts },
+        { algorithm: "HS256", expiresIn: "15m", ...opts },
     );
 
 const db = () => getDb();
@@ -161,6 +161,11 @@ describe("PATCH /api/v1/tasks/:id", () => {
             expect(res.body.completed_at).toBeNull();
         });
 
+        /**
+         * F28 (ISS-029, D12.2): the recomputed deadline is on the BUSINESS
+         * clock now, so this asserts the property rather than `now + 2h`. See
+         * the longer note in `tests/tasks/create.test.ts`.
+         */
         it("recomputes sla_due_at when a Bug task's severity changes", async () => {
             const ctx = await seed("member", "Bug");
 
@@ -170,9 +175,27 @@ describe("PATCH /api/v1/tasks/:id", () => {
 
             expect(res.status).toBe(200);
             expect(res.body.bug_severity).toBe("S0");
-            const sla = new Date(res.body.sla_due_at).getTime();
-            expect(Math.abs(sla - (Date.now() + 2 * 3600 * 1000))).toBeLessThan(
-                5 * 60 * 1000,
+            expect(res.body.sla_due_at).not.toBeNull();
+
+            const parts = new Intl.DateTimeFormat("en-GB", {
+                timeZone: "Asia/Dhaka",
+                weekday: "short",
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: false,
+            }).formatToParts(new Date(res.body.sla_due_at));
+            const get = (t: string) =>
+                parts.find((p) => p.type === t)?.value ?? "";
+            const minutes =
+                Number(get("hour")) * 60 + Number(get("minute"));
+
+            expect(["sun", "mon", "tue", "wed", "thu"]).toContain(
+                get("weekday").toLowerCase(),
+            );
+            expect(minutes).toBeGreaterThanOrEqual(9 * 60);
+            expect(minutes).toBeLessThanOrEqual(18 * 60);
+            expect(new Date(res.body.sla_due_at).getTime()).toBeGreaterThan(
+                Date.now(),
             );
         });
     });
@@ -320,5 +343,131 @@ describe("PATCH /api/v1/tasks/:id", () => {
             expect(res.headers["x-request-id"]).toMatch(/^req_/);
             expect(res.headers.etag).toBeDefined();
         });
+    });
+});
+
+// ─── F29 (ISS-039 + ISS-045): the engineering-field gate on PATCH ────────────
+describe("PATCH /api/v1/tasks/:id — engineering fields (F29)", () => {
+    /**
+     * A dev "Bug" task carrying the full git payload + severity + SLA, seeded
+     * directly — the legal state the flip-clearing has to migrate away from.
+     */
+    const seedDevTask = async () => {
+        const ctx = await seed("member", "Bug");
+        await getDb()
+            .update(taskTypes)
+            .set({ isDevType: true })
+            .where(eq(taskTypes.id, ctx.taskType.id));
+        await getDb()
+            .update(tasks)
+            .set({
+                storyPoints: 5,
+                branchName: "fix/cart-count",
+                prUrl: "https://github.com/x/y/pull/9",
+                bugSeverity: "S1",
+                slaDueAt: new Date(Date.now() + 3600_000),
+            })
+            .where(eq(tasks.id, ctx.task.id));
+        return ctx;
+    };
+
+    it("REFUSES a git field patched onto a non-dev task (422 task.not_dev_type)", async () => {
+        const ctx = await seed(); // default type: non-dev
+
+        const res = await ctx.client
+            .patch(PATH(ctx.task.id))
+            .send({ branch_name: "feat/x" });
+
+        expect(res.status).toBe(422);
+        expect(res.body.error.code).toBe("task.not_dev_type");
+    });
+
+    it("REFUSES bug_severity patched onto a non-bug task (422)", async () => {
+        const ctx = await seed();
+
+        const res = await ctx.client
+            .patch(PATH(ctx.task.id))
+            .send({ bug_severity: "S1" });
+
+        expect(res.status).toBe(422);
+        expect(res.body.error.code).toBe("task.severity_requires_bug_type");
+    });
+
+    it("gates on the type the task will HAVE: flip-to-dev + git field in ONE patch is 200", async () => {
+        const ctx = await seed();
+        const dev = await makeTaskType({
+            workspaceId: ctx.ws.id,
+            name: "Feature",
+            isDevType: true,
+        });
+
+        const res = await ctx.client
+            .patch(PATH(ctx.task.id))
+            .send({ task_type_id: dev.id, branch_name: "feat/x" });
+
+        expect(res.status).toBe(200);
+        expect(res.body.branch_name).toBe("feat/x");
+    });
+
+    it("…and the same patch onto a NON-dev target refuses (422)", async () => {
+        const ctx = await seed();
+        const other = await makeTaskType({
+            workspaceId: ctx.ws.id,
+            name: "Ops",
+        });
+
+        const res = await ctx.client
+            .patch(PATH(ctx.task.id))
+            .send({ task_type_id: other.id, branch_name: "feat/x" });
+
+        expect(res.status).toBe(422);
+        expect(res.body.error.code).toBe("task.not_dev_type");
+    });
+
+    /**
+     * Re-typing RESHAPES the task: moving it onto a non-dev type clears the
+     * stored git fields, the severity, and — because the new type has no SLA
+     * policy — the SLA, all in the same write. Without this, a Marketing task
+     * would keep last month's branch name forever (the exact ghost data
+     * ISS-039 is about), or carry an SLA with no severity.
+     */
+    it("re-typing to a non-dev type CLEARS stored git fields + severity + SLA", async () => {
+        const ctx = await seedDevTask();
+        const marketing = await makeTaskType({
+            workspaceId: ctx.ws.id,
+            name: "Campaign",
+        });
+
+        const res = await ctx.client
+            .patch(PATH(ctx.task.id))
+            .send({ task_type_id: marketing.id });
+
+        expect(res.status).toBe(200);
+        expect(res.body.branch_name).toBeNull();
+        expect(res.body.pr_url).toBeNull();
+        expect(res.body.story_points).toBeNull();
+        expect(res.body.bug_severity).toBeNull();
+        expect(res.body.sla_due_at).toBeNull();
+
+        const [row] = await getDb()
+            .select()
+            .from(tasks)
+            .where(eq(tasks.id, ctx.task.id));
+        expect(row.branchName).toBeNull();
+        expect(row.storyPoints).toBeNull();
+        expect(row.bugSeverity).toBeNull();
+        expect(row.slaDueAt).toBeNull();
+    });
+
+    // F29 (ISS-045): pr_url is a URL now, like logo_url/avatar_url since P6/P7.
+    it("REFUSES javascript: in pr_url (422 validation.failed)", async () => {
+        const ctx = await seed();
+
+        const res = await ctx.client
+            .patch(PATH(ctx.task.id))
+            .send({ pr_url: "javascript:alert(1)" });
+
+        expect(res.status).toBe(422);
+        expect(res.body.error.code).toBe("validation.failed");
     });
 });

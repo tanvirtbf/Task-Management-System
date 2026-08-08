@@ -1,0 +1,27 @@
+=== 5b. REORDER — correct payload: a bare array of {id, position} ===
+  start: To Do@0 > In Progress@1 > In Review@2 > Done@3 > Closed@4
+  full set, reversed                       -> 200                      
+                                              order: Closed > Done > In Review > In Progress > To Do
+  PARTIAL set (1 of 5)                     -> 200                      
+                                              order: Closed > To Do > Done > In Review > In Progress
+  DUPLICATE id                             -> 422 validation.failed    [{"field":"[1].id","issue":"Duplicate id \"st-Mj3khOPN2DzfJT60pjv4Ow\" in reorde
+                                              order: Closed > To Do > Done > In Review > In Progress
+  unknown id appended                      -> 404 status.not_found     
+                                              order: Closed > To Do > Done > In Review > In Progress
+  a status from ANOTHER list               -> 404 status.not_found     
+                                              order: Closed > To Do > Done > In Review > In Progress
+  empty array                              -> 422 validation.failed    [{"field":"body","issue":"Body must be a non-empty array of { id, position } ite
+                                              order: Closed > To Do > Done > In Review > In Progress
+  an object instead of an array            -> 422 validation.failed    [{"field":"body","issue":"Body must be a non-empty array of { id, position } ite
+                                              order: Closed > To Do > Done > In Review > In Progress
+  negative positions                       -> 422 validation.failed    [{"field":"[0].position","issue":"position must be a non-negative integer"}]
+                                              order: Closed > To Do > Done > In Review > In Progress
+  all the same position                    -> 200                      
+                                              order: Closed > Done > To Do > In Progress > In Review
+  missing position                         -> 422 validation.failed    [{"field":"[0].position","issue":"position must be a non-negative integer"}]
+                                              order: Closed > Done > To Do > In Progress > In Review
+  normalise back to 0..n                   -> 200                      
+                                              order: Closed > Done > To Do > In Progress > In Review
+
+=== CLEANUP ===
+  orphans removed: 0 | statuses 70 | lists 14 | expect 70

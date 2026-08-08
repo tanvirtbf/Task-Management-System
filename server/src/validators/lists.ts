@@ -267,6 +267,33 @@ export const updateListValidator = checkSchema({
             },
         },
     },
+    /**
+     * F28 (ISS-036, decision D12.7) — MOVE a list to another space.
+     *
+     * A list created in the wrong department used to be stuck there: the only
+     * route was to build a replacement in the right space and hand-move every
+     * task, with no bulk move. For an 8-department workspace where complaint
+     * work plausibly starts in Customer Service and belongs in the Complain
+     * Department, that comes up.
+     *
+     * Unlike `default_task_type_id`, `null` is NOT accepted: a list must always
+     * belong to a space. The target is resolved and guarded in the service
+     * (404 unknown / 409 archived / 409 duplicate name).
+     *
+     * `is_private` is deliberately still absent from this schema — see the note
+     * on `ListService.update`.
+     */
+    space_id: {
+        in: ["body"],
+        optional: true,
+        isString: { errorMessage: "space_id must be a string", bail: true },
+        trim: true,
+        notEmpty: { errorMessage: "space_id must not be empty" },
+        isLength: {
+            options: { max: ID_MAX },
+            errorMessage: `space_id must be at most ${ID_MAX} characters`,
+        },
+    },
 });
 
 /**

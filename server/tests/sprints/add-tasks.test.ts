@@ -275,8 +275,8 @@ describe("POST /api/v1/sprints/:id/tasks", () => {
         });
     });
 
-    describe("authorization (🔐 any member)", () => {
-        it.each<Role>(["owner", "admin", "member", "guest"])(
+    describe("authorization (sprint.assign_tasks — internal roles)", () => {
+        it.each<Role>(["owner", "admin", "member"])(
             "allows a %s to attach (204)",
             async (role) => {
                 const { client, workspaceId } = await setup(role);
@@ -288,6 +288,19 @@ describe("POST /api/v1/sprints/:id/tasks", () => {
                 expect(res.status).toBe(204);
             },
         );
+
+        // F28 (ISS-094, D12.1): one of the two grants ISS-094 called out by
+        // name — a guest could plan the engineering sprint. Revoked.
+        it("REFUSES a guest (403) — sprint.assign_tasks revoked", async () => {
+            const { client, workspaceId } = await setup("guest");
+            const s = await makeSprint({ workspaceId });
+            const t = await makeTask({ workspaceId });
+            const res = await client
+                .post(`/api/v1/sprints/${s.id}/tasks`)
+                .send({ task_ids: [t.id] });
+            expect(res.status).toBe(403);
+            expect(await sprintIdOf(t.id)).toBeNull();
+        });
     });
 
     describe("authentication", () => {

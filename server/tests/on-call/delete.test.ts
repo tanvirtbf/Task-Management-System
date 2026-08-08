@@ -11,6 +11,7 @@ import { getDb } from "../../src/db/client";
 import { onCallShifts } from "../../src/db/schema";
 import { Config } from "../../src/config";
 import type { Role } from "../../src/constants";
+import { utcYmd } from "../test-utils/dates";
 
 /**
  * Tests for `DELETE /api/v1/on-call/:weekStart` (§21 #4).
@@ -22,7 +23,7 @@ import type { Role } from "../../src/constants";
 
 const url = (weekStart: string) => `/api/v1/on-call/${weekStart}`;
 const MON = "2026-06-01"; // a Monday
-const MON_DATE = new Date(2026, 5, 1); // local-midnight 2026-06-01
+const MON_DATE = utcYmd(2026, 6, 1); // UTC-midnight 2026-06-01 (F3 — see test-utils/dates.ts)
 
 const signAccess = (
     user: { id: string; workspaceId: string; role: Role },
@@ -32,7 +33,7 @@ const signAccess = (
     jwt.sign(
         { sub: user.id, role: user.role, workspaceId: user.workspaceId },
         secret,
-        { algorithm: "HS256", ...opts },
+        { algorithm: "HS256", expiresIn: "15m", ...opts },
     );
 
 const shiftRows = async (workspaceId: string) =>
@@ -73,7 +74,7 @@ describe("DELETE /api/v1/on-call/:weekStart", () => {
             });
             await makeOnCallShift({
                 workspaceId: u.workspaceId,
-                weekStart: new Date(2026, 5, 8), // 2026-06-08
+                weekStart: utcYmd(2026, 6, 8), // 2026-06-08
             });
 
             const res = await client.delete(url(MON));

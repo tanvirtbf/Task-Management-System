@@ -3,6 +3,7 @@ import type { Logger } from "winston";
 import * as schema from "../db/schema";
 import { DONE_STATUS_GROUPS } from "../db/schema/_shared";
 import { AppError } from "../errors";
+import { liveLegacyRole } from "../rbac/scopeGuard";
 import type { SpaceRecord, SpacesRepo } from "../repositories/SpacesRepo";
 import type { TasksRepo } from "../repositories/TasksRepo";
 import type {
@@ -153,7 +154,7 @@ export class ReviewsService {
                 "This space is archived; review actions need a live department",
             );
         }
-        if (input.role === Roles.OWNER || input.role === Roles.ADMIN) {
+        if ((await liveLegacyRole(input.role)) === Roles.OWNER || (await liveLegacyRole(input.role)) === Roles.ADMIN) {
             return space;
         }
         if (isHeadOfSpace(input.userId, space)) {
@@ -345,8 +346,9 @@ export class ReviewsService {
             );
         }
 
+        const liveRole = await liveLegacyRole(input.role);
         const isAdmin =
-            input.role === Roles.OWNER || input.role === Roles.ADMIN;
+            liveRole === Roles.OWNER || liveRole === Roles.ADMIN;
         if (!isAdmin) {
             const assignees =
                 (await this.tasks.assigneesByTask([task.id])).get(task.id) ??
@@ -506,13 +508,20 @@ export class ReviewsService {
         const hasMore = rows.length > limit;
         const page = hasMore ? rows.slice(0, limit) : rows;
         const taskIds = page.map((t) => t.id);
+        // F26 (ISS-023): the same computation the other ten call sites make.
+        const redactGuest = input.role === Roles.GUEST;
 
         const [assignees, watchers, tags, customFieldValues] =
             await Promise.all([
                 this.tasks.assigneesByTask(taskIds),
                 this.tasks.watchersByTask(taskIds),
                 this.tasks.tagsByTask(taskIds),
-                this.tasks.customFieldValuesByTask(taskIds, false),
+                // F26 (ISS-023): this was the ONE of eleven call sites that
+                // hardcoded the flag, so a guest reading the review queue
+                // would have seen hidden custom-field values the other ten
+                // sites redact. Latent until ISS-042 made the flag settable at
+                // all — which F26 also does, so it is latent no longer.
+                this.tasks.customFieldValuesByTask(taskIds, redactGuest),
             ]);
 
         const parentIds = [

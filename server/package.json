@@ -21,7 +21,7 @@
         "db:setup": "tsx src/db/setup.ts",
         "db:setup:fresh": "tsx src/db/setup.ts --drop",
         "db:seed": "tsx src/db/seed.ts",
-        "db:seed:demo": "cross-env NODE_ENV=dev tsx src/db/seed-demo.ts",
+        "db:seed:demo": "tsx src/db/seed-demo.ts",
         "job": "cross-env NODE_ENV=dev tsx src/bin/run-job.ts"
     },
     "author": "",

@@ -1,0 +1,24 @@
+=== the endpoint row shape ===
+  rows: 1 | a row: {"task_id":"t-2PHWqeG02cuwvJ1O2PqDvA","custom_id":null,"name":"TEST-p30b sweep","task_type_id":"tt-pkGgglLMAeouAcD9mAm0bg","sla_due_at":"2026-07-30T03:47:05.000Z","minutes_breached":360,"assignees":[]}
+  keys: ["task_id","custom_id","name","task_type_id","sla_due_at","minutes_breached","assignees"]
+
+=== how late must a task be before the ENDPOINT reports it? ===
+  (the view uses NOW(); the endpoint's minutes_breached uses UTC_TIMESTAMP())
+  1h late   endpoint: not listed                                view: listed
+  3h late   endpoint: not listed                                view: listed
+  5h late   endpoint: not listed                                view: listed
+  6h late   endpoint: not listed                                view: listed
+  6.5h late endpoint: LISTED  minutes_breached=30               view: listed   (truth 390 min, reported 30, off by 360)
+  7h late   endpoint: LISTED  minutes_breached=60               view: listed   (truth 420 min, reported 60, off by 360)
+  8h late   endpoint: LISTED  minutes_breached=120              view: listed   (truth 480 min, reported 120, off by 360)
+  12h late  endpoint: LISTED  minutes_breached=360              view: listed   (truth 720 min, reported 360, off by 360)
+  24h late  endpoint: LISTED  minutes_breached=1080             view: listed   (truth 1440 min, reported 1080, off by 360)
+
+=== the deadline the system STORES vs the one it INTENDS ===
+  computeSlaDueAt (TaskWriteService:55-75) intends: S0 +2h, S1 +24h, S2 +7d, S3 none
+  S0  stored +-240 min    intended +120 min     shortfall 360 min   *** ALREADY BREACHED AT CREATION ***
+  S1  stored +1080 min    intended +1440 min    shortfall 360 min   
+  S2  stored +9720 min    intended +10080 min   shortfall 360 min   
+
+=== CLEANUP ===
+  tasks 51 (51)

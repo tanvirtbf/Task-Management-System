@@ -16,6 +16,22 @@ const SUPPORTED_TYPES = [
 ];
 /** Bangladesh mobile number — 11 digits, `01[3-9]` prefix. */
 const BD_PHONE = /^01[3-9][0-9]{8}$/;
+/**
+ * F29 (ISS-043): ISO-4217 codes via ICU — Node ships full ICU, so
+ * `Intl.supportedValuesOf("currency")` is the canonical list (BDT included)
+ * with no dependency. Cached once. The null fallback (ancient/small-ICU
+ * runtimes) degrades to the format-only check rather than refusing everything.
+ */
+const KNOWN_CURRENCIES = (() => {
+    try {
+        const intl = Intl;
+        const list = intl.supportedValuesOf?.("currency");
+        return list && list.length > 0 ? new Set(list) : null;
+    }
+    catch {
+        return null;
+    }
+})();
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}/;
 /**
  * §17 Custom Fields business logic. Field DEFINITION CRUD (#1–#5) is
@@ -89,7 +105,9 @@ class CustomFieldsService {
                 isRequired: input.isRequired,
                 defaultValue: input.defaultValue,
                 position: input.position,
-                hiddenFromGuests: false,
+                // F26 (ISS-042): settable now — it was pinned to false,
+                // which is why the redaction feature could not be used.
+                hiddenFromGuests: input.hiddenFromGuests ?? false,
                 createdBy: input.actorId,
             }, tx);
             if (type === "dropdown" && input.options.length > 0) {
@@ -303,8 +321,28 @@ class CustomFieldsService {
                 if (typeof v.text !== "string") {
                     throw this.valueError("phone value must be { text: string }");
                 }
-                if (config.default_country === "BD" && !BD_PHONE.test(v.text)) {
-                    throw this.valueError("phone must be a valid BD number (01XXXXXXXXX)");
+                /**
+                 * F29 (ISS-043): the BD check used to run only when
+                 * `config.default_country === "BD"` — and nothing ever set
+                 * that, so a "Customer phone" field was free text and the
+                 * regex below never fired once. BD is the DEFAULT now (this is
+                 * a Bangladesh business; a field can still opt out by naming
+                 * another country), and the two real-world spellings both
+                 * pass: local `01XXXXXXXXX` and `+880`/`880`-prefixed. Stored
+                 * verbatim — validation, not normalisation.
+                 */
+                const country = typeof config.default_country === "string"
+                    ? config.default_country
+                    : "BD";
+                if (country === "BD") {
+                    const local = v.text.startsWith("+880")
+                        ? `0${v.text.slice(4)}`
+                        : v.text.startsWith("880")
+                            ? `0${v.text.slice(3)}`
+                            : v.text;
+                    if (!BD_PHONE.test(local)) {
+                        throw this.valueError("phone must be a valid BD mobile (01XXXXXXXXX, optionally +880-prefixed)");
+                    }
                 }
                 return { text: v.text };
             }
@@ -314,6 +352,20 @@ class CustomFieldsService {
                     typeof v.currency !== "string" ||
                     v.currency.length === 0) {
                     throw this.valueError("money value must be { amount: integer, currency: string }");
+                }
+                // F29 (ISS-043): an "Order value" could hold −500
+                // NOTACURRENCY. Negative amounts are refused (this field
+                // feeds reports and the public-form intake; a refund is its
+                // own record, not a negative order), and the currency must be
+                // a real ISO-4217 code — uppercase three letters, checked
+                // against ICU's list when available.
+                if (v.amount < 0) {
+                    throw this.valueError("money amount must not be negative");
+                }
+                if (!/^[A-Z]{3}$/.test(v.currency) ||
+                    (KNOWN_CURRENCIES !== null &&
+                        !KNOWN_CURRENCIES.has(v.currency))) {
+                    throw this.valueError("currency must be a 3-letter ISO-4217 code (e.g. BDT)");
                 }
                 return { amount: v.amount, currency: v.currency };
             }

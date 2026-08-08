@@ -103,7 +103,7 @@ const signAccess = (
     jwt.sign(
         { sub: user.id, role: user.role, workspaceId: user.workspaceId },
         secret,
-        { algorithm: "HS256", ...opts },
+        { algorithm: "HS256", expiresIn: "15m", ...opts },
     );
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -524,15 +524,33 @@ describe("POST /api/v1/lists", () => {
 
     // ─── f. Conflict / invalid references ───────────────────────────────────
     describe("References & conflict", () => {
-        it("allows two lists with the same name in a space (no unique constraint)", async () => {
+        it("refuses a second list with the same name in a space (F27/ISS-035)", async () => {
+            // This spec used to assert the absence of the constraint as a
+            // feature. Two identically-named children under one space render
+            // as indistinguishable rows in the sidebar tree — the same trap as
+            // ISS-033, one level deeper.
             const { space, client } = await setup();
 
             const a = await client.post(URL).send({ space_id: space.id, name: "Dup" });
             const b = await client.post(URL).send({ space_id: space.id, name: "Dup" });
 
             expect(a.status).toBe(201);
+            expect(b.status).toBe(409);
+            expect(b.body.error.code).toBe("list.duplicate");
+        });
+
+        it("still allows the same list name in a DIFFERENT space", async () => {
+            const { space, client, u } = await setup();
+            const other = await makeSpace({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+            });
+
+            const a = await client.post(URL).send({ space_id: space.id, name: "Shared" });
+            const b = await client.post(URL).send({ space_id: other.id, name: "Shared" });
+
+            expect(a.status).toBe(201);
             expect(b.status).toBe(201);
-            expect(a.body.id).not.toBe(b.body.id);
         });
 
         it("returns 422 list.invalid_task_type for an unknown default_task_type_id", async () => {

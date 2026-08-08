@@ -23,6 +23,30 @@ const HEX_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
  * `position`, and `id` are NOT accepted here — they are server-assigned.
  */
 exports.createTaskTypeValidator = (0, express_validator_1.checkSchema)({
+    // F23 (ISS-040): one rule per resource — PATCH refuses the server-owned
+    // fields (they fall out of matchedData and trip the empty-patch 422), so
+    // CREATE must refuse them too instead of answering 201 and silently
+    // storing `is_system=0`. P11 measured exactly that silence.
+    is_system: {
+        in: ["body"],
+        custom: {
+            options: (value) => {
+                if (value === undefined)
+                    return true;
+                throw new Error("is_system is server-owned and cannot be set on create");
+            },
+        },
+    },
+    position: {
+        in: ["body"],
+        custom: {
+            options: (value) => {
+                if (value === undefined)
+                    return true;
+                throw new Error("position is server-assigned and cannot be set on create");
+            },
+        },
+    },
     name: {
         in: ["body"],
         // `isString` runs BEFORE `trim`: the `trim` sanitizer stringifies its

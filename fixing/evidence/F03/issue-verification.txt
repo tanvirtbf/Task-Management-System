@@ -1,0 +1,12 @@
+  === Block A issue verification, on the fixed clock ===
+
+  ISS-001   timestamps round-trip with no drift           *** STILL BROKEN ***  stored 2026-08-03 14:36:56 -> wire 2026-08-03T08:36:56.000Z
+  ISS-052   updated_at >= created_at after an assign      FIXED                 created 2026-08-03 14:36:56 updated 2026-08-03 14:36:56
+  ISS-081a  an S0 bug's SLA is +120 min, not already breachedFIXED                 stored +120 min, already breached: false
+  ISS-081b  a 60-min-late task: endpoint reports ~60 min  FIXED                 minutes_breached=60 (truth 60)
+  ISS-081c  endpoint and v_breached_sla agree             FIXED                 endpoint lists it, view lists it
+  ISS-063   the comment edit window is 15 min, not 6h15m  FIXED                 editable to 14 min, refused from 16 min
+  ISS-058   workspaces.timezone drives 'today' (F5's job) *** STILL BROKEN ***  still "Asia/Dhaka" and read by nothing — NOT in F3's scope
+
+  === CLEANUP ===
+  tasks 46 (46) | comments 7 (7) | notifications 57

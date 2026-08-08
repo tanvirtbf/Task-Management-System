@@ -32,7 +32,6 @@ export interface WorkspaceRecord {
     workingDays: string[];
     businessHoursStart: string;
     businessHoursEnd: string;
-    fiscalYearStartMonth: number;
 }
 
 /**
@@ -49,7 +48,6 @@ export interface WorkspaceUpdateColumns {
     workingDays?: WeekDay[];
     businessHoursStart?: string;
     businessHoursEnd?: string;
-    fiscalYearStartMonth?: number;
 }
 
 /** Projection shared by every read so the wire shape can't drift between them. */
@@ -63,7 +61,6 @@ const workspaceColumns = {
     workingDays: workspaces.workingDays,
     businessHoursStart: workspaces.businessHoursStart,
     businessHoursEnd: workspaces.businessHoursEnd,
-    fiscalYearStartMonth: workspaces.fiscalYearStartMonth,
 };
 
 export class WorkspaceRepo {
@@ -89,6 +86,17 @@ export class WorkspaceRepo {
             .where(eq(workspaces.id, workspaceId))
             .limit(1);
         return row ?? null;
+    }
+
+    /**
+     * Every workspace's id + timezone — the overdue-alert job's outer loop
+     * ("today" is per-workspace, F5 rule). V1 is single-tenant so this is one
+     * row in practice; test databases hold many.
+     */
+    async listAll(): Promise<Array<{ id: string; timezone: string }>> {
+        return this.db
+            .select({ id: workspaces.id, timezone: workspaces.timezone })
+            .from(workspaces);
     }
 
     /**

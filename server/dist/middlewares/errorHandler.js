@@ -16,6 +16,35 @@ const buildBody = (req, code, message, details) => ({
         ...(details && details.length > 0 ? { details } : {}),
     },
 });
+/**
+ * F11 (ISS-087): the connection pool is exhausted — the request never reached
+ * the database.
+ *
+ * mysql2 signals a full wait queue by throwing a plain `Error("Queue limit
+ * reached.")`, which fell through to the unknown-error branch and rendered as a
+ * generic 500. That is wrong twice over: the client cannot tell it apart from a
+ * genuine fault (so it retries immediately, or not at all), and monitoring
+ * counts capacity pressure as server errors. It is a textbook **503** — the
+ * server is temporarily unable to handle the request — and it deserves a
+ * `Retry-After` so clients back off.
+ *
+ * The deployed config now uses an unlimited queue (`DB_POOL_QUEUE_LIMIT=0`), so
+ * this should never fire here; it stays as the safety net for any deployment
+ * that sets a limit, and for the `PROTOCOL_ENQUEUE_AFTER_*` family a closing
+ * pool raises during shutdown.
+ */
+const POOL_EXHAUSTED_RE = /queue limit reached|pool is closed|too many connections|enqueue after (?:fatal error|being destroyed|invoking quit)/i;
+const isPoolExhaustion = (err) => {
+    const e = err;
+    if (!e)
+        return false;
+    if (e.code === "ER_CON_COUNT_ERROR" || e.code === "PROTOCOL_ENQUEUE_AFTER_FATAL_ERROR") {
+        return true;
+    }
+    return typeof e.message === "string" && POOL_EXHAUSTED_RE.test(e.message);
+};
+/** Seconds a client should wait before retrying a shed request. */
+const RETRY_AFTER_SECONDS = 2;
 const inferHttpErrorCode = (status) => {
     if (status === 401)
         return "auth.unauthorized";
@@ -92,7 +121,20 @@ const errorHandler = (err, req, res, _next) => {
         res.status(annotatedStatus).json(buildBody(req, inferHttpErrorCode(annotatedStatus), err?.message ?? "Bad request"));
         return;
     }
-    // 5. Unknown — log full detail, hide internals from client
+    // 5. Pool exhaustion — capacity, not a fault. 503 + Retry-After (F11).
+    //    Logged at WARN: this is a load signal, and paging on it as an error
+    //    is exactly the monitoring pollution ISS-087 describes.
+    if (isPoolExhaustion(err)) {
+        logger_1.default.warn("Database pool exhausted — shedding with 503", {
+            requestId: req.requestId,
+            path: req.originalUrl,
+            message: err?.message,
+        });
+        res.setHeader("Retry-After", String(RETRY_AFTER_SECONDS));
+        res.status(503).json(buildBody(req, "service.unavailable", "The server is busy. Please retry in a moment."));
+        return;
+    }
+    // 6. Unknown — log full detail, hide internals from client
     logger_1.default.error("Unhandled error", {
         requestId: req.requestId,
         name: err?.name,

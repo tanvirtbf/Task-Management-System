@@ -101,6 +101,7 @@ class SpacesRepo {
             isPrivate: input.isPrivate,
             position: input.position,
             createdBy: input.createdBy,
+            headUserId: input.headUserId ?? null,
         });
         return id;
     }

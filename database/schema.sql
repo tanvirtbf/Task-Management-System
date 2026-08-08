@@ -112,8 +112,10 @@ CREATE TABLE workspaces (
                                   NOT NULL DEFAULT 'sun,mon,tue,wed,thu',
     business_hours_start     TIME NOT NULL DEFAULT '09:00:00',
     business_hours_end       TIME NOT NULL DEFAULT '18:00:00',
-    -- BD fiscal year starts July (=7)
-    fiscal_year_start_month  TINYINT UNSIGNED NOT NULL DEFAULT 7,
+    -- fiscal_year_start_month was dropped in F28 (upgrades/012): it was stored,
+    -- validated 1-12 and read by nothing. There is no financial-reporting
+    -- surface in this product. working_days + business_hours DO have a consumer
+    -- now -- they drive SLA deadlines (utils/dhakaTime.ts, decision D12.2).
     -- Dynamic RBAC cache stamp: bumped on ANY role/grant/assignment change so
     -- the per-request permission cache invalidates instantly (see §38-41).
     permissions_version      INT UNSIGNED NOT NULL DEFAULT 1,
@@ -123,7 +125,6 @@ CREATE TABLE workspaces (
 
     PRIMARY KEY (id),
     CONSTRAINT ck_workspaces_week_starts_on CHECK (week_starts_on BETWEEN 0 AND 6),
-    CONSTRAINT ck_workspaces_fiscal_month  CHECK (fiscal_year_start_month BETWEEN 1 AND 12),
     CONSTRAINT ck_workspaces_hours          CHECK (business_hours_start < business_hours_end)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
 
@@ -268,6 +269,11 @@ CREATE TABLE spaces (
     CONSTRAINT fk_spaces_head FOREIGN KEY (head_user_id)
         REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT ck_spaces_color CHECK (color REGEXP '^#[0-9A-Fa-f]{6}$'),
+    -- F27 (ISS-033): a workspace held TWO spaces called "Marketing" and the
+    -- sidebar rendered them identically. Same case-insensitive collation the
+    -- catalog resources already rely on; archived rows included (a restore
+    -- must not be able to recreate the duplicate).
+    CONSTRAINT uq_spaces_workspace_name UNIQUE (workspace_id, name),
     INDEX idx_spaces_workspace_archived (workspace_id, archived_at, position),
     INDEX idx_spaces_head (head_user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
@@ -300,6 +306,8 @@ CREATE TABLE lists (
     CONSTRAINT fk_lists_created_by FOREIGN KEY (created_by)
         REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     -- default_task_type_id FK is added after task_types is created (circular).
+    -- F27 (ISS-035): the same trap one level deeper in the tree.
+    CONSTRAINT uq_lists_space_name UNIQUE (space_id, name),
     INDEX idx_lists_space_archived  (space_id, archived_at, position),
     INDEX idx_lists_default_task_type (default_task_type_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
@@ -446,6 +454,11 @@ CREATE TABLE tasks (
     start_date           DATE         NULL,
     due_date             DATE         NULL,
     completed_at         TIMESTAMP    NULL,
+    -- Overdue-alert claim (upgrades/014): set by the overdue-alert job in the
+    -- same tx as its `overdue` notification fanout, so each due_date alerts
+    -- its assignees exactly once. App clears it whenever due_date CHANGES
+    -- (single PATCH + bulk) — a moved deadline re-arms the alert.
+    overdue_notified_at  TIMESTAMP    NULL,
 
     -- ─── Dept Review V1 — current review state (denormalised) ─────────────
     -- App-maintained in the SAME tx as the task_reviews insert (NO triggers).
@@ -553,7 +566,13 @@ CREATE TABLE tasks (
     -- SLA breach scanner: tasks whose deadline passed and aren't done.
     -- Composite ordered so MySQL can range-scan sla_due_at and skip closed
     -- tasks via the second column. archived_at filter is on the index too.
-    INDEX idx_tasks_sla (sla_due_at, completed_at, archived_at)
+    INDEX idx_tasks_sla (sla_due_at, completed_at, archived_at),
+    -- F30 (ISS-088): list pagination orders by internal_id; without this the
+    -- page was index-found then FILESORTED (P40 EXPLAIN).
+    INDEX idx_tasks_list_internal (primary_list_id, internal_id),
+    -- upgrades/014: the overdue-alert job's every-10-min scan
+    -- (due_date < today AND open AND unclaimed).
+    INDEX idx_tasks_overdue_scan (due_date, completed_at, archived_at, overdue_notified_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC
   AUTO_INCREMENT = 1;
 
@@ -667,7 +686,9 @@ CREATE TABLE task_activity (
     CONSTRAINT fk_task_activity_actor FOREIGN KEY (actor_id)
         REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,
     -- Reverse-chronological per task → composite index
-    INDEX idx_task_activity_task_time (task_id, created_at DESC)
+    INDEX idx_task_activity_task_time (task_id, created_at DESC),
+    -- F30 (ISS-088): the feed orders by internal_id DESC.
+    INDEX idx_task_activity_task_internal (task_id, internal_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
 
 
@@ -694,7 +715,10 @@ CREATE TABLE comments (
     CONSTRAINT fk_comments_author FOREIGN KEY (author_id)
         REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     INDEX idx_comments_task_time (task_id, created_at),
-    INDEX idx_comments_parent    (parent_comment_id)
+    INDEX idx_comments_parent    (parent_comment_id),
+    -- F30 (ISS-088): listByTask orders by (created_at, internal_id) - the
+    -- tie-break is what forced the filesort off idx_comments_task_time.
+    INDEX idx_comments_task_created_internal (task_id, created_at, internal_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
 
 
@@ -776,6 +800,22 @@ CREATE TABLE attachments (
     CONSTRAINT fk_attachments_uploaded_by FOREIGN KEY (uploaded_by)
         REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     INDEX idx_attachments_task (task_id, uploaded_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
+
+-- F16 (ISS-022): R2 object keys awaiting deletion, for the ONE case the
+-- soft-delete flow cannot see — a task HARD delete. fk_attachments_task is
+-- ON DELETE CASCADE, so the rows vanish with the task, and the r2-purge job
+-- (which finds objects by reading soft-deleted attachment rows) never learns
+-- those objects exist; the bytes stayed in the bucket forever. The hard-delete
+-- transaction copies the subtree's keys here BEFORE deleting the task row; the
+-- same job drains the queue. No grace period — the task is already gone.
+CREATE TABLE r2_purge_queue (
+    id            VARCHAR(64)  NOT NULL,
+    storage_key   VARCHAR(500) NOT NULL,
+    thumbnail_key VARCHAR(500) NULL,
+    queued_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    INDEX idx_r2_purge_queued (queued_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
 
 
@@ -970,12 +1010,16 @@ CREATE TABLE notifications (
     id             VARCHAR(64)  NOT NULL,
     internal_id    BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     user_id        VARCHAR(64)  NOT NULL,
+    -- F19 (D6, upgrades/009): 12 → 7. The five removed values had no producer
+    -- and no surface to build one from. comment/status_change now have REAL
+    -- producers instead of being empty promises. upgrades/014 re-added
+    -- `overdue` (appended at END) — the overdue-alert job is its producer.
     type           ENUM('assigned','mentioned','comment','status_change',
-                        'due_soon','overdue','form_submitted',
-                        'automation_failed','pr_review',
-                        'incident_alert',
+                        'form_submitted',
                         -- Dept Review V1 (appended at END — ENUM order parity)
-                        'task_reviewed','report_ready') NOT NULL,
+                        'task_reviewed','report_ready',
+                        -- upgrades/014 — produced by the overdue-alert job
+                        'overdue') NOT NULL,
     entity_type    ENUM('task','comment','form','automation',
                         'incident','report') NOT NULL,
     entity_id      VARCHAR(64)  NOT NULL,
@@ -1008,16 +1052,19 @@ CREATE TABLE notifications (
 -- A MISSING (user_id, type) row means "all channels on" (the spec default); the
 -- API lazily fills defaults on read and upserts only the sent types on write.
 -- =============================================================================
+-- F19 (upgrades/009): the enum is 7 values — the five producerless types were
+-- removed (D6), and email_enabled is gone (D8: it promised a channel that has
+-- no implementation). in_app_enabled is REAL since F19: NotificationsRepo
+-- filters every fanout through it at produce time.
 CREATE TABLE user_notification_prefs (
     user_id         VARCHAR(64) NOT NULL,
     type            ENUM('assigned','mentioned','comment','status_change',
-                        'due_soon','overdue','form_submitted',
-                        'automation_failed','pr_review',
-                        'incident_alert',
+                        'form_submitted',
                         -- Dept Review V1 (must mirror notifications.type)
-                        'task_reviewed','report_ready') NOT NULL,
+                        'task_reviewed','report_ready',
+                        -- upgrades/014 (must mirror notifications.type)
+                        'overdue') NOT NULL,
     in_app_enabled  BOOLEAN     NOT NULL DEFAULT TRUE,
-    email_enabled   BOOLEAN     NOT NULL DEFAULT TRUE,
     updated_at      TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
                                     ON UPDATE CURRENT_TIMESTAMP,
 
@@ -1029,8 +1076,11 @@ CREATE TABLE user_notification_prefs (
 
 -- =============================================================================
 -- 30. on_call_shifts
--- One row per week per engineer on call. The current engineer is found by
--- `WHERE week_start <= CURDATE() AND week_end >= CURDATE()`.
+-- One row per week per engineer on call. These are Dhaka business days. The
+-- current engineer is found by `WHERE week_start <= :today AND week_end >=
+-- :today`, where `:today` is the Dhaka calendar day bound by the app
+-- (`dhakaToday()`) — NOT `CURDATE()`, which renders in the UTC session zone and
+-- would roll the roster over 6h late. See database/upgrades/005_clock_views.sql.
 -- =============================================================================
 CREATE TABLE on_call_shifts (
     id          VARCHAR(64) NOT NULL,
@@ -1081,7 +1131,9 @@ CREATE TABLE workspace_activity (
     CONSTRAINT fk_workspace_activity_actor FOREIGN KEY (actor_id)
         REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,
     INDEX idx_workspace_activity_workspace_time (workspace_id, created_at DESC),
-    INDEX idx_workspace_activity_entity (entity_type, entity_id)
+    INDEX idx_workspace_activity_entity (entity_type, entity_id),
+    -- F30 (ISS-088): both feed reads order by internal_id DESC.
+    INDEX idx_workspace_activity_ws_internal (workspace_id, internal_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
 
 
@@ -1322,6 +1374,9 @@ CREATE TABLE roles (
 
     PRIMARY KEY (id),
     UNIQUE KEY uq_roles_workspace_key (workspace_id, role_key),
+    -- F27 (ISS-027): role_key was deduped by silently suffixing it; the
+    -- DISPLAY name collided freely, so two roles could look identical.
+    UNIQUE KEY uq_roles_workspace_name (workspace_id, name),
     CONSTRAINT fk_roles_ws FOREIGN KEY (workspace_id)
         REFERENCES workspaces(id) ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT fk_roles_created_by FOREIGN KEY (created_by)
@@ -1445,6 +1500,27 @@ BEGIN
      WHERE id = OLD.task_id;
 END$$
 
+-- F15 (ISS-065): the API SOFT-deletes a comment (stamps deleted_at); it never
+-- issues a SQL DELETE, so the trigger above could only fire if someone removed
+-- a row by hand and comments_count only ever went UP. A comment counts while
+-- deleted_at IS NULL; this moves the counter on the crossing in either
+-- direction and ignores an ordinary edit. Same shape as
+-- trg_attachments_after_update, which is the one that was always right.
+CREATE TRIGGER trg_comments_after_update
+AFTER UPDATE ON comments
+FOR EACH ROW
+BEGIN
+    IF OLD.deleted_at IS NULL AND NEW.deleted_at IS NOT NULL THEN
+        UPDATE tasks
+           SET comments_count = GREATEST(comments_count - 1, 0)
+         WHERE id = NEW.task_id;
+    ELSEIF OLD.deleted_at IS NOT NULL AND NEW.deleted_at IS NULL THEN
+        UPDATE tasks
+           SET comments_count = comments_count + 1
+         WHERE id = NEW.task_id;
+    END IF;
+END$$
+
 -- A row "counts" toward tasks.attachments_count only when it is finalised
 -- (upload_status='complete') AND not soft-deleted (deleted_at IS NULL). A
 -- 'pending' sign-time row therefore does NOT count until /finalize flips it.
@@ -1498,6 +1574,17 @@ BEGIN
      WHERE id = NEW.form_id;
 END$$
 
+-- F15 (ISS-080): the 90-day retention job DELETEs submissions directly, so an
+-- INSERT-only counter drifted permanently upward.
+CREATE TRIGGER trg_form_submissions_after_delete
+AFTER DELETE ON form_submissions
+FOR EACH ROW
+BEGIN
+    UPDATE forms
+       SET submission_count = GREATEST(submission_count - 1, 0)
+     WHERE id = OLD.form_id;
+END$$
+
 DELIMITER ;
 
 
@@ -1534,10 +1621,16 @@ CREATE OR REPLACE VIEW v_active_sprint AS
      WHERE status = 'active';
 
 -- Current on-call engineer per workspace.
+-- `week_start`/`week_end` are Dhaka business days, and the MySQL session runs in
+-- UTC (F3 — see database/upgrades/005_clock_views.sql), so "today" must be the
+-- Dhaka calendar day, not `CURDATE()`/`UTC_DATE()`. Bangladesh is permanently
+-- UTC+6 with no DST, so the fixed offset is exact and needs no tz tables. This
+-- expression matches the app's `dhakaToday()` helper.
 CREATE OR REPLACE VIEW v_current_on_call AS
     SELECT s.*
       FROM on_call_shifts s
-     WHERE UTC_DATE() BETWEEN s.week_start AND s.week_end;
+     WHERE DATE(UTC_TIMESTAMP() + INTERVAL 6 HOUR)
+           BETWEEN s.week_start AND s.week_end;
 
 -- Tasks whose SLA window passed without completion — drives the red flag in
 -- the CS team UI and the on-call paging job for engineering S0/S1 bugs.

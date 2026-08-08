@@ -1,0 +1,3 @@
+  006_counters.sql: 10 statements
+  taskmanagement        10/10 applied
+  taskmanagement_qa     10/10 applied

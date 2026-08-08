@@ -1,0 +1,68 @@
+=== 1. GET /workspace — wire shape vs DB columns ===
+  status: 200
+  wire keys: id, name, logo_url, timezone, default_locale, week_starts_on, working_days, business_hours_start, business_hours_end, fiscal_year_start_month
+  DB columns: id, name, logo_url, timezone, default_locale, week_starts_on, working_days, business_hours_start, business_hours_end, fiscal_year_start_month, permissions_version, created_at, updated_at
+  DB columns NOT exposed: permissions_version
+  wire-only fields      : (none)
+  values: {"id":"ws-tcCcv1k2HdlflPAeyTGZIA","name":"BeautyBooth","logo_url":null,"timezone":"Asia/Dhaka","default_locale":"en-US","week_starts_on":6,"working_days":["sun","mon","tue","wed","thu"],"business_hours_start":"09:00:00","business_hours_end":"18:00:00","fiscal_year_start_month":7}
+
+=== 2. PATCH each field individually (valid values) ===
+  name                     = BeautyBooth QA                 -> 200  persisted ✓
+  logo_url                 = https://example.com/logo.png   -> 200  persisted ✓
+  timezone                 = Asia/Kolkata                   -> 200  persisted ✓
+  default_locale           = bn-BD                          -> 422  validation.failed [{"field":"default_locale","issue":"default_locale cannot be updated v
+  week_starts_on           = 0                              -> 200  persisted ✓
+  working_days             = mon,tue,wed,thu,fri            -> 422  validation.failed [{"field":"working_days","issue":"working_days must be an array"}]
+  business_hours_start     = 10:00:00                       -> 200  persisted ✓
+  business_hours_end       = 19:00:00                       -> 200  persisted ✓
+  fiscal_year_start_month  = 1                              -> 200  persisted ✓
+
+=== 3. VALIDATION — invalid values ===
+  name =                                         (empty)                    -> 422  validation.failed
+  name = xxxxxxxxxxxxxxxxxxxxxx                  (too long)                 -> 422  validation.failed
+  timezone = Not/AZone                           (bogus IANA zone)          -> 422  validation.failed
+  timezone =                                     (empty)                    -> 422  validation.failed
+  week_starts_on = 7                             (out of range (0-6))       -> 422  validation.failed
+  week_starts_on = -1                            (negative)                 -> 422  validation.failed
+  week_starts_on = monday                        (non-numeric)              -> 422  validation.failed
+  fiscal_year_start_month = 13                   (out of range (1-12))      -> 422  validation.failed
+  fiscal_year_start_month = 0                    (zero)                     -> 422  validation.failed
+  business_hours_start = 25:00:00                (invalid hour)             -> 422  validation.failed
+  business_hours_start = notatime                (not a time)               -> 422  validation.failed
+  working_days = funday                          (unknown day)              -> 422  validation.failed
+  default_locale = !!!                           (bogus locale)             -> 422  validation.failed
+  logo_url = javascript:alert(1)                 (javascript: URL)          -> 422  validation.failed
+  logo_url = not-a-url                           (not a URL)                -> 422  validation.failed
+  id = ws-hacked                                 (attempt to change the PK) -> 200  200 but ignored
+  permissions_version = 999                      (attempt to bump the RBAC version)-> 200  200 but ignored
+
+=== 4. BUSINESS-HOURS invariant (start < end) ===
+  18:00:00 -> 09:00:00  (start AFTER end)     -> 422 workspace.invalid_business_hours
+  12:00:00 -> 12:00:00  (start EQUALS end)    -> 422 workspace.invalid_business_hours
+  09:00:00 -> 18:00:00  (valid)               -> 200 ok
+  start=20:00 alone (end is 18:00)            -> 422 workspace.invalid_business_hours   DB now 09:00:00-18:00:00  invariant held
+
+=== 5. UNKNOWN / EXTRA fields ===
+  {"totally_made_up":1}                    -> 200  updated_at bumped: false
+  {}                                       -> 200  updated_at bumped: false
+  {"name":"BeautyBooth","nope":true}       -> 200  updated_at bumped: false
+
+=== 6. DOWNSTREAM CONSUMPTION — is `timezone` actually used? ===
+  files referencing a timezone field: 8
+    server/src/controllers/UserController.ts
+    server/src/controllers/WorkspaceController.ts
+    server/src/repositories/OnCallRepo.ts
+    server/src/repositories/SearchRepo.ts
+    server/src/repositories/UsersRepo.ts
+    server/src/repositories/WorkspaceRepo.ts
+    server/src/serializers/userSerializer.ts
+    server/src/validators/workspace.ts
+  week_starts_on             consumed outside the workspace module by 7 file(s): db/migrations/0000_initial.sql, db/migrations/meta/0000_snapshot.json, db/migrations/meta/0001_snapshot.json
+  working_days               consumed outside the workspace module by 7 file(s): db/migrations/0000_initial.sql, db/migrations/meta/0000_snapshot.json, db/migrations/meta/0001_snapshot.json
+  business_hours_start       consumed outside the workspace module by 7 file(s): db/migrations/0000_initial.sql, db/migrations/meta/0000_snapshot.json, db/migrations/meta/0001_snapshot.json
+  fiscal_year_start_month    consumed outside the workspace module by 7 file(s): db/migrations/0000_initial.sql, db/migrations/meta/0000_snapshot.json, db/migrations/meta/0001_snapshot.json
+  default_locale             consumed outside the workspace module by 9 file(s): db/migrations/0000_initial.sql, db/migrations/meta/0000_snapshot.json, db/migrations/meta/0001_snapshot.json
+  logo_url                   consumed outside the workspace module by 7 file(s): db/migrations/0000_initial.sql, db/migrations/meta/0000_snapshot.json, db/migrations/meta/0001_snapshot.json
+
+=== 7. RESTORE ===
+  restored: {"name":"BeautyBooth","timezone":"Asia/Dhaka","default_locale":"en-US","week_starts_on":6,"working_days":"sun,mon,tue,wed,thu","s":"09:00:00","e":"18:00:00","f":7}

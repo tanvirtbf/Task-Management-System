@@ -1,18 +1,19 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Skeleton, Select, Button, Tooltip } from "antd";
-import { Link2, ArrowRight, ArrowLeft, X, Plus } from "lucide-react";
+import { Link2, ArrowRight, ArrowLeft, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { dependenciesApi, tasksApi } from "../../http/api";
+import { dependenciesApi, searchApi } from "../../http/api";
 import type { FlatDependency } from "../../http/mappers";
 import { tokens } from "../../theme";
 
+/** F25 (ISS-055): `listId` is gone — the picker searches the WORKSPACE now,
+ *  not one list. */
 interface Props {
     taskId: string;
-    listId: string;
 }
 
-export const DependenciesSection = ({ taskId, listId }: Props) => {
+export const DependenciesSection = ({ taskId }: Props) => {
     const qc = useQueryClient();
     const navigate = useNavigate();
     const [showPicker, setShowPicker] = useState<"blocks" | "blocked_by" | null>(
@@ -25,24 +26,42 @@ export const DependenciesSection = ({ taskId, listId }: Props) => {
         queryFn: () => dependenciesApi.byTask(taskId),
     });
 
-    // Candidate tasks for the picker = the current list's tasks (cross-list
-    // linking via global search is a P6 enhancement). Fetched only while picking.
-    const { data: listTasks = [] } = useQuery({
-        queryKey: ["tasks-by-list", listId],
-        queryFn: () => tasksApi.listByList(listId),
-        enabled: !!showPicker,
+    // F25 (ISS-055): candidates are the WHOLE WORKSPACE, not just this list.
+    // The API has always allowed a dependency between any two tasks, and the
+    // most valuable ones in this product cross departments — "Marketing's
+    // launch banner blocks Engineering's release" could not be created in the
+    // UI at all. Search is the right source: it is workspace-wide, it is
+    // visibility-filtered server-side (RBAC P18), and since F20 it ranks by
+    // relevance rather than insertion order. Typing under 2 characters returns
+    // nothing (the F20 minimum), so the picker asks for a query first.
+    const [term, setTerm] = useState("");
+    const { data: found, isFetching: searching } = useQuery({
+        queryKey: ["dep-candidates", term],
+        // `SearchType` is SINGULAR ("task"); an unknown token is silently
+        // dropped by the service, which would search nothing at all.
+        queryFn: () =>
+            searchApi.search({ query: term, types: ["task"], limit: 20 }),
+        enabled: !!showPicker && term.trim().length >= 2,
     });
+    const listTasks = found?.tasks ?? [];
 
     const create = useMutation({
-        mutationFn: (input: { relatedTaskId: string }) =>
-            dependenciesApi.create({
-                taskId,
-                relatedTaskId: input.relatedTaskId,
-            }),
+        // The stored edge is always (task_id BLOCKS related_task_id), so the
+        // direction decides which end THIS task occupies.
+        mutationFn: (input: {
+            relatedTaskId: string;
+            direction: "blocks" | "blocked_by";
+        }) =>
+            dependenciesApi.create(
+                input.direction === "blocks"
+                    ? { taskId, relatedTaskId: input.relatedTaskId }
+                    : { taskId: input.relatedTaskId, relatedTaskId: taskId },
+            ),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["deps", taskId] });
             setShowPicker(null);
             setPickedTaskId(undefined);
+            setTerm("");
         },
     });
 
@@ -91,14 +110,28 @@ export const DependenciesSection = ({ taskId, listId }: Props) => {
                 >
                     {deps.length}
                 </span>
+                {/* F25 (ISS-054): the component always held a
+                    "blocks" | "blocked_by" state and rendered a Blocked-by
+                    group, but the ONLY thing that opened the picker hardcoded
+                    "blocks" and the mutation never read the direction — so the
+                    Blocked-by half was unreachable. Two buttons, and the
+                    mutation now maps the direction onto the stored edge. */}
                 <Button
                     type="text"
                     size="small"
-                    icon={<Plus size={12} strokeWidth={2} />}
+                    icon={<ArrowRight size={12} strokeWidth={2} />}
                     onClick={() => setShowPicker("blocks")}
                     style={{ marginLeft: "auto" }}
                 >
-                    Link
+                    Blocks
+                </Button>
+                <Button
+                    type="text"
+                    size="small"
+                    icon={<ArrowLeft size={12} strokeWidth={2} />}
+                    onClick={() => setShowPicker("blocked_by")}
+                >
+                    Blocked by
                 </Button>
             </div>
 
@@ -151,9 +184,23 @@ export const DependenciesSection = ({ taskId, listId }: Props) => {
                         autoFocus
                         value={pickedTaskId}
                         onChange={setPickedTaskId}
-                        placeholder="Pick a task to block…"
+                        onSearch={setTerm}
+                        searchValue={term}
+                        filterOption={false}
+                        loading={searching}
+                        notFoundContent={
+                            term.trim().length < 2
+                                ? "Type at least 2 characters"
+                                : searching
+                                  ? "Searching…"
+                                  : "No matching task"
+                        }
+                        placeholder={
+                            showPicker === "blocks"
+                                ? "Search any task this one blocks…"
+                                : "Search any task that blocks this one…"
+                        }
                         style={{ flex: 1 }}
-                        optionFilterProp="label"
                         options={candidates.slice(0, 200).map((t) => ({
                             value: t.id,
                             label: `${t.customId ?? `T-${t.taskNumber}`} — ${t.name}`,
@@ -167,6 +214,7 @@ export const DependenciesSection = ({ taskId, listId }: Props) => {
                             pickedTaskId &&
                             create.mutate({
                                 relatedTaskId: pickedTaskId,
+                                direction: showPicker,
                             })
                         }
                     >
@@ -178,6 +226,7 @@ export const DependenciesSection = ({ taskId, listId }: Props) => {
                         onClick={() => {
                             setShowPicker(null);
                             setPickedTaskId(undefined);
+                            setTerm("");
                         }}
                     >
                         Cancel

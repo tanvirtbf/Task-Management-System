@@ -26,12 +26,16 @@ export interface PermissionEntry {
 
 /**
  * Where an actor came from. Only a `user` actor was resolved from the database
- * — the other two are synthesised for callers that have no session (P9):
+ * — the others are synthesised for calls a user grant does not describe (P9):
  *   `system` — a background job. Bypasses every check (`entryFor`).
  *   `public` — an anonymous public-form submission. Holds a deliberately tiny,
  *              explicit grant set; bypasses nothing.
+ *   `intake` — a SIGNED-IN caller inside a boundary-authorized intake flow
+ *              (F28: the bug report). The route gate proved the intake verb
+ *              (`bug.report`); this actor carries only the mechanism's key,
+ *              space-narrowed, and attribution stays the real caller.
  */
-export type ActorKind = "user" | "system" | "public";
+export type ActorKind = "user" | "system" | "public" | "intake";
 
 export interface ActorPermissions {
     kind: ActorKind;

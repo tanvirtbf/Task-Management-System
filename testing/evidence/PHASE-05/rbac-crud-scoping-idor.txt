@@ -1,0 +1,47 @@
+=== 1. GET /me/permissions across the 5 real roles ===
+  owner      keys=56  role=owner   is_owner=true  version=27 visible_space_ids=null (all)
+    top-level keys: version, is_owner, role, visible_space_ids, permissions 
+    owner floor = all 56 ✓
+  admin      keys=53  role=admin   is_owner=false version=27 visible_space_ids=null (all)
+  member     keys=20  role=member  is_owner=false version=27 visible_space_ids=null (all)
+  guest      keys=19  role=guest   is_owner=false version=27 visible_space_ids=null (all)
+  dept-only  keys=8   role=member  is_owner=false version=27 visible_space_ids=1 space(s)
+    sample entries: [["member.view",{"all":false,"space_ids":["sp-jh3Gafsqo-WNY9EPqcTC8w"],"own":false,"own_space_ids":[]}],["space.view",{"all":false,"space_ids":["sp-jh3Gafsqo-WNY9EPqcTC8w"],"own":false,"own_space_ids":[]}],["task.view",{"all":false,"space_ids":["sp-jh3Gafsqo-WNY9EPqcTC8w"],"own":false,"own_space_ids":[]}]]
+    camelized keys (must be 0): 0 []
+
+=== 2. ROLES CRUD ERROR CODES ===
+  create role                     -> 201 rol-vTHxrhLSqkzDTybxwgpYJA
+  create DUPLICATE name           -> 201 allowed
+  rename a SYSTEM role            -> *** ALLOWED *** (Admin)
+  delete a SYSTEM role            -> role.system_immutable
+  edit the OWNER role perms       -> role.owner_immutable
+  unknown permission key          -> role.unknown_permission
+  unsupported scope for a key     -> role.unsupported_scope
+  atomic replace (set 2, then 1)  -> 200 200
+     grants now: task.view — replaced, not merged ✓
+  holders of the new role         -> 200
+  delete the role                 -> 204
+
+=== 3. ESCALATION: can a non-owner grant more than they hold? ===
+  admin (lacks space.delete) grants space.delete -> 403 role.escalation_blocked
+
+=== 4. SPACE-SCOPED VISIBILITY + IDOR SWEEP (marketing.only@) ===
+  spaces visible to marketing.only: Marketing
+node:internal/process/promises:394
+    triggerUncaughtException(err, true /* fromPromise */);
+    ^
+
+Error: Expression #3 of SELECT list is not in GROUP BY clause and contains nonaggregated column 'taskmanagement.l.id' which is not functionally dependent on columns in GROUP BY clause; this is incompatible with sql_mode=only_full_group_by
+    at C:\Users\Tanvir\AppData\Local\Temp\claude\E--Task-Management-System\0c5a6be8-84af-4c0b-91a3-1cb6f5c4eb9d\scratchpad\p5_rest.cjs:69:31
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5) {
+  code: 'ER_WRONG_FIELD_WITH_GROUP',
+  errno: 1055,
+  sqlState: '42000',
+  sqlMessage: "Expression #3 of SELECT list is not in GROUP BY clause and contains nonaggregated column 'taskmanagement.l.id' which is not functionally dependent on columns in GROUP BY clause; this is incompatible with sql_mode=only_full_group_by",
+  sql: 'SELECT s.id sid, s.name sname, l.id lid, t.id tid, c.id cid\n' +
+    '        FROM spaces s LEFT JOIN lists l ON l.space_id=s.id LEFT JOIN tasks t ON t.primary_list_id=l.id\n' +
+    '        LEFT JOIN comments c ON c.task_id=t.id\n' +
+    "        WHERE s.name NOT IN ('Marketing') AND t.id IS NOT NULL GROUP BY s.id LIMIT 6"
+}
+
+Node.js v22.21.1

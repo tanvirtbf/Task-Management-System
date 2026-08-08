@@ -217,7 +217,8 @@ export class NotificationsController {
      * PUT /api/v1/notifications/preferences — upsert per-type prefs.
      *
      * The validator (`updatePreferencesValidator`) guarantees the body is a map
-     * of known notification type → `{ in_app_enabled, email_enabled }` booleans,
+     * of known notification type → `{ in_app_enabled }` (F19/D8: the email
+     * channel was removed — it promised delivery with no implementation),
      * so the body is read directly (it has no per-field `matchedData` whitelist)
      * and normalised into the repo's upsert shape. Returns the full, freshly-read
      * preferences map.
@@ -233,7 +234,6 @@ export class NotificationsController {
                 ([type, pref]) => ({
                     type: type as PrefUpsert["type"],
                     inAppEnabled: pref.in_app_enabled,
-                    emailEnabled: pref.email_enabled,
                 }),
             );
 

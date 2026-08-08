@@ -1,0 +1,66 @@
+=== 1. CHECKLIST CRUD + ordering ===
+  create           -> 201      | second -> 201      | DUPLICATE name -> 201
+  keys on the wire: ["id","task_id","name","position","items"]
+  positions assigned: [{"name":"TEST-p22 first","position":0},{"name":"TEST-p22 second","position":1},{"name":"TEST-p22 first","position":2}]
+  GET list -> 200      shape: bare array | count: 3 | items embedded? yes (0)
+  rename           -> 200
+  rename to empty  -> 422 validation.failed
+  reposition       -> 200
+  create on unknown task -> 404 task.not_found
+  PATCH unknown    -> 404 checklist.not_found
+  DELETE unknown   -> 404 checklist.not_found
+  name 500 chars   -> 422 validation.failed
+
+=== 2. ITEMS ===
+  add item         -> 201      keys: ["id","checklist_id","parent_item_id","text","is_completed","completed_at","completed_by","assignee_id","position"]
+  empty text       -> 422 validation.failed
+  1000-char text   -> 422 validation.failed
+  unknown checklist-> 404 checklist.not_found
+  with an assignee -> 201      stored: yes
+  unknown assignee -> 422 checklist_item.invalid_assignee
+  INVITED assignee -> 422 checklist_item.invalid_assignee (tanver018765@gmail.com)
+  sub-item         -> 201
+  parent in ANOTHER checklist -> 422 checklist_item.invalid_parent
+  parent unknown   -> 422 checklist_item.invalid_parent
+  sub-item of a SUB-item -> 201      *** unlimited nesting ***
+  update text      -> 200
+  reassign         -> 200
+  clear assignee   -> 200
+  due_date on item -> 200 (no due_date column exists)
+
+=== 3. TOGGLE ===
+  toggle on  -> 200      {"c":1,"ca":"2026-07-30 08:50:53","cb":"u-ohsNaae2ShvNIZpMlJHVRQ"}
+  toggle off -> 200      {"c":0,"ca":null,"cb":null} completed_at cleared OK
+  toggling a PARENT — does the sub-item follow?
+     sub-item is_completed: 0 (independent — no cascade)
+  PATCH is_completed directly -> 200
+  toggle unknown item -> 404 checklist_item.not_found
+
+=== 4. BULK ADD ===
+  3 items                 -> 201                         items now: 3
+  empty array             -> 422 validation.failed       items now: 3
+  one empty among valid   -> 422 validation.failed       items now: 3
+  500 items               -> 201                         items now: 503
+  not an array            -> 422 validation.failed       items now: 503
+  missing key             -> 422 validation.failed       items now: 503
+
+=== 5. PROGRESS ROLLUP on the task ===
+  task wire keys mentioning checklist/progress: [] -> NONE (the client computes it)
+  actual items on the task: {"total":507,"done":"1"}
+
+=== 6. DELETE cascade ===
+  before: items = 2
+  delete the ITEM that has a sub-item -> 204
+     items left: 0
+  delete the CHECKLIST -> 204
+     items left: 0 (0 = cascade OK)
+  hard-delete the TASK -> checklists left:
+     checklists: 0 | items: 0
+
+=== 7. ACCESS ===
+  guest creates a checklist -> 201
+  guest toggles an item     -> 200
+  no token                  -> 401
+
+=== CLEANUP ===
+  orphan statuses 0 | orphan checklists 0 | tasks 51 (51) | lists 14 (14) | checklists 5 (5) | items 23 (23)

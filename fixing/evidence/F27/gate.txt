@@ -1,0 +1,12 @@
+Block F gate — SOLO runs, 30s drain between modules (chain-flake rule) — 2026-08-06T13:36:23+06:00
+home           Test Suites: 1 failed, 1 total|Tests:       4 failed, 19 passed, 23 total|
+spaces         Test Suites: 2 failed, 5 passed, 7 total|Tests:       5 failed, 239 passed, 244 total|
+lists          Test Suites: 2 failed, 3 passed, 5 total|Tests:       2 failed, 169 passed, 171 total|
+rbac           Test Suites: 1 failed, 10 passed, 11 total|Tests:       1 failed, 285 passed, 286 total|
+customfields   Test Suites: 1 failed, 6 passed, 7 total|Tests:       1 failed, 89 passed, 90 total|
+tagsreview     Test Suites: 4 passed, 4 total|Tests:       149 passed, 149 total|
+taskTypes      Test Suites: 4 passed, 4 total|Tests:       184 passed, 184 total|
+statuses       Test Suites: 4 failed, 1 passed, 5 total|Tests:       4 failed, 205 passed, 209 total|
+collab         Test Suites: 2 passed, 2 total|Tests:       47 passed, 47 total|
+taskdeps       Test Suites: 3 passed, 3 total|Tests:       67 passed, 67 total|
+gate finished 2026-08-06T14:00:58+06:00

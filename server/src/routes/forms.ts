@@ -19,6 +19,7 @@ import { ListsRepo } from "../repositories/ListsRepo";
 import { StatusesRepo } from "../repositories/StatusesRepo";
 import { TaskTypesRepo } from "../repositories/TaskTypesRepo";
 import { TasksRepo } from "../repositories/TasksRepo";
+import { AttachmentsRepo } from "../repositories/AttachmentsRepo";
 import { TaskMembershipRepo } from "../repositories/TaskMembershipRepo";
 import { UsersRepo } from "../repositories/UsersRepo";
 import { TagsRepo } from "../repositories/TagsRepo";
@@ -26,6 +27,7 @@ import { TaskActivityRepo } from "../repositories/TaskActivityRepo";
 import { NotificationsRepo } from "../repositories/NotificationsRepo";
 import { TasksService } from "../services/TasksService";
 import { TaskWriteService } from "../services/TaskWriteService";
+import { WorkspaceRepo } from "../repositories/WorkspaceRepo";
 import { FormsService } from "../services/FormsService";
 import { FormsController } from "../controllers/FormsController";
 import {
@@ -94,6 +96,8 @@ const taskWriteService = new TaskWriteService(
     tagsRepo,
     activityRepo,
     notificationsRepo,
+    new AttachmentsRepo(db),
+    new WorkspaceRepo(db),
     tasksReadService,
     logger,
 );
@@ -178,6 +182,7 @@ router.post(
 router.get(
     "/forms/:id/submissions",
     authenticate,
+    requirePermission("form.view_submissions"),
     listSubmissionsValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>

@@ -1,0 +1,37 @@
+
+  === F10 — session & role freshness (ISS-015/016/017/018/021) ===
+
+  --- ISS-016: a signature-valid token with NO exp claim ---
+  OK    exp-less token -> 401 (was 200, a permanent credential)           got 401 auth.invalid_token
+  OK    a normal token still works (200)                                  got 200
+  OK    an expired token still 401s (control)                             
+
+  --- ISS-021: role downgrade latency (D4 = live check) ---
+  OK    as a live admin: hard delete -> 204                               got 204
+  OK    owner demotes them to member (200)                                got 200
+  OK    SAME old token, next request: hard delete -> 403 (was 204 for ≤15 min)got 403
+  OK    …but their member powers still work (soft delete 204)             got 204
+
+  --- ISS-015: change-password vs other sessions ---
+  OK    three devices signed in (live sessions = 3)                       3
+  OK    POST /auth/change-password -> 204                                 got 204
+  OK    live sessions after the change -> 0 (was: unchanged)              0
+  OK    another device's refresh -> 401 (was 200, still signed in)        got 401
+  OK    signing in with the NEW password works                            got 200
+
+  --- ISS-018: logout bound (stays documented, D4 note) ---
+  OK    logout -> 204                                                     got 204
+  OK    refresh after logout -> 401 (the window CANNOT be renewed)        got 401
+  OK    old access token accepted ≤15 min (the documented bound — unchanged)got 200
+
+  --- ISS-017: session-cleanup prunes revoked rows after 7 days ---
+  OK    dry run counts both rules once (wouldDelete ≥ 2)                  {"processed":2,"wouldDelete":2}
+  OK    live run: expired-30d rule still fires                            {"processed":2,"deleted":2,"deleted_expired":1,"deleted_revoked":1}
+  OK    live run: revoked-7d rule fires (the new prune)                   
+  OK    kept: the fresh-revoked and the active rows                       ["s-F10-active","s-F10-revoked2"]
+
+  === CLEANUP ===
+  users 15 (15) | tasks 46 (46) | notif 57 (57)
+
+  PASS — exp required · demotions bite instantly · password change evicts · revoked rows pruned.
+

@@ -68,6 +68,12 @@ export const workspaceActivity = mysqlTable(
             t.entityType,
             t.entityId,
         ),
+        // F30 (ISS-088): both feed reads order by `internal_id` DESC — the
+        // time index cannot serve that order, so every page filesorted.
+        workspaceInternalIdx: index("idx_workspace_activity_ws_internal").on(
+            t.workspaceId,
+            t.internalId,
+        ),
     }),
 );
 

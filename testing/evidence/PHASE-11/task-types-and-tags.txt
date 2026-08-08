@@ -1,0 +1,53 @@
+=== 1. TASK TYPES — create validation ===
+  {"name":"TEST-p11-tt","icon":"check","color":"#111111"   (valid)                                  -> 201
+  {"name":"TEST-p11-min"}                                  (name only)                              -> 201
+  {"name":"Task"}                                          (DUPLICATE of an existing type)          -> 409 task_type.duplicate
+  {"name":"task"}                                          (duplicate differing only in CASE)       -> 409 task_type.duplicate
+  {"name":""}                                              (empty)                                  -> 422 validation.failed
+  {"name":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx   (too long)                               -> 422 validation.failed
+  {"name":"TEST-p11-badcolor","color":"red"}               (non-hex colour)                         -> 422 validation.failed
+  {"name":"TEST-p11-dev","is_dev_type":true}               (is_dev_type on create)                  -> 201
+  {"name":"TEST-p11-sys","is_system":true}                 (is_system on create — self-promotion?)  -> 201
+  {"name":"TEST-p11-ms","is_milestone_type":true}          (is_milestone_type)                      -> 201
+  what was actually stored: [{"name":"TEST-p11-ms","is_system":0,"is_dev_type":0},{"name":"TEST-p11-min","is_system":0,"is_dev_type":0},{"name":"TEST-p11-dev","is_system":0,"is_dev_type":1},{"name":"TEST-p11-tt","is_system":0,"is_dev_type":0},{"name":"TEST-p11-sys","is_system":0,"is_dev_type":0}]
+
+=== 2. TASK TYPES — update & delete guards ===
+  {"name":"TEST-p11-renamed"}          (rename)                           -> 200
+  {"name":"Task"}                      (rename onto an existing name)     -> 409 task_type.duplicate
+  {"is_dev_type":true}                 (flip is_dev_type)                 -> 200
+  {"is_system":true}                   (promote to system)                -> 422 validation.failed
+  {"id":"tt-hacked"}                   (PK change)                        -> 422 validation.failed
+  delete an UNUSED type   -> 204
+  delete 'Task' (33 tasks)-> 409 task_type.in_use
+     'Task' still present: yes ✓
+  task types flagged is_system in this workspace: 0   -> task_type.system can never fire here
+
+=== 3. is_dev_type — does it gate the engineering fields? ===
+  create a task of type Bug (is_dev_type=true)     -> 201                       
+     stored eng fields: {"story_points":5,"branch_name":"feat/x","pr_url":"https://github.com/x/y/pull/1","bug_severity":"S1","sla_due_at":"2026-07-31T01:34:38.000Z"}
+  create a task of type Order (is_dev_type=false)  -> 201                       
+     stored eng fields: {"story_points":5,"branch_name":"feat/x","pr_url":"https://github.com/x/y/pull/1","bug_severity":"S1","sla_due_at":null}
+
+=== 4. TAGS — create validation ===
+  {"name":"TEST-p11-tag","color":"#111111"}          (valid)                                -> 201  stored name: "TEST-p11-tag"
+  {"name":"TEST-p11-nocolor"}                        (no colour)                            -> 201  stored name: "TEST-p11-nocolor"
+  {"name":"urgent","color":"#111111"}                (DUPLICATE of an existing tag)         -> 409 tag.duplicate
+  {"name":"URGENT","color":"#111111"}                (duplicate differing only in CASE)     -> 409 tag.duplicate
+  {"name":"","color":"#111111"}                      (empty name)                           -> 422 validation.failed
+  {"name":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx   (too long)                             -> 422 validation.failed
+  {"name":"TEST-p11-badcolor2","color":"not-a-colo   (bad colour)                           -> 422 validation.failed
+  {"name":"TEST p11 spaces","color":"#111111"}       (spaces in the name)                   -> 201  stored name: "TEST p11 spaces"
+  {"name":"  TEST-p11-trim  ","color":"#111111"}     (leading/trailing spaces)              -> 201  stored name: "TEST-p11-trim"
+
+=== 5. TAGS — update & delete ===
+  {"name":"TEST-p11-tag-renamed"}      (rename)                           -> 200
+  {"color":"#abcdef"}                  (colour)                           -> 200
+  {"name":"urgent"}                    (rename onto an existing tag)      -> 409 tag.duplicate
+  {"id":"tag-hacked"}                  (PK change)                        -> 422 validation.failed
+  DELETE an unused tag -> 204
+  DELETE tag-nope      -> 404 tag.not_found
+  (tag.in_use on a used tag is already proven NOT enforced — ISS-011, not re-tested)
+
+=== CLEANUP (through the API where possible) ===
+  del list 204
+  orphan statuses removed 0 | task_types 7 (7) | tags 8 (8) | tasks 51 (51) | lists 14 (14) | statuses 70 (70)

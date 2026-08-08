@@ -93,7 +93,7 @@ const signAccess = (
     jwt.sign(
         { sub: user.id, role: user.role, workspaceId: user.workspaceId },
         secret,
-        { algorithm: "HS256", ...opts },
+        { algorithm: "HS256", expiresIn: "15m", ...opts },
     );
 
 /** Common arrangement: workspace + actor (logged in) + an active assignee + task. */
@@ -315,9 +315,9 @@ describe("POST /api/v1/tasks/:id/assignees", () => {
         });
     });
 
-    // ─── d. Authorization (🔐 any role; no forbidden tier per §11) ─────────────
+    // ─── d. Authorization (task.assign — every INTERNAL role holds it) ─────────
     describe("Authorization", () => {
-        const roles: Role[] = ["owner", "admin", "member", "guest"];
+        const roles: Role[] = ["owner", "admin", "member"];
         for (const role of roles) {
             it(`allows a ${role} to add an assignee (204)`, async () => {
                 const { assignee, task, client } = await setup({
@@ -329,6 +329,19 @@ describe("POST /api/v1/tasks/:id/assignees", () => {
                 expect(res.status).toBe(204);
             });
         }
+
+        // F28 (ISS-094, D12.1): guests held `task.assign` via the seeded role's
+        // pre-RBAC breadth. Revoked — an external collaborator does not staff
+        // the workspace's tasks. See tests/rbac/system-roles.test.ts.
+        it("REFUSES a guest (403) — task.assign is no longer a guest grant", async () => {
+            const { assignee, task, client } = await setup({
+                actorRole: "guest",
+            });
+            const res = await client
+                .post(url(task.id))
+                .send({ user_id: assignee.id });
+            expect(res.status).toBe(403);
+        });
     });
 
     // ─── e. Resource lifecycle ─────────────────────────────────────────────────

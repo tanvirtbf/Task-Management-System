@@ -11,6 +11,7 @@ import { getDb } from "../../src/db/client";
 import { onCallShifts } from "../../src/db/schema";
 import { Config } from "../../src/config";
 import type { Role } from "../../src/constants";
+import { utcYmd } from "../test-utils/dates";
 
 /**
  * Tests for `PUT /api/v1/on-call/:weekStart` (§21 #3).
@@ -31,7 +32,7 @@ const signAccess = (
     jwt.sign(
         { sub: user.id, role: user.role, workspaceId: user.workspaceId },
         secret,
-        { algorithm: "HS256", ...opts },
+        { algorithm: "HS256", expiresIn: "15m", ...opts },
     );
 
 const shiftRows = async (workspaceId: string) =>
@@ -291,7 +292,7 @@ describe("PUT /api/v1/on-call/:weekStart", () => {
             const wsB = await makeWorkspace();
             await makeOnCallShift({
                 workspaceId: wsB.id,
-                weekStart: new Date(2026, 5, 1), // same Monday, other workspace
+                weekStart: utcYmd(2026, 6, 1), // same Monday, other workspace
             });
 
             const res = await client.put(url(MON)).send({ engineer_id: eng.id });

@@ -6,12 +6,29 @@ import { useAuthStore } from "../../stores/auth";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { tokens } from "../../theme";
 
-const formatTime = (iso: string) =>
-    new Date(iso).toLocaleTimeString("en-US", {
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-    });
+/**
+ * F24 (ISS-056): this card used to render `formatTime(due_date)`.
+ *
+ * `due_date` is a DATE column and reaches the client as "2026-07-30".
+ * `new Date("2026-07-30")` parses as UTC midnight, so the "time" was really
+ * the VIEWER'S OFFSET from midnight UTC — every row read "6:00 AM" in Dhaka,
+ * "12:00 AM" in UTC, and "8:00 PM the previous day" in New York. The sort by
+ * that value was a no-op for the same reason: every row carried the same
+ * instant. `tasks` has no time-of-day column anywhere, so there is no time to
+ * show; the column now carries the task's PRIORITY, which is real, and the
+ * list sorts by it (urgent first) — a sort that actually orders the day.
+ */
+const PRIORITY_LABEL: Record<number, string> = {
+    0: "—",
+    1: "Urgent",
+    2: "High",
+    3: "Normal",
+    4: "Low",
+};
+
+/** Urgent (1) first, then High, Normal, Low; "None" (0) last. */
+const priorityRank = (p: number | null | undefined): number =>
+    p === null || p === undefined || p === 0 ? 99 : p;
 
 export const AgendaCard = () => {
     const user = useAuthStore((s) => s.user);
@@ -24,17 +41,21 @@ export const AgendaCard = () => {
     const todayTasks = myWork?.today ?? [];
 
     const items: Array<{
-        time: string;
+        priority: number;
         title: string;
         id: string;
     }> = todayTasks
         .filter((t) => t.dueDate)
         .map((t) => ({
-            time: t.dueDate!,
+            priority: t.priority ?? 0,
             title: t.name,
             id: t.id,
         }))
-        .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+        .sort(
+            (a, b) =>
+                priorityRank(a.priority) - priorityRank(b.priority) ||
+                a.title.localeCompare(b.title),
+        );
 
     const loading = loadingWork;
 
@@ -138,7 +159,7 @@ export const AgendaCard = () => {
                                         paddingTop: 2,
                                     }}
                                 >
-                                    {formatTime(item.time)}
+                                    {PRIORITY_LABEL[item.priority] ?? "—"}
                                 </div>
                                 <div
                                     style={{

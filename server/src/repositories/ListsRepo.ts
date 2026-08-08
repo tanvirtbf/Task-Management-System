@@ -288,6 +288,26 @@ export class ListsRepo {
      * shape). Pass `exec` to run inside the update tx. Caller guarantees `patch`
      * is non-empty.
      */
+    /**
+     * One list by NAME within a space — the pre-check for F27's
+     * `uq_lists_space_name`. Matching is whatever the column's collation says,
+     * and `lists.name` is `utf8mb4_unicode_ci`, so "Bugs" finds "bugs" for free.
+     * Archived lists are included on purpose: the index covers them too, so an
+     * archived list still owns its name.
+     */
+    async findByNameInSpace(
+        spaceId: string,
+        name: string,
+        exec: DbExecutor = this.db,
+    ): Promise<{ id: string } | null> {
+        const rows = await exec
+            .select({ id: lists.id })
+            .from(lists)
+            .where(and(eq(lists.spaceId, spaceId), eq(lists.name, name)))
+            .limit(1);
+        return rows[0] ?? null;
+    }
+
     async update(
         listId: string,
         patch: {
@@ -296,6 +316,8 @@ export class ListsRepo {
             icon?: string;
             color?: string;
             defaultTaskTypeId?: string | null;
+            /** F28 (ISS-036, D12.7) — move the list to another space. */
+            spaceId?: string;
         },
         exec: DbExecutor = this.db,
     ): Promise<void> {
@@ -307,6 +329,7 @@ export class ListsRepo {
         if (patch.color !== undefined) setValues.color = patch.color;
         if (patch.defaultTaskTypeId !== undefined)
             setValues.defaultTaskTypeId = patch.defaultTaskTypeId;
+        if (patch.spaceId !== undefined) setValues.spaceId = patch.spaceId;
 
         await exec.update(lists).set(setValues).where(eq(lists.id, listId));
     }
@@ -419,6 +442,32 @@ export class ListsRepo {
             .update(lists)
             .set({ archivedAt: asOf })
             .where(and(eq(lists.spaceId, spaceId), isNull(lists.archivedAt)));
+    }
+
+    /**
+     * F16 (ISS-041): restore exactly the lists the matching space-archive took
+     * down — the ones whose `archived_at` equals the space's own `archived_at`
+     * instant. The cascade above stamps every list with the SAME `asOf` the
+     * space gets, and it skips lists that were already archived, so those keep
+     * their earlier timestamp and this equality can never resurrect a list a
+     * user archived independently. That was the stated reason unarchive did not
+     * cascade at all — and the result was a space that came back EMPTY: P8
+     * archived Marketing for two seconds and its three boards were invisible
+     * for ninety minutes until someone noticed. Returns the restored count for
+     * the activity row.
+     */
+    async unarchiveBySpaceArchivedAt(
+        spaceId: string,
+        asOf: Date,
+        exec: DbExecutor = this.db,
+    ): Promise<number> {
+        const [result] = await exec
+            .update(lists)
+            .set({ archivedAt: null })
+            .where(
+                and(eq(lists.spaceId, spaceId), eq(lists.archivedAt, asOf)),
+            );
+        return result.affectedRows;
     }
 
     /**

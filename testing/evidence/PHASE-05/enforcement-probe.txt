@@ -1,0 +1,74 @@
+probe user: u-6RTERl8LfnqZpZHN7F52-g
+probe role: rol-FgSfJmt1K-Qumdlq4IXfOw 201 
+assignment: 201 
+user_roles rows: [{"role_id":"rol-FgSfJmt1K-Qumdlq4IXfOw","scope_type":"workspace"}]
+
+================================================================================================
+PASS: MINIMAL role (only space.view + task.view)   (/me/permissions reports 2 keys, role=member)
+
+================================================================================================
+PASS: FULL role (all 56 permissions)   (/me/permissions reports 56 keys, role=member)
+
+========================================================================================================
+PERMISSION                no-grant              with-grant            VERDICT
+========================================================================================================
+workspace.settings        403 auth.forbidden    200                   ENFORCED
+member.view               200                   200                   *** NOT ENFORCED ***
+member.invite             403 auth.forbidden    201                   ENFORCED
+member.role_change        403 auth.forbidden    403 user.cannot_chang INCONCLUSIVE (403 both)
+member.deactivate         403 auth.forbidden    403 user.cannot_self_ INCONCLUSIVE (403 both)
+member.reset_password     403 auth.forbidden    202                   ENFORCED
+member.edit_profile       200                   200                   *** NOT ENFORCED ***
+space.view                200                   200                   *** NOT ENFORCED ***
+space.create              403 auth.forbidden    201                   ENFORCED
+space.edit                403 auth.forbidden    200                   ENFORCED
+space.archive             403 auth.forbidden    204                   ENFORCED
+space.delete              403 auth.forbidden    409 space.not_empty   ENFORCED
+space.head_assign         403 auth.forbidden    200                   ENFORCED
+space.members_manage      403 auth.forbidden    200                   ENFORCED
+list.create               403 auth.forbidden    409 space.archived    ENFORCED
+list.edit                 403 auth.forbidden    409 list.archived     ENFORCED
+list.archive              403 auth.forbidden    204                   ENFORCED
+list.delete               403 auth.forbidden    409 list.not_empty    ENFORCED
+status.manage             403 auth.forbidden    422 validation.failed ENFORCED
+task.view                 200                   200                   *** NOT ENFORCED ***
+task.create               201                   409 list.archived     *** NOT ENFORCED ***
+task.edit                 200                   200                   *** NOT ENFORCED ***
+task.assign               204                   204                   *** NOT ENFORCED ***
+task.archive              204                   204                   *** NOT ENFORCED ***
+task.delete               204                   204                   *** NOT ENFORCED ***
+task.delete_hard          403 auth.forbidden    403 auth.forbidden    INCONCLUSIVE (403 both)
+task.sla_override         403 auth.forbidden    200                   ENFORCED
+comment.create            201                   201                   *** NOT ENFORCED ***
+comment.delete_any        403 comment.forbidden 403 comment.forbidden INCONCLUSIVE (403 both)
+checklist.manage          422 validation.failed 422 validation.failed INCONCLUSIVE (422/422)
+attachment.upload         422 validation.failed 422 validation.failed INCONCLUSIVE (422/422)
+attachment.delete_any     404 attachment.not_fo 404 attachment.not_fo INCONCLUSIVE (404/404)
+dependency.manage         201                   201                   *** NOT ENFORCED ***
+customfield.set_value     404 custom_field.not_ 404 custom_field.not_ INCONCLUSIVE (404/404)
+catalog.task_types        403 auth.forbidden    201                   ENFORCED
+catalog.tags              403 auth.forbidden    201                   ENFORCED
+catalog.custom_fields     403 auth.forbidden    422 validation.failed ENFORCED
+catalog.templates         403 auth.forbidden    422 validation.failed ENFORCED
+template.apply            404 template.not_foun 404 template.not_foun INCONCLUSIVE (404/404)
+form.manage               403 auth.forbidden    422 validation.failed ENFORCED
+form.view_submissions     404 form.not_found    404 form.not_found    INCONCLUSIVE (404/404)
+sprint.manage             403 auth.forbidden    201                   ENFORCED
+sprint.assign_tasks       204                   204                   *** NOT ENFORCED ***
+oncall.manage             403 auth.forbidden    200                   ENFORCED
+bug.report                422 validation.failed 422 validation.failed INCONCLUSIVE (422/422)
+postmortem.manage         409 incident.not_inci 409 incident.not_inci INCONCLUSIVE (409/409)
+review.perform            422 validation.failed 422 validation.failed INCONCLUSIVE (422/422)
+review.read               403 review.forbidden  200                   ENFORCED
+report.view               200                   200                   *** NOT ENFORCED ***
+report.generate           403 report.forbidden  409 space.archived    ENFORCED
+report.note               403 report.forbidden  403 report.forbidden  INCONCLUSIVE (403 both)
+report.ack                403 auth.forbidden    200                   ENFORCED
+activity.view             200                   200                   *** NOT ENFORCED ***
+assistant.use             403 auth.forbidden    200                   ENFORCED
+role.manage               403 auth.forbidden    200                   ENFORCED
+role.assign               403 auth.forbidden    200                   ENFORCED
+========================================================================================================
+ENFORCED      : 28
+NOT ENFORCED  : 14   -> member.view, member.edit_profile, space.view, task.view, task.create, task.edit, task.assign, task.archive, task.delete, comment.create, dependency.manage, sprint.assign_tasks, report.view, activity.view
+INCONCLUSIVE  : 14   -> member.role_change, member.deactivate, task.delete_hard, comment.delete_any, checklist.manage, attachment.upload, attachment.delete_any, customfield.set_value, template.apply, form.view_submissions, bug.report, postmortem.manage, review.perform, report.note

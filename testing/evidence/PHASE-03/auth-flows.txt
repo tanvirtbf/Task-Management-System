@@ -1,0 +1,24 @@
+=== 12. SESSIONS TABLE GROWTH: does refresh INSERT or UPDATE? ===
+  rows before 5 refreshes: 259 -> after: 264   delta 5
+  => each refresh INSERTs a new row and revokes the old one
+  projection: 100 users x 32 refreshes/8h-day = 3200 rows/day
+              session-cleanup only deletes rows expired >30d, and expires_at is +30d,
+              so a row lives ~60 days -> steady state ~192k rows
+
+=== 13. INVITATION FLOW (end to end, with a throwaway user) ===
+  POST /users/invite -> 201 {"id":"u-XHgxQAdTQ7q0S_6UdtCzug","first_name":"P3","last_name":"Tester","email":"p3.testuser@beautybooth.com.bd","role":
+node:internal/process/promises:394
+    triggerUncaughtException(err, true /* fromPromise */);
+    ^
+
+Error: Unknown column 'token' in 'field list'
+    at C:\Users\Tanvir\AppData\Local\Temp\claude\E--Task-Management-System\0c5a6be8-84af-4c0b-91a3-1cb6f5c4eb9d\scratchpad\p3_flows.cjs:43:31
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5) {
+  code: 'ER_BAD_FIELD_ERROR',
+  errno: 1054,
+  sqlState: '42S22',
+  sqlMessage: "Unknown column 'token' in 'field list'",
+  sql: "SELECT id, token, CAST(expires_at AS CHAR) e, accepted_at FROM invitations WHERE email='p3.testuser@beautybooth.com.bd' ORDER BY created_at DESC LIMIT 1"
+}
+
+Node.js v22.21.1

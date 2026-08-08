@@ -1,0 +1,29 @@
+=== 4. IDOR SWEEP — marketing.only@ against ids from OTHER spaces ===
+  foreign spaces with tasks: Customer Service, Engineering, Politics, Orders & Fulfillment, Product & Inventory, Social Media & Content
+  84 cross-space reads across 6 foreign spaces -> 0 leak(s) CLEAN
+
+  writes into a foreign space:
+    create task in foreign list    -> 404 list.not_found
+    edit a foreign task            -> 404 task.not_found
+    comment on a foreign task      -> 404 task.not_found
+    archive a foreign task         -> 404 task.not_found
+
+=== 5. IS REVOCATION INSTANT? (same token, no re-login) ===
+  before: keys 8 version 35 | has comment.create: true
+  after revoke (SAME token): keys 7 version 36 | has comment.create: false gone -> INSTANT ✓
+  restored: keys 8 version 37
+
+=== 6. is_private is decorative? ===
+  lists.is_private column exists, sample value: 0
+  private lists in the DB: 0 | enforcement referenced anywhere in src: 9 file(s)
+
+=== CLEANUP ===
+  role_permissions WHERE role_id IN (SEL -> 56
+  user_roles WHERE role_id IN (SELECT id -> 1
+  roles WHERE name LIKE 'TEST-p5%' OR na -> 2
+  user_roles WHERE user_id IN (SELECT id -> 1
+  sessions WHERE user_id IN (SELECT id F -> 6
+  workspace_activity WHERE actor_id IN ( -> 16
+  invitations WHERE email LIKE 'p5.%' -> 2
+  skip Cannot delete or update a parent row: a foreign key constrai
+  FINAL: users 18 (16) | roles 5 (5) | TEST tasks 0

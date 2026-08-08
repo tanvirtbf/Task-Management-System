@@ -1,0 +1,57 @@
+=== 1. ADD ASSIGNEES ===
+  {"user_ids":["u-O_2loELtxZKyecnzH7KnGw"]   (single)                               -> 204                         assignees=[1] watchers(db)=1 tags=[0]
+  {"user_ids":["u-PxZszjqr74zig4tLupl-aw",   (two more at once)                     -> 204                         assignees=[3] watchers(db)=3 tags=[0]
+  {"user_ids":["u-O_2loELtxZKyecnzH7KnGw"]   (already assigned (idempotent?))       -> 204                         assignees=[3] watchers(db)=3 tags=[0]
+  {"user_ids":["u-O_2loELtxZKyecnzH7KnGw",   (duplicate in one payload)             -> 204                         assignees=[3] watchers(db)=3 tags=[0]
+  {"user_ids":["u-nope"]}                    (unknown user)                         -> 422 task.invalid_assignee   assignees=[3] watchers(db)=3 tags=[0]
+  {"user_ids":["u-z6JkltIQ9k18-a0nnP6MHA"]   (an INVITED (not active) user)         -> 422 task.invalid_assignee   assignees=[3] watchers(db)=3 tags=[0]
+  {"user_ids":[]}                            (empty array)                          -> 422 validation.failed       assignees=[3] watchers(db)=3 tags=[0]
+  {}                                         (no user_ids)                          -> 422 validation.failed       assignees=[3] watchers(db)=3 tags=[0]
+  {"user_ids":["u-O_2loELtxZKyecnzH7KnGw",   (300 ids)                              -> 422 validation.failed       assignees=[3] watchers(db)=3 tags=[0]
+
+=== 2. REMOVE ASSIGNEE + watcher persistence ===
+  before: assignees=[3] watchers(db)=3 tags=[0]
+  remove an assigned user   -> 204 assignees=[2] watchers(db)=3 tags=[0]
+  remove them AGAIN         -> 204 assignees=[2] watchers(db)=3 tags=[0]
+  remove an unknown user    -> 204
+  the un-assigned user is still a WATCHER: yes (documented)
+
+=== 3. WATCHERS/self ===
+  POST watchers/self        -> 204 assignees=[0] watchers(db)=1 tags=[0]
+  POST again (idempotent?)  -> 204 assignees=[0] watchers(db)=1 tags=[0]
+  DELETE watchers/self      -> 204 assignees=[0] watchers(db)=0 tags=[0]
+  DELETE again              -> 204 assignees=[0] watchers(db)=0 tags=[0]
+  watchers on the wire? []
+
+=== 4. TAGS ===
+  {"tag_ids":["tag-abas9DoMdlMIQa-gxISmHg"   (single)                               -> 204                         assignees=[0] watchers(db)=0 tags=[1]
+  {"tag_ids":["tag-aZxVUKTmlN6UAsrmz0d7QA"   (two more)                             -> 204                         assignees=[0] watchers(db)=0 tags=[3]
+  {"tag_ids":["tag-abas9DoMdlMIQa-gxISmHg"   (already attached)                     -> 204                         assignees=[0] watchers(db)=0 tags=[3]
+  {"tag_ids":["tag-nope"]}                   (unknown tag)                          -> 422 task.invalid_tag        assignees=[0] watchers(db)=0 tags=[3]
+  {"tag_ids":[]}                             (empty)                                -> 422 validation.failed       assignees=[0] watchers(db)=0 tags=[3]
+  {"tagIds":["tag-abas9DoMdlMIQa-gxISmHg"]   (camelCase key (what the client sends))-> 422 validation.failed       assignees=[0] watchers(db)=0 tags=[3]
+  remove a tag          -> 204 assignees=[0] watchers(db)=0 tags=[2]
+  remove it AGAIN       -> 204
+  remove an unknown tag -> 204
+
+=== 5. NOTIFICATIONS on assign ===
+  notifications for the ASSIGNEE (arif): 1
+  notifications for the ACTOR (owner, who assigned themselves): 0  ✓ never self-notified
+  rows: [{"type":"assigned","e":null}]
+  email_sent_at populated? no — confirms SCAN-M2 (no notification email)
+
+=== 6. updated_at / ETag freshness ===
+  create      : 2026-07-30T14:01:57.000Z
+  +assignee   : 2026-07-30T08:01:58.000Z bumped ✓
+  +tag        : 2026-07-30T08:02:00.000Z bumped ✓
+  +watcher    : 2026-07-30T08:02:00.000Z not bumped (watchers are personal — arguably fine)
+
+=== 7. CONCURRENCY — two simultaneous assigns of the same user ===
+  204 / 204 -> assignee rows for that user: 1 no duplicate ✓
+
+=== 8. ACTIVITY rows for membership changes ===
+   [{"action":"tag_added","n":3},{"action":"task_created","n":3},{"action":"tag_removed","n":1},{"action":"assignee_added","n":5},{"action":"assignee_removed","n":1}]
+
+=== CLEANUP ===
+  delete list: 204
+  orphan statuses 0 | tasks 51 (51) | lists 14 (14) | tags 8 (8)

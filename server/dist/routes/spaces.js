@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
+const allowQuery_1 = require("../middlewares/allowQuery");
 const SpacesController_1 = require("../controllers/SpacesController");
 const SpacesService_1 = require("../services/SpacesService");
 const SpacesRepo_1 = require("../repositories/SpacesRepo");
@@ -45,7 +46,9 @@ const reviewsController = new ReviewsController_1.ReviewsController(reviewsServi
 // Authenticated — any role may list the workspace's spaces (only create /
 // archive are owner/admin per Appendix B). Workspace scoping comes from
 // `req.auth.workspaceId`, never from client input.
-router.get("/", authenticate_1.default, spaces_1.listSpacesValidator, validate_1.validate, (req, res, next) => spacesController.list(req, res, next));
+router.get("/", authenticate_1.default, 
+// F23 (ISS-014): a mistyped filter is a 422, not the full set.
+(0, allowQuery_1.allowQuery)(["include_archived", "limit", "cursor"]), spaces_1.listSpacesValidator, validate_1.validate, (req, res, next) => spacesController.list(req, res, next));
 // ─── POST /api/v1/spaces ─────────────────────────────────────────────────────
 // 👑 admin/owner only. Chain order encodes the spec's status precedence:
 // `authenticate` (401) → `requirePermission` (403) → validation (422). Workspace scope

@@ -333,3 +333,41 @@ describe("§15 Checklists", () => {
         });
     });
 });
+
+// ─── F29 (ISS-068): the bulk cap ─────────────────────────────────────────────
+describe("POST /checklists/:id/items/bulk — the 200-item cap (F29)", () => {
+    /**
+     * `texts` was `isArray({min: 1})` with NO max — 5,000 items landed in one
+     * transaction, and since `GET /tasks/:id/checklists` embeds items
+     * unpaginated, every later read of that task paid for it forever. The cap
+     * copies `bulkTasksValidator`'s 200, the only other bulk write in the API.
+     */
+    it("accepts exactly 200 items — the cap itself", async () => {
+        const { client, task } = await seed();
+        const cl = await makeChecklist(client, task.id);
+
+        const res = await client.post(bulkPath(cl.id)).send({
+            texts: Array.from({ length: 200 }, (_, i) => `Step ${i + 1}`),
+        });
+
+        expect(res.status).toBe(201);
+        expect(res.body).toHaveLength(200);
+    });
+
+    it("REFUSES 201 items (422) and writes NOTHING", async () => {
+        const { client, task } = await seed();
+        const cl = await makeChecklist(client, task.id);
+
+        const res = await client.post(bulkPath(cl.id)).send({
+            texts: Array.from({ length: 201 }, (_, i) => `Step ${i + 1}`),
+        });
+
+        expect(res.status).toBe(422);
+        expect(res.body.error.code).toBe("validation.failed");
+        const rows = await db()
+            .select()
+            .from(checklistItems)
+            .where(eq(checklistItems.checklistId, cl.id));
+        expect(rows).toHaveLength(0);
+    });
+});

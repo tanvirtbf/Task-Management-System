@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.WorkspaceActivityRepo = void 0;
 const drizzle_orm_1 = require("drizzle-orm");
 const schema_1 = require("../db/schema");
+const context_1 = require("../rbac/context");
 const utils_1 = require("../utils");
 const READ_COLUMNS = {
     id: schema_1.workspaceActivity.id,
@@ -35,11 +36,69 @@ class WorkspaceActivityRepo {
      * The most recent `limit` events for a workspace (newest-first), for the
      * §26 #1 home activity card. No filters, no cursor — a small fixed slice.
      */
+    /**
+     * F9 (ISS-060): what an audit row is ABOUT decides who may read it.
+     *
+     *   - `space` / `list` rows follow the caller's space visibility — the
+     *     same rule every other read path applies.
+     *   - everything else (`user`, `role`, `workspace`, and the workspace-wide
+     *     catalogs: `task_type`, `tag`, `custom_field`, `sprint`) is
+     *     people-management and configuration history — owner/admin material.
+     *     Before this, a guest could reconstruct who was promoted, deactivated
+     *     or invited, actor emails included.
+     *
+     * `undefined` = unrestricted: an owner/admin with full sight (today's
+     * admins), and non-request contexts (jobs, direct-repo unit tests) where
+     * there is no user to narrow — matching `visibilityScope`'s own defaults.
+     */
+    async auditVisibility() {
+        const [scope, actor] = await Promise.all([
+            (0, context_1.visibilityScope)(),
+            (0, context_1.currentActor)(),
+        ]);
+        const legacyAdmin = !actor ||
+            actor.kind !== "user" ||
+            actor.legacyRole === "owner" ||
+            actor.legacyRole === "admin";
+        if (legacyAdmin && scope.kind === "all")
+            return undefined;
+        const SPACE_KINDS = ["space", "list"];
+        const parts = [];
+        // The space-context rows the caller may see.
+        if (scope.kind === "all") {
+            parts.push((0, drizzle_orm_1.inArray)(schema_1.workspaceActivity.entityType, [...SPACE_KINDS]));
+        }
+        else {
+            const noRow = (0, drizzle_orm_1.sql) `1 = 0`;
+            parts.push((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.workspaceActivity.entityType, "space"), scope.spaceIds.length > 0
+                ? (0, drizzle_orm_1.inArray)(schema_1.workspaceActivity.entityId, [
+                    ...scope.spaceIds,
+                ])
+                : noRow));
+            parts.push((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.workspaceActivity.entityType, "list"), (0, drizzle_orm_1.or)(scope.listIds.length > 0
+                ? (0, drizzle_orm_1.inArray)(schema_1.workspaceActivity.entityId, [
+                    ...scope.listIds,
+                ])
+                : noRow, scope.spaceIds.length > 0
+                ? (0, drizzle_orm_1.inArray)(schema_1.workspaceActivity.entityId, this.db
+                    .select({ id: schema_1.lists.id })
+                    .from(schema_1.lists)
+                    .where((0, drizzle_orm_1.inArray)(schema_1.lists.spaceId, [
+                    ...scope.spaceIds,
+                ])))
+                : noRow)));
+        }
+        // A space-narrowed ADMIN keeps the admin-material rows.
+        if (legacyAdmin) {
+            parts.push((0, drizzle_orm_1.notInArray)(schema_1.workspaceActivity.entityType, [...SPACE_KINDS]));
+        }
+        return (0, drizzle_orm_1.or)(...parts.filter((p) => p !== undefined));
+    }
     async listRecent(workspaceId, limit) {
         return this.db
             .select(READ_COLUMNS)
             .from(schema_1.workspaceActivity)
-            .where((0, drizzle_orm_1.eq)(schema_1.workspaceActivity.workspaceId, workspaceId))
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.workspaceActivity.workspaceId, workspaceId), await this.auditVisibility()))
             .orderBy((0, drizzle_orm_1.desc)(schema_1.workspaceActivity.internalId))
             .limit(limit);
     }
@@ -52,7 +111,7 @@ class WorkspaceActivityRepo {
         return this.db
             .select(READ_COLUMNS)
             .from(schema_1.workspaceActivity)
-            .where(this.feedWhere(params))
+            .where((0, drizzle_orm_1.and)(this.feedWhere(params), await this.auditVisibility()))
             .orderBy((0, drizzle_orm_1.desc)(schema_1.workspaceActivity.internalId))
             .limit(params.limit);
     }
@@ -61,7 +120,7 @@ class WorkspaceActivityRepo {
         const [row] = await this.db
             .select({ value: (0, drizzle_orm_1.count)() })
             .from(schema_1.workspaceActivity)
-            .where(this.feedWhere(params));
+            .where((0, drizzle_orm_1.and)(this.feedWhere(params), await this.auditVisibility()));
         return row?.value ?? 0;
     }
     /**

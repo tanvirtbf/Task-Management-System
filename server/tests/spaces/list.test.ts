@@ -806,7 +806,7 @@ describe("GET /api/v1/spaces", () => {
 
     // ─── j. Pagination (bounded single page) ──────────────────────────────────
     describe("Pagination", () => {
-        it("returns a large set in a single page with has_more=false", async () => {
+        it("pages a large set at the §1 default limit (F23/ISS-007)", async () => {
             const u = await makeUser();
             // Reuse one creator to avoid 150 bcrypt-bearing user inserts.
             for (let i = 0; i < 150; i++) {
@@ -820,13 +820,22 @@ describe("GET /api/v1/spaces", () => {
 
             const res = await client.get(LIST_SPACES);
 
-            expect(res.body.data).toHaveLength(150);
-            expect(res.body.pagination.has_more).toBe(false);
-            expect(res.body.pagination.next_cursor).toBeNull();
+            // Pre-F23 this asserted all 150 rows in one page with
+            // has_more:false — the very lie ISS-007 records. The §1 default
+            // limit is 100, the envelope is truthful, and the cursor works.
+            expect(res.body.data).toHaveLength(100);
+            expect(res.body.pagination.has_more).toBe(true);
+            const page2 = await client
+                .get(LIST_SPACES)
+                .query({ cursor: res.body.pagination.next_cursor });
+            expect(page2.status).toBe(200);
+            expect(page2.body.data).toHaveLength(50);
+            expect(page2.body.pagination.has_more).toBe(false);
+            expect(page2.body.pagination.next_cursor).toBeNull();
             expect(res.body.pagination.total_estimate).toBe(150);
         });
 
-        it("ignores an unknown ?cursor query param", async () => {
+        it("refuses a cursor the server did not issue (F23/ISS-008)", async () => {
             const u = await makeUser();
             await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id });
             const client = await makeLoggedInClient(u);
@@ -835,8 +844,8 @@ describe("GET /api/v1/spaces", () => {
                 .get(LIST_SPACES)
                 .query({ cursor: "eyJpZCI6OTk5fQ" });
 
-            expect(res.status).toBe(200);
-            expect(res.body.data).toHaveLength(1);
+            expect(res.status).toBe(400);
+            expect(res.body.error.code).toBe("pagination.invalid_cursor");
         });
     });
 
@@ -1046,15 +1055,17 @@ describe("GET /api/v1/spaces", () => {
             expect(res.body.data).toHaveLength(1);
         });
 
-        it("ignores unknown query params", async () => {
+        it("refuses unknown query params, naming them (F23/ISS-014)", async () => {
             const u = await makeUser();
             await makeSpace({ workspaceId: u.workspaceId, createdBy: u.id });
             const client = await makeLoggedInClient(u);
             const res = await client
                 .get(LIST_SPACES)
                 .query({ foo: "bar", limit: "5", page: "9" });
-            expect(res.status).toBe(200);
-            expect(res.body.data).toHaveLength(1);
+            // A mistyped filter used to silently return the full set.
+            expect(res.status).toBe(422);
+            expect(JSON.stringify(res.body)).toContain("foo");
+            expect(JSON.stringify(res.body)).toContain("page");
         });
 
         it("ignores a JSON body on the GET", async () => {

@@ -3,6 +3,7 @@ import { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../db/schema";
 import { onCallShifts, users } from "../db/schema";
 import { fakeId } from "../utils";
+import { dhakaToday } from "../utils/dhakaTime";
 import type { DbExecutor } from "./types";
 import type { WireUserSource } from "../serializers/userSerializer";
 
@@ -53,8 +54,15 @@ export class OnCallRepo {
      * week), the one with the most recent `week_start` wins (spec §21 note).
      * Workspace-scoped: `v_current_on_call` does NOT filter by workspace, so the
      * scoping is done here, against the base table, which also gives us the
-     * engineer join in one round-trip. `CURDATE()` is compared via raw `sql` so
-     * MySQL casts the DATE columns directly (no JS/UTC date math involved).
+     * engineer join in one round-trip.
+     *
+     * "Today" is `dhakaToday()`, bound as a parameter — NOT SQL `CURDATE()`.
+     * `CURDATE()` renders in the MySQL *session* zone, which F3 pinned to UTC so
+     * that TIMESTAMP columns round-trip. But `week_start`/`week_end` are DATE
+     * columns holding Dhaka business days, so a UTC `CURDATE()` would roll the
+     * roster over 6h late — every Monday 00:00–06:00 Dhaka would still report
+     * last week's engineer. Deriving the day app-side keeps the rollover at
+     * Dhaka midnight regardless of the session zone or the box's TZ.
      */
     async findCurrent(workspaceId: string): Promise<OnCallShiftRecord | null> {
         const [row] = await this.db
@@ -69,8 +77,8 @@ export class OnCallRepo {
             .where(
                 and(
                     eq(onCallShifts.workspaceId, workspaceId),
-                    sql`${onCallShifts.weekStart} <= CURDATE()`,
-                    sql`${onCallShifts.weekEnd} >= CURDATE()`,
+                    sql`${onCallShifts.weekStart} <= ${dhakaToday()}`,
+                    sql`${onCallShifts.weekEnd} >= ${dhakaToday()}`,
                 ),
             )
             .orderBy(desc(onCallShifts.weekStart))

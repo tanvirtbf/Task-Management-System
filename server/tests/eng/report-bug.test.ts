@@ -25,7 +25,35 @@ const ENDPOINT = "/api/v1/eng/report-bug";
 
 const HOUR = 3600 * 1000;
 const DAY = 24 * HOUR;
-const SLA_TOLERANCE_MS = 5 * 60 * 1000;
+
+/**
+ * F28 (ISS-029, decision D12.2): SLA durations are counted on the BUSINESS
+ * clock now, so these specs assert the property the fix delivers — the deadline
+ * lands inside a working window, in the future, within a sane bound — instead
+ * of `now + offset`, whose truth depended on which day the suite ran. The
+ * workspace factory seeds the schema defaults: sun–thu, 09:00–18:00,
+ * Asia/Dhaka. Longer rationale: tests/tasks/create.test.ts.
+ */
+const expectBusinessDeadline = (iso: string | null, maxDaysAhead: number) => {
+    expect(iso).not.toBeNull();
+    const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Asia/Dhaka",
+        weekday: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+    }).formatToParts(new Date(iso as string));
+    const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+    const minutes = Number(get("hour")) * 60 + Number(get("minute"));
+    expect(["sun", "mon", "tue", "wed", "thu"]).toContain(
+        get("weekday").toLowerCase(),
+    );
+    expect(minutes).toBeGreaterThanOrEqual(9 * 60);
+    expect(minutes).toBeLessThanOrEqual(18 * 60);
+    const ahead = (new Date(iso as string).getTime() - Date.now()) / DAY;
+    expect(ahead).toBeGreaterThan(0);
+    expect(ahead).toBeLessThan(maxDaysAhead);
+};
 
 interface EngWorkspace {
     workspaceId: string;
@@ -93,17 +121,14 @@ describe("POST /api/v1/eng/report-bug", () => {
             expect(res.body.archived_at).toBeNull();
         });
 
-        it("defaults severity to S2 (≈7-day SLA) when omitted", async () => {
+        it("defaults severity to S2 (7-working-day SLA) when omitted", async () => {
             const eng = await makeEngWorkspace();
             const res = await eng.client.post(ENDPOINT).send(validBody());
 
             expect(res.status).toBe(201);
             expect(res.body.bug_severity).toBe("S2");
-            expect(res.body.sla_due_at).not.toBeNull();
-            const sla = new Date(res.body.sla_due_at).getTime();
-            expect(Math.abs(sla - (Date.now() + 7 * DAY))).toBeLessThan(
-                SLA_TOLERANCE_MS,
-            );
+            // 7 working days over a 5-day week is at most ~11 calendar days.
+            expectBusinessDeadline(res.body.sla_due_at, 12);
         });
 
         it("derives the task name from `happened` and folds the intake into the description", async () => {
@@ -148,44 +173,36 @@ describe("POST /api/v1/eng/report-bug", () => {
         });
     });
 
-    describe("Severity → SLA (§29)", () => {
-        it("S0 → sla_due_at ≈ now + 2h", async () => {
+    describe("Severity → SLA (§29, business clock since F28)", () => {
+        it("S0 → 2 working hours, inside the business window", async () => {
             const eng = await makeEngWorkspace();
             const res = await eng.client
                 .post(ENDPOINT)
                 .send(validBody({ severity: "S0" }));
 
             expect(res.body.bug_severity).toBe("S0");
-            const sla = new Date(res.body.sla_due_at).getTime();
-            expect(Math.abs(sla - (Date.now() + 2 * HOUR))).toBeLessThan(
-                SLA_TOLERANCE_MS,
-            );
+            // Worst case: filed Thursday at close → Sunday morning (~2.7 days).
+            expectBusinessDeadline(res.body.sla_due_at, 4);
         });
 
-        it("S1 → sla_due_at ≈ now + 24h", async () => {
+        it("S1 → 1 working day, inside the business window", async () => {
             const eng = await makeEngWorkspace();
             const res = await eng.client
                 .post(ENDPOINT)
                 .send(validBody({ severity: "S1" }));
 
             expect(res.body.bug_severity).toBe("S1");
-            const sla = new Date(res.body.sla_due_at).getTime();
-            expect(Math.abs(sla - (Date.now() + 24 * HOUR))).toBeLessThan(
-                SLA_TOLERANCE_MS,
-            );
+            expectBusinessDeadline(res.body.sla_due_at, 5);
         });
 
-        it("S2 → sla_due_at ≈ now + 7d", async () => {
+        it("S2 → 7 working days, inside the business window", async () => {
             const eng = await makeEngWorkspace();
             const res = await eng.client
                 .post(ENDPOINT)
                 .send(validBody({ severity: "S2" }));
 
             expect(res.body.bug_severity).toBe("S2");
-            const sla = new Date(res.body.sla_due_at).getTime();
-            expect(Math.abs(sla - (Date.now() + 7 * DAY))).toBeLessThan(
-                SLA_TOLERANCE_MS,
-            );
+            expectBusinessDeadline(res.body.sla_due_at, 12);
         });
 
         it("S3 → sla_due_at is null", async () => {
@@ -496,10 +513,27 @@ describe("POST /api/v1/eng/report-bug", () => {
     });
 
     describe("Authorization", () => {
-        it("allows any authenticated member (incl. guest) to report — no role gate", async () => {
+        /**
+         * F28 (ISS-094, D12.1): this spec is now the regression guard for the
+         * bug-intake principal. D12.1 revoked `task.create` from the seeded
+         * Guest role, and since the mechanism behind this endpoint is a task
+         * insert, a guest's `bug.report` grant briefly opened no door — the
+         * route admitted the request and `TaskWriteService.create` 403'd it.
+         * `reportBug` now runs its insert under the named intake principal
+         * (rbac/principals.ts §2b), so a guest CAN still do the one write the
+         * role description promises: report a bug.
+         */
+        it("allows any authenticated member (incl. guest) to report — bug.report is the gate", async () => {
             const eng = await makeEngWorkspace({ role: "guest" });
             const res = await eng.client.post(ENDPOINT).send(validBody());
             expect(res.status).toBe(201);
+        });
+
+        it("attributes a guest's bug to the GUEST, not the intake principal", async () => {
+            const eng = await makeEngWorkspace({ role: "guest" });
+            const res = await eng.client.post(ENDPOINT).send(validBody());
+            expect(res.status).toBe(201);
+            expect(res.body.created_by).toBe(eng.ownerId);
         });
     });
 });

@@ -1,0 +1,5 @@
+F14 gate — jobs + auth + forms, serial — 2026-08-05T23:10:18+06:00
+jobs     Test Suites: 5 passed, 5 total|Tests:       32 passed, 32 total|
+auth     Test Suites: 9 passed, 9 total|Tests:       339 passed, 339 total|
+forms    Test Suites: 8 passed, 8 total|Tests:       85 passed, 85 total|
+gate finished 2026-08-05T23:18:38+06:00

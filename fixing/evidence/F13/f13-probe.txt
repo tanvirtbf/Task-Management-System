@@ -1,0 +1,30 @@
+
+  === F13 — network posture ===
+
+  --- ISS-085 / ISS-009: a disallowed Origin ---
+  origin                            status  ACAO header
+  https://evil.example.com          401     (absent — browser blocks the read)
+  null                              401     (absent — browser blocks the read)
+  http://localhost.evil.com         401     (absent — browser blocks the read)
+  http://127.0.0.1.evil.com         401     (absent — browser blocks the read)
+  (every one of these was a 500 + an `Unhandled error` log line before F13)
+  OK    an evil PREFLIGHT is not a 500 either                     got 200, ACAO absent
+
+  --- the allowed origins must STILL work ---
+  OK    allowed: http://localhost:5173   ACAO reflected           http://localhost:5173
+  OK    allowed: http://localhost:3000   ACAO reflected           http://localhost:3000
+  OK    a legitimate preflight still succeeds                     got 204
+
+  --- ISS-086: response headers ---
+  OK    x-powered-by is GONE (was `Express`)                      absent
+  OK    content-security-policy present (was absent)              default-src 'none'; frame-ancestors 'none'; base-uri
+  OK    frame-ancestors 'none' in the CSP                         
+  OK    cross-origin-opener-policy present                        same-origin
+  OK    x-dns-prefetch-control off                                off
+  OK    still there: x-content-type-options        nosniff        nosniff
+  OK    still there: x-frame-options               DENY           DENY
+  OK    still there: referrer-policy               no-referrer    no-referrer
+  OK    HSTS still absent in dev (would poison localhost)         absent
+
+  PASS — rejections are clean, headers are hardened, allowed origins unchanged.
+

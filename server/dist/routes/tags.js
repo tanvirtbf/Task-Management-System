@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
+const allowQuery_1 = require("../middlewares/allowQuery");
 const TagController_1 = require("../controllers/TagController");
 const TagService_1 = require("../services/TagService");
 const TagsRepo_1 = require("../repositories/TagsRepo");
@@ -27,7 +28,9 @@ const tagController = new TagController_1.TagController(tagService, logger_1.def
 // Authenticated — any role may list the workspace's tags (only create / update
 // / delete are owner/admin per §9). Workspace scoping comes from
 // `req.auth.workspaceId`, never from client input. Tags are workspace-wide.
-router.get("/", authenticate_1.default, (req, res, next) => tagController.list(req, res, next));
+router.get("/", authenticate_1.default, 
+// F23 (ISS-014): a mistyped filter is a 422, not the full set.
+(0, allowQuery_1.allowQuery)(["limit", "cursor"]), (req, res, next) => tagController.list(req, res, next));
 // ─── POST /api/v1/tags ─────────────────────────────────────────────────────
 // 👑 admin/owner only. Chain order encodes the spec's status precedence:
 // `authenticate` (401) → `requirePermission` (403) → validation (422). Workspace scope

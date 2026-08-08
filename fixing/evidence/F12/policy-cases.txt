@@ -1,0 +1,31 @@
+
+  === F12 password policy — decision table ===
+
+  candidate                       want     got      reason
+  "password"                      refuse   refuse   New password must not be a commonly-used password
+  "12345678"                      refuse   refuse   New password must not be a straight run of letters or digi
+  "PASSWORD"                      refuse   refuse   New password must not be a commonly-used password
+  "aaaaaaaa"                      refuse   refuse   New password must not be the same character repeated
+  "alllowercase"                  refuse   refuse   New password must combine at least three of: lowercase, up
+  "Password1!"                    refuse   refuse   New password must not be a commonly-used password
+  "password123"                   refuse   refuse   New password must not be a commonly-used password
+  "abcdefgh"                      refuse   refuse   New password must not be a straight run of letters or digi
+  "qwerty123"                     refuse   refuse   New password must not be a commonly-used password
+  "11111111"                      refuse   refuse   New password must not be the same character repeated
+  "short7!"                       refuse   refuse   New password must be between 8 and 200 characters
+  "beautybooth"                   refuse   refuse   New password must not be a commonly-used password
+  "Str0ng#Pass"                   accept   accept   4 classes, 11 chars
+  "correct horse battery staple"  accept   accept   passphrase — length exempts it
+  "পাসওয়ার্ড🔥1"                 accept   accept   Bangla + emoji — non-ASCII exempts it
+  "Ünïcödé-Pass"                  accept   accept   accented Latin — non-ASCII exempt
+  "OldPass#1"                     accept   accept   existing test fixture
+  "NewPass#2"                     accept   accept   existing test fixture
+  "SamePass#1"                    accept   accept   existing test fixture
+  "Another1!"                     accept   accept   existing test fixture
+  "An0ther#Pass"                  accept   accept   existing test fixture
+  "passwordA-distinct"            accept   accept   contains 'password' but is not it
+  "passwordB-distinct"            accept   accept   contains 'password' but is not it
+  "Owner@12345"                   accept   accept   the seeded demo credential
+
+  PASS — 24/24 decisions correct.
+

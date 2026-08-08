@@ -11,6 +11,7 @@ const toWireCustomField = (h) => {
         type: field.type,
         config: field.config ?? {},
         is_required: field.isRequired,
+        hidden_from_guests: field.hiddenFromGuests,
         default_value: field.defaultValue ?? null,
         position: field.position,
     };
@@ -81,6 +82,7 @@ class CustomFieldsController {
                 type: body.type,
                 config: body.config ?? {},
                 isRequired: body.is_required ?? false,
+                hiddenFromGuests: body.hidden_from_guests ?? false,
                 defaultValue: body.default_value ?? null,
                 position: body.position ?? 0,
                 options: body.options ?? [],
@@ -109,6 +111,8 @@ class CustomFieldsController {
                 fields.config = body.config;
             if (body.is_required !== undefined)
                 fields.isRequired = body.is_required;
+            if (body.hidden_from_guests !== undefined)
+                fields.hiddenFromGuests = body.hidden_from_guests;
             if (body.position !== undefined)
                 fields.position = body.position;
             const field = await this.service.update({

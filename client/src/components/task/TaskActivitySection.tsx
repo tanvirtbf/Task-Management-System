@@ -15,29 +15,67 @@ const timeAgo = (iso: string): string => {
     return `${Math.floor(h / 24)}d ago`;
 };
 
-const verb = (action: string): string => {
-    switch (action) {
-        case "created":
-            return "created this task";
-        case "status_changed":
-            return "moved status";
-        case "assigned":
-            return "assigned this task";
-        case "branch_created":
-            return "created branch";
-        case "pr_opened":
-            return "opened pull request";
-        case "pr_merged":
-            return "merged pull request";
-        case "comment_posted":
-            return "commented";
-        case "priority_changed":
-            return "changed priority";
-        case "completed":
-            return "marked done";
-        default:
-            return action.replace(/_/g, " ");
+// F21 (ISS-061): this switch was written against the MOCK API's vocabulary and
+// never updated when the real backend landed — 11 of 13 real action codes fell
+// through to raw snake_case, and 7 of its 9 cases were codes the server never
+// emits (`assigned`, `branch_created`, `pr_opened`…). This is now the REAL
+// vocabulary, verified against every `task_activity` writer in server/src.
+const VERBS: Record<string, string> = {
+    task_created: "created this task",
+    task_updated: "updated",
+    status_changed: "moved status",
+    assignee_added: "added an assignee",
+    assignee_removed: "removed an assignee",
+    tag_added: "added a tag",
+    tag_removed: "removed a tag",
+    comment_posted: "commented",
+    comment_referenced: "referenced this task in a comment",
+    checklist_created: "added a checklist",
+    checklist_deleted: "deleted a checklist",
+    checklist_item_added: "added a checklist item",
+    checklist_item_deleted: "deleted a checklist item",
+    checklist_item_toggled: "ticked a checklist item",
+    checklist_item_updated: "edited a checklist item",
+    dependency_added: "linked a dependency",
+    dependency_removed: "removed a dependency",
+    sprint_added: "added this task to a sprint",
+    sprint_removed: "removed this task from a sprint",
+    task_removed: "removed this task from a sprint",
+    sprint_rolled_over: "rolled this task into the next sprint",
+    task_archived: "archived this task",
+    task_unarchived: "restored this task",
+    task_reviewed: "reviewed this task",
+    sla_overridden: "overrode the SLA",
+    created_from_template: "created this task from a template",
+    custom_field_value_set: "set a custom field",
+    custom_field_value_cleared: "cleared a custom field",
+};
+
+const verb = (action: string): string =>
+    VERBS[action] ?? action.replace(/_/g, " ");
+
+/**
+ * The load-bearing bit of `context`, as a short suffix. The old component read
+ * only `context.taskName`, which task activity never contains — so the real
+ * context (which fields changed, which checklist, what text) was discarded.
+ */
+const contextDetail = (
+    action: string,
+    context: Record<string, unknown> | null | undefined,
+): string | null => {
+    if (!context) return null;
+    if (action === "task_updated" && Array.isArray(context.fields)) {
+        const names = (context.fields as string[]).map((f) =>
+            f.replace(/_/g, " "),
+        );
+        return names.length > 0 ? names.join(", ") : null;
     }
+    if (typeof context.name === "string") return `"${context.name}"`;
+    if (typeof context.text === "string") return `"${context.text}"`;
+    if (action === "task_reviewed" && typeof context.status === "string") {
+        return context.status;
+    }
+    return null;
 };
 
 export const TaskActivitySection = ({ taskId }: { taskId: string }) => {
@@ -135,7 +173,10 @@ export const TaskActivitySection = ({ taskId }: { taskId: string }) => {
                                     </span>{" "}
                                     {verb(entry.action)}
                                     {/* M12: `context` is nullable on the wire */}
-                                    {entry.context?.taskName && (
+                                    {contextDetail(
+                                        entry.action,
+                                        entry.context,
+                                    ) && (
                                         <>
                                             {" — "}
                                             <span
@@ -148,7 +189,10 @@ export const TaskActivitySection = ({ taskId }: { taskId: string }) => {
                                                         .textPrimary,
                                                 }}
                                             >
-                                                {entry.context?.taskName}
+                                                {contextDetail(
+                                                    entry.action,
+                                                    entry.context,
+                                                )}
                                             </span>
                                         </>
                                     )}

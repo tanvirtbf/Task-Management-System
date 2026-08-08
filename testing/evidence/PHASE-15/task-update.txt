@@ -1,0 +1,81 @@
+=== 1. FIELD-BY-FIELD PATCH ===
+  {"name":"TEST-p15-renamed"}                      (name)                                       -> 200
+  {"description":"updated"}                        (description)                                -> 200
+  {"description":null}                             (description -> null (clear))                -> 200
+  {"priority":4}                                   (priority)                                   -> 200
+  {"is_milestone":true}                            (is_milestone)                               -> 200
+  {"time_estimate_seconds":7200}                   (estimate)                                   -> 200
+  {"due_date":null}                                (clear due_date)                             -> 200
+  {"start_date":"2027-05-01","due_date":"2027-05   (both dates)                                 -> 200
+  {"task_type_id":"tt-pkGgglLMAeouAcD9mAm0bg"}     (change task type)                           -> 200
+  {"story_points":13}                              (story points)                               -> 200
+  {"bug_severity":"S0"}                            (bug severity)                               -> 200
+  {"bug_environment":"staging"}                    (bug environment)                            -> 200
+  {"bug_reproducibility":"sometimes"}              (reproducibility)                            -> 200
+  {"reviewer_id":"u-O_2loELtxZKyecnzH7KnGw"}       (reviewer)                                   -> 200
+  {"reviewer_id":"u-nope"}                         (UNKNOWN reviewer (create returns 500 — does update?))-> 422 task.invalid_reviewer [{"field":"reviewer_id","issue":"is not an active member of this workspace"}]
+  {"reviewer_id":null}                             (clear reviewer)                             -> 200
+  {"custom_id":"P15-XYZ"}                          (set custom_id)                              -> 200
+  {"pr_url":"https://github.com/a/b/pull/9","pr_   (PR fields)                                  -> 200
+  {"deployed_at":"2027-06-01T10:00:00.000Z"}       (deployed_at)                                -> 200
+  {"rollback_reason":"TEST"}                       (rollback_reason)                            -> 200
+
+=== 2. PATCH-REJECTED fields (patch.* error codes) ===
+  {"status_id":"st-Acls6cqybwDS4u04-z3slw"   (status_id via PATCH)                  -> 200
+  {"assignees":["u-O_2loELtxZKyecnzH7KnGw"   (assignees via PATCH)                  -> 422 validation.failed [{"issue":"Provide at least one field to update"}]
+  {"tags":["tag-x"]}                         (tags via PATCH)                       -> 422 validation.failed [{"issue":"Provide at least one field to update"}]
+  {"parent_task_id":"t-c5QvPATaAjPlwr-7HRC   (parent via PATCH)                     -> 422 validation.failed [{"issue":"Provide at least one field to update"}]
+  {"primary_list_id":"l-RhHwaIzrIqgCnCO_Fw   (move list via PATCH)                  -> 422 validation.failed [{"issue":"Provide at least one field to update"}]
+  {"id":"t-hacked"}                          (PK change)                            -> 422 validation.failed [{"issue":"Provide at least one field to update"}]
+  {"workspace_id":"ws-other"}                (tenant change)                        -> 422 validation.failed [{"issue":"Provide at least one field to update"}]
+  {"archived_at":null}                       (archived_at)                          -> 422 validation.failed [{"issue":"Provide at least one field to update"}]
+  {"subtasks_count":99}                      (counter injection)                    -> 422 validation.failed [{"issue":"Provide at least one field to update"}]
+  {"created_by":"u-O_2loELtxZKyecnzH7KnGw"   (created_by)                           -> 422 validation.failed [{"issue":"Provide at least one field to update"}]
+  {}                                         (empty body)                           -> 422 validation.failed [{"issue":"Provide at least one field to update"}]
+  {"bogus":1}                                (unknown field only)                   -> 422 validation.failed [{"issue":"Provide at least one field to update"}]
+
+=== 3. OPTIMISTIC CONCURRENCY ===
+  task updated_at: 2026-07-30T13:56:27.000Z
+  If-Match: 2026-07-30T13:56:27.000Z             (the CURRENT updated_at)-> 200
+  If-Match: 2020-01-01T00:00:00.000Z             (a STALE value)      -> 409 task.conflict
+  If-Match: garbage                              (garbage)            -> 409 task.conflict
+  does GET return an ETag header? 2026-07-30T13:56:27.000Z
+  two simultaneous PATCHes -> 200 / 200, final name: TEST-p15-raceB (last-write-wins)
+
+=== 4. STATUS TRANSITIONS + completed_at ===
+    initial                            status=To Do        completed_at=null
+    To Do -> In Progress (200)         status=In Progress  completed_at=null
+    In Progress -> Done (200)          status=Done         completed_at=2026-07-30 07:56:27
+    Done -> To Do (re-open) (200)      status=To Do        completed_at=null
+    To Do -> Closed (200)              status=Closed       completed_at=2026-07-30 07:56:27
+  status from ANOTHER list -> 422 task.invalid_status
+
+=== 5. DATE RULES on update ===
+  {"due_date":"2027-02-01"}          (move due BEFORE the existing start)       -> 422 task.invalid_date_range now s=2027-03-01 d=2027-03-31
+  {"start_date":"2027-04-01"}        (move start AFTER the existing due)        -> 422 task.invalid_date_range now s=2027-03-01 d=2027-03-31
+  {"start_date":null}                (clear start)                              -> 200                         now s=null d=2027-03-31
+  {"due_date":null}                  (clear due)                                -> 200                         now s=null d=null
+  {"start_date":"2027-03-01"}        (set start with due already null)          -> 200                         now s=2027-03-01 d=null
+
+=== 6. PATCH /tasks/:id/sla ===
+  {"sla_due_at":"2026-07-31T07:56:27.530Z"}      (24h in the future)      -> 200                       stored=2026-07-31 07:56:28 (MySQL says 18h away)
+  {"sla_due_at":"2026-07-29T07:56:27.531Z"}      (in the PAST)            -> 422 sla.invalid_due_at    stored=2026-07-31 07:56:28 (MySQL says 18h away)
+  {"sla_due_at":null}                            (clear)                  -> 200                       stored=null (MySQL says nullh away)
+  {"sla_due_at":"not-a-date"}                    (malformed)              -> 422 validation.failed     stored=null (MySQL says nullh away)
+
+=== 7. ACTIVITY ROWS per update ===
+  after create=1 | +name=1 | +3 fields at once=1 | same-value rename=1
+    task_created        [object Object]
+    task_updated        [object Object]
+    task_updated        [object Object]
+    task_updated        [object Object]
+
+=== 8. `own` SCOPE NARROWING (deferred from P5) ===
+  Department Only holds task.edit at scope 'own'
+  edit their OWN task        -> 200
+  edit SOMEONE ELSE'S task   -> 200 (task: Eid Sale banner design (homepa)
+     their task's priority now: 3
+
+=== CLEANUP ===
+  delete list: 204
+  orphan statuses 0 | tasks 51 (51) | lists 14 (14) | statuses 70 (70)

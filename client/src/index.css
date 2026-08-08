@@ -267,3 +267,17 @@ body {
         background: #fff !important;
     }
 }
+
+/* ============================================================
+   F34 (ISS-097) — phone width. At 390px the Topbar's fixed right
+   cluster (on-call chip + quick-create + bell + avatar) had a
+   min-width 6px past the viewport, so the whole app panned
+   sideways by a finger-width. The on-call chip is an FYI badge —
+   the least essential control at phone width — so it yields
+   first. 480px matches the assistant widget's own mobile cutoff.
+   ============================================================ */
+@media (max-width: 480px) {
+    .topbar-oncall {
+        display: none;
+    }
+}

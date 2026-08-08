@@ -1,0 +1,9 @@
+"Eid Campaign 2026" belongs to space: Marketing <- marketing.only OWNS this. My earlier label was wrong.
+
+=== proper cross-space check: lists from every OTHER space ===
+  checked 11 foreign lists -> 0 leak(s) CLEAN ✓
+
+  and their OWN Marketing lists:
+    Eid Campaign 2026            -> 200  8 task(s)
+    Influencer Outreach          -> 200  3 task(s)
+    Email & SMS                  -> 200  4 task(s)

@@ -1,0 +1,84 @@
+=== 1. GET /users — filters, sorting, pagination ===
+  baseline count: 16
+  ?status=active                -> 200  15 row(s)
+  ?status=deactivated           -> 200  0 row(s)
+  ?status=invited               -> 200  1 row(s)
+  ?status=bogus                 -> 422  validation.failed
+  ?role=owner                   -> 200  1 row(s)
+  ?role=admin                   -> 200  4 row(s)
+  ?role=member                  -> 200  10 row(s)
+  ?role=guest                   -> 200  1 row(s)
+  ?role=bogus                   -> 422  validation.failed
+  ?q=nusrat                     -> 200  1 row(s)
+  ?q=NUSRAT                     -> 200  1 row(s)
+  ?q=beautybooth                -> 200  14 row(s)
+  ?q=@                          -> 200  16 row(s)
+  ?q=                           -> 200  16 row(s)
+  ?q=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx -> 422  validation.failed
+  ?role=admin&status=active     -> 200  3 row(s)
+  ?sort=name                    -> 200  16 row(s)
+  ?sort=-created_at             -> 200  16 row(s)
+  ?order=desc                   -> 200  16 row(s)
+
+  is the default sort stable across two identical calls? yes ✓
+
+=== 2. GET /users/:id ===
+  as owner  -> 200 keys: id,first_name,last_name,email,role,avatar_url,status,timezone,created_at,last_login_at
+  as member -> 200
+  unknown id-> 404 user.not_found
+  password/hash leaked in the payload? no ✓
+
+=== 3. PATCH /users/:id — self vs other ===
+  member edits ANOTHER user  -> {"s":403,"b":{"error":{"code":"user.forbidden_edit","message":"You can only edit your own profile","request_id":"req_f380663a-d820-4a28-b58a-22070246500e"}}}
+  member edits THEMSELVES    -> 200
+  owner edits another user   -> 200
+
+  field-by-field, as the user themselves:
+    first_name=TestName                      (valid)                  -> 200  written
+    last_name=TestLast                       (valid)                  -> 200  written
+    timezone=Asia/Kolkata                    (valid IANA)             -> 200  written
+    timezone=Not/AZone                       (bogus zone)             -> 200  written
+    avatar_url=https://example.com/a.pn      (valid URL)              -> 200  written
+    avatar_url=javascript:alert(1)           (javascript: URL)        -> 422  validation.failed
+    first_name=                              (empty)                  -> 422  validation.failed
+    first_name=xxxxxxxxxxxxxxxxxxxxxxxx      (too long)               -> 422  validation.failed
+    email=newmail@beautybooth.com.           (email change)           -> 200  written
+    role=owner                               (self role escalation)   -> 422  validation.failed
+    status=active                            (self status change)     -> 422  validation.failed
+    id=u-hacked                              (PK change)              -> 422  validation.failed
+    password=Hacked@123                      (password via profile PATCH)-> 422  validation.failed
+  (arif restored)
+
+=== 4. INVITE edge cases ===
+  new email                 -> 201
+  RE-invite (still pending) -> 409 user.email_already_exists
+  invite an EXISTING member -> 201 *** ALLOWED ***
+  email="notanemail"                 (malformed)              -> 422 validation.failed
+  email=""                           (empty)                  -> 422 validation.failed
+  email="a@b"                        (no TLD)                 -> 422 validation.failed
+  email="A@BEAUTYBOOTH.COM.BD"       (uppercase of an existing domain)-> 201 created
+  invite with role=owner    -> 422 validation.failed
+  invitation rows for that email: 1 
+
+=== 5. DEACTIVATION — what happens to their work? ===
+  new hire active: active member
+  deactivate -> 204
+  assignments kept: 1 -> 1 (task keeps its assignee ✓)
+  watchers        : 1 -> 1
+  live sessions   : 1 -> 0 (revoked ✓)
+  still in GET /users: true status=deactivated
+  task still shows them as assignee: ["u-692RCFokQYrIoXKL9LrXrw"]
+  double deactivate -> undefined
+  reactivate        -> 204
+  double reactivate -> undefined
+
+=== 6. ADMIN RESET-PASSWORD — end to end ===
+  POST /users/:id/reset-password -> 202 {}
+  can they still log in with the OLD password? -> 200 (202 means a reset LINK was sent, so the old password should still work until used)
+  unconsumed reset tokens for them: 1
+  use the link                   -> 204
+  login with the NEW password    -> 200
+  login with the OLD password    -> 401 (expect 401)
+
+=== CLEANUP ===
+  users: 18 (16) | tasks: 51 (51) | arif: {"first_name":"A","last_name":"B","timezone":"Asia/Dhaka"}

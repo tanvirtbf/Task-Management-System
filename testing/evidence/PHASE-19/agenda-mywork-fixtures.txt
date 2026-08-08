@@ -1,0 +1,33 @@
+=== 1. AGENDA happy path (the first run had no task due today, so it proved nothing) ===
+  GET /home/agenda -> 200 | returns: ["TEST-p19-due-today"]
+  only the due-today one? yes OK
+  ?date=tomorrow   -> ["TEST-p19-due-tomorrow"]
+  hydrated? keys on an agenda task: 50 | assignees: [null]
+  due_date on the wire: 2026-07-30 | what node calls today: 2026-07-30
+
+=== 2. MY-WORK bucket boundaries with real fixtures ===
+  TEST-p19-due-today            -> today         as designed
+  TEST-p19-due-tomorrow         -> next          as designed
+  TEST-p19-due-yesterday        -> overdue       as designed
+  TEST-p19-no-due-date          -> unscheduled   as designed
+  TEST-p19-due-in-8-days        -> NO BUCKET     as designed
+  TEST-p19-due-in-exactly-7-days-> next          (the boundary)
+  an OVERDUE task moved to Done  -> done          leaves overdue OK
+  an ARCHIVED task               -> NO BUCKET     (must not appear)
+
+=== 3. KPIs react to the new fixtures ===
+  myTasks = 6 | dueToday = 1 | overdue = 1
+  dueToday should be 1 (the fixture): OK
+  myTasks sparkline: [0,0,0,0,0,0,5] sum = 5 vs value 6
+
+=== 4. GUEST scope — is openTeamTasks=31 consistent with what a guest can see? ===
+  guest GET /spaces  -> 200 | spaces visible: 9 ["Accounts","Politics","Marketing","Complain Department","Customer Service","Orders & Fulfillment","Product & Inventory","Social Media & Content","Engineering"]
+  guest GET /tasks   -> 404 route.not_found | tasks visible: 0
+  guest openTeamTasks KPI: 36
+  -> KPI wider than the list they can already read? *** YES — the KPI leaks a count ***
+
+=== 5. Deactivated users still counted ===
+  deactivated user in seed: none
+
+=== CLEANUP ===
+  orphan statuses 0 | tasks 51 (51) | lists 14 (14) | statuses 70 (70)

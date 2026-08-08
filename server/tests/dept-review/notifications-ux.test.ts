@@ -109,7 +109,15 @@ describe("Dept Review notifications on the wire (P22)", () => {
         expect(read.status).toBeLessThan(300);
     });
 
-    it("preferences enumerate ALL 12 types and a PUT for task_reviewed round-trips (the second-ENUM-copy migration, end-to-end)", async () => {
+    /**
+     * ⚠️ Rewritten at F28's sweep — stale since Block E, in a module no gate
+     * had re-run since. D6 cut the type catalog 12 → 7 (five had no producer)
+     * and D8 removed `email_enabled` everywhere (no mail sender exists for
+     * notifications). The spec's real job is unchanged: the PUT writes a
+     * `user_notification_prefs.type` row, which 500s with MySQL 1265 if the
+     * second ENUM copy was ever missed — `task_reviewed` still proves that.
+     */
+    it("preferences enumerate the live types (8 since upgrades/014) and a PUT for task_reviewed round-trips (the second-ENUM-copy migration, end-to-end)", async () => {
         const s = await seed();
 
         const prefs = await s.assigneeClient.get(
@@ -117,31 +125,29 @@ describe("Dept Review notifications on the wire (P22)", () => {
         );
         expect(prefs.status).toBe(200);
         const keys = Object.keys(prefs.body).sort();
-        expect(keys).toHaveLength(12);
-        expect(keys).toContain("task_reviewed");
-        expect(keys).toContain("report_ready");
-        expect(prefs.body.task_reviewed).toEqual({
-            in_app_enabled: true,
-            email_enabled: true,
-        });
+        expect(keys).toEqual(
+            [
+                "assigned",
+                "mentioned",
+                "comment",
+                "status_change",
+                "form_submitted",
+                "overdue", // upgrades/014 (2026-08-08): produced by the overdue-alert job
+                "task_reviewed",
+                "report_ready",
+            ].sort(),
+        );
+        expect(prefs.body.task_reviewed).toEqual({ in_app_enabled: true });
 
-        // The PUT upsert writes a `user_notification_prefs.type` row — this
-        // 500s with MySQL 1265 if the second ENUM copy was missed.
         const put = await s.assigneeClient
             .put("/api/v1/notifications/preferences")
-            .send({ task_reviewed: { in_app_enabled: true, email_enabled: false } });
+            .send({ task_reviewed: { in_app_enabled: false } });
         expect(put.status).toBeLessThan(300);
 
         const after = await s.assigneeClient.get(
             "/api/v1/notifications/preferences",
         );
-        expect(after.body.task_reviewed).toEqual({
-            in_app_enabled: true,
-            email_enabled: false,
-        });
-        expect(after.body.report_ready).toEqual({
-            in_app_enabled: true,
-            email_enabled: true,
-        });
+        expect(after.body.task_reviewed).toEqual({ in_app_enabled: false });
+        expect(after.body.report_ready).toEqual({ in_app_enabled: true });
     });
 });

@@ -8,9 +8,11 @@ const EngineeringController_1 = require("../controllers/EngineeringController");
 const EngineeringService_1 = require("../services/EngineeringService");
 const EngineeringRepo_1 = require("../repositories/EngineeringRepo");
 const TaskWriteService_1 = require("../services/TaskWriteService");
+const WorkspaceRepo_1 = require("../repositories/WorkspaceRepo");
 const TasksService_1 = require("../services/TasksService");
 const UsersRepo_1 = require("../repositories/UsersRepo");
 const TasksRepo_1 = require("../repositories/TasksRepo");
+const AttachmentsRepo_1 = require("../repositories/AttachmentsRepo");
 const ListsRepo_1 = require("../repositories/ListsRepo");
 const StatusesRepo_1 = require("../repositories/StatusesRepo");
 const TaskTypesRepo_1 = require("../repositories/TaskTypesRepo");
@@ -21,6 +23,7 @@ const TagsRepo_1 = require("../repositories/TagsRepo");
 const client_1 = require("../db/client");
 const logger_1 = __importDefault(require("../config/logger"));
 const authenticate_1 = __importDefault(require("../middlewares/authenticate"));
+const requirePermission_1 = require("../middlewares/requirePermission");
 const validate_1 = require("../middlewares/validate");
 const engineering_1 = require("../validators/engineering");
 const router = express_1.default.Router();
@@ -39,7 +42,7 @@ const activityRepo = new TaskActivityRepo_1.TaskActivityRepo(db);
 const notificationsRepo = new NotificationsRepo_1.NotificationsRepo(db);
 const tagsRepo = new TagsRepo_1.TagsRepo(db);
 const tasksService = new TasksService_1.TasksService(listsRepo, tasksRepo);
-const taskWriteService = new TaskWriteService_1.TaskWriteService(db, listsRepo, statusesRepo, taskTypesRepo, tasksRepo, membershipRepo, usersRepo, tagsRepo, activityRepo, notificationsRepo, tasksService, logger_1.default);
+const taskWriteService = new TaskWriteService_1.TaskWriteService(db, listsRepo, statusesRepo, taskTypesRepo, tasksRepo, membershipRepo, usersRepo, tagsRepo, activityRepo, notificationsRepo, new AttachmentsRepo_1.AttachmentsRepo(db), new WorkspaceRepo_1.WorkspaceRepo(db), tasksService, logger_1.default);
 const engRepo = new EngineeringRepo_1.EngineeringRepo(db);
 const service = new EngineeringService_1.EngineeringService(engRepo, taskWriteService, tasksRepo, usersRepo, logger_1.default);
 const controller = new EngineeringController_1.EngineeringController(service, logger_1.default);
@@ -47,7 +50,7 @@ const controller = new EngineeringController_1.EngineeringController(service, lo
 // 🔐 any authenticated member (every team can report a bug). The router declares
 // full `/eng/*` paths and mounts at the v1 root (no `/eng` prefix collides with
 // the existing routers). Chain: authenticate (401) → validate (422) → handler.
-router.post("/eng/report-bug", authenticate_1.default, engineering_1.reportBugValidator, validate_1.validate, (req, res, next) => controller.reportBug(req, res, next));
+router.post("/eng/report-bug", authenticate_1.default, (0, requirePermission_1.requirePermission)("bug.report"), engineering_1.reportBugValidator, validate_1.validate, (req, res, next) => controller.reportBug(req, res, next));
 // ─── GET /api/v1/eng/home ─────────────────────────────────────────────────────
 // 🔐 any authenticated member. Per-caller dashboard rollup (open bugs/incidents,
 // my sprint tasks, PRs awaiting me, stale tickets, current on-call, active
@@ -61,5 +64,5 @@ router.get("/eng/incidents/:id/postmortem", authenticate_1.default, engineering_
 // 🔐 any authenticated member. Save (upsert) the postmortem checklist on a
 // resolved Incident task. Chain: authenticate (401) → validate (422) → handler;
 // the service enforces the type/status preconditions (409).
-router.post("/eng/incidents/:id/postmortem", authenticate_1.default, engineering_1.createPostmortemValidator, validate_1.validate, (req, res, next) => controller.createPostmortem(req, res, next));
+router.post("/eng/incidents/:id/postmortem", authenticate_1.default, (0, requirePermission_1.requirePermission)("postmortem.manage"), engineering_1.createPostmortemValidator, validate_1.validate, (req, res, next) => controller.createPostmortem(req, res, next));
 exports.default = router;

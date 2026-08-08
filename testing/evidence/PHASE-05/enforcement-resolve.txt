@@ -1,0 +1,25 @@
+victim user: u-t_xzwky8YjzYZjuk1HRrOQ
+probe user legacy role temporarily set to 'admin' to unmask the RBAC layer
+
+── no grant ── fixtures: cf=true tpl=false form=true att=true rep=true
+── with grant ── fixtures: cf=true tpl=false form=true att=true rep=true
+
+================================================================================================
+PERMISSION                no-grant                  with-grant                VERDICT
+================================================================================================
+member.role_change        403 auth.forbidden        200                       ENFORCED
+member.deactivate         403 auth.forbidden        204                       ENFORCED
+task.delete_hard          204                       204                       *** NOT ENFORCED ***
+comment.delete_any        204                       204                       *** NOT ENFORCED ***
+checklist.manage          201                       201                       *** NOT ENFORCED ***
+attachment.upload         201                       201                       *** NOT ENFORCED ***
+attachment.delete_any     204                       204                       *** NOT ENFORCED ***
+customfield.set_value     422 validation.failed     422 validation.failed     INCONCLUSIVE (422/422)
+template.apply            404 template.not_found    404 template.not_found    INCONCLUSIVE (404/404)
+form.view_submissions     500 internal              500 internal              INCONCLUSIVE (500/500)
+bug.report                201                       201                       *** NOT ENFORCED ***
+postmortem.manage         409 incident.not_incident 409 incident.not_incident INCONCLUSIVE (409/409)
+review.perform            409 review.not_completed  409 review.not_completed  INCONCLUSIVE (409/409)
+report.note               403 report.forbidden      403 report.forbidden      STILL BLOCKED (other gate wins)
+
+probe user legacy role restored to 'member'

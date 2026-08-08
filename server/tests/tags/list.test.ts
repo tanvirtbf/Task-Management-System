@@ -84,7 +84,7 @@ const signAccess = (
     jwt.sign(
         { sub: user.id, role: user.role, workspaceId: user.workspaceId },
         secret,
-        { algorithm: "HS256", ...opts },
+        { algorithm: "HS256", expiresIn: "15m", ...opts },
     );
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -180,7 +180,7 @@ describe("GET /api/v1/tags", () => {
 
     // ─── b. Input robustness (no body/params consumed → params are ignored) ──
     describe("Query-param robustness", () => {
-        it("ignores ?limit and still returns the full list (collection mode)", async () => {
+        it("honours ?limit (F23/ISS-007 — it was silently ignored)", async () => {
             const u = await makeUser();
             await seedTags(u.workspaceId, [
                 { name: "a" },
@@ -192,31 +192,31 @@ describe("GET /api/v1/tags", () => {
             const res = await client.get(`${TAGS}?limit=1`);
 
             expect(res.status).toBe(200);
-            expect(res.body.data).toHaveLength(3);
-            expect(res.body.pagination.has_more).toBe(false);
+            expect(res.body.data).toHaveLength(1);
+            expect(res.body.pagination.has_more).toBe(true);
+            expect(res.body.pagination.next_cursor).not.toBeNull();
         });
 
-        it("ignores ?cursor and keeps next_cursor null", async () => {
+        it("refuses a cursor the server did not issue (F23/ISS-008)", async () => {
             const u = await makeUser();
             await seedTags(u.workspaceId, [{ name: "a" }, { name: "b" }]);
             const client = await makeLoggedInClient(u);
 
             const res = await client.get(`${TAGS}?cursor=ignored-blob`);
 
-            expect(res.status).toBe(200);
-            expect(res.body.data).toHaveLength(2);
-            expect(res.body.pagination.next_cursor).toBeNull();
+            expect(res.status).toBe(400);
+            expect(res.body.error.code).toBe("pagination.invalid_cursor");
         });
 
-        it("ignores unknown query params", async () => {
+        it("refuses unknown query params, naming them (F23/ISS-014)", async () => {
             const u = await makeUser();
             await seedTags(u.workspaceId, [{ name: "a" }]);
             const client = await makeLoggedInClient(u);
 
             const res = await client.get(`${TAGS}?foo=bar&q=zzz&page=9`);
 
-            expect(res.status).toBe(200);
-            expect(res.body.data).toHaveLength(1);
+            expect(res.status).toBe(422);
+            expect(JSON.stringify(res.body)).toContain("foo");
         });
     });
 
@@ -341,7 +341,7 @@ describe("GET /api/v1/tags", () => {
             expect(res.body.pagination.total_estimate).toBe(2);
         });
 
-        it("ignores a ?workspace_id query param (caller stays scoped to their token)", async () => {
+        it("refuses a ?workspace_id query param (F23/ISS-014 — stronger than ignoring)", async () => {
             const wsA = await makeWorkspace();
             const wsB = await makeWorkspace();
             const userA = await makeUser({ workspaceId: wsA.id });
@@ -351,7 +351,9 @@ describe("GET /api/v1/tags", () => {
 
             const res = await client.get(`${TAGS}?workspace_id=${wsB.id}`);
 
-            expect(namesOf(res.body)).toEqual(["A-one"]);
+            // The request never executes, so it cannot cross tenants at all.
+            expect(res.status).toBe(422);
+            expect(JSON.stringify(res.body)).toContain("workspace_id");
         });
     });
 
@@ -379,7 +381,7 @@ describe("GET /api/v1/tags", () => {
 
     // ─── j. Pagination (collection mode — single complete page) ──────────────
     describe("Collection pagination", () => {
-        it("returns a large tag set in a single page with no hidden cap", async () => {
+        it("pages a large tag set at the §1 default limit (F23/ISS-007)", async () => {
             const u = await makeUser();
             const rows = Array.from({ length: 250 }, (_, i) => ({
                 name: `tag-${String(i).padStart(3, "0")}`,
@@ -389,15 +391,17 @@ describe("GET /api/v1/tags", () => {
 
             const res = await client.get(TAGS);
 
-            expect(res.body.data).toHaveLength(250);
-            expect(res.body.pagination).toEqual({
-                next_cursor: null,
-                has_more: false,
-                total_estimate: 250,
-            });
+            expect(res.body.data).toHaveLength(100);
+            expect(res.body.pagination.has_more).toBe(true);
+            expect(res.body.pagination.total_estimate).toBe(250);
+            const page2 = await client
+                .get(TAGS)
+                .query({ cursor: res.body.pagination.next_cursor, limit: 200 });
+            expect(page2.body.data).toHaveLength(150);
+            expect(page2.body.pagination.has_more).toBe(false);
             // zero-padded names => insertion order already equals sort order
             expect(dataOf(res.body)[0].name).toBe("tag-000");
-            expect(dataOf(res.body)[249].name).toBe("tag-249");
+            expect(dataOf(page2.body)[149].name).toBe("tag-249");
         });
 
         it("returns the identical full set on a repeated request (stability)", async () => {
@@ -539,27 +543,25 @@ describe("GET /api/v1/tags", () => {
 
     // ─── Exploratory probes (Step 7) ──────────────────────────────────────────
     describe("Exploratory", () => {
-        it("ignores duplicated query params (?limit=1&limit=2)", async () => {
+        it("refuses duplicated query params (?limit=1&limit=2 is not an integer)", async () => {
             const u = await makeUser();
             await seedTags(u.workspaceId, [{ name: "a" }, { name: "b" }]);
             const client = await makeLoggedInClient(u);
 
             const res = await client.get(`${TAGS}?limit=1&limit=2`);
 
-            expect(res.status).toBe(200);
-            expect(res.body.data).toHaveLength(2);
+            expect(res.status).toBe(422);
         });
 
-        it("survives an absurdly long ?cursor without erroring", async () => {
+        it("refuses an absurdly long ?cursor cleanly (400, never 500)", async () => {
             const u = await makeUser();
             await seedTags(u.workspaceId, [{ name: "a" }]);
             const client = await makeLoggedInClient(u);
 
             const res = await client.get(`${TAGS}?cursor=${"A".repeat(10000)}`);
 
-            expect(res.status).toBe(200);
-            expect(res.body.data).toHaveLength(1);
-            expect(res.body.pagination.next_cursor).toBeNull();
+            expect(res.status).toBe(400);
+            expect(res.body.error.code).toBe("pagination.invalid_cursor");
         });
 
         it("serves the request regardless of an exotic Accept header", async () => {

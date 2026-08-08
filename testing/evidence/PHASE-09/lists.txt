@@ -1,0 +1,46 @@
+playground spaces: Politics / Accounts | task types: Task, Bug, Feature, Campaign, Order, Complaint, Incident
+
+=== 1. CREATE — validation & task-type binding ===
+  {"space_id":"sp-hb8qbLyl_mAOfp5Wj1ia5g","name":"TEST-p9-ok   (valid)                                      -> 201
+  {"space_id":"sp-hb8qbLyl_mAOfp5Wj1ia5g","name":"TEST-p9-no   (no task_type_id — required?)                -> 201
+  {"space_id":"sp-hb8qbLyl_mAOfp5Wj1ia5g","name":"","task_ty   (empty name)                                 -> 422 validation.failed
+  {"space_id":"sp-hb8qbLyl_mAOfp5Wj1ia5g","name":"xxxxxxxxxx   (name too long)                              -> 422 validation.failed
+  {"name":"TEST-p9-nospace","task_type_id":"tt-Xtba3baw07I8h   (no space_id)                                -> 422 validation.failed
+  {"space_id":"sp-nope","name":"TEST-p9-badspace","task_type   (unknown space)                              -> 404 space.not_found
+  {"space_id":"sp-hb8qbLyl_mAOfp5Wj1ia5g","name":"TEST-p9-ba   (unknown task type)                          -> 201
+  {"space_id":"sp-hb8qbLyl_mAOfp5Wj1ia5g","name":"TEST-p9-du   (first of a duplicate pair)                  -> 201
+  {"space_id":"sp-hb8qbLyl_mAOfp5Wj1ia5g","name":"TEST-p9-du   (DUPLICATE name in the SAME space)           -> 201
+  {"space_id":"sp-dF0LJ21_qvqS5fEjidE8Xw","name":"TEST-p9-du   (same name in a DIFFERENT space)             -> 201
+  {"space_id":"sp-hb8qbLyl_mAOfp5Wj1ia5g","name":"TEST-p9-pr   (is_private)                                 -> 201
+
+=== 2. READ ===
+  GET /lists/:id keys: id, space_id, name, description, icon, color, position, default_task_type_id, is_private, archived_at, created_by, created_at
+  fields in single-read but NOT in the list: (none)
+  GET /spaces/:id/lists   -> 200 count: 7
+  GET /spaces/sp-nope/lists -> 404 space.not_found
+  GET /lists/l-nope       -> 404 list.not_found
+  scoped user reads a foreign list -> 404 list.not_found
+
+=== 3. UPDATE ===
+  {"name":"TEST-p9-renamed"}                 (rename)                               -> 200
+  {"description":"hi"}                       (description)                          -> 200
+  {"task_type_id":"tt-pkGgglLMAeouAcD9mAm0   (CHANGE the task type on a list)       -> 422 validation.failed
+  {"task_type_id":"tt-nope"}                 (unknown task type)                    -> 422 validation.failed
+  {"space_id":"sp-dF0LJ21_qvqS5fEjidE8Xw"}   (MOVE to another space)                -> 422 validation.failed
+  {"is_private":true}                        (is_private)                           -> 422 validation.failed
+  {"id":"l-hacked"}                          (PK change)                            -> 422 validation.failed
+node:internal/process/promises:394
+    triggerUncaughtException(err, true /* fromPromise */);
+    ^
+
+Error: Unknown column 'task_type_id' in 'field list'
+    at C:\Users\Tanvir\AppData\Local\Temp\claude\E--Task-Management-System\0c5a6be8-84af-4c0b-91a3-1cb6f5c4eb9d\scratchpad\p9_lists.cjs:69:32
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5) {
+  code: 'ER_BAD_FIELD_ERROR',
+  errno: 1054,
+  sqlState: '42S22',
+  sqlMessage: "Unknown column 'task_type_id' in 'field list'",
+  sql: "SELECT id,space_id,task_type_id FROM lists WHERE id='l-vAsUAsU6kFMAQsrMfsmLxA'"
+}
+
+Node.js v22.21.1

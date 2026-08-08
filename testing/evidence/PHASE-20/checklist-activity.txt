@@ -1,0 +1,12 @@
+  action                     status      activity rows written
+  create checklist          201         none
+  add item                  201         none
+  toggle item -> done       200         +1
+  toggle item -> undone     200         +1
+  rename item               200         +1
+  delete item               204         none
+  delete checklist          204         none
+
+  full trail: [{"action":"task_created","context":{"name":"TEST-p20d-task","list_id":"l-S9ZWt5uJLnqpbaVzdQfl2Q"}},{"action":"checklist_item_toggled","context":{"item_id":"ci-0hlfJbGjfoTYGNaIYba8sA","checklist_id":"ch-38sSOgal4uE_RSqJHOmTsg","is_completed":true}},{"action":"checklist_item_toggled","context":{"item_id":"ci-0hlfJbGjfoTYGNaIYba8sA","checklist_id":"ch-38sSOgal4uE_RSqJHOmTsg","is_completed":false}},{"action":"checklist_item_updated","context":{"item_id":"ci-0hlfJbGjfoTYGNaIYba8sA","checklist_id":"ch-38sSOgal4uE_RSqJHOmTsg"}}]
+
+CLEANUP: orphans 0 | tasks 51 (51) | lists 14 (14)

@@ -1,0 +1,55 @@
+=== E. can a GUEST reach the un-redacted review-queue path? ===
+  owner   GET /spaces/:id/review-queue  -> 422 validation.failed
+  admin   GET /spaces/:id/review-queue  -> 422 validation.failed
+  member  GET /spaces/:id/review-queue  -> 422 validation.failed
+  guest   GET /spaces/:id/review-queue  -> 422 validation.failed
+  owner   GET /spaces/:id/review-summary-> 200
+  guest   GET /spaces/:id/review-summary-> 403 review.not_head
+
+=== F. ATTACHMENT UPLOAD — the one documented member/guest difference ===
+  fixture task: t-BwgIIsjyRg1bXFCq76afhA
+  owner   /uploads/sign -> 422 validation.failed        | POST /tasks/:id/attachments -> 201 
+  admin   /uploads/sign -> 422 validation.failed        | POST /tasks/:id/attachments -> 201 
+  member  /uploads/sign -> 422 validation.failed        | POST /tasks/:id/attachments -> 201 
+  guest   /uploads/sign -> 422 validation.failed        | POST /tasks/:id/attachments -> 403 auth.forbidden
+
+=== G. HARD DELETE — owner/admin only (TaskWriteService:928) ===
+  guest   DELETE /tasks/:id?hard=true -> 403 auth.forbidden
+  member  DELETE /tasks/:id?hard=true -> 403 auth.forbidden
+  admin   DELETE /tasks/:id?hard=true -> 204
+  owner   DELETE /tasks/:id?hard=true -> 204
+
+=== H. COMMENT delete-any — owner/admin only (CommentsService:190) ===
+  member posted comment: c-bHkihA9kshhEnxkBb93otQ
+  guest  deletes another's comment -> 403 comment.forbidden_delete
+  member deletes OWNER's comment   -> 403 comment.forbidden_delete
+  admin  deletes MEMBER's comment  -> 204
+
+=== I. SELF-SERVICE RULES ===
+  owner changes OWN role       -> 403 user.cannot_change_owner_role
+  admin changes OWN role       -> 422 validation.failed
+  admin demotes the OWNER      -> 403 user.cannot_change_owner_role
+  owner deactivates SELF       -> 403 user.cannot_deactivate_owner
+  admin deactivates the OWNER  -> 403 user.cannot_deactivate_owner
+  admin deactivates SELF       -> 403 user.cannot_self_deactivate
+  admin promotes member->owner -> 422 validation.failed
+  active admins in the DB: 3  (last-admin rule only bites at 1)
+
+=== J. STALE ROLE CLAIM (deferred from P3) ===
+  member's token claims role: member
+  owner demotes member -> guest: 200
+  DB role now: guest | token still claims: member
+  now-guest user uploads with the STALE member token -> 201 *** ALLOWED — the stale token claim wins ***
+  restore member role: 200
+  DB role restored to: member
+
+=== CLEANUP ===
+  TEST- tasks left: 0
+┌─────────┬──────────────────────────────┬──────────┬──────────┐
+│ (index) │ email                        │ role     │ status   │
+├─────────┼──────────────────────────────┼──────────┼──────────┤
+│ 0       │ 'arif@beautybooth.com.bd'    │ 'member' │ 'active' │
+│ 1       │ 'farhana@beautybooth.com.bd' │ 'admin'  │ 'active' │
+│ 2       │ 'guest@beautybooth.com.bd'   │ 'guest'  │ 'active' │
+│ 3       │ 'owner@company.local'        │ 'owner'  │ 'active' │
+└─────────┴──────────────────────────────┴──────────┴──────────┘

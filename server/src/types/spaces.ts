@@ -31,6 +31,8 @@ export type GetSpaceRequest = AuthRequest;
  */
 export interface CreateSpaceBody {
     name: string;
+    /** F18 (ISS-032): validated + written now, not silently dropped. */
+    head_user_id?: string | null;
     description?: string;
     icon?: string;
     color?: string;

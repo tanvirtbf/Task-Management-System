@@ -1,0 +1,36 @@
+
+  === F18 — validation holes ===
+
+  --- ISS-044: reviewer_id on CREATE ---
+  OK    unknown reviewer -> 422 task.invalid_reviewer (was 500)     got 422 task.invalid_reviewer
+  OK    a VALID reviewer still creates (201, reviewer set)          got 201
+
+  --- ISS-071: the 300-char X-Filename ---
+  OK    300-char filename -> 422 naming the header (was raw 500)    got 422
+  OK    a 244-char filename still uploads (201, as before)          got 201
+
+  --- ISS-077: the self-contradictory public_slug ---
+  OK    generated slug now matches the API's OWN SLUG_RE            f18-slug-form-vhcn90j3
+  OK    the form can be written back UNCHANGED (was 422)            got 200
+
+  --- ISS-032: head_user_id on POST /spaces ---
+  OK    unknown head -> 422 space.head_invalid (was 201 + NULL)     got 422 space.head_invalid
+  OK    a GUEST head -> 422 (same rule as PATCH)                    got 422
+  OK    a VALID head is WRITTEN (was silently dropped to NULL)      db head u-7E_BlFeZJuSvDpU1QzyEUQ
+  OK    an explicit null head still creates (201, no head)          got 201
+
+  --- ISS-037: status reorder must be a permutation ---
+  OK    every status at position 0 -> 422 (was 200, order destroyed)got 422
+  OK    a PARTIAL payload -> 422 naming the count                   got 422
+  OK    a full valid permutation still works (200, order flipped)   got 200
+
+  --- ISS-078: form-field reorder, same rule ---
+  OK    ONE item of three -> 422 (was 200, two fields at 0)         got 422
+  OK    duplicate positions -> 422 (question order stays unambiguous)got 422
+  OK    full reversed reorder works (200) and positions stay DISTINCTdistinct 3/3
+
+  === CLEANUP ===
+  tasks 46 (46) | spaces 6 (6) | lists 13 (13) | forms 0 (0) | statuses 65 (65)
+
+  PASS — six holes closed; every happy path intact.
+

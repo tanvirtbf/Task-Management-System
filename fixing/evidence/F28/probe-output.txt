@@ -1,0 +1,52 @@
+================ F28 PROBE (D12.1 - D12.7) ================
+
+--- D12.1 (ISS-094) the seeded Guest role ---
+  PASS  code: guest holds exactly 7 grants   got 7
+  PASS  code: guest key set is the read+comment set
+  PASS  code: member is UNTOUCHED at 20   got 20
+  PASS  code: every revoked key is gone from guest but kept by member
+  PASS  code: guest is still a strict SUBSET of member (monotonic roles)
+  PASS  code: the role description no longer claims member-equivalence   External collaborator. Reads the workspace, comments, and reports bugs.
+  PASS  db(taskmanagement): guest row matches the code exactly   7 grants
+  PASS  db(taskmanagement): member still holds 20   20
+  PASS  db(taskmanagement_qa): guest row matches the code exactly   7 grants
+  PASS  db(taskmanagement_qa): member still holds 20   20
+
+--- D12.2 (ISS-029) SLA on the business clock ---
+  PASS  a working day is 9h
+  PASS  the ISS-029 case: S0 filed Thu 17:30 lands Sunday 10:30, not Thu 19:30   2026-08-09T04:30:00.000Z
+  PASS  wall-clock would have been Thu 19:30 (the defect)
+  PASS  sweep: every deadline from every hour of a week is inside working hours   504 deadlines, 0 out of window
+  PASS  a deadline is always in the FUTURE of the filing instant
+  PASS  no working days -> wall-clock fallback
+  PASS  inverted window -> wall-clock fallback
+  PASS  db(taskmanagement): fiscal_year_start_month column is gone
+  PASS  db(taskmanagement): its CHECK constraint is gone too
+  PASS  db(taskmanagement): the four settings WITH consumers survive
+  PASS  db(taskmanagement_qa): fiscal_year_start_month column is gone
+  PASS  db(taskmanagement_qa): its CHECK constraint is gone too
+  PASS  db(taskmanagement_qa): the four settings WITH consumers survive
+
+--- D12.6 + D12.7 route wiring (walked off the live Express stacks) ---
+  PASS  DELETE /sprints/:id is registered   DELETE /sprints/:id | DELETE /sprints/:id/tasks/:taskId
+  PASS  it did NOT displace DELETE /sprints/:id/tasks/:taskId
+  PASS  PATCH /lists/:id validator accepts space_id
+  PASS  …and rejects an empty space_id
+  PASS  …and rejects null — a list always belongs to a space
+
+--- D12.3 / D12.4 / D12.5 client surfaces ---
+  PASS  D12.3: the checklist item assignee control exists and calls updateItem
+  PASS  D12.3: only ACTIVE members are offered (the server 422s an invited one)
+  PASS  D12.4: /sla route registered
+  PASS  D12.4: slaApi.breached exists
+  PASS  D12.4: the KB links the page (route-parity would fail otherwise)
+  PASS  D12.4: the parity map knows the segment
+  PASS  D12.4: Home's slaBreaches KPI now links to it
+  PASS  D12.5: the locale Select is disabled with a hint
+  PASS  D12.2: the fiscal-year control is gone from the settings page
+
+--- F26 clean-up made possible by D12.1 ---
+  PASS  the Engineering nav gate no longer carries permRole !== "guest"   const canSeeEngineering = holds("sprint.manage") || holds("sprint.assign_tasks") || holds(
+
+================================================
+  38 passed, 0 failed

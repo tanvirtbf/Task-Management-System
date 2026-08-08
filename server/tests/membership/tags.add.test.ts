@@ -306,8 +306,8 @@ describe("POST /api/v1/tasks/:id/tags", () => {
         });
     });
 
-    describe("Authorization (🔐 any member — no role gate)", () => {
-        for (const role of ["owner", "admin", "member", "guest"] as const) {
+    describe("Authorization (task.edit — every internal role holds it)", () => {
+        for (const role of ["owner", "admin", "member"] as const) {
             it(`allows a ${role} to apply a tag (204)`, async () => {
                 const u = await makeUser({ role });
                 const t = await makeTask({
@@ -323,6 +323,27 @@ describe("POST /api/v1/tasks/:id/tags", () => {
                 expect(res.status).toBe(204);
             });
         }
+
+        // F34 (ISS-095): this loop used to include the guest at 204 — these
+        // routes carried NO permission gate at all (tagging never had a
+        // catalog key, so F7 had nothing to attach), and the spec pinned the
+        // hole as intended behaviour. Gated on task.edit now: a guest
+        // re-tagging every task in the workspace rewrote saved filters and
+        // board groupings and bumped everyone's ETags.
+        it("REFUSES a guest (403) — tagging rides task.edit now", async () => {
+            const u = await makeUser({ role: "guest" });
+            const t = await makeTask({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+            });
+            const tag = await makeTag({ workspaceId: u.workspaceId });
+            const client = await makeLoggedInClient(u);
+
+            const res = await client
+                .post(tagsPath(t.id))
+                .send({ tag_id: tag.id });
+            expect(res.status).toBe(403);
+        });
     });
 
     describe("Resource lifecycle", () => {

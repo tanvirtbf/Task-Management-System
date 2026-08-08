@@ -1,0 +1,7 @@
+F9 gate — taskdeps + workspaceActivity + forms + search + sprints, serial — 2026-08-04T14:52:48+06:00
+taskdeps           Test Suites: 1 failed, 2 passed, 3 total|Tests:       1 failed, 66 passed, 67 total|
+workspaceActivity  Test Suites: 2 passed, 2 total|Tests:       41 passed, 41 total|
+forms              Test Suites: 8 passed, 8 total|Tests:       85 passed, 85 total|
+search             Test Suites: 1 passed, 1 total|Tests:       32 passed, 32 total|
+sprints            Test Suites: 9 passed, 9 total|Tests:       150 passed, 150 total|
+gate finished 2026-08-04T15:05:26+06:00

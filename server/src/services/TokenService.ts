@@ -1,5 +1,5 @@
 import { JwtPayload, sign } from "jsonwebtoken";
-import { and, count, eq, isNull, lt } from "drizzle-orm";
+import { and, count, eq, isNotNull, isNull, lt, or } from "drizzle-orm";
 import { MySql2Database } from "drizzle-orm/mysql2";
 import { Config } from "../config";
 import { AppError } from "../errors";
@@ -190,5 +190,57 @@ export class TokenService {
             .delete(sessions)
             .where(lt(sessions.expiresAt, cutoff));
         return result.affectedRows;
+    }
+
+    /**
+     * F10 (ISS-017): revoked rows used to survive until `expires_at + 30d`
+     * (~60 days for a rotated refresh), which at 100 users' refresh cadence is
+     * a steady state near 190k rows. A revoked session can never authenticate
+     * again, so after a short forensic window it is pure dead weight — these
+     * two let the cleanup job prune it early.
+     */
+    async countRevokedBefore(cutoff: Date): Promise<number> {
+        const [row] = await this.db
+            .select({ value: count() })
+            .from(sessions)
+            .where(
+                and(
+                    isNotNull(sessions.revokedAt),
+                    lt(sessions.revokedAt, cutoff),
+                ),
+            );
+        return row?.value ?? 0;
+    }
+
+    async deleteRevokedBefore(cutoff: Date): Promise<number> {
+        const [result] = await this.db
+            .delete(sessions)
+            .where(
+                and(
+                    isNotNull(sessions.revokedAt),
+                    lt(sessions.revokedAt, cutoff),
+                ),
+            );
+        return result.affectedRows;
+    }
+
+    /** Dry-run companion: rows either rule would remove, counted ONCE. */
+    async countPrunable(
+        expiryCutoff: Date,
+        revokedCutoff: Date,
+    ): Promise<number> {
+        const [row] = await this.db
+            .select({ value: count() })
+            .from(sessions)
+            .where(
+                or(
+                    lt(sessions.expiresAt, expiryCutoff),
+                    and(
+                        isNotNull(sessions.revokedAt),
+                        lt(sessions.revokedAt, revokedCutoff),
+                    ),
+                ),
+            );
+        return row?.value ?? 0;
     }
 }

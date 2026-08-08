@@ -63,9 +63,9 @@ router.delete("/custom-fields/:id", authenticate_1.default, (0, requirePermissio
 // 🔐 Any member. Set/replace a task's value for a field. Validates the value
 // envelope against the field type. Writes a task_activity row + bumps the task
 // ETag. 200 + the full updated Task.
-router.put("/tasks/:id/custom-fields/:fieldId", authenticate_1.default, customFields_1.taskFieldParamsValidator, validate_1.validate, (req, res, next) => customFieldsController.setValue(req, res, next));
+router.put("/tasks/:id/custom-fields/:fieldId", authenticate_1.default, (0, requirePermission_1.requirePermission)("customfield.set_value"), customFields_1.taskFieldParamsValidator, validate_1.validate, (req, res, next) => customFieldsController.setValue(req, res, next));
 // ─── DELETE /api/v1/tasks/:id/custom-fields/:fieldId ──────────────────────────
 // 🔐 Any member. Clear a task's value for a field (idempotent — 204 even when no
 // value was set). Writes a task_activity row when a value was actually removed.
-router.delete("/tasks/:id/custom-fields/:fieldId", authenticate_1.default, customFields_1.taskFieldParamsValidator, validate_1.validate, (req, res, next) => customFieldsController.clearValue(req, res, next));
+router.delete("/tasks/:id/custom-fields/:fieldId", authenticate_1.default, (0, requirePermission_1.requirePermission)("customfield.set_value"), customFields_1.taskFieldParamsValidator, validate_1.validate, (req, res, next) => customFieldsController.clearValue(req, res, next));
 exports.default = router;

@@ -189,23 +189,47 @@ describe("POST /api/v1/spaces/:id/unarchive", () => {
             expect(ctx?.name).toBe("Ops");
         });
 
-        it("does NOT restore the space's archived lists (no cascade reversal)", async () => {
+        it("restores the lists the space-archive cascaded — and ONLY those (ISS-041)", async () => {
+            // F16 flipped this spec. It used to assert "no cascade reversal" —
+            // which is ISS-041: a space came back EMPTY (Marketing's three
+            // boards were invisible for ninety minutes in P8). The archive
+            // cascade stamps its lists with the SAME instant the space gets,
+            // and that instant is the discriminator: unarchive restores
+            // exactly the lists whose archived_at equals the space's own, so
+            // an independently-archived list (its own, different timestamp)
+            // stays archived — the very concern the old comment raised.
             const u = await makeUser({ role: "admin" });
             const id = await seedArchivedSpace(u);
-            const list = await makeList({
+            const cascaded = await makeList({
                 workspaceId: u.workspaceId,
                 spaceId: id,
                 createdBy: u.id,
             });
-            await archiveListDirect(list.id);
+            const independent = await makeList({
+                workspaceId: u.workspaceId,
+                spaceId: id,
+                createdBy: u.id,
+            });
+            // the cascade's signature: the space's exact archived_at instant
+            await archiveListDirect(cascaded.id);
+            // an earlier, independent archive: a DIFFERENT instant
+            const db = getDb();
+            await db
+                .update(lists)
+                .set({ archivedAt: new Date(ARCHIVED_AT.getTime() - 3600_000) })
+                .where(eq(lists.id, independent.id));
             const client = await makeLoggedInClient(u);
 
             await client.post(unarchivePath(id));
 
             // Space restored…
             expect((await fetchSpaceRow(id))?.archivedAt).toBeNull();
-            // …but its list stays archived (lists are restored via §6).
-            expect((await fetchListRow(list.id))?.archivedAt).not.toBeNull();
+            // …the cascaded list came back with it…
+            expect((await fetchListRow(cascaded.id))?.archivedAt).toBeNull();
+            // …and the independently archived one STAYED archived.
+            expect(
+                (await fetchListRow(independent.id))?.archivedAt,
+            ).not.toBeNull();
         });
 
         it("carries an X-Request-Id header on the 204", async () => {

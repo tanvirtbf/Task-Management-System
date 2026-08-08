@@ -1,0 +1,48 @@
+=== 1. NESTING DEPTH ===
+  depth 1 (parent = d0) -> 201                            nesting_depth=1
+  depth 2 (parent = d1) -> 201                            nesting_depth=2
+  depth 3 (parent = d2) -> 422 task.nesting_too_deep      nesting_depth=-
+  chain length created: 3
+
+=== 2. PARENT VALIDATION ===
+  unknown parent           -> 422 task.invalid_parent
+  parent = itself (create) -> 201 (cannot self-parent at create — no id yet)
+  child in a DIFFERENT list -> 201
+
+=== 3. SUBTASK STATUS CHANGE + DELETE (the SCAN-H4 cases) ===
+  move a subtask to Done -> 200 ✓ works with prod-parity triggers
+     parent counters: {"sc":0,"sd":0} (ISS-046 — never maintained)
+  hard-delete a subtask  -> 204 ✓ works
+
+=== 4. DEPENDENCIES — create ===
+  {"task_id":"t-h3OAP3Vw-TbF0quze8anbQ","related_task_id":"t-1   (X blocks Y)                         -> 201
+  {"task_id":"t-h3OAP3Vw-TbF0quze8anbQ","related_task_id":"t-1   (the SAME pair again)                -> 409 dep.duplicate
+  {"task_id":"t-h3OAP3Vw-TbF0quze8anbQ","related_task_id":"t-h   (self-dependency)                    -> 422 dep.self
+  {"task_id":"t-h3OAP3Vw-TbF0quze8anbQ","related_task_id":"t-n   (unknown related task)               -> 404 task.not_found
+  {"task_id":"t-h3OAP3Vw-TbF0quze8anbQ","related_task_id":"t-1   (a different type, same pair)        -> 422 validation.failed
+  {"task_id":"t-h3OAP3Vw-TbF0quze8anbQ","related_task_id":"t-1   (unknown type)                       -> 422 validation.failed
+  {"task_id":"t-h3OAP3Vw-TbF0quze8anbQ","related_task_id":"t-1   (no type)                            -> 409 dep.duplicate
+
+=== 5. CYCLES ===
+  A blocks B -> 201
+  B blocks A (2-node cycle) -> 422 dep.cycle
+  B blocks C -> 201
+  C blocks A (3-node cycle) -> 422 dep.cycle
+
+=== 6. DB TRIGGERS trg_task_dependencies_no_self_* ===
+  raw INSERT of a self-dependency -> blocked: Unknown column 'type' in 'field list'
+
+=== 7. READ + DELETE dependencies ===
+  GET /tasks/:id/dependencies -> 200 shape: blocks,blocked_by
+  DELETE /task-dependencies/:id -> 204
+  DELETE it again               -> 404 dep.not_found
+  DELETE an unknown id          -> 404 dep.not_found
+
+=== 8. CROSS-SPACE dependency ===
+  Politics task -> Marketing task -> 422 validation.failed
+
+=== 9. BLOCKED task completion (ISS-011 re-check with prod-parity triggers) ===
+  complete a task blocked by an open one -> 200 *** ALLOWED — confirms ISS-011 ***
+
+=== CLEANUP ===
+  orphan statuses 0 | tasks 51 (51) | lists 14 (14) | deps 0 (0)

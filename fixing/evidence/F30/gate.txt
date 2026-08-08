@@ -1,0 +1,29 @@
+F30 gate — Thu Aug  6 23:58:11 BST 2026 — after upgrade 013 (four ISS-088 indexes)
+=== tasks ===
+PASS tests/tasks/list-by-list.test.ts (282.438 s)
+PASS tests/tasks/create.test.ts (99.012 s)
+PASS tests/tasks/assignees.add.test.ts (147.407 s)
+PASS tests/tasks/activity.test.ts (107.121 s)
+PASS tests/tasks/lifecycle.test.ts (48.016 s)
+PASS tests/tasks/update.test.ts (54.838 s)
+PASS tests/tasks/get-by-id.test.ts (48.286 s)
+PASS tests/tasks/bulk.test.ts (38.127 s)
+PASS tests/tasks/subtasks.test.ts (33.032 s)
+PASS tests/tasks/my-work.test.ts (23.964 s)
+Test Suites: 10 passed, 10 total
+Tests:       374 passed, 374 total
+=== collab ===
+PASS tests/checklists/checklists.test.ts (60.59 s)
+PASS tests/comments/comments.test.ts (42.389 s)
+Test Suites: 2 passed, 2 total
+Tests:       49 passed, 49 total
+=== workspaceActivity ===
+PASS tests/workspace-activity/feed.test.ts (27.513 s)
+PASS tests/workspace-activity/recent.test.ts (7.938 s)
+Test Suites: 2 passed, 2 total
+Tests:       41 passed, 41 total
+=== home ===
+PASS tests/home/home.test.ts (28.673 s)
+Test Suites: 1 passed, 1 total
+Tests:       23 passed, 23 total
+=== F30 GATE COMPLETE ===

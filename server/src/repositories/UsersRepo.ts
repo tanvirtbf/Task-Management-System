@@ -1,4 +1,4 @@
-import { and, asc, count, eq, gt, inArray, like, or } from "drizzle-orm";
+import { and, asc, count, eq, gt, inArray, like, ne, or } from "drizzle-orm";
 import { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../db/schema";
 import { users } from "../db/schema";
@@ -431,6 +431,30 @@ export class UsersRepo {
     }
 
     /** Exact count for the same filter set — feeds `pagination.total_estimate`. */
+    /**
+     * F22 (ISS-020): the ACTIVE admin-capable accounts (role owner|admin)
+     * other than  — the last-admin guards refuse any transition
+     * that would drive this to zero.
+     */
+    async countActiveAdminCapable(
+        workspaceId: string,
+        excludeId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<number> {
+        const [row] = await exec
+            .select({ n: count() })
+            .from(users)
+            .where(
+                and(
+                    eq(users.workspaceId, workspaceId),
+                    eq(users.status, "active"),
+                    inArray(users.role, ["owner", "admin"]),
+                    ne(users.id, excludeId),
+                ),
+            );
+        return row?.n ?? 0;
+    }
+
     async countByWorkspace(
         params: UserListFilters & { workspaceId: string },
     ): Promise<number> {

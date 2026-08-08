@@ -1,0 +1,9 @@
+baseline (DB reachable)            HTTP 200  {"status":"ready","checks":{"database":"ok"}}
+
+killing 1 pooled connection(s): 8
+right after KILL                   HTTP 200  {"status":"ready","checks":{"database":"ok"}}
++300ms                             HTTP 200  {"status":"ready","checks":{"database":"ok"}}
++1.8s  (pool should self-heal)     HTTP 200  {"status":"ready","checks":{"database":"ok"}}
+
+=== does the app still work after the kill? ===
+  POST /auth/login -> 200

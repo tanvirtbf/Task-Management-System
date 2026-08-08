@@ -10,6 +10,7 @@ import { UsersRepo } from "../repositories/UsersRepo";
 import { getDb } from "../db/client";
 import logger from "../config/logger";
 import authenticate from "../middlewares/authenticate";
+import { requirePermission } from "../middlewares/requirePermission";
 import { validate } from "../middlewares/validate";
 import {
     recentActivityValidator,
@@ -40,6 +41,7 @@ const controller = new WorkspaceActivityController(service, logger);
 router.get(
     "/recent",
     authenticate,
+    requirePermission("activity.view"),
     recentActivityValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -50,6 +52,7 @@ router.get(
 router.get(
     "/",
     authenticate,
+    requirePermission("activity.view"),
     activityFeedValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>

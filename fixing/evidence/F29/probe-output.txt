@@ -1,0 +1,30 @@
+================ F29 PROBE (ISS-039/043/045/068) ================
+
+--- ISS-045 — pr_url refuses javascript: (create AND update chains) ---
+  PASS  create: javascript: pr_url is refused
+  PASS  create: an https PR link passes
+  PASS  create: explicit null (clearing) passes
+  PASS  update: javascript: pr_url is refused
+  PASS  update: an https PR link passes
+  PASS  update: explicit null (clearing) passes
+
+--- ISS-068 — the 200-item caps ---
+  PASS  bulk: 201 items refused
+  PASS  bulk: 200 items pass (the cap itself)
+  PASS  template: a structure carrying 201 items is refused
+  PASS  template: 200 items pass
+
+--- ISS-043 — ICU currency-list precondition (the money check's spine) ---
+  PASS  Intl.supportedValuesOf('currency') exists and is populated   162
+  PASS  BDT is a known currency
+  PASS  USD is a known currency
+  PASS  XYZ is NOT (the junk the check refuses)
+  PASS  NOTACURRENCY fails even the format rule
+
+--- ISS-039 + phone/money service depth — proven by jest (see gate.txt) ---
+  INFO  tasks/create.test.ts  +7 specs (not_dev_type / severity_requires_bug_type / dev 201 / nulls)
+  INFO  tasks/update.test.ts  +6 specs (patch gate / flip-to-dev 200 / re-type CLEARS git+severity+SLA)
+  INFO  custom-fields/set-value.test.ts  +12 specs (BD forms, opt-out, negative amount, ISO-4217)
+
+================================================
+  15 passed, 0 failed

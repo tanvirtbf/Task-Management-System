@@ -83,6 +83,23 @@ If a backend implementation matches the contract in this document, the frontend 
 
 `next_cursor` is opaque base64 — clients pass it back in `?cursor=…`. `total_estimate` is best-effort (may be `null` for very large sets).
 
+> **F23 (ISS-012 / D10) — the four response families, documented.** The shipped
+> API uses four collection shapes, and they are now DELIBERATE exceptions
+> rather than drift:
+>
+> | shape | endpoints | why |
+> |---|---|---|
+> | `{data, pagination}` | `/spaces` `/lists` `/users` `/tags` `/task-types` `/templates` `/notifications` `/activity` `/reports` `/forms/:id/submissions` | the §1 default. Since F23 the first four honour `limit` + a real cursor (ISS-007) |
+> | bare array | `/forms` `/sprints` `/sla/breached` | small, unpaginated sets; their own sections say so |
+> | `{data}` | `/activity/recent` `/roles` | fixed-size reads (no pagination will ever apply) |
+> | custom buckets | `/search` `/tasks/my-work` `/home/kpis` | shaped for their single consumer |
+>
+> D10 chose documenting over re-shaping: normalising the last three families
+> would break the only existing client for zero functional gain. A malformed or
+> foreign `cursor` is always `400 pagination.invalid_cursor` (ISS-008: strict
+> round-trip decode, F23); an unknown query parameter on the main collection
+> endpoints is `422 validation.failed` naming the parameter (ISS-014).
+
 ### Response — error
 
 ```json
@@ -257,7 +274,14 @@ Returns the current user.
 ### PATCH `/api/v1/workspace`
 **Role required:** admin/owner.
 
-**Body** — partial `Workspace` (name, logo_url, timezone, week_starts_on, working_days, business_hours_start/end, fiscal_year_start_month).
+**Body** — partial `Workspace` (name, logo_url, timezone, week_starts_on, working_days, business_hours_start/end).
+
+> F28 (ISS-029, decision D12.2) dropped `fiscal_year_start_month` from the schema: it was stored,
+> validated 1-12, and read by nothing, and this product has no financial-reporting surface. It is
+> now an unknown key -- this endpoint picks known fields rather than rejecting unknown ones, so
+> sending it is ignored rather than a 422. `working_days` and `business_hours_*` survived the
+> same audit because they gained a real consumer in that phase: **they now decide when an SLA
+> deadline falls** (see 29. SLA).
 
 **200 OK** — updated `Workspace`.
 
@@ -355,8 +379,27 @@ Query: `?space_id=...&include_archived=false&cursor=…`
 **201 Created** — `List`. Server seeds 5 default statuses (`To Do` / `In Progress` / `In Review` / `Done` / `Closed`).
 
 ### PATCH `/api/v1/lists/:id`
-**Body** partial.
+**Body** partial — `name`, `description`, `icon`, `color`, `default_task_type_id`, `space_id`.
 **200 OK** — `List`.
+
+**`space_id` MOVES the list to another space** (F28, ISS-036, decision D12.7). Before F28 a list was
+permanently bound to the space that created it; the only way out was to build a replacement and
+hand-move every task.
+
+| case | response |
+|---|---|
+| target space unknown, or in another workspace | `404 space.not_found` |
+| target space archived | `409 space.archived` |
+| target space already has a list with this name | `409 list.duplicate` (F27's `uq_lists_space_name`; the check is case-insensitive and uses the INCOMING name when the patch also renames) |
+| target space is the list's current space | `200`, no-op |
+
+⚠️ **Reach in this product is space-scoped, so a move changes who can see the list's tasks.** That is
+the feature, not a side effect — but it is worth saying out loud before someone moves a list.
+
+`is_private` is deliberately **not** patchable on a list, and this is not an oversight:
+`lists.is_private` is enforced nowhere (`server/src/rbac/scope.ts`), so a settable toggle would let a
+user mark a list private while every member keeps seeing it. Narrow `space.view` is the real
+mechanism. (`PATCH /spaces/:id` *does* accept `is_private` — the asymmetry is intentional.)
 
 ### POST `/api/v1/lists/:id/archive`
 **204.**
@@ -475,6 +518,15 @@ Special:
 - If `recurrence_pattern != 'none'`, server schedules a cron entry.
 - `custom_id` auto-generated as `<list.prefix>-<task_number>` if not provided.
 - For Bug task type, severity defaults to `S2` if omitted.
+- **F29 (ISS-039) — the type decides which engineering fields it may carry**, checked on the
+  RESOLVED type (explicit, list default, or fallback):
+  - `story_points`, `reviewer_id`, `branch_name`, `pr_url`, `pr_status` need a type with
+    `is_dev_type` → else `422 task.not_dev_type` (details list the offending fields);
+  - `bug_severity` needs a **bug-named** type — the same name key §29's SLA switch uses, so
+    severity and its SLA always travel together → else `422 task.severity_requires_bug_type`.
+  - Explicit `null`s always pass (null is the columns' rest state; clearing junk is never blocked).
+- **F29 (ISS-045)** — `pr_url` is validated as an **http(s) URL** (the `logo_url`/`avatar_url`
+  rule); `javascript:` is a 422.
 
 **201 Created** — full `Task`. `Idempotency-Key` strongly recommended.
 
@@ -484,6 +536,14 @@ Special:
 **Body** partial. Server emits `task_activity` rows on status / assignee / sprint / pr_status changes.
 
 If `If-Match: <etag>` is sent and doesn't match current `updated_at`, **409** `task.conflict`.
+
+**F29 (ISS-039)** — the engineering-field gate applies to the type the task **will have** after the
+patch: `{task_type_id: <dev>, branch_name}` in one request is fine; a git field patched onto a
+non-dev task (or alongside a non-dev `task_type_id`) is `422 task.not_dev_type`; `bug_severity` off
+a bug-named type is `422 task.severity_requires_bug_type`. **Re-typing RESHAPES the task:** moving
+it onto a non-dev type clears the stored git/planning fields — and a stranded severity plus, when
+the new type has no §29 SLA policy, its `sla_due_at` — in the same write, honouring the schema's
+"NULL for non-dev task types" promise. `pr_url` is an http(s) URL here too (ISS-045).
 
 **200 OK** — updated `Task`.
 
@@ -654,7 +714,9 @@ Author or admin. Soft delete (tombstone) — preserves thread structure.
 
 ### POST `/api/v1/checklists/:id/items/bulk`
 Bulk-create — for "one per line" textarea in the UI.
-**Body** `{ "texts": ["item 1", "item 2", "item 3"] }`
+**Body** `{ "texts": ["item 1", "item 2", "item 3"] }` — **1–200 items** (F29 / ISS-068; was
+unbounded — 5,000 items landed in one transaction and every later read of the task paid for it).
+The same cap bounds a template's `structure.checklistItems`, the other entry point to this surface.
 **201 Created** — array of `ChecklistItem`.
 
 ### PATCH `/api/v1/checklist-items/:id`
@@ -777,6 +839,15 @@ Cascades to all stored values. **204.**
 
 ### PUT `/api/v1/tasks/:id/custom-fields/:fieldId`
 Set/replace a custom-field value on a task.
+
+**F29 (ISS-043) — `phone` and `money` validate what their names promise:**
+- `phone`: `config.default_country` **defaults to `"BD"`** (it used to default to nothing, so the
+  BD regex never once fired and the field was free text). Under BD, the value must be a BD mobile —
+  `01XXXXXXXXX`, `+880…` or `880…` spellings all pass, stored verbatim. A field opts out by
+  configuring another country.
+- `money`: `amount` must be a **non-negative** integer (a refund is its own record, not a negative
+  order) and `currency` a real **ISO-4217** code — uppercase three letters, checked against ICU's
+  list (`BDT`/`USD` pass; `NOTACURRENCY`, `XYZ`, `bdt` are 422s).
 
 **Body** — the JSON envelope per `schema.sql §25`:
 ```json
@@ -912,6 +983,19 @@ Sets status → `active`. Only one sprint can be active at a time.
 ### POST `/api/v1/sprints/:id/close`
 Sets status → `closed`. Unfinished tasks roll over to the next planned sprint if one exists (configurable).
 **200 OK** `{ "rolled_over": 3 }`
+
+### DELETE `/api/v1/sprints/:id`
+**Role required:** `sprint.manage` (the same grant that creates and updates one).
+Delete a sprint outright — there is no archive concept for a sprint.
+
+**204.** · `404 sprint.not_found` · **`409 sprint.active_immutable`** when the sprint is `active`.
+
+Added in F28 (ISS-013, decision D12.6): there was no way to remove a sprint at all, so one created
+with wrong dates or a typo'd name was permanent and cleanup meant direct SQL.
+
+**Its tasks are detached, never deleted** — `tasks.sprint_id` is `ON DELETE SET NULL`, so the blast
+radius is the sprint row alone. An **active** sprint is refused so that one click cannot silently
+un-sprint work the team is currently doing; close it or move it back to `planned` first.
 
 ### POST `/api/v1/sprints/:id/tasks`
 Add task(s) to sprint.
@@ -1197,7 +1281,17 @@ RecentActivityCard on Home expects to see both per-task events ("Rashida moved O
 
 Query: `?limit=20`
 
-**200 OK** — `RecentActivityEntry[]` where:
+**200 OK** — `{ data: RecentActivityEntry[] }` where:
+
+> **F23 (ISS-012) — spec corrected to match the shipped contract.** This
+> section used to promise a BARE array while the server has always returned
+> `{ data: [...] }`; the shipped client reads `.data`. D10 chose
+> documentation-only alignment — re-shaping working endpoints for symmetry
+> would break the only client for zero functional gain. The response shapes
+> across the API are now documented in §1 as four deliberate families:
+> `{data, pagination}` (the §1 default), bare arrays (`/forms`, `/sprints`,
+> `/sla/breached` — small unpaginated sets), `{data}` (`/activity/recent`,
+> `/roles`), and custom buckets (`/search`, `/tasks/my-work`, `/home/kpis`).
 ```ts
 type RecentActivityEntry = {
   id: string;
@@ -1262,17 +1356,24 @@ Heartbeat every 30 s prevents proxy disconnect. Client reconnects with `Last-Eve
 
 Internal — invoked by cron, not by clients. Documented for ops visibility.
 
+The SEVEN built jobs (cron cadences per `deploy/cron/bbtasks-jobs`):
+
 | Endpoint | Schedule | What it does |
 |---|---|---|
-| `POST /jobs/recurrence-spawn` | hourly | Creates the next instance of recurring tasks past their due date |
-| `POST /jobs/email-digest` | daily 09:00 BD | Sends daily email digest of overdue + assigned-to-me tasks |
-| `POST /jobs/attachment-janitor` | hourly | Hard-deletes attachments whose upload never finalised after 1 h |
-| `POST /jobs/r2-purge` | daily | Hard-deletes R2 objects whose `attachments.deleted_at` > 7 days ago |
-| `POST /jobs/session-cleanup` | hourly | Hard-deletes `sessions` rows past `expires_at + 30 days` |
-| `POST /jobs/snooze-wake` | every 5 min | Marks snoozed notifications back as unread when `snoozed_until <= NOW()` |
-| `POST /jobs/sla-breach-scan` | every 5 min | Reads `v_breached_sla`, fires `incident_alert` / `due_soon` notifications, escalates S0 bugs to on-call |
+| `POST /jobs/snooze-wake` | every 5 min | Marks snoozed notifications back as unread when their snooze elapses |
+| `POST /jobs/overdue-alert` | every 10 min | The moment a task's `due_date` has passed on the WORKSPACE's calendar (`workspaces.timezone` decides "today"), every assignee gets an `overdue` in-app notification + an email. Exactly once per task per deadline: `tasks.overdue_notified_at` is claimed in the same tx as the fanout, and any `due_date` change re-arms it. Tasks with no assignees stay unclaimed so a late assignee still alerts on the next tick |
+| `POST /jobs/session-cleanup` | daily 02:10 UTC | Hard-deletes `sessions` past `expires_at + 30 d`, and revoked ones past 7 d (F10) |
+| `POST /jobs/attachment-janitor` | daily 02:20 UTC | Hard-deletes attachments whose upload never finalised after 1 h (R2 object first) |
+| `POST /jobs/r2-purge` | daily 02:30 UTC | Hard-deletes R2 objects soft-deleted > 7 days ago + drains `r2_purge_queue` (F16) |
+| `POST /jobs/form-submission-expiry` | daily 02:40 UTC | Hard-deletes form submissions past their 90-day PII retention (`expires_at`) |
+| `POST /jobs/department-report` | Mon 09:00 Dhaka | Weekly per-department HR report + exactly-once `report_ready` fanout; one-week self-heal |
 
-All jobs accept a `?dry_run=true` query to log what they would do without writing. Guarded by an `X-Internal-Token` header so they can be triggered from k8s CronJobs but not from the public internet.
+All jobs accept a `?dry_run=true` query to log what they would do without writing (truthy/falsy forms per F14; a bare `?dry_run` means true). Guarded by an `X-Internal-Token` header so they can be triggered from cron but not from the public internet. A failed job still answers `200 { ok:false, error }` — cron branches on the body (`deploy/cron/run-job.sh` exits 1 on it).
+
+> Spec-era jobs still unbuilt (deferred features, not bugs): `recurrence-spawn`
+> (recurring-task instances) and `email-digest` (daily summary mail).
+> `sla-breach-scan` in its spec form is superseded: due-date overdue alerting is
+> `overdue-alert` above; `sla_due_at` breaches surface in `GET /sla/breached` + `/sla` UI.
 
 ---
 
@@ -1566,7 +1667,332 @@ Retry-After: 300
 
 ## 32. Error code catalog <a id="35-error-codes"></a>
 
-Stable string codes — frontend can switch on these. Format: `<domain>.<reason>`.
+Stable string codes — the frontend can switch on these. Format: `<domain>.<reason>`
+(a handful of infrastructure codes are bare).
+
+> **F23 (ISS-010) — regenerated from the code, 2026-08-06.** The hand-written
+> table below this note documented 37 codes while the server threw 140: a
+> client written against it met over a hundred codes it had never heard of, and
+> 7 documented codes were never thrown at all (several of those — `tag.in_use`,
+> `task.cannot_complete_blocked`, `sprint.overlap`, `role.last_admin` on the
+> legacy path — became REAL in F22). The complete list is now generated by
+> `fixing/evidence/F23/regen-catalog.cjs` scanning every `AppError` call in
+> `server/src`; re-run it after adding codes. The curated table of the most
+> load-bearing codes (with meanings) follows the generated list.
+
+### The complete set (generated)
+
+**`(bare).*`** — 2 code(s)
+
+| Code |
+|---|
+| `internal` |
+| `not_found` |
+
+**`assignment.*`** — 1 code(s)
+
+| Code |
+|---|
+| `assignment.not_found` |
+
+**`attachment.*`** — 3 code(s)
+
+| Code |
+|---|
+| `attachment.empty` |
+| `attachment.not_found` |
+| `attachment.scope_unsupported` |
+
+**`auth.*`** — 10 code(s)
+
+| Code |
+|---|
+| `auth.expired_token` |
+| `auth.forbidden` |
+| `auth.incorrect_password` |
+| `auth.invalid_credentials` |
+| `auth.invalid_refresh` |
+| `auth.invalid_token` |
+| `auth.missing_token` |
+| `auth.password_unchanged` |
+| `auth.rate_limited` |
+| `auth.reset_token_invalid` |
+
+**`checklist.*`** — 1 code(s)
+
+| Code |
+|---|
+| `checklist.not_found` |
+
+**`checklist_item.*`** — 3 code(s)
+
+| Code |
+|---|
+| `checklist_item.invalid_assignee` |
+| `checklist_item.invalid_parent` |
+| `checklist_item.not_found` |
+
+**`comment.*`** — 6 code(s)
+
+| Code |
+|---|
+| `comment.edit_window_expired` |
+| `comment.forbidden_delete` |
+| `comment.not_author` |
+| `comment.not_found` |
+| `comment.parent_not_found` |
+| `comment.reply_to_reply` |
+
+**`conversation.*`** — 1 code(s)
+
+| Code |
+|---|
+| `conversation.not_found` |
+
+**`custom_field.*`** — 3 code(s)
+
+| Code |
+|---|
+| `custom_field.invalid_scope` |
+| `custom_field.not_found` |
+| `custom_field.unsupported_type` |
+
+**`dep.*`** — 4 code(s)
+
+| Code |
+|---|
+| `dep.cycle` |
+| `dep.duplicate` |
+| `dep.not_found` |
+| `dep.self` |
+
+**`eng.*`** — 1 code(s)
+
+| Code |
+|---|
+| `eng.not_configured` |
+
+**`form.*`** — 4 code(s)
+
+| Code |
+|---|
+| `form.invalid_field_key` |
+| `form.not_found` |
+| `form.slug_taken` |
+| `form.submission_closed` |
+
+**`form_field.*`** — 3 code(s)
+
+| Code |
+|---|
+| `form_field.duplicate` |
+| `form_field.not_found` |
+| `form_field.not_in_form` |
+
+**`incident.*`** — 2 code(s)
+
+| Code |
+|---|
+| `incident.not_incident` |
+| `incident.not_resolved` |
+
+**`invitation.*`** — 2 code(s)
+
+| Code |
+|---|
+| `invitation.already_accepted` |
+| `invitation.not_found` |
+
+**`list.*`** — 6 code(s)
+
+| Code |
+|---|
+| `list.archived` |
+| `list.duplicate` |
+| `list.invalid_task_type` |
+| `list.not_archived` |
+| `list.not_empty` |
+| `list.not_found` |
+
+**`notification.*`** — 2 code(s)
+
+| Code |
+|---|
+| `notification.not_found` |
+| `notification.not_owner` |
+
+**`on_call.*`** — 2 code(s)
+
+| Code |
+|---|
+| `on_call.invalid_engineer` |
+| `on_call.not_found` |
+
+**`pagination.*`** — 1 code(s)
+
+| Code |
+|---|
+| `pagination.invalid_cursor` |
+
+**`report.*`** — 3 code(s)
+
+| Code |
+|---|
+| `report.forbidden` |
+| `report.invalid_week` |
+| `report.not_found` |
+
+**`review.*`** — 3 code(s)
+
+| Code |
+|---|
+| `review.forbidden` |
+| `review.not_completed` |
+| `review.not_head` |
+
+**`role.*`** — 9 code(s)
+
+| Code |
+|---|
+| `role.escalation_blocked` |
+| `role.key_taken` |
+| `role.last_admin` |
+| `role.name_taken` |
+| `role.not_found` |
+| `role.owner_immutable` |
+| `role.system_immutable` |
+| `role.unknown_permission` |
+| `role.unsupported_scope` |
+
+**`route.*`** — 1 code(s)
+
+| Code |
+|---|
+| `route.not_found` |
+
+**`service.*`** — 1 code(s)
+
+| Code |
+|---|
+| `service.unavailable` |
+
+**`sla.*`** — 1 code(s)
+
+| Code |
+|---|
+| `sla.invalid_due_at` |
+
+**`space.*`** — 7 code(s)
+
+| Code |
+|---|
+| `space.archived` |
+| `space.duplicate` |
+| `space.has_reports` |
+| `space.head_invalid` |
+| `space.not_archived` |
+| `space.not_empty` |
+| `space.not_found` |
+
+**`sprint.*`** — 7 code(s)
+
+| Code |
+|---|
+| `sprint.active_immutable` |
+| `sprint.another_active` |
+| `sprint.duplicate` |
+| `sprint.invalid_status` |
+| `sprint.not_found` |
+| `sprint.overlap` |
+| `sprint.task_not_in_sprint` |
+
+**`status.*`** — 4 code(s)
+
+| Code |
+|---|
+| `status.duplicate` |
+| `status.in_use` |
+| `status.last_in_group` |
+| `status.not_found` |
+
+**`tag.*`** — 3 code(s)
+
+| Code |
+|---|
+| `tag.duplicate` |
+| `tag.in_use` |
+| `tag.not_found` |
+
+**`task.*`** — 16 code(s)
+
+| Code |
+|---|
+| `task.archived` |
+| `task.cannot_complete_blocked` |
+| `task.conflict` |
+| `task.duplicate_custom_id` |
+| `task.invalid_assignee` |
+| `task.invalid_date_range` |
+| `task.invalid_parent` |
+| `task.invalid_reference` |
+| `task.invalid_reviewer` |
+| `task.invalid_status` |
+| `task.invalid_tag` |
+| `task.invalid_task_type` |
+| `task.nesting_too_deep` |
+| `task.not_dev_type` |
+| `task.not_found` |
+| `task.severity_requires_bug_type` |
+
+**`task_type.*`** — 4 code(s)
+
+| Code |
+|---|
+| `task_type.duplicate` |
+| `task_type.in_use` |
+| `task_type.not_found` |
+| `task_type.system` |
+
+**`template.*`** — 5 code(s)
+
+| Code |
+|---|
+| `template.duplicate` |
+| `template.empty_structure` |
+| `template.invalid_tag` |
+| `template.invalid_task_type` |
+| `template.not_found` |
+
+**`user.*`** — 11 code(s)
+
+| Code |
+|---|
+| `user.cannot_change_own_role` |
+| `user.cannot_change_owner_role` |
+| `user.cannot_deactivate_owner` |
+| `user.cannot_self_deactivate` |
+| `user.cannot_self_reactivate` |
+| `user.email_already_exists` |
+| `user.email_change_forbidden` |
+| `user.forbidden_edit` |
+| `user.not_active` |
+| `user.not_deactivated` |
+| `user.not_found` |
+
+**`validation.*`** — 1 code(s)
+
+| Code |
+|---|
+| `validation.failed` |
+
+**`workspace.*`** — 2 code(s)
+
+| Code |
+|---|
+| `workspace.invalid_business_hours` |
+| `workspace.not_found` |
+
+### Curated meanings for the most load-bearing codes
 
 | Code | HTTP | Meaning |
 |---|---|---|
@@ -1575,43 +2001,20 @@ Stable string codes — frontend can switch on these. Format: `<domain>.<reason>
 | `auth.rate_limited` | 429 | Login attempts exceeded |
 | `auth.missing_token` | 401 | No `Authorization` header |
 | `auth.expired_token` | 401 | Access token past expiry |
-| `auth.forbidden` | 403 | Permission denied for action |
-| `validation` | 422 | Body failed validation. `details[]` lists field issues |
-| `task.not_found` | 404 | |
-| `task.conflict` | 409 | Optimistic-lock failure |
-| `task.archived` | 409 | Action not allowed on archived task |
-| `task.cannot_complete_blocked` | 409 | Open blockers exist (soft warning — UI can override) |
-| `task.nesting_too_deep` | 422 | Subtask nesting > 2 levels |
-| `list.not_found` | 404 | |
-| `list.has_open_tasks` | 409 | Cannot delete; tasks still exist |
-| `list.archived` | 409 | Cannot create/apply a task in an archived list |
-| `status.in_use` | 409 | Cannot delete; tasks reference it |
-| `tag.in_use` | 409 | (For hard delete) |
-| `custom_field.unsupported_type` | 422 | Trying to use a non-allowed type |
-| `customer.duplicate_phone` | 409 | Phone already taken |
-| `customer.invalid_phone` | 422 | Phone fails `01[3-9]\d{8}` regex |
-| `form.slug_taken` | 409 | Public slug already used |
-| `form.submission_closed` | 403 | Form's `submission_open` is false |
-| `attachment.too_large` | 413 | File size > limit |
-| `attachment.mime_not_allowed` | 415 | MIME type rejected |
-| `attachment.upload_expired` | 410 | Signed URL no longer valid |
-| `sprint.overlap` | 409 | Two active sprints not allowed |
-| `dep.cycle` | 422 | Would create a dependency cycle |
-| `dep.self` | 422 | Task cannot depend on itself |
-| `notification.not_owner` | 403 | Cannot act on another user's notification |
-| `sla.invalid_due_at` | 422 | SLA due date is in the past |
-| `template.not_found` | 404 | Template id doesn't exist |
-| `template.duplicate` | 409 | Template name already exists in workspace |
-| `template.empty_structure` | 422 | Template has no checklist items |
-| `template.invalid_task_type` | 422 | `structure.taskTypeId` not in workspace |
-| `template.invalid_tag` | 422 | `structure.tags[]` contains an id not in this workspace |
-| `health.dependency_down` | 503 | Readiness check failed — see `checks` field |
-| `payload.too_large` | 413 | Body exceeded per-route limit (see §31.4) |
-| `rate.exceeded` | 429 | Per-bucket rate limit |
-| `internal` | 500 | Unhandled — see `request_id` in logs |
-| `maintenance` | 503 | Planned downtime |
-
----
+| `auth.forbidden` | 403 | Permission denied for the action |
+| `validation.failed` | 422 | Body/query failed validation. `details[]` lists field issues |
+| `pagination.invalid_cursor` | 400 | A cursor this server did not issue (F23: strict round-trip) |
+| `task.not_found` | 404 | Also any cross-workspace id (no existence oracle) |
+| `task.conflict` | 409 | Optimistic-lock (`If-Match`) failure |
+| `task.archived` | 409 | Writes frozen — comments and dependency edges included (F22) |
+| `task.cannot_complete_blocked` | 409 | Open blockers exist (enforced since F22) |
+| `tag.in_use` | 409 | The tag is still on tasks (enforced since F22) |
+| `sprint.overlap` | 409 | Dates overlap another sprint (enforced since F22) |
+| `role.last_admin` | 409 | The change would leave no active admin-capable account |
+| `space.archived` | 409 | An archived space is frozen (F22) |
+| `space.head_invalid` | 422 | Head must be an existing, active, non-guest member |
+| `service.unavailable` | 503 | Pool exhaustion — retry after `Retry-After` seconds (F11) |
+| `internal` | 500 | Unhandled error; `request_id` correlates the log line |
 
 ## 33. Department review & weekly HR reports <a id="36-dept-review"></a>
 
@@ -1695,7 +2098,6 @@ interface Workspace {
   working_days: string[];            // ['sun','mon',…]
   business_hours_start: string;      // "09:00:00"
   business_hours_end: string;
-  fiscal_year_start_month: number;   // 1..12
 }
 
 // Hierarchy ───────────────────────────────────────────────────────
@@ -1940,9 +2342,11 @@ interface FormSubmission {
 }
 
 // Notifications ───────────────────────────────────────────────────
+// The live ENUM (upgrades/009 cut the producerless types; upgrades/014
+// re-added `overdue` WITH its producer, the overdue-alert job).
 type NotificationType = "assigned" | "mentioned" | "comment" | "status_change"
-                      | "due_soon" | "overdue" | "form_submitted"
-                      | "reminder_due" | "pr_review" | "incident_alert";
+                      | "form_submitted" | "task_reviewed" | "report_ready"
+                      | "overdue";
 
 interface Notification {
   id: string;

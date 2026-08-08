@@ -1,0 +1,33 @@
+=== 8. ERROR ENVELOPE PER STATUS CODE ===
+  400  bad cursor                                      400          envelope ✓  pagination.invalid_cursor
+  401  no token                                        401          envelope ✓  auth.missing_token
+  401  garbage token                                   401          envelope ✓  auth.invalid_token
+  401  alg=none forged                                 401          envelope ✓  auth.invalid_token
+  403  guest lacks catalog.tags                        403          envelope ✓  auth.forbidden
+  404  unknown task id                                 404          envelope ✓  task.not_found
+  404  unknown route                                   404          envelope ✓  route.not_found
+  404  unknown ROOT route                              404          envelope ✓  route.not_found
+  409  duplicate tag name                              409          envelope ✓  tag.duplicate
+  422  missing required field                          422          envelope ✓  validation.failed
+  422  bad enum                                        422          envelope ✓  validation.failed
+  400  malformed JSON body                             400          envelope ✓  bad_request
+  413  >1MB JSON body                                  413          envelope ✓  payload.too_large
+
+=== 9. METHOD NOT ALLOWED on a known path ===
+  PUT /users (only GET+POST /invite exist)             404          envelope ✓  route.not_found
+  DELETE /users (only GET+POST /invite exist)          404          envelope ✓  route.not_found
+  PATCH /users (only GET+POST /invite exist)           404          envelope ✓  route.not_found
+  POST /users (only GET+POST /invite exist)            404          envelope ✓  route.not_found
+
+=== 10. request_id: present + UNIQUE per request ===
+  ids: req_74ab94ff-ffd6- req_7c57f3ab-73ef- req_0c59c712-838a- req_015b96de-d2c1- req_1513a08e-b524-
+  all present: true  all unique: true  format ok: true
+
+=== 11. 422 details[] shape ===
+  status 422 details: [{"field":"primary_list_id","issue":"primary_list_id must be a string"},{"field":"name","issue":"name is required"}]
+  every detail has field+issue: true
+
+=== 12. SECURITY HEADERS on ERROR responses ===
+  404: x-content-type-options=nosniff  x-frame-options=DENY  referrer-policy=no-referrer  x-permitted-cross-domain-policies=none
+  401: x-content-type-options=nosniff  x-frame-options=DENY  referrer-policy=no-referrer  x-permitted-cross-domain-policies=none
+  422: x-content-type-options=nosniff  x-frame-options=DENY  referrer-policy=no-referrer  x-permitted-cross-domain-policies=none

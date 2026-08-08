@@ -1,0 +1,26 @@
+=== A. did the PATCH /workspace probe mutate anything? ===
+  workspace row: {"name":"BeautyBooth","timezone":"Asia/Dhaka","week_starts_on":6,"updated_at":"Thu Jul 30 2026 10:52:07 GMT+0600 (Bangladesh Standard Time)"}
+  workspace_activity rows in the last 20 min: 0
+
+=== B. GUEST REDACTION — owner vs guest, field by field ===
+  /users?limit=200         owner items=16   guest items=16    hidden: none
+  /home/kpis               owner items=-    guest items=-     hidden: none
+  /eng/home                owner items=-    guest items=-     hidden: none
+  /activity?limit=20       owner items=14   guest items=14    hidden: none
+  /reports                 owner items=12   guest items=0     HIDDEN: data[].id,data[].space_id,data[].week_start,data[].week_end,data[].head_user_id,data[].head.id
+  /sla/breached            owner items=0    guest items=0     hidden: none
+  /sprints                 owner items=1    guest items=1     hidden: none
+  /on-call/current         owner items=-    guest items=-     hidden: none
+  /search?q=a              owner items=-    guest items=-     hidden: none
+  /tasks/my-work           owner items=-    guest items=-     HIDDEN: overdue[].id,overdue[].custom_id,overdue[].task_number,overdue[].workspace_id,overdue[].primary_list_id,overdue[].name
+  /spaces                  owner items=9    guest items=9     hidden: none
+  /lists                   owner items=14   guest items=14    hidden: none
+  /workspace               owner items=-    guest items=-     hidden: none
+
+=== C. DOES A GUEST SEE REAL HR/DEPARTMENT REPORT CONTENT? ===
+  GET /reports as guest -> 0 report(s)
+
+=== D. per-member data exposure: what does a GUEST learn about staff? ===
+  owner sees 16 users, guest sees 16
+  guest-visible user fields: id, first_name, last_name, email, role, avatar_url, status, timezone, created_at, last_login_at
+  sample guest view: {"id":"u-76AuOtG-wzFTpMxhix2_qA","first_name":"Guest","last_name":"Collaborator","email":"guest@beautybooth.com.bd","role":"guest","avatar_url":null,"status":"active","timezone":"Asia/Dhaka","created_at":"2026-07-28T15:43:19.000Z","last_login_at":"2026-07-30T05:14:39.000Z"}

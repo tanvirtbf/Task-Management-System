@@ -1,0 +1,14 @@
+=== denied-origin response body ===
+  status: 500
+  body  : {"error":{"code":"internal","message":"Internal server error","request_id":"req_e82ac42f-c011-4bb9-a679-d53823caef50"}}
+  => a normal browser CORS rejection is reported as a SERVER FAULT (5xx)
+
+=== does it write an error line to the server log each time? ===
+  log lines added: 0 | 'Unhandled error'/CORS lines: 5
+    10:28:35 error [req_e825d540-ce06-40f2-beb8-76f3f15c3cf4] Unhandled error Origin http://evil.com#localhost not allowed by CORS {"name":"Error"}
+    10:28:35 error [req_baedfc38-3c2b-4072-8d50-41246fd9638f] Unhandled error Origin null not allowed by CORS {"name":"Error"}
+
+=== 14. request_id <-> server log correlation ===
+  request_id: req_6cdb3700-06df-41a1-a421-9c882d1a2b47 | lines in stdout log: 0
+  lines in winston combined.log: 1
+    {"durationMs":6.56,"ip":"::ffff:127.0.0.1","level":"warn","message":"request","method":"GET","path":"/api/v1/tasks/t-nope","requestId":"req_6cdb3700-06df-41a1-a421-9c882d

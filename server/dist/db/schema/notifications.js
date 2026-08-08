@@ -61,7 +61,8 @@ exports.userNotificationPrefs = (0, mysql_core_1.mysqlTable)("user_notification_
     }),
     type: (0, mysql_core_1.mysqlEnum)("type", _shared_1.notificationTypes).notNull(),
     inAppEnabled: (0, mysql_core_1.boolean)("in_app_enabled").notNull().default(true),
-    emailEnabled: (0, mysql_core_1.boolean)("email_enabled").notNull().default(true),
+    // F19 (D8): email_enabled is GONE — it promised a channel with no
+    // implementation (MailService sends exactly two transactional mails).
     updatedAt: (0, mysql_core_1.timestamp)("updated_at").notNull().defaultNow().onUpdateNow(),
 }, (t) => ({
     pk: (0, mysql_core_1.primaryKey)({ columns: [t.userId, t.type] }),

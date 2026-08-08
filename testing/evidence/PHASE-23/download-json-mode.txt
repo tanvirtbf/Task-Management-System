@@ -1,0 +1,12 @@
+  attachments in DB: [{"id":"att-Uk8ml1UAOaMVlO0Lsh8_YA","deleted_at":"2026-07-29T03:29:25.000Z","upload_status":"complete"}]
+  (none)      -> 404  {"error":{"code":"attachment.not_found","message":"Attachment att-Uk8m
+  ?json=1     -> 404  {"error":{"code":"attachment.not_found","message":"Attachment att-Uk8m
+  ?json=0     -> 404  {"error":{"code":"attachment.not_found","message":"Attachment att-Uk8m
+  ?json=bogus -> 404  {"error":{"code":"attachment.not_found","message":"Attachment att-Uk8m
+  final: tasks 51 lists 14 attachments 1
+  fresh attachment: att-TK3Pa6Uvrmp0CKJWDfK7dA
+  (none)      -> 302  302 redirect to R2
+  ?json=1     -> 200  JSON {url} TTL=300s  <- what the client uses
+  ?json=0     -> 302  302 redirect to R2
+  ?json=bogus -> 302  302 redirect to R2
+  final: tasks 51 (51) lists 14 (14) statuses 70 (70) attachments 1 (1)

@@ -1,0 +1,43 @@
+
+  === F26 — client permission gating ===
+
+  --- SCAN-M5: the Engineering nav gate, on real permission data ---
+  OK    the Engineering block is now INSIDE a conditional             
+  OK    …gated on the four engineering-domain grants                  
+  OK    …and Report-a-bug stays OUTSIDE it (a non-engineer must reach the team)
+  account                                 holds an eng grant?   sees Eng nav
+  OK    owner@company.local                     yes                   yes
+  OK    jhankar@beautybooth.com.bd              yes                   yes
+  OK    marketing.only@beautybooth.com.bd       no                    NO — hidden
+  OK    guest@beautybooth.com.bd                yes (guest: ISS-094)  NO — hidden
+
+  --- SCAN-M5 (wider): the high-traffic action buttons ---
+  OK    Sidebar menu entries gated (workspace settings / members / new space)
+  OK    Invite member gated on member.invite (it 403-toasted before)  
+  OK    task archive/restore gated on task.delete                     
+  OK    …and the permanent delete on task.delete_hard                 
+  OK    …and the SERVER refuses what the client now hides (invite → 403)got 403
+
+  --- ISS-042: hidden_from_guests reaches the API ---
+  OK    POST /custom-fields accepts hidden_from_guests (was: unknown field)got 201, wire flag true
+  OK    …and it is STORED (not silently dropped)                      db 1
+  OK    PATCH can switch it back off                                  got 200
+  OK    a non-boolean is a clean 422                                  got 422
+  OK    the flag is on every wire custom field (it was in no serializer)
+
+  --- ISS-023: the eleventh redaction call site ---
+  OK    ReviewsService no longer hardcodes `false`                    
+  OK    …it computes redactGuest like the other ten sites             
+
+  --- ISS-038: the reorder endpoint has a caller at last ---
+  OK    StatusesSettings calls statusesApi.reorder (there was NO caller)
+  OK    …sends a COMPLETE permutation (F18 refuses partial payloads)  
+  OK    …and the control is gated on status.manage                    
+  OK    the swap the arrows build is accepted (200) and the order flipsgot 200
+  OK    …and restoring the original order works too                   
+
+  === CLEANUP ===
+  custom_fields 0 | users 16 | statuses 65 (65)
+
+  PASS — the nav and the buttons match the permissions the server enforces.
+

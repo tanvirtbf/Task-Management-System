@@ -2,6 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TaskMembershipService = void 0;
 const errors_1 = require("../errors");
+const scopeGuard_1 = require("../rbac/scopeGuard");
+const TaskEmailService_1 = require("./TaskEmailService");
 const NOTIFICATION_TITLE_MAX = 300; // notifications.title VARCHAR(300)
 const ASSIGNED_TITLE_PREFIX = "You were assigned to ";
 class TaskMembershipService {
@@ -29,6 +31,20 @@ class TaskMembershipService {
      * eligibility checks run before the transaction, so an invalid request
      * never produces a partial assignment.
      */
+    /** F8 (ISS-047): the `task.assign` grant's scope must reach this task. */
+    async assertAssignScope(task) {
+        if (await (0, scopeGuard_1.hasFullReach)("task.assign"))
+            return;
+        const [spaceIds, assignees] = await Promise.all([
+            this.tasks.spaceIdsByTask([task.id]),
+            this.tasks.assigneesByTask([task.id]),
+        ]);
+        await (0, scopeGuard_1.assertScoped)("task.assign", {
+            spaceId: spaceIds.get(task.id) ?? null,
+            createdBy: task.createdBy,
+            assigneeIds: assignees.get(task.id) ?? [],
+        });
+    }
     async addAssignees(input) {
         const { taskId, workspaceId, actorId, userIds } = input;
         // 1. Task must live in the caller's workspace (404 otherwise — no
@@ -41,6 +57,7 @@ class TaskMembershipService {
         if (task.archivedAt) {
             throw errors_1.AppError.conflict("task.archived", "Cannot modify an archived task");
         }
+        await this.assertAssignScope(task); // F8
         // 3. Every candidate must be an ACTIVE member of THIS workspace.
         //    Reject the whole request if any id is invalid — no partial writes,
         //    and a foreign-workspace id is indistinguishable from a missing one.
@@ -59,12 +76,12 @@ class TaskMembershipService {
         //    lets us recompute the "not already assigned" diff race-free, so a
         //    concurrent re-add writes nothing (exactly-once side effects).
         //    All writes are one transaction: all-or-nothing.
-        return this.db.transaction(async (tx) => {
+        const outcome = await this.db.transaction(async (tx) => {
             await this.tasks.lockById(taskId, tx);
             const existing = new Set(await this.membership.getAssigneeIds(taskId, tx));
             const newIds = userIds.filter((id) => !existing.has(id));
             if (newIds.length === 0) {
-                return { added: 0 };
+                return { added: 0, recipients: [] };
             }
             await this.membership.addAssignees(taskId, newIds, actorId, tx);
             await this.membership.addWatchers(taskId, newIds, tx);
@@ -85,8 +102,21 @@ class TaskMembershipService {
                 title: this.assignedTitle(task.name),
             })), tx);
             await this.tasks.touchUpdatedAt(taskId, tx);
-            return { added: newIds.length };
+            return { added: newIds.length, recipients };
         });
+        // Email the same recipients the in-app fanout reached — AFTER the
+        // commit, fire-and-forget: the 204 never waits on SMTP and a mail
+        // failure never fails the assignment (2026-08-08 email feature).
+        if (outcome.recipients.length > 0) {
+            void (0, TaskEmailService_1.taskEmails)().taskAssigned({
+                workspaceId,
+                taskId,
+                taskName: task.name,
+                recipientIds: outcome.recipients,
+                actorId,
+            });
+        }
+        return { added: outcome.added };
     }
     /**
      * Remove a single assignee from a task.
@@ -110,6 +140,7 @@ class TaskMembershipService {
         if (task.archivedAt) {
             throw errors_1.AppError.conflict("task.archived", "Cannot modify an archived task");
         }
+        await this.assertAssignScope(task); // F8
         // 3. Critical section. Take the task lock FIRST — the same order every
         //    membership writer uses — so a concurrent add/remove on the SAME
         //    task serializes (no InnoDB deadlock) and the "currently assigned?"
@@ -194,6 +225,24 @@ class TaskMembershipService {
      * full transactional template (lock → diff → junction write → `tag_added`
      * activity → ETag bump). No notification — there is no `tagged` type.
      */
+    /**
+     * F34 (ISS-095): the service half of the tag gate, mirroring
+     * `assertAssignScope` — the route proved the `task.edit` verb; this proves
+     * the grant's REACH covers the resolved task (F8's two-layer pattern).
+     */
+    async assertTagScope(task) {
+        if (await (0, scopeGuard_1.hasFullReach)("task.edit"))
+            return;
+        const [spaceIds, assignees] = await Promise.all([
+            this.tasks.spaceIdsByTask([task.id]),
+            this.tasks.assigneesByTask([task.id]),
+        ]);
+        await (0, scopeGuard_1.assertScoped)("task.edit", {
+            spaceId: spaceIds.get(task.id) ?? null,
+            createdBy: task.createdBy,
+            assigneeIds: assignees.get(task.id) ?? [],
+        });
+    }
     async addTags(input) {
         const { taskId, workspaceId, actorId, tagIds } = input;
         const task = await this.tasks.findByIdInWorkspace(taskId, workspaceId);
@@ -203,6 +252,7 @@ class TaskMembershipService {
         if (task.archivedAt) {
             throw errors_1.AppError.conflict("task.archived", "Cannot modify an archived task");
         }
+        await this.assertTagScope(task);
         const validIds = await this.tags.findIdsInWorkspace(tagIds, workspaceId);
         const invalid = tagIds.filter((id) => !validIds.has(id));
         if (invalid.length > 0) {
@@ -248,6 +298,8 @@ class TaskMembershipService {
         if (task.archivedAt) {
             throw errors_1.AppError.conflict("task.archived", "Cannot modify an archived task");
         }
+        // F34 (ISS-095): same gate as applying one.
+        await this.assertTagScope(task);
         return this.db.transaction(async (tx) => {
             await this.tasks.lockById(taskId, tx);
             const existing = new Set(await this.membership.getTagIds(taskId, tx));

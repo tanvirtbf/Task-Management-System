@@ -148,6 +148,25 @@ export class TaskWriteController {
 
             const fields = Object.keys(b);
             if (fields.length === 0) {
+                // F23 (ISS-048): the caller may have sent a REAL field that
+                // just lives on a different endpoint. "You sent no fields" was
+                // a lie in that case — name the right door instead.
+                const MISDIRECTED: Record<string, string> = {
+                    assignees:
+                        "assignees are managed via POST /tasks/:id/assignees and DELETE /tasks/:id/assignees/:userId",
+                    tags: "tags are managed via POST /tasks/:id/tags and DELETE /tasks/:id/tags/:tagId",
+                    parent_task_id:
+                        "parent_task_id is set at creation and cannot be changed by PATCH",
+                    primary_list_id:
+                        "primary_list_id cannot be changed by PATCH (tasks do not move between lists in V1)",
+                };
+                const rawKeys = Object.keys(rawBody);
+                const misdirected = rawKeys
+                    .filter((k) => k in MISDIRECTED)
+                    .map((k) => ({ field: k, issue: MISDIRECTED[k] }));
+                if (misdirected.length > 0) {
+                    throw AppError.validationFailed(misdirected);
+                }
                 throw AppError.validationFailed([
                     { issue: "Provide at least one field to update" },
                 ]);

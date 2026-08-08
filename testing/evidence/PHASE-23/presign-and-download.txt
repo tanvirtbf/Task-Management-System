@@ -1,0 +1,33 @@
+=== PRESIGN, with the real key `scope_type` ===
+  well-formed -> 201                      keys: ["attachment_id","upload_url","fields","expires_in"]
+     host: e6e124f4a9ad7acc67b95d1ddcf7b520.r2.cloudflarestorage.com | X-Amz-Expires: 900 s | expires_in field: 900
+  bad MIME            -> 415 attachment.mime_not_allowed
+  over 25 MB          -> 413 attachment.too_large
+  zero bytes          -> 422 validation.failed
+  negative size       -> 422 validation.failed
+  scope_type=comment  -> 400 attachment.scope_unsupported
+  scope_type=bogus    -> 400 attachment.scope_unsupported
+  unknown task        -> 404 task.not_found
+  300-char filename   -> 422 validation.failed
+  guest signs         -> 403 auth.forbidden
+
+=== FINALIZE ===
+  row created by sign, upload_status = pending
+  finalize WITHOUT ever PUTting -> 410 attachment.upload_expired
+  finalize unknown id           -> 404 attachment.not_found
+  PUT to the signed URL         -> 200
+  finalize AFTER the PUT        -> 200      upload_status now: complete
+  finalize a 2-day-old pending  -> 410 attachment.upload_expired
+
+=== DOWNLOAD — what does it actually return? ===
+  status: 302 | Location header: yes | body: "Found. Redirecting to https://e6e124f4a9ad7acc67b95d1ddcf7b520.r2.cloudflarestor"
+     -> 302 to e6e124f4a9ad7acc67b95d1ddcf7b520.r2.cloudflarestorage.com | X-Amz-Expires: 300 s | signed: true
+     fetching it: 200 image/png 71 bytes (uploaded 71)
+     with a tampered signature: 403
+  another member -> 302
+  a GUEST        -> 302 (guests cannot upload; can they read?)
+
+=== R2 UNREACHABLE behaviour (simulated by a bogus key) ===
+  download an object that is not in the bucket -> 404 
+
+CLEANUP: orphan statuses 0 | orphan attachments 0 | tasks 51 (51) | lists 14 (14) | statuses 70 (70) | attachments 1 (1)

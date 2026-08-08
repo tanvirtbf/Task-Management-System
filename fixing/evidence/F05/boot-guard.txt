@@ -1,0 +1,9 @@
+F5 boot guard - NODE_ENV x DB_TIMEZONE matrix (2026-08-04T12:06:48+06:00)
+importing src/db/client runs the guard; BOOTED = accepted, refusal = non-zero exit
+
+  prod + DB_TIMEZONE=+00:00 (the canonical pair) exit=0  BOOTED
+  prod + DB_TIMEZONE=+06:00 (the old prod value) exit=1  REFUSED (Refusing to start: NODE_ENV=prod requires DB_TIMEZONE=+00:00 (the canonical clock — got ...)
+  prod + DB_TIMEZONE unset                       exit=1  REFUSED (Refusing to start: NODE_ENV=prod requires DB_TIMEZONE=+00:00 (the canonical clock — got ...)
+  production spelling + +06:00 (gap-scan M4 alias) exit=1  REFUSED (Refusing to start: NODE_ENV=production requires DB_TIMEZONE=+00:00 (the canonical clock �...)
+  dev + DB_TIMEZONE=+06:00 (not guarded - dev's own risk) exit=0  BOOTED
+  dev + DB_TIMEZONE=+00:00 (the dev default since F3) exit=0  BOOTED

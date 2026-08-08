@@ -292,8 +292,12 @@ export const BulkActionToolbar = ({
 
             <Divider />
 
+            {/* F25 (ISS-050): Archive hides and CAN be undone (each task's
+                menu grows a Restore entry); the button below is the permanent
+                one. They used to be two labels for the same soft delete. */}
             <Popconfirm
                 title="Archive selected tasks?"
+                description="They stay restorable from each task's menu."
                 onConfirm={async () => {
                     await Promise.all(
                         selectedIds.map((id) => tasksApi.archive(id)),
@@ -310,11 +314,15 @@ export const BulkActionToolbar = ({
             </Popconfirm>
 
             <Popconfirm
-                title="Delete selected tasks? This cannot be undone."
+                title="Delete selected tasks permanently?"
+                description="This cannot be undone. Use Archive to hide them instead."
                 okType="danger"
+                okText="Delete permanently"
                 onConfirm={async () => {
                     await Promise.all(
-                        selectedIds.map((id) => tasksApi.delete(id)),
+                        // F25 (ISS-050): the plain DELETE is a SOFT delete —
+                        // the same operation as Archive. This is the real one.
+                        selectedIds.map((id) => tasksApi.delete(id, true)),
                     );
                     qc.invalidateQueries({
                         queryKey: ["tasks-by-list", listId],
@@ -332,7 +340,7 @@ export const BulkActionToolbar = ({
                         (e.currentTarget.style.background = "transparent")
                     }
                 >
-                    <Trash2 size={12} strokeWidth={1.75} /> Delete
+                    <Trash2 size={12} strokeWidth={1.75} /> Delete permanently
                 </button>
             </Popconfirm>
 

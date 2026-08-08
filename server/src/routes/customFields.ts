@@ -155,6 +155,7 @@ router.delete(
 router.put(
     "/tasks/:id/custom-fields/:fieldId",
     authenticate,
+    requirePermission("customfield.set_value"),
     taskFieldParamsValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -167,6 +168,7 @@ router.put(
 router.delete(
     "/tasks/:id/custom-fields/:fieldId",
     authenticate,
+    requirePermission("customfield.set_value"),
     taskFieldParamsValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>

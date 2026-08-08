@@ -1,0 +1,48 @@
+=== 1. DOES DELETING A LIST THROUGH THE API REMOVE ITS STATUSES? ===
+  statuses 155 -> 160 after creating a list (+5 defaults)
+  default flow: To Do[not_started] > In Progress[active] > In Review[active] > Done[done] > Closed[closed]
+  DELETE the list via the API -> 204
+  statuses 160 -> 155   cascade worked ✓
+
+=== 2. CREATE — validation ===
+  {"name":"TEST-s1","status_group":"active","color":"#1111   (valid)                                -> 201
+  {"name":"TEST-s2","status_group":"todo","color":"#111111   ('todo' — is that a real group?)       -> 422 validation.failed
+  {"name":"TEST-s3","status_group":"in_progress","color":"   ('in_progress')                        -> 422 validation.failed
+  {"name":"TEST-s4","status_group":"bogus","color":"#11111   (unknown group)                        -> 422 validation.failed
+  {"name":"TEST-s5","color":"#111111"}                       (no group)                             -> 422 validation.failed
+  {"name":"","status_group":"active","color":"#111111"}      (empty name)                           -> 422 validation.failed
+  {"name":"To Do","status_group":"not_started","color":"#1   (DUPLICATE of a default name)          -> 409 status.duplicate
+  {"name":"TEST-s6","status_group":"active","color":"red"}   (non-hex colour)                       -> 422 validation.failed
+  {"name":"TEST-s7","status_group":"not_started","color":"   (a 2nd not_started)                    -> 201
+  flow now: To Do[not_started]@0 > In Progress[active]@1 > In Review[active]@2 > Done[done]@3 > Closed[closed]@4 > TEST-s1[active]@5 > TEST-s7[not_started]@6
+
+=== 3. UPDATE ===
+  {"name":"TEST-s1-renamed"}             (rename)                         -> 200
+  {"color":"#abcdef"}                    (colour)                         -> 200
+  {"status_group":"done"}                (move it to another group)       -> 200
+  {"status_group":"bogus"}               (unknown group)                  -> 422 validation.failed
+  {"position":0}                         (position via PATCH)             -> 422 validation.failed
+  {"scope_id":"l-other"}                 (move to another list)           -> 422 validation.failed
+
+=== 4. LAST-IN-GROUP + IN-USE delete guards ===
+  groups: not_started=2 active=2 done=2 closed=1
+  delete a NON-last 'not_started' (2 in group) -> 204
+  delete a NON-last 'active' (2 in group) -> 204
+  delete a NON-last 'done' (2 in group) -> 204
+  delete the LAST 'not_started'        -> 422 status.last_in_group
+  the new task landed on status: To Do
+  delete a status IN USE by a task     -> 409 status.in_use
+
+=== 5. REORDER edge cases ===
+  current order: To Do > In Progress > Done > Closed
+  full set, reversed                         -> 422 validation.failed      order: To Do > In Progress > Done > Closed
+  PARTIAL set (2 of 4)                       -> 422 validation.failed      order: To Do > In Progress > Done > Closed
+  DUPLICATE id in the payload                -> 422 validation.failed      order: To Do > In Progress > Done > Closed
+  a FOREIGN/unknown id appended              -> 422 validation.failed      order: To Do > In Progress > Done > Closed
+  a status id from ANOTHER list              -> 422 validation.failed      order: To Do > In Progress > Done > Closed
+  empty array                                -> 422 validation.failed      order: To Do > In Progress > Done > Closed
+  no status_ids at all                       -> 422 validation.failed      order: To Do > In Progress > Done > Closed
+
+=== CLEANUP ===
+  removed orphaned status rows: 85
+  statuses 70 (expect 70 = 14 lists x 5) | lists 14 | tasks 51

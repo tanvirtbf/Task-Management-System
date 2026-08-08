@@ -39,7 +39,12 @@ const schema = __importStar(require("../db/schema"));
 const errors_1 = require("../errors");
 const utils_1 = require("../utils");
 const constants_1 = require("../constants");
+const TaskEmailService_1 = require("./TaskEmailService");
 const taskSerializer_1 = require("../serializers/taskSerializer");
+const dhakaTime_1 = require("../utils/dhakaTime");
+const can_1 = require("../rbac/can");
+const context_1 = require("../rbac/context");
+const scopeGuard_1 = require("../rbac/scopeGuard");
 /**
  * §10 Tasks WRITE logic (create / update / archive / delete / bulk + the
  * my-work rollup). Kept separate from the read-side `TasksService` so the
@@ -67,46 +72,193 @@ const isForeignKeyError = (err) => {
  * §29 implicit SLA policy, relative to create time. Keyed on the task-type NAME
  * (case-insensitive "bug"/"complaint") + `bug_severity` — the only signals the
  * spec names. Returns `null` (no SLA) for every other type and for Bug S3.
+ *
+ * **F28 (ISS-029, decision D12.2): these durations are measured on the BUSINESS
+ * clock.** They used to be wall-clock, which is how an S0 filed 17:30 on a
+ * Thursday got a 19:30-Thursday deadline — after hours, on the last working day
+ * before BeautyBooth's Friday-Saturday weekend. The numbers are unchanged; what
+ * changed is the clock they are counted on, so the team now gets the working
+ * time the policy promises:
+ *
+ * | severity   | policy | was (wall-clock) | now (business clock)          |
+ * |------------|--------|------------------|-------------------------------|
+ * | Bug S0     | 2h     | +2 hours         | 2 working hours               |
+ * | Bug S1     | 24h    | +24 hours        | 1 working day (same time next)|
+ * | Bug S2     | 7d     | +7 days          | 7 working days                |
+ * | Complaint  | 24h    | +24 hours        | 1 working day                 |
+ *
+ * "24 hours" becomes ONE WORKING DAY rather than 24 working hours: a human who
+ * writes a 24-hour SLA means "by this time tomorrow", and 24 working hours would
+ * silently stretch it to 2.7 days on a 9-hour day. Re-tuning the numbers
+ * themselves is a separate product decision — this only moves the clock.
+ *
+ * `cal` is null when the workspace row cannot be read; the arithmetic then falls
+ * back to wall-clock, i.e. exactly the pre-F28 behaviour. A deadline is never
+ * the reason a task create fails.
  */
-const computeSlaDueAt = (typeName, severity, now) => {
+/** True for the two task types §29 gives an SLA. Keeps the calendar lookup off
+ *  the common create path. */
+const hasSlaPolicy = (typeName) => {
+    const t = typeName.trim().toLowerCase();
+    return t === "bug" || t === "complaint";
+};
+/** True when the type is the product's bug concept — the same NAME key §29's
+ *  SLA switch and the S2 severity default have always used. */
+const isBugType = (typeName) => typeName.trim().toLowerCase() === "bug";
+/**
+ * F29 (ISS-039): the git/planning columns `task_types.is_dev_type` gates.
+ * `schema/tasks.ts` promised this gate ("NULL for non-dev task types, gated in
+ * the application layer") since P11 and nothing enforced it — a Marketing
+ * "Campaign" could carry a branch, a PR link and S1 severity, and the drawer's
+ * Git panel rendered them.
+ *
+ * `sprint_id` is deliberately NOT in this list: sprint membership has its own
+ * endpoints (`POST /sprints/:id/tasks`) with its own `sprint.assign_tasks`
+ * gate, and attaching non-dev work to a sprint is an established, tested
+ * behaviour of that surface. `reporter_team` is not either — complaints (a
+ * non-dev CS type) legitimately carry it.
+ */
+const DEV_ONLY_FIELDS = [
+    ["story_points", "storyPoints"],
+    ["reviewer_id", "reviewerId"],
+    ["branch_name", "branchName"],
+    ["pr_url", "prUrl"],
+    ["pr_status", "prStatus"],
+];
+/**
+ * F29 (ISS-039, decision D13): refuse caller-supplied engineering values on a
+ * type that cannot carry them. 422, never a silent NULL — silently dropping a
+ * field the caller explicitly sent is the family of lie Block F existed to
+ * remove.
+ *
+ * Two different keys on purpose:
+ *   - the five git/planning fields require `is_dev_type` — they belong to DEV
+ *     WORK (`422 task.not_dev_type`);
+ *   - `bug_severity` requires a **bug-named** type — the same name key the §29
+ *     SLA switch and the S2 default have always used, so severity and its SLA
+ *     travel together and ISS-039's "looks like an S1, invisible to every SLA
+ *     view" state becomes unrepresentable (`422 task.severity_requires_bug_type`).
+ *
+ * Explicit `null`s always pass: null is the columns' rest state, and clearing
+ * junk must never be blocked.
+ */
+const assertEngFieldsAllowed = (taskType, supplied) => {
+    if (!taskType.isDevType) {
+        const offending = DEV_ONLY_FIELDS.filter(([, prop]) => supplied[prop] !== undefined && supplied[prop] !== null);
+        if (offending.length > 0) {
+            throw errors_1.AppError.unprocessable("task.not_dev_type", `Task type "${taskType.name}" is not a dev type; it cannot carry ${offending
+                .map(([wire]) => wire)
+                .join(", ")}`, offending.map(([wire]) => ({
+                field: wire,
+                issue: "requires a task type with is_dev_type",
+            })));
+        }
+    }
+    if (supplied.bugSeverity !== undefined &&
+        supplied.bugSeverity !== null &&
+        !isBugType(taskType.name)) {
+        throw errors_1.AppError.unprocessable("task.severity_requires_bug_type", `Task type "${taskType.name}" is not a Bug type; bug_severity does not apply`, [{ field: "bug_severity", issue: "requires a Bug task type" }]);
+    }
+};
+const computeSlaDueAt = (typeName, severity, now, cal) => {
+    const hours = (n) => cal ? (0, dhakaTime_1.addBusinessMs)(now, n * HOUR_MS, cal) : new Date(now.getTime() + n * HOUR_MS);
+    const days = (n) => cal ? (0, dhakaTime_1.addBusinessDays)(now, n, cal) : new Date(now.getTime() + n * DAY_MS);
     const t = typeName.trim().toLowerCase();
     if (t === "bug") {
         switch (severity) {
             case "S0":
-                return new Date(now.getTime() + 2 * HOUR_MS);
+                return hours(2);
             case "S1":
-                return new Date(now.getTime() + 24 * HOUR_MS);
+                return days(1);
             case "S2":
-                return new Date(now.getTime() + 7 * DAY_MS);
+                return days(7);
             default:
                 return null; // S3 or unset
         }
     }
     if (t === "complaint")
-        return new Date(now.getTime() + 24 * HOUR_MS);
+        return days(1);
     return null;
 };
 /**
- * Parse a `YYYY-MM-DD` wire date into a LOCAL-midnight `Date` for a MySQL DATE
- * column (Drizzle `date()` is in `mode: "date"`). Local midnight round-trips
- * cleanly through the serializer's local-component formatting (`toWireDate`),
- * avoiding the UTC-boundary shift a `new Date("YYYY-MM-DD")` (UTC midnight)
- * would cause.
+ * Parse a `YYYY-MM-DD` wire date into a UTC-midnight `Date` for a MySQL DATE
+ * column (Drizzle `date()` is in `mode: "date"`).
+ *
+ * F3: this used to build LOCAL midnight, which was only correct while the mysql2
+ * driver's `timezone` matched the process TZ. It no longer does — the driver is
+ * pinned to `+00:00` so Drizzle's hardcoded-UTC TIMESTAMP mapper is right (see
+ * `db/client.ts`). Local midnight in Dhaka is 18:00 UTC the PREVIOUS day, which
+ * a DATE column truncates to the wrong calendar day.
+ *
+ * UTC midnight is the only value that is stable here, and it is symmetric with
+ * the READ path: `MySqlDate.mapFromDriverValue` does `new Date("YYYY-MM-DD")`,
+ * which is also UTC midnight. Write and read now agree by construction.
  */
-const toLocalDate = (value) => {
+const toDateOnly = (value) => {
     if (value === null || value === undefined)
         return null;
     const [y, m, d] = value.split("-").map(Number);
-    return new Date(y, m - 1, d);
+    return new Date(Date.UTC(y, m - 1, d));
 };
-/** Local `YYYY-MM-DD` for a Date (matches the serializer's date formatting). */
-const ymd = (d) => {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
+/**
+ * `YYYY-MM-DD` for a **stored DATE column** — matches `taskSerializer.toWireDate`.
+ *
+ * UTC components, because Drizzle materialises a DATE at UTC midnight and
+ * `toDateOnly` above writes it there. Exact under any process TZ.
+ *
+ * F3 note: this used LOCAL components and was named `ymd`, and it was called for
+ * two genuinely different jobs — formatting a stored DATE (this) and deriving
+ * "today" from a now-instant (below). Those coincide only while the box sits at
+ * a non-negative UTC offset, so the single helper hid the difference. They are
+ * split now: a stored DATE is a calendar day already fixed at UTC midnight, but
+ * "today" is a *business* question and must be asked on the workspace's own
+ * calendar — see `todayInZone` (F5 wired it to `workspaces.timezone`).
+ */
+const storedDateYmd = (d) => {
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(d.getUTCDate()).padStart(2, "0");
     return `${y}-${m}-${day}`;
 };
 const DONE_GROUPS = new Set(["done", "closed"]);
+/**
+ * F21 (ISS-049): the before/after of every scalar that ACTUALLY changed in a
+ * PATCH — `{ priority: { from: 2, to: 3 }, … }`. Wire (snake_case) names.
+ * `status_id` is excluded: a status move already has its own `status_changed`
+ * row with `{from, to}` (the one action that always did this properly).
+ */
+const scalarChanges = (current, patch) => {
+    const wire = (k) => k.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
+    const norm = (v) => {
+        if (v instanceof Date)
+            return storedDateYmd(v);
+        if (v === undefined)
+            return null;
+        return v;
+    };
+    // Meta/membership keys are not scalar columns: the bulk patch carries the
+    // `archivedAtProvided` flag and the assignee/tag arrays, none of which
+    // belong in a before/after diff (membership has its own activity rows).
+    const NOT_SCALAR = new Set([
+        "statusId",
+        "archivedAtProvided",
+        "assigneeAdd",
+        "assigneeRemove",
+        "tagAdd",
+        "tagRemove",
+    ]);
+    const changes = {};
+    for (const [key, to] of Object.entries(patch)) {
+        if (to === undefined || NOT_SCALAR.has(key))
+            continue;
+        const from = norm(current[key]);
+        const next = norm(to);
+        if (JSON.stringify(from) === JSON.stringify(next))
+            continue; // no-op
+        changes[wire(key)] = { from, to: next };
+    }
+    return changes;
+};
 class TaskWriteService {
     db;
     lists;
@@ -118,9 +270,11 @@ class TaskWriteService {
     tags;
     activity;
     notifications;
+    attachmentsRepo;
+    workspaces;
     reads;
     logger;
-    constructor(db, lists, statuses, taskTypes, tasks, membership, users, tags, activity, notifications, reads, logger) {
+    constructor(db, lists, statuses, taskTypes, tasks, membership, users, tags, activity, notifications, attachmentsRepo, workspaces, reads, logger) {
         this.db = db;
         this.lists = lists;
         this.statuses = statuses;
@@ -131,8 +285,29 @@ class TaskWriteService {
         this.tags = tags;
         this.activity = activity;
         this.notifications = notifications;
+        this.attachmentsRepo = attachmentsRepo;
+        this.workspaces = workspaces;
         this.reads = reads;
         this.logger = logger;
+    }
+    /**
+     * The workspace's business calendar for `computeSlaDueAt` (F28 / D12.2), or
+     * null if the row cannot be read — in which case SLA arithmetic falls back
+     * to the pre-F28 wall clock rather than failing the write.
+     *
+     * Loaded ONLY for a task type that actually carries an SLA policy (see
+     * `hasSlaPolicy`), so the common create path adds no query.
+     */
+    async businessCalendar(workspaceId) {
+        const ws = await this.workspaces.findById(workspaceId);
+        return ws
+            ? {
+                workingDays: ws.workingDays,
+                businessHoursStart: ws.businessHoursStart,
+                businessHoursEnd: ws.businessHoursEnd,
+                timeZone: ws.timezone,
+            }
+            : null;
     }
     /**
      * Create a task (`POST /api/v1/tasks`, 🔐 any member).
@@ -165,6 +340,14 @@ class TaskWriteService {
         if (list.archivedAt) {
             throw errors_1.AppError.conflict("list.archived", "Cannot create a task in an archived list");
         }
+        // F8 (ISS-047): a space-narrowed `task.create` grant only reaches the
+        // spaces its assignment names — the route gate proved the verb, this
+        // proves the reach. `isOwn: true` because the creator owns what they
+        // create; no-actor contexts (public form submit, jobs) pass untouched.
+        await (0, scopeGuard_1.assertScoped)("task.create", {
+            spaceId: list.spaceId,
+            isOwn: true,
+        });
         // 2. Resolve the task type: explicit body value → the list's default →
         //    fall back to ANY task type in the workspace. The fallback keeps
         //    creation from dead-ending when a list has no default (e.g. public
@@ -181,6 +364,10 @@ class TaskWriteService {
         if (!taskType) {
             throw errors_1.AppError.unprocessable("task.invalid_task_type", `${taskTypeId} is not a task type in this workspace`, [{ field: "task_type_id", issue: "is not a task type in this workspace" }]);
         }
+        // F29 (ISS-039): the type decides which engineering fields it may
+        // carry — checked on the RESOLVED type, so the list-default and
+        // fallback paths are gated identically to an explicit body value.
+        assertEngFieldsAllowed(taskType, input);
         // 3. Resolve + validate the status (body, else the list's first status).
         const listStatuses = await this.statuses.listByList(input.primaryListId);
         if (listStatuses.length === 0) {
@@ -210,6 +397,21 @@ class TaskWriteService {
             // Re-point parentTaskId at the parent's internal id (the body may
             // have referenced it by custom_id).
             input.parentTaskId = parent.id;
+        }
+        // F18 (ISS-044): the SAME reviewer check `update()` has always had.
+        // `reviewer_id` was the only reference on the create path with no
+        // validation — every other unknown id is a clean 422/404, this one was
+        // a raw 500 from the FK.
+        if (input.reviewerId !== undefined && input.reviewerId !== null) {
+            const valid = await this.users.findActiveIdsInWorkspace([input.reviewerId], input.workspaceId);
+            if (!valid.has(input.reviewerId)) {
+                throw errors_1.AppError.unprocessable("task.invalid_reviewer", `${input.reviewerId} is not an active member of this workspace`, [
+                    {
+                        field: "reviewer_id",
+                        issue: "is not an active member of this workspace",
+                    },
+                ]);
+            }
         }
         // 5. Validate initial assignees + tags (no partial writes).
         const assignees = dedupe(input.assignees);
@@ -255,7 +457,9 @@ class TaskWriteService {
         const bugSeverity = isBug && (input.bugSeverity ?? null) === null
             ? "S2"
             : (input.bugSeverity ?? null);
-        const slaDueAt = computeSlaDueAt(taskType.name, bugSeverity, now);
+        const slaDueAt = computeSlaDueAt(taskType.name, bugSeverity, now, hasSlaPolicy(taskType.name)
+            ? await this.businessCalendar(input.workspaceId)
+            : null);
         const completedAt = DONE_GROUPS.has(status.statusGroup) ? now : null;
         const taskId = (0, utils_1.fakeId)("t");
         // 7. Atomic create, retrying only on a per-list task_number collision.
@@ -277,14 +481,14 @@ class TaskWriteService {
                         // parent set AFTER insert (error-1442 workaround); depth ok now.
                         nestingDepth,
                         isMilestone: input.isMilestone ?? false,
-                        startDate: toLocalDate(input.startDate),
-                        dueDate: toLocalDate(input.dueDate),
+                        startDate: toDateOnly(input.startDate),
+                        dueDate: toDateOnly(input.dueDate),
                         completedAt,
                         slaDueAt,
                         recurrencePattern: input.recurrencePattern ?? "none",
                         recurrenceDays: (input.recurrenceDays ??
                             null),
-                        recurrenceEndsAt: toLocalDate(input.recurrenceEndsAt),
+                        recurrenceEndsAt: toDateOnly(input.recurrenceEndsAt),
                         timeEstimateSeconds: input.timeEstimateSeconds ?? null,
                         sprintId: input.sprintId ?? null,
                         storyPoints: input.storyPoints ?? null,
@@ -340,6 +544,10 @@ class TaskWriteService {
                         actorId: input.actorId,
                         title: assignedTitle(input.name),
                     })), tx);
+                    // F15 (ISS-046): a new child changes the parent's badge.
+                    if (input.parentTaskId) {
+                        await this.tasks.recomputeSubtaskCounters(input.parentTaskId, tx);
+                    }
                 });
                 break; // committed
             }
@@ -363,7 +571,22 @@ class TaskWriteService {
                 throw err;
             }
         }
-        // 8. Hydrate + serialize via the read path (identical to a GET).
+        // 8. Email the initial assignees (minus the actor) — AFTER the commit,
+        //    fire-and-forget: the request never waits on SMTP and a mail
+        //    failure never fails the create. Same recipient set as the in-app
+        //    `assigned` fanout in step 7 (2026-08-08 email feature).
+        const emailRecipients = assignees.filter((id) => id !== input.actorId);
+        if (emailRecipients.length > 0) {
+            void (0, TaskEmailService_1.taskEmails)().taskAssigned({
+                workspaceId: input.workspaceId,
+                taskId,
+                taskName: input.name,
+                recipientIds: emailRecipients,
+                actorId: input.actorId,
+                dueYmd: input.dueDate ?? null,
+            });
+        }
+        // 9. Hydrate + serialize via the read path (identical to a GET).
         return this.reads.getById({
             idOrKey: taskId,
             workspaceId: input.workspaceId,
@@ -398,6 +621,10 @@ class TaskWriteService {
         if (current.archivedAt) {
             throw errors_1.AppError.conflict("task.archived", "Cannot update an archived task; unarchive it first");
         }
+        // F8 (ISS-047): the grant's scope must reach THIS task. This is the
+        // issue's exact surface — an `own`-scoped task.edit editing someone
+        // else's task inside a visible space.
+        await this.assertTaskScope("task.edit", current);
         // ─── Reference validation ────────────────────────────────────────────
         const listStatuses = await this.statuses.listByList(current.primaryListId);
         let newStatusGroup;
@@ -409,13 +636,29 @@ class TaskWriteService {
             newStatusGroup = status.statusGroup;
         }
         let typeName = "";
+        // The EFFECTIVE type of this task after the patch — the incoming one if
+        // the patch changes it, else the stored one. Fetched lazily: only a
+        // type change or a supplied engineering value needs it (F29 / ISS-039).
+        let effectiveType = null;
         if (p.taskTypeId !== undefined) {
             const tt = await this.taskTypes.findByIdInWorkspace(p.taskTypeId, input.workspaceId);
             if (!tt) {
                 throw errors_1.AppError.unprocessable("task.invalid_task_type", `${p.taskTypeId} is not a task type in this workspace`, [{ field: "task_type_id", issue: "is not a task type in this workspace" }]);
             }
             typeName = tt.name;
+            effectiveType = tt;
         }
+        // F29 (ISS-039): a patch that writes engineering values is gated by the
+        // type the task will HAVE, so `{task_type_id: <non-dev>, branch_name}`
+        // and a plain `{branch_name}` on a non-dev task both refuse — the same
+        // rule create() enforces, on the same resolved row.
+        const suppliesEngValue = DEV_ONLY_FIELDS.some(([, prop]) => p[prop] !== undefined && p[prop] !== null) ||
+            (p.bugSeverity !== undefined && p.bugSeverity !== null);
+        if (suppliesEngValue && !effectiveType) {
+            effectiveType = await this.taskTypes.findByIdInWorkspace(current.taskTypeId, input.workspaceId);
+        }
+        if (effectiveType)
+            assertEngFieldsAllowed(effectiveType, p);
         if (p.reviewerId !== undefined && p.reviewerId !== null) {
             const valid = await this.users.findActiveIdsInWorkspace([p.reviewerId], input.workspaceId);
             if (!valid.has(p.reviewerId)) {
@@ -437,12 +680,12 @@ class TaskWriteService {
         const effStart = p.startDate !== undefined
             ? p.startDate
             : current.startDate
-                ? ymd(current.startDate)
+                ? storedDateYmd(current.startDate)
                 : null;
         const effDue = p.dueDate !== undefined
             ? p.dueDate
             : current.dueDate
-                ? ymd(current.dueDate)
+                ? storedDateYmd(current.dueDate)
                 : null;
         if (effStart && effDue && effStart > effDue) {
             throw errors_1.AppError.unprocessable("task.invalid_date_range", "start_date must not be after due_date", [{ field: "start_date", issue: "must be on or before due_date" }]);
@@ -464,16 +707,21 @@ class TaskWriteService {
         if (p.customId !== undefined)
             dbPatch.customId = p.customId;
         if (p.startDate !== undefined)
-            dbPatch.startDate = toLocalDate(p.startDate);
-        if (p.dueDate !== undefined)
-            dbPatch.dueDate = toLocalDate(p.dueDate);
+            dbPatch.startDate = toDateOnly(p.startDate);
+        if (p.dueDate !== undefined) {
+            dbPatch.dueDate = toDateOnly(p.dueDate);
+            // A changed deadline re-arms the overdue alert (upgrades/014):
+            // the overdue-alert job claims `overdue_notified_at` once per
+            // due_date; clearing it here makes the NEW date alert again.
+            dbPatch.overdueNotifiedAt = null;
+        }
         if (p.recurrencePattern !== undefined)
             dbPatch.recurrencePattern = p.recurrencePattern;
         if (p.recurrenceDays !== undefined)
             dbPatch.recurrenceDays =
                 p.recurrenceDays;
         if (p.recurrenceEndsAt !== undefined)
-            dbPatch.recurrenceEndsAt = toLocalDate(p.recurrenceEndsAt);
+            dbPatch.recurrenceEndsAt = toDateOnly(p.recurrenceEndsAt);
         if (p.timeEstimateSeconds !== undefined)
             dbPatch.timeEstimateSeconds = p.timeEstimateSeconds;
         if (p.sprintId !== undefined)
@@ -490,6 +738,39 @@ class TaskWriteService {
             dbPatch.prStatus = p.prStatus;
         if (p.bugSeverity !== undefined)
             dbPatch.bugSeverity = p.bugSeverity;
+        /**
+         * F29 (ISS-039): re-typing a task RESHAPES it. When a patch moves a
+         * task onto a non-dev type, the stored git/planning values are cleared
+         * in the same write — `schema/tasks.ts` promises those columns are
+         * "NULL for non-dev task types", and a Marketing task keeping last
+         * month's branch name would be exactly the ghost data this issue is
+         * about. Same for a severity stranded on a non-bug type — and its SLA
+         * goes with it when the new type has no SLA policy, closing the
+         * issue's sharpest wrinkle (a record that looks like an S1 but is
+         * invisible to every SLA view, or the inverse: an SLA with no
+         * severity). Values the patch itself supplies were already gated above,
+         * so only STORED leftovers are cleared here.
+         */
+        if (p.taskTypeId !== undefined &&
+            p.taskTypeId !== current.taskTypeId &&
+            effectiveType) {
+            if (!effectiveType.isDevType) {
+                for (const [, prop] of DEV_ONLY_FIELDS) {
+                    if (p[prop] === undefined && current[prop] !== null) {
+                        dbPatch[prop] = null;
+                    }
+                }
+            }
+            if (!isBugType(effectiveType.name) &&
+                p.bugSeverity === undefined &&
+                current.bugSeverity !== null) {
+                dbPatch.bugSeverity = null;
+                if (!hasSlaPolicy(effectiveType.name) &&
+                    current.slaDueAt !== null) {
+                    dbPatch.slaDueAt = null;
+                }
+            }
+        }
         if (p.bugReproducibility !== undefined)
             dbPatch.bugReproducibility =
                 p.bugReproducibility;
@@ -525,7 +806,20 @@ class TaskWriteService {
             const resolvedTypeName = typeName ||
                 (await this.taskTypes.findByIdInWorkspace(current.taskTypeId, input.workspaceId))?.name ||
                 "";
-            dbPatch.slaDueAt = computeSlaDueAt(resolvedTypeName, p.bugSeverity, now);
+            dbPatch.slaDueAt = computeSlaDueAt(resolvedTypeName, p.bugSeverity, now, hasSlaPolicy(resolvedTypeName)
+                ? await this.businessCalendar(input.workspaceId)
+                : null);
+        }
+        // F22 (ISS-011): §32 promises `task.cannot_complete_blocked` — a task
+        // with an OPEN blocker cannot move into a done/closed status. Without
+        // this, a `blocks` dependency was decoration.
+        if (p.statusId !== undefined &&
+            p.statusId !== current.statusId &&
+            DONE_GROUPS.has(listStatuses.find((s) => s.id === p.statusId)?.statusGroup ?? "")) {
+            const blockers = await this.tasks.openBlockerCount(current.id);
+            if (blockers > 0) {
+                throw errors_1.AppError.conflict("task.cannot_complete_blocked", `This task is blocked by ${blockers} open task(s) — complete or unlink them first`);
+            }
         }
         // ─── Write (atomic) ──────────────────────────────────────────────────
         try {
@@ -534,6 +828,13 @@ class TaskWriteService {
                 // may be a custom_id (e.g. BUG-12), which `TasksRepo.update`
                 // matches against tasks.id only → silent 0-row no-op.
                 await this.tasks.update(current.id, dbPatch, tx);
+                // F15 (ISS-046): a status change can move this task in or out
+                // of its parent's `subtasks_completed`.
+                if (current.parentTaskId &&
+                    p.statusId !== undefined &&
+                    p.statusId !== current.statusId) {
+                    await this.tasks.recomputeSubtaskCounters(current.parentTaskId, tx);
+                }
                 const rows = [];
                 if (p.statusId !== undefined &&
                     p.statusId !== current.statusId) {
@@ -543,13 +844,49 @@ class TaskWriteService {
                         action: "status_changed",
                         context: { from: current.statusId, to: p.statusId },
                     });
+                    // F19 (D6 / ISS-072): `status_change` finally has a
+                    // producer. Recipients: assignees + watchers, minus the
+                    // actor (they made the change). Preference suppression
+                    // happens inside createMany.
+                    const [asgMap, wchMap] = await Promise.all([
+                        this.tasks.assigneesByTask([current.id]),
+                        this.tasks.watchersByTask([current.id]),
+                    ]);
+                    const statusName = listStatuses.find((s) => s.id === p.statusId)?.name ??
+                        "a new status";
+                    const recipients = [
+                        ...new Set([
+                            ...(asgMap.get(current.id) ?? []),
+                            ...(wchMap.get(current.id) ?? []),
+                        ]),
+                    ].filter((id) => id !== input.actorId);
+                    if (recipients.length > 0) {
+                        await this.notifications.createMany(recipients.map((userId) => ({
+                            userId,
+                            type: "status_change",
+                            entityType: "task",
+                            entityId: current.id,
+                            actorId: input.actorId,
+                            title: `moved "${current.name}" to ${statusName}`,
+                        })), tx);
+                    }
                 }
-                rows.push({
-                    taskId: current.id,
-                    actorId: input.actorId,
-                    action: "task_updated",
-                    context: { fields: input.fields },
-                });
+                // F21 (ISS-049): record WHAT changed, not just which keys the
+                // body named — and write NO row for a no-op. Before this,
+                // `PATCH {name: <the value it already has>}` still logged
+                // `{"fields":["name"]}`, and a real change recorded no values,
+                // so "who set the priority, and from what?" was unanswerable.
+                // A status-only PATCH now writes only its `status_changed` row
+                // (which always carried {from,to} — it was the model).
+                const changes = scalarChanges(current, p);
+                if (Object.keys(changes).length > 0) {
+                    rows.push({
+                        taskId: current.id,
+                        actorId: input.actorId,
+                        action: "task_updated",
+                        context: { fields: Object.keys(changes), changes },
+                    });
+                }
                 await this.activity.recordMany(rows, tx);
             });
         }
@@ -580,7 +917,8 @@ class TaskWriteService {
         if (!task) {
             throw errors_1.AppError.notFound("task.not_found", `Task ${input.taskId} does not exist`);
         }
-        await this.archiveInTx(task.id, input.actorId);
+        await this.assertTaskScope("task.archive", task); // F8
+        await this.archiveInTx(task.id, input.actorId, task.parentTaskId);
     }
     /**
      * Unarchive a task (`POST /api/v1/tasks/:id/unarchive`, 🔐). Clears
@@ -591,9 +929,14 @@ class TaskWriteService {
         if (!task) {
             throw errors_1.AppError.notFound("task.not_found", `Task ${input.taskId} does not exist`);
         }
+        await this.assertTaskScope("task.archive", task); // F8 — same key as archive
         await this.db.transaction(async (tx) => {
             const transitioned = await this.tasks.unarchive(task.id, tx);
             await this.tasks.unarchiveDescendants(task.id, tx);
+            // F15 (ISS-046): an unarchived child rejoins the parent's count.
+            if (task.parentTaskId) {
+                await this.tasks.recomputeSubtaskCounters(task.parentTaskId, tx);
+            }
             if (transitioned) {
                 await this.activity.recordMany([
                     {
@@ -615,18 +958,54 @@ class TaskWriteService {
      * `workspace_activity` has no `task` entity type). 204.
      */
     async del(input) {
-        if (input.hard &&
-            input.role !== constants_1.Roles.OWNER &&
-            input.role !== constants_1.Roles.ADMIN) {
-            throw errors_1.AppError.forbidden("auth.forbidden", "A hard delete requires the admin or owner role");
+        // F7 / D3.1 compose: the legacy admin/owner floor stays, AND the RBAC
+        // grant must be held — un-ticking `task.delete_hard` in the roles grid
+        // now takes real effect on an admin (ISS-024's inert-toggle special
+        // case #1). Granting it to a non-admin role changes nothing (compose
+        // cannot widen). `currentActor()` is null only outside an HTTP request,
+        // and this path is HTTP-only.
+        if (input.hard) {
+            // F10 (ISS-021): the live role, not the token's frozen claim — a
+            // demotion bites on the next request, not after ≤15 minutes.
+            const role = await (0, scopeGuard_1.liveLegacyRole)(input.role);
+            const legacyAdmin = role === constants_1.Roles.OWNER || role === constants_1.Roles.ADMIN;
+            const granted = legacyAdmin &&
+                (0, can_1.holds)(await (0, context_1.currentActor)(), "task.delete_hard");
+            if (!granted) {
+                throw errors_1.AppError.forbidden("auth.forbidden", "A hard delete requires the admin or owner role");
+            }
         }
         const task = await this.tasks.findByIdOrCustomIdInWorkspace(input.taskId, input.workspaceId);
         if (!task) {
             throw errors_1.AppError.notFound("task.not_found", `Task ${input.taskId} does not exist`);
         }
+        // F8 (ISS-047): both the soft and hard paths are deletes — the grant's
+        // scope must reach this task (the hard path keeps its extra gate above).
+        await this.assertTaskScope("task.delete", task);
         if (input.hard) {
             await this.db.transaction(async (tx) => {
+                // F16: the FK cascade is about to take the whole subtree —
+                // capture it first. Two child sets have no FK to follow:
+                //   ISS-073  notifications (entity_id is polymorphic) stayed in
+                //            every recipient's inbox, navigating to a 404;
+                //   ISS-022  the attachments ROWS cascade but their R2 objects
+                //            do not — the purge job finds objects via
+                //            soft-deleted rows, which have just vanished, so
+                //            the bytes stayed in the bucket forever.
+                // Same transaction, so either the task goes with its inbox
+                // entries removed and its keys queued, or nothing happens.
+                const subtree = [
+                    task.id,
+                    ...(await this.tasks.descendantIds(task.id, tx)),
+                ];
+                await this.notifications.deleteByEntity("task", subtree, tx);
+                const keys = await this.attachmentsRepo.storageKeysByTasks(subtree, tx);
+                await this.attachmentsRepo.enqueueR2Purge(keys, tx);
                 await this.tasks.hardDelete(task.id, tx);
+                // F15 (ISS-046): the child is gone from the parent's count.
+                if (task.parentTaskId) {
+                    await this.tasks.recomputeSubtaskCounters(task.parentTaskId, tx);
+                }
             });
             this.logger.info("tasks.hard_deleted", {
                 taskId: task.id,
@@ -635,15 +1014,40 @@ class TaskWriteService {
             });
             return;
         }
-        await this.archiveInTx(task.id, input.actorId);
+        await this.archiveInTx(task.id, input.actorId, task.parentTaskId);
+    }
+    /**
+     * F8 (ISS-047): enforce the actor's grant SCOPE against a resolved task.
+     *
+     * Builds the `PermissionContext` (space via the primary list, ownership via
+     * creator + assignees) and delegates to the rbac resolver. Full-reach
+     * grants (`all` — every seeded role) skip the two lookups entirely, so the
+     * hot path pays nothing. No-actor contexts (jobs, public submit) pass.
+     */
+    async assertTaskScope(key, task) {
+        if (await (0, scopeGuard_1.hasFullReach)(key))
+            return;
+        const [spaceIds, assignees] = await Promise.all([
+            this.tasks.spaceIdsByTask([task.id]),
+            this.tasks.assigneesByTask([task.id]),
+        ]);
+        await (0, scopeGuard_1.assertScoped)(key, {
+            spaceId: spaceIds.get(task.id) ?? null,
+            createdBy: task.createdBy,
+            assigneeIds: assignees.get(task.id) ?? [],
+        });
     }
     /** Archive `taskId` + descendants + one gated `task_archived` row, atomically. */
-    async archiveInTx(taskId, actorId) {
+    async archiveInTx(taskId, actorId, parentTaskId) {
         await this.db.transaction(async (tx) => {
             const transitioned = await this.tasks.archive(taskId, tx);
             await this.tasks.archiveDescendants(taskId, tx);
             if (transitioned) {
                 await this.activity.recordMany([{ taskId, actorId, action: "task_archived" }], tx);
+            }
+            // F15 (ISS-046): an archived child leaves the parent's count.
+            if (parentTaskId) {
+                await this.tasks.recomputeSubtaskCounters(parentTaskId, tx);
             }
         });
     }
@@ -672,8 +1076,14 @@ class TaskWriteService {
             tags: tags.get(t.id) ?? [],
             customFieldValues: customFieldValues.get(t.id) ?? {},
         });
-        const today = ymd(new Date());
-        const in7 = ymd(new Date(Date.now() + 7 * DAY_MS));
+        // "Today" is a BUSINESS day, not the box's day: these buckets decide what
+        // the workspace calls overdue. F5 (ISS-058): the zone now comes from
+        // `workspaces.timezone` — the setting finally does what its UI claims —
+        // independent of the deploy box's TZ and of the (UTC) MySQL session.
+        // Falls back to the Dhaka calendar for a null/garbage zone.
+        const ws = await this.workspaces.findById(input.workspaceId);
+        const today = (0, dhakaTime_1.todayInZone)(ws?.timezone ?? "Asia/Dhaka");
+        const in7 = (0, dhakaTime_1.addDaysYmd)(today, 7);
         const buckets = {
             today: [],
             overdue: [],
@@ -690,7 +1100,7 @@ class TaskWriteService {
                 bucket = "unscheduled";
             }
             else {
-                const d = ymd(task.dueDate);
+                const d = storedDateYmd(task.dueDate);
                 if (d < today)
                     bucket = "overdue";
                 else if (d === today)
@@ -731,6 +1141,22 @@ class TaskWriteService {
         if (missing.length > 0) {
             throw errors_1.AppError.notFound("task.not_found", "One or more tasks do not exist in this workspace");
         }
+        // F8 (ISS-047): the grant's scope must reach EVERY target — fail-atomic
+        // like the rest of bulk. One batched context build for all ids; skipped
+        // outright for full-reach grants (every seeded role).
+        if (!(await (0, scopeGuard_1.hasFullReach)("task.edit"))) {
+            const [spaceIds, assignees] = await Promise.all([
+                this.tasks.spaceIdsByTask(ids),
+                this.tasks.assigneesByTask(ids),
+            ]);
+            for (const t of found) {
+                await (0, scopeGuard_1.assertScoped)("task.edit", {
+                    spaceId: spaceIds.get(t.id) ?? null,
+                    createdBy: t.createdBy,
+                    assigneeIds: assignees.get(t.id) ?? [],
+                });
+            }
+        }
         const p = input.patch;
         // Dept Review V1 (P9) hardening: archived tasks cannot be bulk-EDITED
         // (mirror of the single-PATCH rule, which was bypassable here). The one
@@ -755,6 +1181,20 @@ class TaskWriteService {
                 throw errors_1.AppError.unprocessable("task.invalid_status", `${p.statusId} is not a status in this workspace`, [{ field: "patch.status_id", issue: "is not a status in this workspace" }]);
             }
             newGroup = st.statusGroup;
+        }
+        // F22 (ISS-011): the same completion guard the single PATCH has —
+        // fail-atomic, matching every other bulk validation: one blocked
+        // target refuses the whole batch, so a bulk cannot smuggle a blocked
+        // task into Done.
+        if (newGroup !== undefined && DONE_GROUPS.has(newGroup)) {
+            for (const t of found) {
+                if (t.statusId === p.statusId)
+                    continue; // already there
+                const blockers = await this.tasks.openBlockerCount(t.id);
+                if (blockers > 0) {
+                    throw errors_1.AppError.conflict("task.cannot_complete_blocked", `Task ${t.id} is blocked by ${blockers} open task(s) — complete or unlink them first`);
+                }
+            }
         }
         const assigneeAdd = dedupe(p.assigneeAdd);
         if (assigneeAdd.length > 0) {
@@ -781,10 +1221,13 @@ class TaskWriteService {
             dbPatch.statusId = p.statusId;
         if (p.priority !== undefined)
             dbPatch.priority = p.priority;
-        if (p.dueDate !== undefined)
-            dbPatch.dueDate = toLocalDate(p.dueDate);
+        if (p.dueDate !== undefined) {
+            dbPatch.dueDate = toDateOnly(p.dueDate);
+            // Same re-arm rule as the single-PATCH path (upgrades/014).
+            dbPatch.overdueNotifiedAt = null;
+        }
         if (p.startDate !== undefined)
-            dbPatch.startDate = toLocalDate(p.startDate);
+            dbPatch.startDate = toDateOnly(p.startDate);
         if (p.sprintId !== undefined)
             dbPatch.sprintId = p.sprintId;
         if (p.archivedAtProvided) {
@@ -811,6 +1254,21 @@ class TaskWriteService {
         try {
             await this.db.transaction(async (tx) => {
                 await this.tasks.updateMany(ids, dbPatch, tx);
+                // F15 (ISS-046): a bulk status change or (un)archive moves the
+                // targets in or out of their parents' counts. Recompute each
+                // DISTINCT parent once — a bulk of 50 siblings is one call, not
+                // fifty.
+                if (p.statusId !== undefined ||
+                    p.archivedAtProvided === true) {
+                    const parents = [
+                        ...new Set(found
+                            .map((t) => t.parentTaskId)
+                            .filter((id) => !!id)),
+                    ];
+                    for (const parentId of parents) {
+                        await this.tasks.recomputeSubtaskCounters(parentId, tx);
+                    }
+                }
                 if (assigneeAdd.length > 0) {
                     await this.membership.addAssigneesBulk(ids, assigneeAdd, input.actorId, tx);
                     await this.membership.addWatchersBulk(ids, assigneeAdd, tx);
@@ -821,12 +1279,37 @@ class TaskWriteService {
                     await this.membership.addTagsBulk(ids, tagAdd, tx);
                 if (tagRemove.length > 0)
                     await this.membership.removeTagsBulk(ids, tagRemove, tx);
-                await this.activity.recordMany(ids.map((id) => ({
-                    taskId: id,
-                    actorId: input.actorId,
-                    action: "task_updated",
-                    context: { bulk: true },
-                })), tx);
+                // F21 (ISS-049): a 200-task bulk used to leave 200 rows saying
+                // only `{"bulk":true}`. Each row now records the per-task
+                // before/after (compared against ITS OWN pre-update values in
+                // `found`), and a task the patch did not actually change gets
+                // no row at all.
+                const bulkRows = [];
+                for (const t of found) {
+                    const changes = scalarChanges(t, p);
+                    const statusMoved = p.statusId !== undefined && p.statusId !== t.statusId;
+                    if (statusMoved) {
+                        bulkRows.push({
+                            taskId: t.id,
+                            actorId: input.actorId,
+                            action: "status_changed",
+                            context: { from: t.statusId, to: p.statusId },
+                        });
+                    }
+                    if (Object.keys(changes).length > 0) {
+                        bulkRows.push({
+                            taskId: t.id,
+                            actorId: input.actorId,
+                            action: "task_updated",
+                            context: {
+                                bulk: true,
+                                fields: Object.keys(changes),
+                                changes,
+                            },
+                        });
+                    }
+                }
+                await this.activity.recordMany(bulkRows, tx);
             });
         }
         catch (err) {

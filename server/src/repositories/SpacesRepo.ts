@@ -158,6 +158,8 @@ export class SpacesRepo {
             isPrivate: boolean;
             position: number;
             createdBy: string;
+            /** F18 (ISS-032): create validates + writes the head now. */
+            headUserId?: string | null;
         },
         exec: DbExecutor = this.db,
     ): Promise<string> {
@@ -172,6 +174,7 @@ export class SpacesRepo {
             isPrivate: input.isPrivate,
             position: input.position,
             createdBy: input.createdBy,
+            headUserId: input.headUserId ?? null,
         });
         return id;
     }

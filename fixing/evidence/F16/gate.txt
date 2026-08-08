@@ -1,0 +1,7 @@
+F16 gate — notifications + attachments + spaces + lists + jobs, serial — 2026-08-06T00:33:54+06:00
+notifications  Test Suites: 7 passed, 7 total|Tests:       84 passed, 84 total|
+attachments    Test Suites: 6 passed, 6 total|Tests:       106 passed, 106 total|
+spaces         Test Suites: 1 failed, 6 passed, 7 total|Tests:       22 failed, 222 passed, 244 total|
+lists          Test Suites: 5 failed, 5 total|Tests:       171 failed, 171 total|
+jobs           Test Suites: 5 passed, 5 total|Tests:       32 passed, 32 total|
+gate finished 2026-08-06T00:41:58+06:00

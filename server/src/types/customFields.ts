@@ -25,6 +25,8 @@ export interface CreateCustomFieldBody {
     type: string;
     config?: Record<string, unknown>;
     is_required?: boolean;
+    /** F26 (ISS-042): hide this field's values from guests. */
+    hidden_from_guests?: boolean;
     default_value?: unknown;
     position?: number;
     options?: CustomFieldOptionInput[] | null;
@@ -39,6 +41,7 @@ export interface UpdateCustomFieldBody {
     name?: string;
     config?: Record<string, unknown>;
     is_required?: boolean;
+    hidden_from_guests?: boolean;
     position?: number;
 }
 

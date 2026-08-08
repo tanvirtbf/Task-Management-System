@@ -137,18 +137,28 @@ const WorkspaceSettings = () => {
                         }))}
                     />
                 </SettingsFieldRow>
-                <SettingsFieldRow label="Default locale">
+                {/*
+                 * F28 (ISS-028, decision D12.5). This Select used to be fully
+                 * editable: you picked a locale, Save answered "Workspace
+                 * saved", and the value was dropped by `workspaceToWire` before
+                 * the request was even built — and would have been refused 422
+                 * if it had arrived. Three layers disagreeing, with a success
+                 * toast on top.
+                 *
+                 * Disabled rather than wired up, because nothing in the client
+                 * reads a locale (there is no i18n layer), so a working control
+                 * would just store a value with no consumer — the ISS-029
+                 * defect this same phase is removing. The treatment copies
+                 * "Workspace ID" twenty lines above: disabled, with a hint that
+                 * says so.
+                 */}
+                <SettingsFieldRow
+                    label="Default locale"
+                    hint="Cannot be changed — the app ships in one locale."
+                >
                     <Select
                         value={draft.settings.defaultLocale}
-                        onChange={(v) =>
-                            setDraft({
-                                ...draft,
-                                settings: {
-                                    ...draft.settings,
-                                    defaultLocale: v,
-                                },
-                            })
-                        }
+                        disabled
                         style={{ width: "100%" }}
                         options={LOCALES}
                     />
@@ -261,38 +271,17 @@ const WorkspaceSettings = () => {
                         />
                     </div>
                 </SettingsFieldRow>
-                <SettingsFieldRow
-                    label="Fiscal year starts in"
-                    hint="Used for fiscal-year reporting in dashboards."
-                >
-                    <Select
-                        value={draft.settings.fiscalYearStartMonth ?? 1}
-                        onChange={(v) =>
-                            setDraft({
-                                ...draft,
-                                settings: {
-                                    ...draft.settings,
-                                    fiscalYearStartMonth: v,
-                                },
-                            })
-                        }
-                        style={{ width: "100%" }}
-                        options={[
-                            "January",
-                            "February",
-                            "March",
-                            "April",
-                            "May",
-                            "June",
-                            "July",
-                            "August",
-                            "September",
-                            "October",
-                            "November",
-                            "December",
-                        ].map((m, i) => ({ value: i + 1, label: m }))}
-                    />
-                </SettingsFieldRow>
+                {/*
+                 * "Fiscal year starts in" was removed in F28 (ISS-029, D12.2).
+                 * Its hint claimed "Used for fiscal-year reporting in
+                 * dashboards" — there is no fiscal-year reporting anywhere in
+                 * this product, and the column was read by no query, job or
+                 * serializer. The control has been dropped along with the
+                 * column (database/upgrades/012). The two settings above it
+                 * survived the same audit because they gained a real consumer
+                 * in this phase: working days and business hours now decide
+                 * when an SLA deadline falls.
+                 */}
             </SettingsSection>
 
             <SettingsSection

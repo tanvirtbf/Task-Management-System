@@ -30,12 +30,10 @@ class NotificationPrefsRepo {
                 userId,
                 type: p.type,
                 inAppEnabled: p.inAppEnabled,
-                emailEnabled: p.emailEnabled,
             })
                 .onDuplicateKeyUpdate({
                 set: {
                     inAppEnabled: p.inAppEnabled,
-                    emailEnabled: p.emailEnabled,
                 },
             });
         }

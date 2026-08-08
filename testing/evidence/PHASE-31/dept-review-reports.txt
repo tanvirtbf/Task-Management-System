@@ -1,0 +1,79 @@
+=== 1. POST /tasks/:id/review ===
+  review an INCOMPLETE task -> 409 review.not_completed
+  a NON-head member reviews -> 403 review.not_head
+  ANOTHER space's head      -> 201
+  a guest                   -> 403 review.not_head
+  THE head approves         -> 201      keys: ["id","task_id","space_id","status","note","reviewer_id","created_at"]
+     denorm trio on the task: {"review_status":"approved","ra":"2026-07-30 09:50:14","reviewed_by":"u-ia1-Y219W_rIcEXnXdK4cA"}
+  the head flags            -> 201
+  ADMIN/owner override      -> 201
+  bad status value          -> 422 validation.failed
+  unknown task              -> 404 task.not_found
+  re-open the task -> does the verdict reset?
+     after re-open: {"review_status":null,"reviewed_at":null} auto-reset OK
+
+=== 2. GET /tasks/:id/reviews history ===
+  -> 200      rows: 2 | a row: {"id":"rev-XDVGkD_ZaOI0XZDRFOu1Jw","task_id":"t-o4xTRJhX_IWk_2q1CHVc1g","space_id":"sp-jh3Gafsqo-WNY9EPqcTC8w","status":"approved","note":"TEST-p31 override","reviewer_id":"u-ohsNa
+  a non-head member reads   -> 403 review.forbidden
+  a guest reads             -> 403 review.forbidden
+
+=== 3. SPACE review-summary and review-queue ===
+  the Marketing head  summary 200                   queue 422 validation.failed
+  another head        summary 200                   queue 422 validation.failed
+  owner               summary 200                   queue 422 validation.failed
+  a member            summary 403 review.not_head   queue 422 validation.failed
+  a guest             summary 403 review.not_head   queue 422 validation.failed
+  summary body: {"space_id":"sp-jh3Gafsqo-WNY9EPqcTC8w","members":[{"user":{"id":"u-iw80XJFzpLkNnLL7x7WAuA","first_name":"Farhana","last_name":"Akter","email":"farhana@beautybooth.com.bd","role":"admin","avatar_url":null,"status":"activ
+  queue rows: 0
+  hand-count (completed, no verdict): 7 differs — check the predicate
+
+=== 4. POST /reports/generate ===
+  a past week (2026-07-20) -> 200      keys: ["id","space_id","week_start","week_end","head_user_id","head","head_note","generated_by","generated_at","acknowledged_by","acknowledged_at","payload"]
+  the SAME week again -> 200      same report id? yes — idempotent upsert
+  rows for that week: 1
+  a FUTURE week   -> 422 report.invalid_week
+  the CURRENT week-> 422 report.invalid_week
+  a mid-week date -> 422 report.invalid_week
+  unknown space   -> 404 space.not_found
+  a head generates-> 200
+  a member does   -> 403 report.forbidden
+
+=== 5. REPORT STATISTICS recomputed by hand ===
+  payload: {"totals":{"flagged":0,"approved":0,"completed":0,"overdue_now":4,"completed_late":0,"done_unreviewed":7},"members":[{"user":{"id":"u-ia1-Y219W_rIcEXnXdK4cA","is_active":true,"last_name":"Jahan","avatar_url":null,"first_name":"Nusrat"},"flags":[],"flagged":0,"approved":0,"completed":0,"overdue_now":1,"assigned_open":1,"completed_late":0},{"user":{"id":"u-nJtSEEbEaE8wFKh8vQSpNA","is_active":true,"last_name":"Haque","a
+  week: 2026-07-20 -> 2026-07-26
+  totals api: {"flagged":0,"approved":0,"completed":0,"overdue_now":4,"completed_late":0,"done_unreviewed":7}
+  hand: created=12 completed=0 overdue_now=4
+
+=== 6. LIST / READ / NOTE / ACK ===
+  GET /reports (owner) -> 200      rows: 13
+  GET /reports (head)  -> 200      rows: 3
+  GET /reports (member)-> 200
+  GET one (owner)      -> 200     
+  GET one (its head)   -> 200     
+  GET one (other head) -> 200
+  GET one (member)     -> 403 report.forbidden
+  GET unknown          -> 404 report.not_found
+  PATCH head_note (head)   -> 200
+  PATCH head_note (member) -> 403 report.forbidden
+  PATCH head_note (other head) -> 403 report.forbidden
+  POST ack (head)      -> 403 auth.forbidden
+     acknowledged_by set: false | at: null
+  POST ack again       -> 403 auth.forbidden
+  POST ack (member)    -> 403 auth.forbidden
+
+=== 7. EDGE CASES: no head, no tasks, archived space ===
+  a space with NO head and NO tasks -> 200      generated; head_user_id=null
+     report_ready notifications for it: 4 (admins still get notified — H-2)
+  generate for an ARCHIVED space -> 409 space.archived
+
+=== 8. THE department-report JOB ===
+  ?dry_run=true -> {"ok":true,"dry_run":true,"processed":8,"generated":7,"selfHealed":1,"skippedNoActivity":2,"notified":0}
+     rows unchanged: true
+  run for real  -> {"ok":true,"dry_run":false,"processed":8,"generated":7,"selfHealed":1,"skippedNoActivity":2,"notified":7}
+     rows 14 -> 21
+     newest week generated: ["2026-07-20","2026-07-13"] | last Monday was 2026-07-20
+     report_ready notifications total: 86
+  run again (idempotent?) -> {"ok":true,"dry_run":false,"processed":7,"generated":7,"selfHealed":0,"skippedNoActivity":2,"notified":0} rows: 21
+
+=== CLEANUP ===
+  tasks 51 (51) | spaces 9 (9) | task_reviews 9 (9) | department_reports 20 (12) | notifications 66 (65)

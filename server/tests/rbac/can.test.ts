@@ -528,12 +528,19 @@ describe("against the database — the whole chain", () => {
             guest: await svc.resolveActor(guest.id, ws.id),
         };
 
-        // Everyone could edit/delete any task before RBAC — still true.
-        for (const actor of Object.values(a)) {
+        // Every INTERNAL role could edit/delete any task before RBAC — still
+        // true. F28 (D12.1) removed the guest from this list: it is an external
+        // persona and the seeded role no longer grants task writes.
+        for (const actor of [a.owner, a.admin, a.member]) {
             expect(can(actor, "task.edit", ctx)).toBe(true);
             expect(can(actor, "task.delete", ctx)).toBe(true);
             expect(can(actor, "comment.create", ctx)).toBe(true);
         }
+        // A guest reads and comments; it does not write.
+        expect(can(a.guest, "task.view", ctx)).toBe(true);
+        expect(can(a.guest, "comment.create", ctx)).toBe(true);
+        expect(can(a.guest, "task.edit", ctx)).toBe(false);
+        expect(can(a.guest, "task.delete", ctx)).toBe(false);
         // ...and the three real distinctions of today survive.
         expect(can(a.guest, "attachment.upload", ctx)).toBe(false);
         expect(can(a.member, "attachment.upload", ctx)).toBe(true);

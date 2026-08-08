@@ -1,0 +1,60 @@
+=== 0. CLOCKS ===
+  MySQL NOW(): 2026-07-30 15:46:08 | UTC_TIMESTAMP(): 2026-07-30 09:46:08 | node: 2026-07-30T09:46:08.436Z
+
+=== 1. SLA computed on create, per severity ===
+  S0  created 2026-07-30 15:46:08 -> sla_due_at 2026-07-30 11:46:08  (+-4h as MySQL sees it)
+  S1  created 2026-07-30 15:46:08 -> sla_due_at 2026-07-31 09:46:08  (+18h as MySQL sees it)
+  S2  created 2026-07-30 15:46:08 -> sla_due_at 2026-08-06 09:46:08  (+162h as MySQL sees it)
+  S3  created 2026-07-30 15:46:08 -> sla_due_at null  (+nullh as MySQL sees it)
+  no severity -> sla_due_at: 2026-08-06 09:46:09
+  a NON-dev-type task -> sla_due_at: null (none — SLA is dev-type only)
+
+=== 2. THE 6-HOUR ERROR — a task whose deadline passed 2 hours ago ===
+  sla_due_at: 2026-07-30 13:46:08 | breached by NOW(): true | by UTC_TIMESTAMP(): false
+  GET /sla/breached -> 200      rows: 0 | our 2h-late task listed? *** NO — the 6-hour error ***
+  v_breached_sla rows: 2
+  is our task in the view? 1 | in the endpoint? 0
+
+=== 3. HOW LATE must a task be to show up? ===
+  1h late  endpoint: NOT listed  view: listed      
+  3h late  endpoint: NOT listed  view: listed      
+  5h late  endpoint: NOT listed  view: listed      
+  6h late  endpoint: NOT listed  view: listed      
+  7h late  endpoint: NOT listed  view: listed      
+  8h late  endpoint: NOT listed  view: listed      
+  12h late endpoint: NOT listed  view: listed      
+
+=== 4. FILTERS ===
+  (none)                -> 200                       1 rows
+  ?severity=S1          -> 200                       1 rows
+  ?severity=S0          -> 200                       0 rows
+  ?severity=bogus       -> 422 validation.failed     0 rows
+  ?team=engineering     -> 200                       1 rows
+  ?team=ops             -> 200                       0 rows
+  ?team=bogus           -> 422 validation.failed     0 rows
+  ?limit=1              -> 200                       1 rows
+  shape of a row: {}
+
+=== 5. PATCH /tasks/:id/sla ===
+  set +48h -> 200      was 2026-08-06 09:46:09 now 2026-08-01 09:46:09
+     asked for 2026-08-01T09:46:08.704Z -> stored 2026-08-01 09:46:09 (a 6-hour shift is ISS-001)
+  set to the PAST -> 422 sla.invalid_due_at
+  clear with null -> 200
+  malformed       -> 422 validation.failed
+  unknown task    -> 404 task.not_found
+  a guest sets it -> 403 auth.forbidden
+
+=== 6. Does a severity change OVERWRITE a manual override? ===
+  manual override set: 2026-08-01 09:46:09
+  after changing severity to S0: 2026-07-30 11:46:09 *** override OVERWRITTEN (documented V1 behaviour) ***
+
+=== 7. ARCHIVED task ===
+  PATCH sla on an archived task -> 409 task.archived
+  an ARCHIVED, 12h-late task in /sla/breached? no — correctly excluded
+  a COMPLETED, 12h-late task in /sla/breached? no — correctly excluded
+
+=== 8. SCAN-L4 — is there any SLA UI? ===
+  client files referencing SLA: SLABadge.tsx, mock-api.ts
+
+=== CLEANUP ===
+  tasks 51 (51)

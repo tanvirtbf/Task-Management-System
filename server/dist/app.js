@@ -47,6 +47,9 @@ const health_1 = __importDefault(require("./routes/health"));
 const assistant_1 = __importDefault(require("./routes/assistant"));
 const metrics_1 = require("./observability/metrics");
 const app = (0, express_1.default)();
+// F13 (ISS-086): stop advertising the framework. Free fingerprinting that
+// tells an attacker which CVE list to try first.
+app.disable("x-powered-by");
 // Trust the proxy in front of us (Vercel, nginx, etc.) so req.ip / Forwarded
 // headers resolve to the real client address.
 app.set("trust proxy", 1);
@@ -81,7 +84,16 @@ app.use((0, cors_1.default)({
         if (corsOrigins.includes(origin) || LAN_ORIGIN.test(origin)) {
             return cb(null, true);
         }
-        cb(new Error(`Origin ${origin} not allowed by CORS`));
+        // F13 (ISS-085 / ISS-009): reject by SAYING NO, not by throwing.
+        // `cb(new Error(...))` made the cors middleware throw, which
+        // reached the global handler as an unknown error — every rejected
+        // origin produced a 500 and an `Unhandled error` log line. A
+        // rejection is a client-side condition: `cb(null, false)` omits the
+        // `Access-Control-Allow-Origin` header and the browser blocks the
+        // read, which is exactly the intended outcome. The POLICY itself
+        // was already correct (P2 verified all 10 origin cases, including
+        // the prefix and fragment tricks) — only the reporting was wrong.
+        cb(null, false);
     },
     credentials: true,
     // Custom response headers JS must read cross-origin. The assistant
@@ -92,7 +104,10 @@ app.use((0, cors_1.default)({
     exposedHeaders: ["X-Conversation-Id"],
 }));
 app.use(express_1.default.static("public"));
-app.use((0, cookie_parser_1.default)(config_1.Config.COOKIE_SECRET));
+// F14 (ISS-004): no secret — nothing in this app signs a cookie.
+// `bb_refresh` is a plain httpOnly cookie carrying a self-signed JWT, so
+// COOKIE_SECRET was inert config that looked mandatory. Removed.
+app.use((0, cookie_parser_1.default)());
 app.use(express_1.default.json({ limit: "1mb" }));
 // Public liveness probe (per API_DESIGN.md §30 — no auth, no DB hit)
 app.get("/health", (_req, res) => {

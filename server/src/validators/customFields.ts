@@ -118,6 +118,18 @@ export const createCustomFieldValidator = checkSchema({
             errorMessage: "is_required must be a boolean",
         },
     },
+    // F26 (ISS-042): the guest-redaction flag reaches the API at last — the
+    // redaction logic has always worked (TasksRepo filters on it), but the
+    // column appeared in no validator and no serializer, so the one control
+    // the product implements could only be switched on by hand in SQL.
+    hidden_from_guests: {
+        in: ["body"],
+        optional: true,
+        custom: {
+            options: (value: unknown) => typeof value === "boolean",
+            errorMessage: "hidden_from_guests must be a boolean",
+        },
+    },
     position: {
         in: ["body"],
         optional: true,
@@ -203,6 +215,18 @@ export const updateCustomFieldValidator = checkSchema({
         custom: {
             options: (value: unknown) => typeof value === "boolean",
             errorMessage: "is_required must be a boolean",
+        },
+    },
+    // F26 (ISS-042): the guest-redaction flag reaches the API at last — the
+    // redaction logic has always worked (TasksRepo filters on it), but the
+    // column appeared in no validator and no serializer, so the one control
+    // the product implements could only be switched on by hand in SQL.
+    hidden_from_guests: {
+        in: ["body"],
+        optional: true,
+        custom: {
+            options: (value: unknown) => typeof value === "boolean",
+            errorMessage: "hidden_from_guests must be a boolean",
         },
     },
     position: {

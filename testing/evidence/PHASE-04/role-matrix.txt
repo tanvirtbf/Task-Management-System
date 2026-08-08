@@ -1,0 +1,104 @@
+tokens obtained for: owner, admin, member, guest
+
+LEGEND:  403 = role gate DENIED   |   422/404/400 = passed the gate, failed later   |   2xx = allowed
+
+METHOD PATH                                   owner      admin      member     guest
+------------------------------------------------------------------------------------------
+POST /tags                                    422        422        403 DENY 403 DENY 
+PATCH /tags/tag-nope                          422        422        403 DENY 403 DENY 
+DELETE /tags/tag-nope                         404        404        403 DENY 403 DENY 
+POST /task-types                              422        422        403 DENY 403 DENY 
+PATCH /task-types/tt-nope                     422        422        403 DENY 403 DENY 
+DELETE /task-types/tt-nope                    404        404        403 DENY 403 DENY 
+POST /custom-fields                           422        422        403 DENY 403 DENY 
+PATCH /custom-fields/cf-nope                  404        404        403 DENY 403 DENY 
+DELETE /custom-fields/cf-nope                 404        404        403 DENY 403 DENY 
+POST /templates                               422        422        403 DENY 403 DENY 
+PATCH /templates/tpl-nope                     422        422        403 DENY 403 DENY 
+DELETE /templates/tpl-nope                    404        404        403 DENY 403 DENY 
+POST /spaces                                  422        422        403 DENY 403 DENY 
+PATCH /spaces/sp-nope                         404        404        403 DENY 403 DENY 
+POST /spaces/sp-nope/archive                  404        404        403 DENY 403 DENY 
+POST /spaces/sp-nope/unarchive                404        404        403 DENY 403 DENY 
+DELETE /spaces/sp-nope                        404        403 DENY 403 DENY 403 DENY 
+POST /lists                                   422        422        403 DENY 403 DENY 
+PATCH /lists/l-nope                           422        422        403 DENY 403 DENY 
+POST /lists/l-nope/archive                    404        404        403 DENY 403 DENY 
+POST /lists/l-nope/unarchive                  404        404        403 DENY 403 DENY 
+DELETE /lists/l-nope                          404        403 DENY 403 DENY 403 DENY 
+POST /lists/l-nope/statuses                   422        422        403 DENY 403 DENY 
+PATCH /statuses/st-nope                       422        422        403 DENY 403 DENY 
+DELETE /statuses/st-nope                      404        404        403 DENY 403 DENY 
+PATCH /lists/l-nope/statuses/reorder          422        422        403 DENY 403 DENY 
+POST /users/invite                            422        422        403 DENY 403 DENY 
+PATCH /users/u-nope/role                      422        422        403 DENY 403 DENY 
+POST /users/u-nope/deactivate                 404        404        403 DENY 403 DENY 
+POST /users/u-nope/reactivate                 404        404        403 DENY 403 DENY 
+POST /users/u-nope/reset-password             404        404        403 DENY 403 DENY 
+GET /roles                                    200        200        403 DENY 403 DENY 
+GET /roles/catalog                            200        200        403 DENY 403 DENY 
+POST /roles                                   422        422        403 DENY 403 DENY 
+PATCH /roles/rol-nope                         404        404        403 DENY 403 DENY 
+PUT /roles/rol-nope/permissions               422        422        403 DENY 403 DENY 
+DELETE /roles/rol-nope                        404        404        403 DENY 403 DENY 
+GET /users/u-nope/roles                       200        200        403 DENY 403 DENY 
+POST /users/u-nope/roles                      422        422        403 DENY 403 DENY 
+GET /spaces/sp-nope/members                   404        404        403 DENY 403 DENY 
+PATCH /workspace                              200        200        403 DENY 403 DENY 
+PUT /on-call/2027-01-04                       422        422        403 DENY 403 DENY 
+DELETE /on-call/2027-01-04                    404        404        403 DENY 403 DENY 
+POST /sprints                                 422        422        403 DENY 403 DENY 
+PATCH /sprints/spr-nope                       404        404        403 DENY 403 DENY 
+POST /sprints/spr-nope/start                  404        404        403 DENY 403 DENY 
+POST /sprints/spr-nope/close                  404        404        403 DENY 403 DENY 
+PATCH /tasks/t-nope/sla                       422        422        403 DENY 403 DENY 
+POST /reports/generate                        422        422        422        422        
+POST /reports/rep-nope/ack                    404        404        403 DENY 403 DENY 
+POST /tasks                                   422        422        422        422        
+PATCH /tasks/t-nope                           422        422        422        422        
+DELETE /tasks/t-nope                          404        404        404        404        
+POST /tasks/t-nope/archive                    404        404        404        404        
+POST /tasks/t-nope/assignees                  422        422        422        422        
+POST /tasks/t-nope/comments                   422        422        422        422        
+POST /tasks/t-nope/checklists                 422        422        422        422        
+POST /task-dependencies                       422        422        422        422        
+POST /forms                                   422        422        403 DENY 403 DENY 
+POST /uploads/sign                            422        422        422        422        
+POST /eng/report-bug                          422        422        422        422        
+POST /templates/tpl-nope/apply                422        422        422        422        
+GET /users                                    200        200        200        200        
+GET /workspace                                200        200        200        200        
+GET /activity                                 200        200        200        200        
+GET /reports                                  200        200        200        200        
+GET /sla/breached                             200        200        200        200        
+GET /eng/home                                 200        200        200        200        
+GET /home/kpis                                200        200        200        200        
+GET /sprints                                  200        200        200        200        
+GET /on-call/current                          200        200        200        200        
+
+=== SUMMARY: which probes DENIED (403) for which roles ===
+  probes where at least one role got 403 : 50
+  probes where NO role was ever denied   : 21
+
+  NEVER-DENIED probes (identical for owner/admin/member/guest):
+    POST /reports/generate                      422/422/422/422   all identical
+    POST /tasks                                 422/422/422/422   all identical
+    PATCH /tasks/t-nope                         422/422/422/422   all identical
+    DELETE /tasks/t-nope                        404/404/404/404   all identical
+    POST /tasks/t-nope/archive                  404/404/404/404   all identical
+    POST /tasks/t-nope/assignees                422/422/422/422   all identical
+    POST /tasks/t-nope/comments                 422/422/422/422   all identical
+    POST /tasks/t-nope/checklists               422/422/422/422   all identical
+    POST /task-dependencies                     422/422/422/422   all identical
+    POST /uploads/sign                          422/422/422/422   all identical
+    POST /eng/report-bug                        422/422/422/422   all identical
+    POST /templates/tpl-nope/apply              422/422/422/422   all identical
+    GET /users                                  200/200/200/200   all identical
+    GET /workspace                              200/200/200/200   all identical
+    GET /activity                               200/200/200/200   all identical
+    GET /reports                                200/200/200/200   all identical
+    GET /sla/breached                           200/200/200/200   all identical
+    GET /eng/home                               200/200/200/200   all identical
+    GET /home/kpis                              200/200/200/200   all identical
+    GET /sprints                                200/200/200/200   all identical
+    GET /on-call/current                        200/200/200/200   all identical

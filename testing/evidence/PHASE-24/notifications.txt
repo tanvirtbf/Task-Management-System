@@ -1,0 +1,88 @@
+=== 1. WHICH TYPES CAN ACTUALLY BE PRODUCED? ===
+  after assign + @mention + plain comment + status change, arif received: [{"type":"mentioned","n":1},{"type":"assigned","n":1}]
+  types that exist anywhere in the DB: ["mentioned","report_ready","assigned","task_reviewed","comment"]
+  the 12 declared types, and whether any server code produces one:
+     assigned            produced
+     mentioned           produced
+     comment             *** NO PRODUCER ***
+     status_change       *** NO PRODUCER ***
+     due_soon            *** NO PRODUCER ***
+     overdue             *** NO PRODUCER ***
+     form_submitted      produced
+     automation_failed   *** NO PRODUCER ***
+     pr_review           *** NO PRODUCER ***
+     incident_alert      *** NO PRODUCER ***
+     task_reviewed       produced
+     report_ready        produced
+
+=== 2. FEED shape, filters, pagination ===
+  GET -> 200      envelope: data,pagination | pagination: {"next_cursor":null,"has_more":false,"total_estimate":4}
+  a row: {"id":"ntf-_aqbxP-qi_xP8br5KrYTZw","type":"mentioned","entity_type":"comment","entity_id":"c-VMOHfjRhTVOM28VNPmjk_g","actor_id":"u-ohsNaae2ShvNIZpMlJHVRQ","title":"mentioned you in a comment","body":"TEST-p24 hey @arif","is_read":false,"snoozed_until":null,"created_at":"2026-07-30T15:03:29.000Z"}
+  ?is_read=false      -> 200                         4 rows
+  ?is_read=true       -> 200                         4 rows
+  ?type=assigned      -> 200                         4 rows
+  ?type=bogus         -> 200                         4 rows
+  ?limit=1000         -> 200                         4 rows
+  ?limit=0            -> 422 validation.failed       
+  ?cursor=garbage     -> 400 pagination.invalid_cursor
+  ?is_read=maybe      -> 200                         4 rows
+  walked all pages: 4 rows in 1 pages | DB says 4
+
+=== 3. UNREAD COUNT + read state ===
+  unread-count shape: {"unread_count":4}
+  mark read    -> 200      count: {"unread_count":3}
+  mark read again -> 200
+  mark unread  -> 200      count: {"unread_count":4}
+  mark-all-read -> 200      count: {"unread_count":0}
+  unread rows in DB after mark-all: 0
+
+=== 4. notification.not_owner ===
+  arif marks OWNER's notification read -> 403 notification.not_owner
+  arif deletes OWNER's notification    -> 403 notification.not_owner
+  arif snoozes OWNER's notification    -> 403 notification.not_owner
+  unknown id read   -> 404 notification.not_found
+  unknown id delete -> 404 notification.not_found
+
+=== 5. SNOOZE ===
+  snooze to +1h  -> 200     
+     stored snoozed_until: 2026-07-30 10:03:30 | MySQL NOW(): 2026-07-30 15:03:29
+     still in the feed? yes
+     counted as unread? {"unread_count":0}
+  snooze to the PAST -> 422 validation.failed
+  snooze to null     -> 422 validation.failed
+  snooze malformed   -> 422 validation.failed
+  snooze missing key -> 422 validation.failed
+  a past snooze re-appears in the feed? yes — the feed filters on time, no job needed
+
+=== 6. SOFT DELETE ===
+  delete -> 204     
+     row kept, deleted_at: 2026-07-30 09:03:30
+     in the feed? no
+     unread count: {"unread_count":0} -> {"unread_count":0}
+  delete again -> 404 notification.not_found
+  mark a deleted one read -> 404 notification.not_found
+
+=== 7. PREFERENCES ===
+  GET -> 200      shape: ["assigned","mentioned","comment","status_change","due_soon","overdue","form_submitted","automation_failed","pr_review",
+  first entry: undefined
+  rows in user_notification_prefs for arif: 0 (0 = defaults are implicit)
+  PUT one type off -> 422 validation.failed         
+     rows now: 
+  unknown type          -> 422 validation.failed
+  empty array           -> 422 validation.failed
+  missing key           -> 422 validation.failed
+  type only, no flags   -> 422 validation.failed
+
+=== 8. SCAN-M1 — does turning a type OFF stop it? ===
+  `assigned` is disabled for arif (in_app=false, email=false)
+  a new assignment produced 1 notification(s) -> *** DELIVERED ANYWAY — confirms SCAN-M1 ***
+  the row: {"type":"assigned","e":null} | email_sent_at populated? no — confirms SCAN-M2
+  (preferences restored / rows cleared)
+
+=== 9. ORPHANED notifications (found in P21) ===
+  notifications pointing at a task that no longer exists: 0
+  after hard-deleting the task, its notification rows: 1 *** left behind ***
+  and they still appear in arif's feed: 1 "You were assigned to TEST-p24-orphan"
+
+=== CLEANUP ===
+  orphan statuses 0 | tasks 51 (51) | lists 14 (14) | notifications 65 (65) | prefs 0 (0)

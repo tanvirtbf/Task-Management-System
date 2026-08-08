@@ -42,10 +42,13 @@ export const toWireNotification = (n: NotificationRow): WireNotification => ({
     created_at: n.createdAt.toISOString(),
 });
 
-/** One type's delivery preference in the wire shape (§19 #8/#9). */
+/**
+ * One type's delivery preference in the wire shape (§19 #8/#9).
+ * F19 (D8): `email_enabled` is gone — it promised a channel that had no
+ * implementation (MailService sends exactly two transactional mails).
+ */
 export interface WireNotificationPref {
     in_app_enabled: boolean;
-    email_enabled: boolean;
 }
 
 /** The full preferences object: every notification type → its channel flags. */
@@ -62,12 +65,11 @@ export const toWirePrefs = (
 ): WireNotificationPrefs => {
     const map: WireNotificationPrefs = {};
     for (const type of notificationTypes) {
-        map[type] = { in_app_enabled: true, email_enabled: true };
+        map[type] = { in_app_enabled: true };
     }
     for (const row of stored) {
         map[row.type] = {
             in_app_enabled: row.inAppEnabled,
-            email_enabled: row.emailEnabled,
         };
     }
     return map;

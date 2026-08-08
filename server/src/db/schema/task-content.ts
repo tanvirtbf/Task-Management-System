@@ -57,6 +57,14 @@ export const comments = mysqlTable(
             .onUpdate("cascade"),
         taskTimeIdx: index("idx_comments_task_time").on(t.taskId, t.createdAt),
         parentIdx: index("idx_comments_parent").on(t.parentCommentId),
+        // F30 (ISS-088): `listByTask` orders by (created_at, internal_id) —
+        // the tie-break column is what pushed MySQL off `idx_comments_task_time`
+        // into a filesort. This index carries the FULL order.
+        taskCreatedInternalIdx: index("idx_comments_task_created_internal").on(
+            t.taskId,
+            t.createdAt,
+            t.internalId,
+        ),
     }),
 );
 
@@ -166,6 +174,28 @@ export const attachments = mysqlTable(
     },
     (t) => ({
         taskIdx: index("idx_attachments_task").on(t.taskId, t.uploadedAt),
+    }),
+);
+
+// ─── r2_purge_queue ─ F16 (ISS-022) ──────────────────────────────────────────
+// R2 object keys awaiting deletion, for the ONE case the soft-delete flow
+// cannot see: a task hard delete. `attachments.task_id` is ON DELETE CASCADE,
+// so the rows vanish with the task — and the r2-purge job, which finds objects
+// by reading soft-deleted attachment rows, never learns those objects exist.
+// The bytes stayed in the bucket forever (P4 proved it with four stranded
+// objects). The hard-delete transaction now copies the subtree's keys here
+// BEFORE deleting the task row; the same job drains the queue. Grace period
+// does not apply — the task is already permanently gone, so its files are too.
+export const r2PurgeQueue = mysqlTable(
+    "r2_purge_queue",
+    {
+        id: varchar("id", { length: ID_LENGTH }).primaryKey(),
+        storageKey: varchar("storage_key", { length: URL_LENGTH }).notNull(),
+        thumbnailKey: varchar("thumbnail_key", { length: URL_LENGTH }),
+        queuedAt: timestamp("queued_at").notNull().defaultNow(),
+    },
+    (t) => ({
+        queuedIdx: index("idx_r2_purge_queued").on(t.queuedAt),
     }),
 );
 

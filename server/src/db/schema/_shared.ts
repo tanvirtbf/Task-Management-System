@@ -102,20 +102,25 @@ export const permissionScopes = ["all", "space", "own"] as const;
 /** Dynamic RBAC — where a role assignment applies (`user_roles.scope_type`). */
 export const roleScopeTypes = ["workspace", "space"] as const;
 
+// F19 (D6 / ISS-072): 12 → 7. The five removed values — due_soon, overdue,
+// automation_failed, pr_review, incident_alert — had NO producer anywhere and
+// no triggering surface to build one from (no scheduler, no automations, no
+// review-request flow). A declared type nothing can ever produce is the lie
+// ISS-072 documents; `comment` and `status_change` stayed and got REAL
+// producers instead. Mirrors database/schema.sql §29/§29b + upgrades/009.
+// upgrades/014 (2026-08-08): `overdue` RETURNS — the F19 test was "no
+// producer", and the overdue-alert job now IS its producer.
 export const notificationTypes = [
     "assigned",
     "mentioned",
     "comment",
     "status_change",
-    "due_soon",
-    "overdue",
     "form_submitted",
-    "automation_failed",
-    "pr_review",
-    "incident_alert",
     // Dept Review V1 — appended at the END (ENUM order = INSTANT DDL + parity).
     "task_reviewed",
     "report_ready",
+    // upgrades/014 — produced by the overdue-alert job. Append-only.
+    "overdue",
 ] as const;
 export const notificationEntityTypes = [
     "task",

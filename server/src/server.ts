@@ -22,6 +22,28 @@ const startServer = async () => {
             );
         }
 
+        // 0b. F14 (ISS-003): the auth secrets are a HARD no-boot.
+        //
+        // `ACCESS_TOKEN_SECRET` was already effectively boot-validated —
+        // express-jwt refuses to construct without one and the process exits 1.
+        // `REFRESH_TOKEN_SECRET` was not: the server booted, `/health` AND
+        // `/health/ready` both answered 200 ready, and then every single login
+        // returned 500 `auth.token_config_missing`. A load balancer or uptime
+        // monitor saw a perfectly healthy instance nobody could sign in to,
+        // which is the worst possible failure shape — silent, and invisible to
+        // exactly the thing watching for trouble. Fail closed instead, in the
+        // same place and the same way the ENCRYPTION_KEY check does.
+        for (const [name, value] of [
+            ["ACCESS_TOKEN_SECRET", Config.ACCESS_TOKEN_SECRET],
+            ["REFRESH_TOKEN_SECRET", Config.REFRESH_TOKEN_SECRET],
+        ] as const) {
+            if (!value || !value.trim()) {
+                throw new Error(
+                    `${name} is missing — refusing to boot. Without it the server would report READY and fail every login.`,
+                );
+            }
+        }
+
         // 1. Initialize database connection pool
         const db = await initDb();
         logger.info("Database connected successfully.");
@@ -44,10 +66,25 @@ const startServer = async () => {
         // 2. Import app AFTER DB is ready (routes call getDb() at module load time)
         const { default: app } = await import("./app");
 
-        // 3. Start listening
-        const server = app.listen(PORT, () =>
-            logger.info(`Listening on port ${PORT}`),
-        );
+        // 3. Start listening.
+        //
+        // F13 (ISS-089): bind LOOPBACK ONLY in production. With no host
+        // argument Node binds 0.0.0.0/::, so if TCP 5501 is reachable from
+        // outside the box a client can talk to the API directly — and then it
+        // is the only hop, so with `trust proxy = 1` it controls the last
+        // `X-Forwarded-For` entry and mints a fresh rate-limit bucket per
+        // request (P41 measured exactly that: 6 bad logins → 429, the same 6
+        // with a forged XFF → 401 every time). nginx already proxies to
+        // 127.0.0.1:5501, so nothing legitimate changes.
+        //
+        // Dev keeps the wildcard bind on purpose: the CORS policy deliberately
+        // allows private-LAN origins so a phone on the same Wi-Fi can use the
+        // app, and that is pointless if the port itself is unreachable.
+        const server = Config.IS_PROD
+            ? app.listen(Number(PORT), "127.0.0.1", () =>
+                  logger.info(`Listening on 127.0.0.1:${PORT} (loopback only)`),
+              )
+            : app.listen(PORT, () => logger.info(`Listening on port ${PORT}`));
 
         // Graceful shutdown
         const shutdown = async (signal: string) => {

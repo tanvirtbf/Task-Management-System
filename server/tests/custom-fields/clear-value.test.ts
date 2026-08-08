@@ -211,7 +211,7 @@ describe("DELETE /api/v1/tasks/:id/custom-fields/:fieldId", () => {
             const res = await http.delete(path("t-x", "cf-x"));
             expect(res.status).toBe(401);
         });
-        for (const role of ["owner", "admin", "member", "guest"] as const) {
+        for (const role of ["owner", "admin", "member"] as const) {
             it(`allows a ${role} to clear (204)`, async () => {
                 const u = await makeUser({ role });
                 const t = await makeTask({
@@ -225,5 +225,20 @@ describe("DELETE /api/v1/tasks/:id/custom-fields/:fieldId", () => {
                 expect(res.status).toBe(204);
             });
         }
+
+        // F28 (ISS-094, D12.1): clearing rides the same `customfield.set_value`
+        // gate that setting does, and the Guest role no longer holds it.
+        it("REFUSES a guest (403) — customfield.set_value revoked", async () => {
+            const u = await makeUser({ role: "guest" });
+            const t = await makeTask({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+            });
+            const f = await seedTextField(u.workspaceId, u.id);
+            await seedValue(t.id, f, u.id);
+            const client = await makeLoggedInClient(u);
+            const res = await client.delete(path(t.id, f));
+            expect(res.status).toBe(403);
+        });
     });
 });

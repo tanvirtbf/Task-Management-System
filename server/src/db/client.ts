@@ -14,6 +14,20 @@ let db: MySql2Database<typeof schema>;
  */
 const dbTimezone = ((): string | undefined => {
     const raw = Config.DB_TIMEZONE?.trim();
+    // F5 boot guard (ISS-058's production-coupling half): production runs the
+    // canonical clock or it does not run. F3 pinned storage to UTC because
+    // Drizzle's timestamp mapper hardcodes +0000 — any other session value
+    // reintroduces a silent 6 h drift on every TIMESTAMP, visible only as data
+    // that is quietly wrong. The process TZ is deliberately NOT checked: F3
+    // decoupled it (pm2 keeps TZ=Asia/Dhaka while the session is UTC), so the
+    // guard is on the value that matters, not on an agreement between files.
+    if (Config.IS_PROD && raw !== "+00:00") {
+        throw new Error(
+            `Refusing to start: NODE_ENV=${Config.NODE_ENV} requires DB_TIMEZONE=+00:00 ` +
+                `(the canonical clock — got ${raw ? `"${raw}"` : "unset"}). ` +
+                "See fixing/results/F03.md and server/.env.example.",
+        );
+    }
     if (!raw) return undefined;
     if (!/^[+-]\d{2}:\d{2}$/.test(raw)) {
         throw new Error(

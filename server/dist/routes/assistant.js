@@ -9,6 +9,7 @@ const AssistantService_1 = require("../services/AssistantService");
 const ChatRepo_1 = require("../repositories/ChatRepo");
 const HomeService_1 = require("../services/HomeService");
 const HomeRepo_1 = require("../repositories/HomeRepo");
+const WorkspaceRepo_1 = require("../repositories/WorkspaceRepo");
 const SearchService_1 = require("../services/SearchService");
 const SearchRepo_1 = require("../repositories/SearchRepo");
 const TasksRepo_1 = require("../repositories/TasksRepo");
@@ -46,7 +47,7 @@ else {
     // Read-only data tools (Phase 8): reuse HomeService (KPIs/agenda) + SearchService.
     const tasksRepo = new TasksRepo_1.TasksRepo(db);
     const toolServices = {
-        home: new HomeService_1.HomeService(new HomeRepo_1.HomeRepo(db), tasksRepo),
+        home: new HomeService_1.HomeService(new HomeRepo_1.HomeRepo(db), tasksRepo, new WorkspaceRepo_1.WorkspaceRepo(db)),
         search: new SearchService_1.SearchService(new SearchRepo_1.SearchRepo(db), tasksRepo),
     };
     const controller = new AssistantController_1.AssistantController(assistantService, chatRepo, toolServices, logger_1.default);

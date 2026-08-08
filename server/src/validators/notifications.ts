@@ -96,7 +96,8 @@ export const snoozeNotificationValidator = checkSchema({
 
 /**
  * Body validator for `PUT /api/v1/notifications/preferences`. The body is a map
- * of `notificationType → { in_app_enabled, email_enabled }`. express-validator
+ * of `notificationType → { in_app_enabled }` (F19/D8 removed the email
+ * channel). express-validator
  * is field-oriented, so the whole body is validated in one custom check: it must
  * be a non-empty plain object whose every key is a known notification type and
  * whose every value carries exactly the two boolean channel flags. Unknown
@@ -106,7 +107,7 @@ export const updatePreferencesValidator = [
     body().custom((value: unknown): boolean => {
         if (typeof value !== "object" || value === null || Array.isArray(value)) {
             throw new Error(
-                "Body must be an object mapping a notification type to { in_app_enabled, email_enabled }",
+                "Body must be an object mapping a notification type to { in_app_enabled }",
             );
         }
         const entries = Object.entries(value as Record<string, unknown>);
@@ -126,16 +127,21 @@ export const updatePreferencesValidator = [
                 Array.isArray(pref)
             ) {
                 throw new Error(
-                    `Preference for "${type}" must be an object with in_app_enabled and email_enabled`,
+                    `Preference for "${type}" must be an object with in_app_enabled`,
                 );
             }
             const p = pref as Record<string, unknown>;
-            if (
-                typeof p.in_app_enabled !== "boolean" ||
-                typeof p.email_enabled !== "boolean"
-            ) {
+            if (typeof p.in_app_enabled !== "boolean") {
                 throw new Error(
-                    `Preference for "${type}" must have boolean in_app_enabled and email_enabled`,
+                    `Preference for "${type}" must have boolean in_app_enabled`,
+                );
+            }
+            const extras = Object.keys(p).filter(
+                (k) => k !== "in_app_enabled",
+            );
+            if (extras.length > 0) {
+                throw new Error(
+                    `Unknown preference key(s) for "${type}": ${extras.join(", ")} — the email channel was removed (F19)`,
                 );
             }
             const extra = Object.keys(p).filter(

@@ -94,6 +94,27 @@ export class RolesRepo {
     }
 
     /** Lookup by the stable slug — how the seeded system roles are addressed. */
+    /**
+     * F27 (ISS-027): the friendly pre-check for a duplicate DISPLAY name. The
+     * `uq_roles_workspace_name` index is the race-free backstop (mapped to the
+     * same 409 in the service); this exists so the common case gets a clean
+     * message rather than an ER_DUP_ENTRY translation.
+     */
+    async findByNameInWorkspace(
+        name: string,
+        workspaceId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<RoleRecord | null> {
+        const rows = await exec
+            .select(roleColumns)
+            .from(roles)
+            .where(
+                and(eq(roles.name, name), eq(roles.workspaceId, workspaceId)),
+            )
+            .limit(1);
+        return rows[0] ?? null;
+    }
+
     async findByKeyInWorkspace(
         roleKey: string,
         workspaceId: string,

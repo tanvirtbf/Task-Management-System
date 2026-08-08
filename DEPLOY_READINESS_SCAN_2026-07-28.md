@@ -175,9 +175,10 @@ migration is "apply 0005". It is the most deployment-shaped doc in the repo and 
 10. **Winston writes `logs/combined.log` + `logs/error.log` with no rotation and no size cap**
     (`config/logger.ts:16-28`), cwd-relative. Every request is logged; at 100 users this fills the
     disk. Add logrotate or a size-capped transport.
-11. **All 6 background jobs are external-cron only** — there is no in-process scheduler. Without
+11. **All 7 background jobs are external-cron only** — there is no in-process scheduler. Without
     crontab entries, the **weekly HR department report never generates**, sessions never purge,
-    pending attachments and expired PII accumulate. Cron lines in §6.
+    pending attachments and expired PII accumulate, and overdue tasks never alert their
+    assignees. Cron lines in §6.
 12. **`PORT` has no default and no validation** (`config/index.ts:77`, `server.ts:9,48`). Missing →
     `app.listen(undefined)` binds a random port and logs a cheerful "Listening on port undefined".
 13. **No boot-time validation of secrets.** Only `ENCRYPTION_KEY` is checked. A `.env` copied from
@@ -276,24 +277,32 @@ should be chosen, not inherited.
 2. Deploy the repo so **`database/` sits next to `server/`** — `db/setup.ts:22` resolves
    `../../../database/schema.sql`.
 3. `cd server && npm run db:setup` → creates the DB and applies `database/schema.sql` in full:
-   **41 tables, 7 triggers, 5 views.** Dept-review and RBAC are already folded in —
-   `database/upgrades/001–004` are **not** needed on a fresh DB (they are the upgrade path for
-   already-provisioned ones).
+   **42 tables, 9 triggers, 5 views** *(F33 re-verified 2026-08-07 — was 41/7/5 when this scan was
+   written; the fixing campaign folded `r2_purge_queue` (F16) and the `trg_comments_after_update` +
+   `trg_form_submissions_after_delete` counter triggers (F15) into schema.sql per rule X4).*
+   Dept-review and RBAC are already folded in — `database/upgrades/001–013` are **not** needed on a
+   fresh DB (they are the upgrade path for already-provisioned ones).
 4. `npm run db:seed` → workspace + owner login + starter task types + Engineering/Bug-Triage list +
    RBAC catalog and system roles. **Run exactly once** (it is additive, not idempotent).
-5. Set up `mysqldump --single-transaction --quick --routines --triggers` on a schedule. **Nothing
-   exists in the repo for backups** — this is a genuine gap, not an oversight in the code.
+5. Set up `mysqldump --single-transaction --quick --routines --triggers` on a schedule.
+   *(F33 note, 2026-08-07: this gap is CLOSED — `deploy/backup/bbtasks-backup.sh` + its cron line
+   exist, with 14-day retention, a free-disk guard that aborts rather than filling the shared box,
+   and a dump-size sanity check.)*
 
 **NEVER run on prod:** `db:migrate` (incomplete — B7) · `db:push` / `db:generate` / `db:drop`
 (frozen chain, clobber risk) · `db:seed:demo` and `db:setup:fresh` (**destructive** — B4).
 
 ### 6.2 Server env — the checklist
 **Required:** `NODE_ENV=prod` · `PORT` · `DB_HOST/PORT/USERNAME/PASSWORD/NAME` ·
+**`DB_TIMEZONE=+00:00`** *(F33 addition, 2026-08-07 — F3 made this the canonical clock and prod
+REFUSES TO BOOT without it; this list predates F3. On the MySQL 8.4 prod box also set
+`DB_SOCKET_PATH` — TCP + caching_sha2 fails there; both are documented in `server/.env.example`.)* ·
 `ACCESS_TOKEN_SECRET` · `REFRESH_TOKEN_SECRET` · `COOKIE_SECRET` (three *different* long randoms) ·
 `ENCRYPTION_KEY` (**fresh 64-hex, never one from the docs**) · `INTERNAL_JOB_TOKEN` ·
 `FRONTEND_URL` (real client origin) · `CORS_ALLOWED_ORIGINS` · `MAIL_HOST/PORT/USERNAME/PASSWORD/
 FROM_ADDRESS/FROM_NAME` (real sender, not Mailtrap) · all four `CLOUDFLARE_R2_*` + `ACCOUNT_ID` ·
-`OPENAI_API_KEY` · `TZ` (per your MEDIUM-2 decision) · `GIT_SHA` (from the pipeline).
+`OPENAI_API_KEY` · `TZ` (per your MEDIUM-2 decision — settled by F3: the app is session-UTC
+regardless, so `TZ` is cosmetic for logs) · `GIT_SHA` (from the pipeline).
 
 **Read but ignored by the code — don't rely on them:** `ACCESS_TOKEN_TTL`, `REFRESH_TOKEN_TTL`
 (TTLs are hardcoded 15m/30d), `DB_POOL_MAX`, `DB_POOL_QUEUE_LIMIT`, `API_URL`,
@@ -313,13 +322,18 @@ FROM_ADDRESS/FROM_NAME` (real sender, not Mailtrap) · all four `CLOUDFLARE_R2_*
   `fonts.googleapis.com` + `fonts.gstatic.com`, or self-host them.
 
 ### 6.4 Cron (nothing runs without this)
+
+*(2026-08-08: the canonical file is now `deploy/cron/bbtasks-jobs` — install per its header,
+UTC times, all 7 jobs over HTTP via `deploy/cron/run-job.sh`. The sketch below is superseded;
+`form-submission-expiry` HAS an HTTP route since F19-era wiring, and `overdue-alert` is new.)*
 ```
-*/5 * * * *   POST /api/v1/jobs/snooze-wake
-0 2 * * *     POST /api/v1/jobs/session-cleanup
-0 2 * * *     POST /api/v1/jobs/attachment-janitor
-0 3 * * *     POST /api/v1/jobs/r2-purge
-0 9 * * 1     POST /api/v1/jobs/department-report     # Monday 09:00 Asia/Dhaka
-0 3 * * *     cd server && npx tsx src/bin/run-job.ts form-submission-expiry   # no HTTP route
+*/5 * * * *   run-job.sh snooze-wake
+*/10 * * * *  run-job.sh overdue-alert                # email+in-app the moment a due date passes
+10 2 * * *    run-job.sh session-cleanup
+20 2 * * *    run-job.sh attachment-janitor
+30 2 * * *    run-job.sh r2-purge
+40 2 * * *    run-job.sh form-submission-expiry
+0 3 * * 1     run-job.sh department-report            # Monday 09:00 Asia/Dhaka
 ```
 All HTTP calls need `-H "X-Internal-Token: $INTERNAL_JOB_TOKEN"`. Dry-run any job first with
 `npm run job <slug> -- --dry-run`. No MySQL `event_scheduler` is needed — there are no DB events.

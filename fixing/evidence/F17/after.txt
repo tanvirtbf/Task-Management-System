@@ -1,0 +1,13 @@
+
+  === F17 (AFTER) — ISS-025, the three failure surfaces ===
+
+  OK    GET /forms/:id/submissions -> 200 (was 500)               got 200
+  OK    public intake works (201) and the row is ENCRYPTED + stampedgot 201
+  OK    …encrypted_at set, expires_at = submitted + 90d           enc 1, exp 1, days 90
+  OK    the retention job answers ok (was Unknown column)         {"ok":true,"dry_run":true,"processed":0,"wouldDelete":0}
+  OK    …and the submissions list actually shows the row          1 rows
+
+  cleanup: tasks 46 (46) | forms 0 (0)
+
+  AFTER PASS
+

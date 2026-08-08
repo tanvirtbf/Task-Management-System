@@ -61,18 +61,35 @@ describe("POST /api/v1/jobs/session-cleanup", () => {
             expect(ids).toContain(active.id);
         });
 
-        it("deletes a revoked session only once it is also > 30 days past expiry", async () => {
+        it("prunes a session revoked > 7 days ago even before expiry + 30d (F10/ISS-017)", async () => {
             const u = await makeUser();
-            // Revoked but expired only 5 days ago → kept (keys on expiry age, not revocation).
-            const revokedRecent = await makeSession({
+            // Revoked 20 days ago — a revoked session can never authenticate
+            // again, so after the 7-day forensic window it is dead weight.
+            // (Pre-F10 this row survived until expires_at + 30d ≈ 60 days.)
+            const revokedOld = await makeSession({
                 userId: u.id,
                 expiresAt: daysAgo(5),
                 revokedAt: daysAgo(20),
             });
             const res = await post();
+            expect(res.body.deleted).toBe(1);
+            expect(res.body.deleted_revoked).toBe(1);
+            expect((await sessionRows(u.id)).map((r) => r.id)).not.toContain(
+                revokedOld.id,
+            );
+        });
+
+        it("keeps a freshly revoked session (inside the 7-day forensic window)", async () => {
+            const u = await makeUser();
+            const revokedFresh = await makeSession({
+                userId: u.id,
+                expiresAt: daysAhead(20),
+                revokedAt: daysAgo(2),
+            });
+            const res = await post();
             expect(res.body.deleted).toBe(0);
             expect((await sessionRows(u.id)).map((r) => r.id)).toContain(
-                revokedRecent.id,
+                revokedFresh.id,
             );
         });
 

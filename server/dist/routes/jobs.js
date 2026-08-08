@@ -25,6 +25,9 @@ router.post("/department-report", internalAuth_1.default, controller.run("depart
 // Gap-scan M2: this job was registered but never routed — the 90-day
 // encrypted-PII purge could not run under the documented curl-cron setup.
 router.post("/form-submission-expiry", internalAuth_1.default, controller.run("form-submission-expiry"));
-// recurrence-spawn, email-digest, and sla-breach-scan routes are registered
-// here as each job is built.
+// 2026-08-08: alert assignees of newly past-due tasks (email + in-app),
+// exactly once per task per deadline. Cron: */10 (deploy/cron/bbtasks-jobs).
+router.post("/overdue-alert", internalAuth_1.default, controller.run("overdue-alert"));
+// recurrence-spawn and email-digest routes are registered here as each job is
+// built (sla-breach-scan in its spec form is superseded — see API_DESIGN §28).
 exports.default = router;

@@ -1,0 +1,22 @@
+  ISSUE    SEV      what it claims                                      verdict
+  ------------------------------------------------------------------------------------------------
+  ISS-001  CRITICAL timestamps: wire vs stored differ by 6h             REPRODUCES  stored 2026-07-30 17:06:10 -> wire 2026-07-30T17:06:10.000Z
+  ISS-024  HIGH     a guest can use ungated permissions (dependency.manage)REPRODUCES  guest POST -> 201
+  ISS-047  HIGH     `own` scope: a scoped user edits someone else's taskREPRODUCES  404 (space visibility blocks it first — the scope test needs a shared space)
+  ISS-053  HIGH     dependency hydration leaks an unseeable space's taskREPRODUCES  direct GET of that task -> 404
+  ISS-060  HIGH     a guest reads the workspace audit trail             REPRODUCES  200, 31 people-management rows
+  ISS-063  HIGH     a 60-minute-old comment is still editable (window ~6h15m)REPRODUCES  PATCH -> 200
+  ISS-081  HIGH     an S0 bug is created already past its SLA deadline  REPRODUCES  stored +-240 min, intended +120
+  ISS-083  HIGH     password rule is isLength only, no complexity       REPRODUCES  validator inspected, not exercised
+  ISS-087  HIGH     50 concurrent requests -> 500s from pool queue exhaustionREPRODUCES  42/50 failed
+  ISS-046  MEDIUM   subtasks_count stays 0 with a real child            REPRODUCES  count=0
+  ISS-064  MEDIUM   a plain comment produces no notification            REPRODUCES  0 notifications
+  ISS-077  MEDIUM   PATCH a form with its own generated slug            REPRODUCES  test-p42-slug-HqZ7o0fy -> 422
+  ISS-084  MEDIUM   a scoped user reads a form in a space they cannot seeREPRODUCES  GET -> 200
+  ISS-085  MEDIUM   a disallowed Origin returns 500 instead of a clean rejectREPRODUCES  status 500
+  ISS-073  MEDIUM   notifications survive a hard-deleted task           REPRODUCES  1 orphaned rows
+
+  15 of 15 re-verified issues still reproduce
+
+=== CLEANUP ===
+  tasks 51 (51) | lists 14 (14) | forms 1 (1) | comments 8 (8) | notifications 67 (65)

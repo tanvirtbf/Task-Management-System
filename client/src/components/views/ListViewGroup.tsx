@@ -59,6 +59,7 @@ export const ListViewGroup = ({
             >
                 <button
                     onClick={() => setCollapsed(!collapsed)}
+                    aria-label={collapsed ? "Expand group" : "Collapse group"}
                     style={{
                         background: "none",
                         border: 0,

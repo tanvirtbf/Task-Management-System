@@ -267,7 +267,13 @@ describe("POST /api/v1/sprints", () => {
         it("409 sprint.duplicate on a duplicate name in the same workspace", async () => {
             const { client } = await setup();
             await client.post("/api/v1/sprints").send(valid);
-            const res = await client.post("/api/v1/sprints").send(valid);
+            // Disjoint dates (F22 added sprint.overlap, which fires first on
+            // an identical range) so the NAME rule is what this spec isolates.
+            const res = await client.post("/api/v1/sprints").send({
+                ...valid,
+                start_date: "2026-07-01",
+                end_date: "2026-07-14",
+            });
             expect(res.status).toBe(409);
             expect(res.body.error.code).toBe("sprint.duplicate");
         });

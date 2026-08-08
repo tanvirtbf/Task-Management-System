@@ -1,0 +1,37 @@
+=== spec code `tag.in_use` — delete a tag that is attached to a task ===
+  created tag: 201 tag-80_kIWtCMDqcTn_2CcrNrg
+  attached to task: 204
+  task now has tags: ["tag-80_kIWtCMDqcTn_2CcrNrg"]
+  DELETE the IN-USE tag -> 204 *** DELETED — spec says 409 tag.in_use ***
+     task tags after the delete: []  (silently detached)
+
+=== spec code `task.cannot_complete_blocked` — complete a task that is BLOCKED ===
+  dependency created: 422 {"error":{"code":"validation.failed","message":"One or more fields failed validation","request_id":"req_a241f6ae-a4d5-4f0d-aa86-4467c3d2d0cc
+  done-group status: Done (st-EEjbOx36esxhftMejzq8Ww)
+  complete the BLOCKED task -> 200 *** ALLOWED — spec says it should be refused ***
+
+=== spec code `sprint.overlap` — two sprints on overlapping dates ===
+  sprint 1 (Jan 4-17): 201 created
+  sprint 2 (Jan 10-24, OVERLAPS): 201 *** ALLOWED — spec says sprint.overlap ***
+
+=== cleanup ===
+  DELETE /sprints/spr-LMKAeobN8WYYYhvA8Kjopg -> 404
+  DELETE /sprints/spr-DzflykmnXLpNrRsuly1tog -> 404
+  DELETE /tasks/t-jRTKLo6_byA6nEHFjFZN_w -> 204
+  DELETE /tasks/t-IdN3GMMvPMiyQH2DZiD1qg -> 204
+  DELETE /tasks/t-gbdE_6Gqhypb86VmvksfgQ -> 204
+  stray TEST- tags remaining: 0 
+=== REDO: task.cannot_complete_blocked (correct field `related_task_id`) ===
+  dependency: 201 {"id":"dep-A9EwI9KzERVZEVosgYTqXg","task":{"id":"t-PX0ZbVLdEg-Gux9NIRII9A","custom_id":null,"task_number":9,"workspace_i
+  task B dependencies: {"blocks":[{"id":"dep-A9EwI9KzERVZEVosgYTqXg","task":{"id":"t-PX0ZbVLdEg-Gux9NIRII9A","custom_id":null,"task_number":9,"workspace_id":"ws-tcCcv1k2HdlflPAeyTGZIA","primary_list_id":"l-1adZ09p19wx5tP5Kt
+  blocker A status: still open
+  complete BLOCKED task B -> 200 *** ALLOWED — spec code task.cannot_complete_blocked never fires ***
+
+=== is there a DELETE /sprints/:id route at all? ===
+  DELETE /sprints/:id -> 404 route.not_found  => NO SUCH ROUTE (sprints cannot be deleted via the API)
+
+=== cleanup ===
+  DELETE /tasks/t-PX0ZbVLdEg-Gux9NIRII9A -> 204
+  DELETE /tasks/t-s1Yv5r1TY8UpptnG0uRs5g -> 204
+  DB delete stray TEST-p2 sprints -> 2 row(s)
+  remaining: sprints=1 (expect 1 seeded)  TEST- tasks=5  TEST- tags=0

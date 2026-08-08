@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SpacesController = void 0;
+const pagination_1 = require("../utils/pagination");
 const userSerializer_1 = require("../serializers/userSerializer");
 /** Schema defaults for `spaces.icon` / `spaces.color`, applied when omitted. */
 const DEFAULT_SPACE_ICON = "Folder";
@@ -50,14 +51,10 @@ class SpacesController {
                 includeArchived,
                 count: rows.length,
             });
-            res.status(200).json({
-                data: rows.map(toWireSpace),
-                pagination: {
-                    next_cursor: null,
-                    has_more: false,
-                    total_estimate: rows.length,
-                },
-            });
+            res.status(200).json(
+            // F23 (ISS-007): a real limit + a working cursor —
+            // this envelope used to say has_more:false no matter what.
+            (0, pagination_1.paginateArray)(rows.map(toWireSpace), req.query.limit, req.query.cursor));
         }
         catch (err) {
             next(err);
@@ -115,6 +112,9 @@ class SpacesController {
                 color: body.color ?? DEFAULT_SPACE_COLOR,
                 isPrivate: body.is_private ?? false,
                 position: body.position ?? 0,
+                // F18 (ISS-032): carried through and validated — no longer
+                // silently dropped on the floor.
+                headUserId: body.head_user_id ?? null,
             });
             this.logger.info("spaces.create.ok", {
                 requestId: req.requestId,

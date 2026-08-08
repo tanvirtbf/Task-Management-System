@@ -1,0 +1,23 @@
+================ F34 RE-VERIFICATION (P42's 15, inverted) ================
+  PASS  ISS-001  wire and stored timestamps are the SAME instant   [diff 0.00h]
+  PASS  ISS-024  a guest's dependency write is REFUSED (was 201)   [got 403]
+  PASS  ISS-047  editing someone else's task without the grant is REFUSED   [got 403]
+  PASS  ISS-053  an unseeable task stays unseeable — direct AND via dependencies   [direct 404, deps 404]
+  PASS  ISS-060  the guest feed carries ZERO people-management rows (was 31)   [200, user-rows 0/0]
+  PASS  ISS-063  a 60-minute-old comment REFUSES the edit (window enforced)   [got 403]
+  PASS  ISS-081  an S0's deadline is in the FUTURE (was stored −240 min)   [1440 min ahead (business clock)]
+  PASS  ISS-083  an 8×'a' password is REFUSED by the policy   [got 422]
+  PASS  ISS-087  50 parallel reads: zero failures (was 42/50 failing)   [0 non-200]
+  PASS  ISS-046  the parent counts its subtask (was 0)   [subtasks_count 1]
+  PASS  ISS-064  the assignee IS notified of the comment (was 0)   [0 -> 1]
+  PASS  ISS-077  a form accepts its OWN slug back (was 422)   [got 200]
+  PASS  ISS-084  a foreign-space form is INVISIBLE to the scoped user (was 200)   [got 404]
+  PASS  ISS-085  a disallowed Origin gets a clean answer (was 500)   [got 404]
+  PASS  ISS-073  a hard delete takes its notifications with it (was 1 orphan)   [orphans 0]
+
+  === CLEANUP ===
+  X8: tasks 46 (46) | lists 13 (13) | notif 57 (57) | forms 0 (0) | comments 7 (7)
+
+================================================
+  15 of 15 no longer reproduce, 0 still do
+  PASS — the symmetric proof holds: P42 proved them real, F34 proves them gone.

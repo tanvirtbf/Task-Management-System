@@ -1,0 +1,37 @@
+PHASE TIMINGS (compiled dist, warm FS)
+  require config      : 10 ms
+  require db/client   : 195 ms
+  initDb() (connect)  : 34 ms
+  require app.ts      : 816 ms   <-- the gap before listen()
+  TOTAL               : 1055 ms
+
+TOP 15 MODULES BY OWN TIME (ms)
+      12  lodash
+      11  ./schemas/schemas_0
+      11  ../validators/tasks
+       8  ../constants/errors.js
+       5  ../services/openaiClient
+       5  @aws-sdk/client-s3
+       5  @aws-sdk/core/protocols
+       4  ./routes/attachments
+       4  ../validators/onCall
+       4  drizzle-orm
+       4  crypto
+       4  ./lib/verify-stream
+       4  ../shared
+       3  @smithy/core/serde
+       3  @so-ric/colorspace
+
+TOP 10 BY TOTAL (incl. children)
+     816  E:/Task Management System/server/dist/app
+     195  E:/Task Management System/server/dist/db/client
+     170  ./routes/auth
+     150  drizzle-orm/mysql2
+     147  ./driver.cjs
+     112  ./routes/assistant
+     110  ./routes/attachments
+     106  express
+     105  ./lib/express
+     102  ../services/openaiClient
+
+modules loaded: 3772

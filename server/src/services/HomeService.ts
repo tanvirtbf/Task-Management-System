@@ -1,7 +1,9 @@
 import { Roles, type Role } from "../constants";
 import { HomeRepo, type DayCount } from "../repositories/HomeRepo";
 import { TasksRepo } from "../repositories/TasksRepo";
+import type { WorkspaceRepo } from "../repositories/WorkspaceRepo";
 import { toWireTask, type WireTask } from "../serializers/taskSerializer";
+import { todayInZone, zoneDateOf } from "../utils/dhakaTime";
 import type { HomeKpi, HomeKpiSet } from "../types/home";
 
 /**
@@ -13,43 +15,41 @@ import type { HomeKpi, HomeKpiSet } from "../types/home";
  * computes fresh on every call — the queries are bounded, indexed COUNTs (6 of
  * them, run in parallel). Add a read-through cache here when Redis lands.
  *
- * Sparklines: each KPI's filtered task set is bucketed by `DATE(created_at)`
- * over the trailing 7 days (the §25-blessed technique); `value` is the total
- * count of that set. A true point-in-time running-total series would need task
- * status history (not stored) — deferred to V2.
+ * F24 (ISS-057): the tiles carry a label and a number only. The trend badge was
+ * hardcoded and the sparkline plotted `DATE(created_at)` rather than the
+ * metric, so both were removed rather than left to mislead. The day-bucket
+ * queries remain because `value` is their SUM (the folding is unchanged); a
+ * real series needs task status history, which is not stored.
  */
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const SPARKLINE_DAYS = 7;
 
-/** Local `YYYY-MM-DD` for a Date (matches the §10 myWork / serializer formatting). */
-const ymd = (d: Date): string => {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-};
+// "Today" (and the 7 sparkline day-keys) run on the WORKSPACE's calendar —
+// `workspaces.timezone`, resolved per call — not the API box's OS zone. F5
+// (ISS-058): before this, the timezone setting was stored, validated and
+// returned but read by nothing; the process TZ silently decided every date
+// boundary. Fallback for a null/garbage zone is the Dhaka business default.
 
 /** Fixed trend metadata — V1 computes no trend (mock parity: 0 / flat / false). */
-const buildKpi = (
-    label: string,
-    value: number,
-    sparkline: number[],
-): HomeKpi => ({
+const buildKpi = (label: string, value: number): HomeKpi => ({
     label,
     value,
     valueDisplay: String(value),
-    trend: 0,
-    trendDirection: "flat",
-    isPositive: false,
-    sparkline,
 });
 
 export class HomeService {
     constructor(
         private homeRepo: HomeRepo,
         private tasksRepo: TasksRepo,
+        private workspaceRepo: WorkspaceRepo,
     ) {}
+
+    /** The workspace's IANA zone, with the Dhaka business default as fallback. */
+    private async zoneOf(workspaceId: string): Promise<string> {
+        const ws = await this.workspaceRepo.findById(workspaceId);
+        return ws?.timezone ?? "Asia/Dhaka";
+    }
 
     /**
      * The 6 home KPI tiles for the caller. `myTasks`/`dueToday`/`overdue` are
@@ -57,10 +57,11 @@ export class HomeService {
      * workspace-wide; `awaitingReview` is the caller's open review queue.
      */
     async kpis(workspaceId: string, userId: string): Promise<HomeKpiSet> {
+        const zone = await this.zoneOf(workspaceId);
         const now = new Date();
         const days: string[] = [];
         for (let i = SPARKLINE_DAYS - 1; i >= 0; i--) {
-            days.push(ymd(new Date(now.getTime() - i * DAY_MS)));
+            days.push(zoneDateOf(new Date(now.getTime() - i * DAY_MS), zone));
         }
         const today = days[days.length - 1];
 
@@ -95,20 +96,12 @@ export class HomeService {
         const sla = fold(slaRows);
 
         return {
-            myTasks: buildKpi("My Open Tasks", my.value, my.sparkline),
-            dueToday: buildKpi("Due Today", due.value, due.sparkline),
-            overdue: buildKpi("Overdue", over.value, over.sparkline),
-            awaitingReview: buildKpi(
-                "Awaiting My Review",
-                review.value,
-                review.sparkline,
-            ),
-            openTeamTasks: buildKpi(
-                "Open Team Tasks",
-                team.value,
-                team.sparkline,
-            ),
-            slaBreaches: buildKpi("SLA Breaches", sla.value, sla.sparkline),
+            myTasks: buildKpi("My Open Tasks", my.value),
+            dueToday: buildKpi("Due Today", due.value),
+            overdue: buildKpi("Overdue", over.value),
+            awaitingReview: buildKpi("Awaiting My Review", review.value),
+            openTeamTasks: buildKpi("Open Team Tasks", team.value),
+            slaBreaches: buildKpi("SLA Breaches", sla.value),
         };
     }
 
@@ -123,7 +116,7 @@ export class HomeService {
         role: Role,
         date?: string,
     ): Promise<WireTask[]> {
-        const targetDate = date ?? ymd(new Date());
+        const targetDate = date ?? todayInZone(await this.zoneOf(workspaceId));
         const rows = await this.homeRepo.agendaTasks(
             workspaceId,
             userId,

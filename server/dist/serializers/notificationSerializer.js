@@ -26,12 +26,11 @@ exports.toWireNotification = toWireNotification;
 const toWirePrefs = (stored) => {
     const map = {};
     for (const type of _shared_1.notificationTypes) {
-        map[type] = { in_app_enabled: true, email_enabled: true };
+        map[type] = { in_app_enabled: true };
     }
     for (const row of stored) {
         map[row.type] = {
             in_app_enabled: row.inAppEnabled,
-            email_enabled: row.emailEnabled,
         };
     }
     return map;

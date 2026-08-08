@@ -1,0 +1,55 @@
+=== 1. GET by internal id vs custom_id ===
+  by internal id -> 200
+  by custom_id   -> 200
+  by custom_id, wrong case -> 200
+  unknown id     -> 404 task.not_found
+  unknown key    -> 404 task.not_found
+  empty-ish id   -> 422 validation.failed
+
+=== 2. COLLISION PRECEDENCE: a custom_id equal to another task's internal id ===
+  task A internal id = t-g6A96QpsxHuCcxpOaW1yKw
+  task B custom_id   = t-g6A96QpsxHuCcxpOaW1yKw  (created: yes)
+  GET that value returns: TEST-p14-collide-target  -> the internal-id match WINS ✓
+
+=== 3. EXISTENCE ORACLE — do 404s differ? ===
+  scoped user, REAL foreign task -> 404 task.not_found {"error":{"code":"task.not_found","message":"Task t-jp8hASKGzpXztQWl8c4NgA does not exist"
+  scoped user, FAKE id           -> 404 task.not_found {"error":{"code":"task.not_found","message":"Task t-totally-made-up does not exist","reque
+  identical? yes — no existence oracle ✓
+
+=== 4. SERIALIZER completeness ===
+  wire keys (50): id, custom_id, task_number, workspace_id, primary_list_id, name, description, status_id, priority, task_type_id, parent_task_id, nesting_depth, is_milestone, start_date, due_date, completed_at, review_status, reviewed_at, reviewed_by, sla_due_at, recurrence_pattern, recurrence_days, recurrence_ends_at, time_estimate_seconds, time_tracked_seconds, subtasks_count, subtasks_completed, comments_count, attachments_count, sprint_id, story_points, reviewer_id, branch_name, pr_url, pr_status, bug_severity, bug_reproducibility, bug_environment, bug_browser, reporter_team, deployed_at, rollback_reason, assignees, watchers, tags, custom_field_values, archived_at, created_by, created_at, updated_at
+  DB columns NOT on the wire: internal_id
+  types: {"id":"string","custom_id":"string","task_number":"number","workspace_id":"string","primary_list_id":"string","name":"string","description":"null","status_id":"string","priority":"number","task_type_id":"string","parent_task_id":"null","nesting_depth":"number"}
+
+=== 5. GET /tasks/my-work buckets ===
+  buckets: today, overdue, next, unscheduled, done
+    today        0 task(s)
+    overdue      1 task(s)
+    next         0 task(s)
+    unscheduled  0 task(s)
+    done         1 task(s)
+  after adding 4 assigned fixtures:
+    due TODAY      -> today
+    due 5 days AGO -> overdue
+    due in 5 days  -> next
+    no due date    -> unscheduled
+  bucket counts now: { today: 1, overdue: 2, next: 1, unscheduled: 1, done: 1 }
+  ?bucket=today filter -> 200
+  ?bucket=bogus        -> 422 validation.failed
+
+=== 6. GET /tasks/:id/subtasks ===
+  parent subtasks -> 200 1 child(ren)
+  a leaf task's subtasks -> 200
+  unknown parent -> 404 task.not_found
+  parent counters: {"subtasks_count":0,"subtasks_completed":0}
+
+=== 7. GUEST read of a task ===
+  guest -> 200 | fields hidden from the guest: (none)
+
+=== 8. LIST READS ===
+  GET /lists/:id/tasks on an EMPTY list -> 
+    -> 200 {"data":[],"pagination":{"next_cursor":null,"has_more":false,"total_estimate":0}}
+
+=== CLEANUP ===
+  delete list: 204
+  orphan statuses 0 | tasks 51 (51) | lists 14 (14) | statuses 70 (70)

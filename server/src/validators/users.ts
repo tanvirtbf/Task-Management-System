@@ -1,4 +1,7 @@
 import { checkSchema, type Meta } from "express-validator";
+// F12 (ISS-031): the one IANA check, shared — not a second copy. The workspace
+// validator has always had it; the user profile had only `isString`.
+import { isIanaTimezone } from "./workspace";
 import {
     EMAIL_LENGTH,
     ID_LENGTH,
@@ -231,6 +234,16 @@ export const patchUserValidator = checkSchema({
         isLength: {
             options: { max: TIMEZONE_LENGTH },
             errorMessage: `timezone must be at most ${TIMEZONE_LENGTH} characters`,
+        },
+        // F12 (ISS-031): the SAME IANA check `PATCH /workspace` has always had.
+        // Without it a profile could hold a zone no date library can resolve,
+        // and `users.timezone` is on the wire in `GET /users` and `/auth/me` —
+        // so any client doing `Intl.DateTimeFormat(…, {timeZone})` threw a
+        // RangeError on that row.
+        custom: {
+            options: (value: unknown): boolean =>
+                typeof value === "string" && isIanaTimezone(value),
+            errorMessage: "timezone must be a valid IANA zone (e.g. Asia/Dhaka)",
         },
     },
     avatar_url: {

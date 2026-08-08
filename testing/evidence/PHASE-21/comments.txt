@@ -1,0 +1,80 @@
+=== 1. THREADING ===
+  top-level                 -> 201                            id: c-1EJBDxBlIixFfFpqPPxYrQ
+  reply to it               -> 201
+  reply to a REPLY          -> 422 comment.reply_to_reply
+  parent = unknown id       -> 422 comment.parent_not_found
+  parent on a DIFFERENT task-> 422 comment.parent_not_found
+  GET tree -> 200      | shape: bare array | top-level: 1 | replies on [0]: 1
+  a comment on the wire: ["id","task_id","parent_comment_id","author_id","body","edited_at","deleted_at","created_at","replies"]
+  author hydrated? undefined
+
+=== 2. EDIT WINDOW (15 min) ===
+  edit immediately          -> 200
+  edit by a NON-author      -> 403 comment.not_author
+  created_at set to -10 min    -> 200                               allowed (inside the window)
+  created_at set to -20 min    -> 200                               *** STILL EDITABLE ***
+  created_at set to -60 min    -> 200                               *** STILL EDITABLE ***
+  created_at set to -360 min   -> 200                               *** STILL EDITABLE ***
+  created_at set to -400 min   -> 403 comment.edit_window_expired   refused
+  created_at set to -1440 min  -> 403 comment.edit_window_expired   refused
+  MySQL created_at: 2026-07-30 14:45:23 | on the wire: 2026-07-30T14:45:23.000Z | node now: 2026-07-30T08:45:23.977Z
+
+=== 3. DELETE ===
+  count after 2 comments: 2
+  a THIRD PARTY deletes     -> 403 comment.forbidden_delete
+  the AUTHOR deletes        -> 204
+  delete it AGAIN           -> 404 comment.not_found
+  an ADMIN deletes another  -> 204
+  row still present: true | deleted_at: set | body kept: "TEST-p21 arif's comm"
+  comments_count after both deletes: 2 (2 comments, both deleted)
+  deleted comments in the tree: 2 visible
+  deleting a parent that HAS a reply -> tree now: [{"body":"[deleted]","replies":1}]
+  reply to a DELETED parent -> 422 comment.parent_not_found
+
+=== 4. MENTIONS ===
+  "@arif hello"                         (first name)                      -> 201   notified: ["arif"]
+  "@Arif hello"                         (first name, different case)      -> 201   notified: ["arif"]
+  "@arif and @priya"                    (two people)                      -> 201   notified: ["priya","arif"]
+  "@nobody hello"                       (unmatched handle)                -> 201   notified: []
+  "@owner hello"                        (self-mention (author is owner))  -> 201   notified: []
+  "email me at arif@beautybooth.com.bd" (an email address in the body)    -> 201   notified: []
+  "@arif.rahman"                        (email local-part with a dot)     -> 201   notified: []
+  "hello@"                              (a bare @)                        -> 201   notified: []
+
+=== 5. TASK REFS (#TASK-ID) ===
+  the target task: task_number=8 custom_id=null
+  #T-8            (its real key)  -> 201   comment_referenced rows on the target: 0
+  #T-999999       (unknown ref)   -> 201   comment_referenced rows on the target: 0
+  #notaref        (malformed)     -> 201   comment_referenced rows on the target: 0
+  a task referencing ITSELF -> 201   rows on itself: 0 (should be 0)
+
+=== 6. NOTIFICATIONS — who gets told about a plain comment? ===
+  task has: 1 assignee (arif), 1 watcher (priya), author = owner
+  notifications produced by the comment: 0 []
+  -> *** NOBODY is told a comment was posted ***
+
+=== 7. BODY limits and content ===
+  empty                   -> 422 validation.failed       
+  whitespace only         -> 422 validation.failed       
+  5 000 chars             -> 201                         stored 5000 chars | verbatim
+  50 000 chars            -> 422 validation.failed       
+  a script tag            -> 201                         stored 25 chars | verbatim
+  html + an onerror img   -> 201                         stored 42 chars | verbatim
+  newlines                -> 201                         stored 18 chars | verbatim
+  plain ascii             -> 201                         stored 26 chars | verbatim
+
+=== 8. comments_count trigger ===
+  start: 0
+  after 2 top-level + 1 reply: 3 (replies count too)
+  after deleting one: 3 | live comments in DB: 2
+  comments_count on the wire: 3 | the tree returns: 2 top-level
+
+=== 9. ACCESS ===
+  guest posts a comment     -> 201
+  comment on unknown task   -> 404 task.not_found
+  GET comments unknown task -> 404 task.not_found
+  PATCH unknown comment     -> 404 comment.not_found
+  DELETE unknown comment    -> 404 comment.not_found
+
+=== CLEANUP ===
+  orphan statuses 0 | tasks 51 (51) | lists 14 (14) | comments 8 | notifications 78

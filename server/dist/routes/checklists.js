@@ -13,6 +13,7 @@ const TaskActivityRepo_1 = require("../repositories/TaskActivityRepo");
 const client_1 = require("../db/client");
 const logger_1 = __importDefault(require("../config/logger"));
 const authenticate_1 = __importDefault(require("../middlewares/authenticate"));
+const requirePermission_1 = require("../middlewares/requirePermission");
 const validate_1 = require("../middlewares/validate");
 const checklists_1 = require("../validators/checklists");
 /**
@@ -36,26 +37,26 @@ const controller = new ChecklistsController_1.ChecklistsController(service, logg
 router.get("/tasks/:id/checklists", authenticate_1.default, checklists_1.listChecklistsValidator, validate_1.validate, (req, res, next) => controller.listForTask(req, res, next));
 // ─── POST /api/v1/tasks/:id/checklists ────────────────────────────────────────
 // 🔐 any member. Create an empty checklist on the task. 201.
-router.post("/tasks/:id/checklists", authenticate_1.default, checklists_1.createChecklistValidator, validate_1.validate, (req, res, next) => controller.createChecklist(req, res, next));
+router.post("/tasks/:id/checklists", authenticate_1.default, (0, requirePermission_1.requirePermission)("checklist.manage"), checklists_1.createChecklistValidator, validate_1.validate, (req, res, next) => controller.createChecklist(req, res, next));
 // ─── PATCH /api/v1/checklists/:id ─────────────────────────────────────────────
 // 🔐 any member. Rename / reposition a checklist. 200.
-router.patch("/checklists/:id", authenticate_1.default, checklists_1.updateChecklistValidator, validate_1.validate, (req, res, next) => controller.updateChecklist(req, res, next));
+router.patch("/checklists/:id", authenticate_1.default, (0, requirePermission_1.requirePermission)("checklist.manage"), checklists_1.updateChecklistValidator, validate_1.validate, (req, res, next) => controller.updateChecklist(req, res, next));
 // ─── DELETE /api/v1/checklists/:id ────────────────────────────────────────────
 // 🔐 any member. Delete a checklist (cascades to items). 204.
-router.delete("/checklists/:id", authenticate_1.default, checklists_1.checklistIdParamValidator, validate_1.validate, (req, res, next) => controller.removeChecklist(req, res, next));
+router.delete("/checklists/:id", authenticate_1.default, (0, requirePermission_1.requirePermission)("checklist.manage"), checklists_1.checklistIdParamValidator, validate_1.validate, (req, res, next) => controller.removeChecklist(req, res, next));
 // ─── POST /api/v1/checklists/:id/items ────────────────────────────────────────
 // 🔐 any member. Add a single item. 201.
-router.post("/checklists/:id/items", authenticate_1.default, checklists_1.addItemValidator, validate_1.validate, (req, res, next) => controller.addItem(req, res, next));
+router.post("/checklists/:id/items", authenticate_1.default, (0, requirePermission_1.requirePermission)("checklist.manage"), checklists_1.addItemValidator, validate_1.validate, (req, res, next) => controller.addItem(req, res, next));
 // ─── POST /api/v1/checklists/:id/items/bulk ───────────────────────────────────
 // 🔐 any member. Add many items in one transaction (template apply). 201.
-router.post("/checklists/:id/items/bulk", authenticate_1.default, checklists_1.bulkAddItemsValidator, validate_1.validate, (req, res, next) => controller.bulkAddItems(req, res, next));
+router.post("/checklists/:id/items/bulk", authenticate_1.default, (0, requirePermission_1.requirePermission)("checklist.manage"), checklists_1.bulkAddItemsValidator, validate_1.validate, (req, res, next) => controller.bulkAddItems(req, res, next));
 // ─── PATCH /api/v1/checklist-items/:id ────────────────────────────────────────
 // 🔐 any member. Edit item text / assignee / position. Logs task_activity. 200.
-router.patch("/checklist-items/:id", authenticate_1.default, checklists_1.updateItemValidator, validate_1.validate, (req, res, next) => controller.updateItem(req, res, next));
+router.patch("/checklist-items/:id", authenticate_1.default, (0, requirePermission_1.requirePermission)("checklist.manage"), checklists_1.updateItemValidator, checklists_1.updateItemBodyGuard, validate_1.validate, (req, res, next) => controller.updateItem(req, res, next));
 // ─── POST /api/v1/checklist-items/:id/toggle ──────────────────────────────────
 // 🔐 any member. Tick / untick the checkbox. Logs task_activity. 200.
-router.post("/checklist-items/:id/toggle", authenticate_1.default, checklists_1.itemIdParamValidator, validate_1.validate, (req, res, next) => controller.toggleItem(req, res, next));
+router.post("/checklist-items/:id/toggle", authenticate_1.default, (0, requirePermission_1.requirePermission)("checklist.manage"), checklists_1.itemIdParamValidator, validate_1.validate, (req, res, next) => controller.toggleItem(req, res, next));
 // ─── DELETE /api/v1/checklist-items/:id ───────────────────────────────────────
 // 🔐 any member. Remove an item. 204.
-router.delete("/checklist-items/:id", authenticate_1.default, checklists_1.itemIdParamValidator, validate_1.validate, (req, res, next) => controller.removeItem(req, res, next));
+router.delete("/checklist-items/:id", authenticate_1.default, (0, requirePermission_1.requirePermission)("checklist.manage"), checklists_1.itemIdParamValidator, validate_1.validate, (req, res, next) => controller.removeItem(req, res, next));
 exports.default = router;

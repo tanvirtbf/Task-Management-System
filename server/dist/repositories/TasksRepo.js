@@ -22,6 +22,7 @@ class TasksRepo {
             id: schema_1.tasks.id,
             workspaceId: schema_1.tasks.workspaceId,
             name: schema_1.tasks.name,
+            createdBy: schema_1.tasks.createdBy,
             archivedAt: schema_1.tasks.archivedAt,
         })
             .from(schema_1.tasks)
@@ -347,7 +348,158 @@ class TasksRepo {
             .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId), (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt)))
             .orderBy((0, drizzle_orm_1.asc)(schema_1.tasks.dueDate), (0, drizzle_orm_1.asc)(schema_1.tasks.internalId));
     }
+    /**
+     * F22 (ISS-011): the OPEN blockers of a task — edges whose blocked end is
+     * this task and whose blocker sits on a not-done, not-closed status and is
+     * not archived. `task.cannot_complete_blocked` fires while this is > 0.
+     */
+    async openBlockerCount(taskId, exec = this.db) {
+        const [row] = await exec
+            .select({ n: (0, drizzle_orm_1.count)() })
+            .from(schema_1.taskDependencies)
+            .innerJoin(schema_1.tasks, (0, drizzle_orm_1.eq)(schema_1.tasks.id, schema_1.taskDependencies.taskId))
+            .innerJoin(schema_1.statuses, (0, drizzle_orm_1.eq)(schema_1.statuses.id, schema_1.tasks.statusId))
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.taskDependencies.relatedTaskId, taskId), (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt), (0, drizzle_orm_1.notInArray)(schema_1.statuses.statusGroup, ["done", "closed"])));
+        return row?.n ?? 0;
+    }
+    /**
+     * F25 (ISS-066): resolve the `T-<n>` key the UI actually displays.
+     *
+     * `task_number` is unique PER LIST (`uq_tasks_list_number`), not per
+     * workspace — in the demo data alone, thirteen tasks are "T-1". So a
+     * `#T-<n>` reference is resolved inside the HOST TASK'S LIST, where the
+     * number is unique by construction and where the reference almost always
+     * means a sibling on the same board. A `T-<n>` from another list stays
+     * unresolved rather than guessing between thirteen candidates.
+     */
+    async findByTaskNumberInList(listId, taskNumber, exec = this.db) {
+        const [row] = await exec
+            .select({ id: schema_1.tasks.id })
+            .from(schema_1.tasks)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.primaryListId, listId), (0, drizzle_orm_1.eq)(schema_1.tasks.taskNumber, taskNumber), await (0, context_1.listScopeFilter)(schema_1.tasks.primaryListId, await (0, ownEscape_1.taskOwnEscape)())))
+            .limit(1);
+        return row ?? null;
+    }
+    /**
+     * F16: every descendant id of a task — children, then grandchildren. Same
+     * two-level walk as `archiveDescendants` (nesting depth is capped at 2).
+     * The hard-delete path needs the whole subtree BEFORE the root row goes,
+     * because the FK cascade will take the descendants with it — and their
+     * notifications (ISS-073) and R2 keys (ISS-022) have no FK to follow.
+     */
+    async descendantIds(rootId, exec = this.db) {
+        const kids = await exec
+            .select({ id: schema_1.tasks.id })
+            .from(schema_1.tasks)
+            .where((0, drizzle_orm_1.eq)(schema_1.tasks.parentTaskId, rootId));
+        const kidIds = kids.map((k) => k.id);
+        if (kidIds.length === 0)
+            return [];
+        const grands = await exec
+            .select({ id: schema_1.tasks.id })
+            .from(schema_1.tasks)
+            .where((0, drizzle_orm_1.inArray)(schema_1.tasks.parentTaskId, kidIds));
+        return [...kidIds, ...grands.map((g) => g.id)];
+    }
+    /**
+     * F15 (ISS-046): recompute a parent's `subtasks_count` /
+     * `subtasks_completed` from the rows themselves.
+     *
+     * These two columns were maintained by NOTHING — every task reported 0/0 —
+     * and they cannot be triggers: MySQL forbids a trigger on `tasks` from
+     * modifying `tasks`, which is why the original `trg_subtasks_after_*`
+     * triggers were removed (they crashed every subtask status change with
+     * ER_CANT_UPDATE_USED_TABLE_IN_SF_OR_TRG). `schema.sql:1482-1488` records
+     * that decision and says the maintenance must be app-side. This is it.
+     *
+     * RECOMPUTE, not increment. The other two counter bugs in this phase
+     * (comments, submissions) were both increment-only rules that drifted the
+     * moment a write happened by a path their author had not pictured. An
+     * absolute recompute cannot drift: whatever the callers miss, the next call
+     * repairs. It is one indexed UPDATE against `idx_tasks_parent`, on a write
+     * path that is already inside a transaction.
+     *
+     * "Counts" = a live (non-archived) child, matching what
+     * `GET /tasks/:id/subtasks` returns, so the badge and the list agree.
+     * "Completed" = that child sits on a done/closed-group status.
+     */
+    async recomputeSubtaskCounters(parentId, exec = this.db) {
+        // JOIN against a DERIVED table, not a correlated subquery: MySQL
+        // refuses `UPDATE tasks … (SELECT … FROM tasks …)` with error 1093,
+        // "You can't specify target table for update in FROM clause". A
+        // derived table is materialised first, so it is allowed — the same
+        // family of restriction that made the original subtask TRIGGERS
+        // impossible (schema.sql:1482-1488).
+        await exec.execute((0, drizzle_orm_1.sql) `
+            UPDATE ${schema_1.tasks} p
+              LEFT JOIN (
+                    SELECT c.parent_task_id AS pid,
+                           COUNT(*) AS cnt,
+                           SUM(s.status_group IN ('done', 'closed')) AS done_cnt
+                      FROM ${schema_1.tasks} c
+                      JOIN ${schema_1.statuses} s ON s.id = c.status_id
+                     WHERE c.parent_task_id = ${parentId}
+                       AND c.archived_at IS NULL
+                     GROUP BY c.parent_task_id
+                ) agg ON agg.pid = p.id
+               SET p.subtasks_count = COALESCE(agg.cnt, 0),
+                   p.subtasks_completed = COALESCE(agg.done_cnt, 0)
+             WHERE p.id = ${parentId}
+        `);
+    }
+    /**
+     * The space each task lives in (via its primary list), keyed by task id.
+     * F8's scope guard builds its `PermissionContext` from this — tasks carry
+     * no space column of their own, so the one-hop join lives here rather than
+     * being re-derived by every write service.
+     */
+    async spaceIdsByTask(taskIds) {
+        if (taskIds.length === 0)
+            return new Map();
+        const rows = await this.db
+            .select({ taskId: schema_1.tasks.id, spaceId: schema_1.lists.spaceId })
+            .from(schema_1.tasks)
+            .innerJoin(schema_1.lists, (0, drizzle_orm_1.eq)(schema_1.lists.id, schema_1.tasks.primaryListId))
+            .where((0, drizzle_orm_1.inArray)(schema_1.tasks.id, taskIds));
+        return new Map(rows.map((r) => [r.taskId, r.spaceId]));
+    }
     /** Assignee user-ids for a page of tasks, grouped by task id. */
+    /**
+     * The overdue-alert job's scan (upgrades/014): open tasks in `workspaceId`
+     * whose `due_date` is strictly BEFORE `todayYmd` (the workspace's own
+     * calendar day — the caller computes it via `todayInZone`), not yet
+     * claimed, and having at least one assignee. Tasks with NO assignees are
+     * deliberately excluded rather than claimed, so someone assigned while
+     * the task is already overdue still gets alerted on the next tick.
+     * Served by `idx_tasks_overdue_scan`; `limit` bounds one tick's burst.
+     */
+    async findOverdueUnnotified(workspaceId, todayYmd, limit) {
+        return this.db
+            .select({
+            id: schema_1.tasks.id,
+            name: schema_1.tasks.name,
+            dueDate: schema_1.tasks.dueDate,
+        })
+            .from(schema_1.tasks)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId), (0, drizzle_orm_1.isNotNull)(schema_1.tasks.dueDate), (0, drizzle_orm_1.sql) `${schema_1.tasks.dueDate} < ${todayYmd}`, (0, drizzle_orm_1.isNull)(schema_1.tasks.completedAt), (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt), (0, drizzle_orm_1.isNull)(schema_1.tasks.overdueNotifiedAt), (0, drizzle_orm_1.exists)(this.db
+            .select({ one: (0, drizzle_orm_1.sql) `1` })
+            .from(schema_1.taskAssignees)
+            .where((0, drizzle_orm_1.eq)(schema_1.taskAssignees.taskId, schema_1.tasks.id)))))
+            .orderBy((0, drizzle_orm_1.asc)(schema_1.tasks.dueDate))
+            .limit(limit);
+    }
+    /**
+     * The once-only claim: stamp `overdue_notified_at` on the alerted tasks.
+     * Called in the SAME transaction as the `overdue` notification inserts.
+     */
+    async markOverdueNotified(taskIds, exec = this.db) {
+        if (taskIds.length === 0)
+            return;
+        await exec
+            .update(schema_1.tasks)
+            .set({ overdueNotifiedAt: new Date() })
+            .where((0, drizzle_orm_1.inArray)(schema_1.tasks.id, taskIds));
+    }
     async assigneesByTask(taskIds) {
         if (taskIds.length === 0)
             return new Map();

@@ -1,0 +1,40 @@
+  OK    logins (owner + marketing.only@)                                
+
+  === F8 — does a grant's SCOPE narrow the write? (ISS-047) ===
+
+  --- 1. the issue's own account: task.edit @ own ---
+  OK    creates their own Marketing task (201)                          got 201
+  OK    edits THEIR OWN task (200)                                      got 200
+  OK    someone else's task in their VISIBLE space -> 403 (was 200!)    got 403 task.forbidden
+  OK    …reason is not_own, code task.forbidden                         
+  OK    …and the value did NOT change                                   db 2 vs 2
+  OK    the SAME task once ASSIGNED to them -> 200 (own = creator|assignee)got 200
+
+  --- 2. bulk is fail-atomic on scope ---
+  OK    bulk [own, foreign] -> 403, nothing written                     got 403
+  OK    bulk [own] -> 200                                               got 200
+
+  --- 3. space-scoped create/assign/archive via a probe role ---
+  OK    probe role built (create/assign @space, archive/delete @own)    got 200
+  OK    space-scoped assignment created (201)                           got 201
+  OK    workspace-wide viewer role attached (sees everything)           got 201
+  OK    create INSIDE the assigned space -> 201                         got 201
+  OK    create OUTSIDE it (visible list) -> 403 out_of_scope            got 403 task.forbidden
+  OK    assign on a task in the assigned space -> 204                   got 204
+  OK    assign outside it -> 403                                        got 403
+  OK    archive their OWN task (own scope) -> 204                       got 204
+  OK    archive someone ELSE's -> 403 not_own                           got 403
+  OK    delete someone else's (own-scoped task.delete) -> 403           got 403
+
+  --- 4. seeded roles: unchanged (scope 'all') ---
+  OK    every system-role grant is scope=all in the DB                  0 non-all rows
+  OK    a plain member still edits anyone's task (200 — behaviour unchanged)got 200
+
+  --- 5. the no-actor carve-out: public form submit still creates ---
+  OK    anonymous submit -> 201 (assertScoped skips no-actor contexts)  got 201
+
+  === CLEANUP ===
+  users 15 (15) | tasks 46 (46) | roles 5 (5) | notif 57 (57) | fs-cols 8 (8)
+
+  PASS — scopes narrow writes; seeded roles untouched; no-actor paths alive. ISS-047 closed.
+

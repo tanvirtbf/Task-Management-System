@@ -14,7 +14,6 @@ const workspaceColumns = {
     workingDays: schema_1.workspaces.workingDays,
     businessHoursStart: schema_1.workspaces.businessHoursStart,
     businessHoursEnd: schema_1.workspaces.businessHoursEnd,
-    fiscalYearStartMonth: schema_1.workspaces.fiscalYearStartMonth,
 };
 class WorkspaceRepo {
     db;
@@ -38,6 +37,16 @@ class WorkspaceRepo {
             .where((0, drizzle_orm_1.eq)(schema_1.workspaces.id, workspaceId))
             .limit(1);
         return row ?? null;
+    }
+    /**
+     * Every workspace's id + timezone — the overdue-alert job's outer loop
+     * ("today" is per-workspace, F5 rule). V1 is single-tenant so this is one
+     * row in practice; test databases hold many.
+     */
+    async listAll() {
+        return this.db
+            .select({ id: schema_1.workspaces.id, timezone: schema_1.workspaces.timezone })
+            .from(schema_1.workspaces);
     }
     /**
      * Same projection as `findById`, but takes a `FOR UPDATE` row lock so a

@@ -1,0 +1,45 @@
+
+  === F5 — does workspaces.timezone decide `today`? (ISS-058) ===
+
+  right now:  Dhaka 2026-08-04 · Kiritimati 2026-08-04 · Midway 2026-08-03
+  zone whose calendar differs from Dhaka at this instant: Pacific/Midway
+
+  --- workspace timezone = Asia/Dhaka (today there: 2026-08-04) ---
+  OK    PATCH /workspace echoes the zone back                         Asia/Dhaka
+  OK    due 2026-08-04 → my-work bucket `today`                       got today
+  OK    due 2026-08-03 → bucket `overdue`                             got overdue
+  OK    due 2026-08-07 → bucket `next`                                got next
+  OK    home dueToday rose by exactly the 1 task due 2026-08-04       1 -> 2
+  OK    home overdue rose by exactly the 1 task due yesterday         0 -> 1
+  OK    agenda (no date param) defaults to Asia/Dhaka's today         
+
+  --- workspace timezone = Pacific/Kiritimati (today there: 2026-08-04) ---
+  OK    PATCH /workspace echoes the zone back                         Pacific/Kiritimati
+  OK    due 2026-08-04 → my-work bucket `today`                       got today
+  OK    due 2026-08-03 → bucket `overdue`                             got overdue
+  OK    due 2026-08-07 → bucket `next`                                got next
+  OK    home dueToday rose by exactly the 1 task due 2026-08-04       1 -> 2
+  OK    home overdue rose by exactly the 1 task due yesterday         0 -> 1
+  OK    agenda (no date param) defaults to Pacific/Kiritimati's today 
+
+  --- workspace timezone = Pacific/Midway (today there: 2026-08-03) ---
+  OK    PATCH /workspace echoes the zone back                         Pacific/Midway
+  OK    due 2026-08-03 → my-work bucket `today`                       got today
+  OK    due 2026-08-02 → bucket `overdue`                             got overdue
+  OK    due 2026-08-06 → bucket `next`                                got next
+  OK    home dueToday rose by exactly the 1 task due 2026-08-03       0 -> 1
+  OK    home overdue rose by exactly the 1 task due yesterday         0 -> 1
+  OK    agenda (no date param) defaults to Pacific/Midway's today     
+
+  --- the same task, re-zoned: `due today` must change meaning ---
+  OK    under Asia/Dhaka the task due 2026-08-04 is `today`           got today
+  OK    …and today's agenda lists it                                  
+  OK    under Pacific/Midway the SAME task is `next`                  got next
+  OK    …and it has LEFT the default agenda                           
+  -> changing the workspace timezone now changes what `due today` means.
+
+  OK    timezone restored to Asia/Dhaka                               Asia/Dhaka
+  cleanup: tasks 46 (46) | notifications 57 (57)
+
+  PASS — the timezone setting is no longer decorative. ISS-058 closed.
+

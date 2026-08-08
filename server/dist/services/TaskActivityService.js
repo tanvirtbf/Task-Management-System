@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TaskActivityService = void 0;
 const errors_1 = require("../errors");
+const pagination_1 = require("../utils/pagination");
 const userSerializer_1 = require("../serializers/userSerializer");
 /**
  * §13 Task activity read logic. Owns the workspace-isolation guard (via the
@@ -123,10 +124,10 @@ const encodeCursor = (value) => Buffer.from(value, "utf8").toString("base64url")
  * not a 422 — the client cannot "fix" an opaque token, only drop it and restart.
  */
 const decodeCursor = (cursor) => {
-    if (!/^[A-Za-z0-9_-]+$/.test(cursor)) {
-        throw errors_1.AppError.badRequest("pagination.invalid_cursor", "The pagination cursor is malformed.");
-    }
-    const decoded = Buffer.from(cursor, "base64url").toString("utf8");
+    // F23 (ISS-008): strict ROUND-TRIP decode first — a tampered
+    // `<valid-cursor>XX` could decode to different digits and silently shift
+    // the window; a cursor the server never issued must always be a 400.
+    const decoded = (0, pagination_1.strictDecodeCursor)(cursor);
     if (!/^\d+$/.test(decoded)) {
         throw errors_1.AppError.badRequest("pagination.invalid_cursor", "The pagination cursor is malformed.");
     }

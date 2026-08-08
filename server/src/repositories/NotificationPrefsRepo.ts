@@ -17,7 +17,6 @@ import type { DbExecutor } from "./types";
 export interface PrefUpsert {
     type: Notification["type"];
     inAppEnabled: boolean;
-    emailEnabled: boolean;
 }
 
 export class NotificationPrefsRepo {
@@ -50,12 +49,10 @@ export class NotificationPrefsRepo {
                     userId,
                     type: p.type,
                     inAppEnabled: p.inAppEnabled,
-                    emailEnabled: p.emailEnabled,
                 })
                 .onDuplicateKeyUpdate({
                     set: {
                         inAppEnabled: p.inAppEnabled,
-                        emailEnabled: p.emailEnabled,
                     },
                 });
         }

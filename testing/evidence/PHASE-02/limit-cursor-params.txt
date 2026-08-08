@@ -1,0 +1,33 @@
+=== A. does `limit` actually work per endpoint? ===
+  /users          limit=1 -> 1   limit=3 -> 3   limit=200 -> 16  honoured ✓
+  /lists          limit=1 -> 14  limit=3 -> 14  limit=200 -> 14  *** LIMIT IGNORED ***
+  /spaces         limit=1 -> 9   limit=3 -> 9   limit=200 -> 9   *** LIMIT IGNORED ***
+  /tags           limit=1 -> 8   limit=3 -> 8   limit=200 -> 8   *** LIMIT IGNORED ***
+  /task-types     limit=1 -> 7   limit=3 -> 7   limit=200 -> 7   *** LIMIT IGNORED ***
+  /notifications  limit=1 -> 1   limit=3 -> 3   limit=200 -> 15  honoured ✓
+  /activity       limit=1 -> 1   limit=3 -> 3   limit=200 -> 6   honoured ✓
+  /reports        limit=1 -> 1   limit=3 -> 3   limit=200 -> 12  honoured ✓
+  /templates      limit=1 -> 0   limit=3 -> 0   limit=200 -> 0   honoured ✓
+  /forms          limit=1 -> 1   limit=3 -> 1   limit=200 -> 1   honoured ✓
+  /sprints        limit=1 -> 1   limit=3 -> 1   limit=200 -> 1   honoured ✓
+
+=== B. accepted-but-invalid cursor: does it silently restart page 1? (infinite-loop risk) ===
+  cursor="garbage"                                  -> HTTP 200 ids=u-76AuOtG-wzFTpMxhix2_qA,u-ba8L64dVmEW034LqU
+      same as page 1? YES  *** a paging client would loop forever ***   next_cursor=present
+  cursor="dS1iYThMNjRkVm1FVzAzNExxVUVxNFdBXX"       -> HTTP 200 ids=u-GvpYONiYIZcnxwFVnDw_TA,u-ia1-Y219W_rIcEXnX
+      same as page 1? no   next_cursor=present
+
+=== C. is over-max `limit` clamped or honoured? (needs > max rows: use /activity, seeded) ===
+  /notifications  limit=100  -> 15   limit=1000  -> 15   (dataset smaller than max — cannot distinguish clamp from honour)
+  /activity       limit=100  -> 6   limit=1000  -> 6   (dataset smaller than max — cannot distinguish clamp from honour)
+  /users          limit=200  -> 16   limit=2000  -> 16   (dataset smaller than max — cannot distinguish clamp from honour)
+
+=== D. unknown query params: silently ignored? ===
+  /users?search=zzzz              -> 200 items=16
+  /users?q=zzzz                   -> 200 items=0
+  /users?filter=zzzz              -> 200 items=16
+  /users?totallyMadeUpParam=1     -> 200 items=16
+  /users?role=guest               -> 200 items=1
+  /users?status=active            -> 200 items=15
+
+  (baseline /users?limit=200 -> 16 items)

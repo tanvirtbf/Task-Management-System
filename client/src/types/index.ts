@@ -52,7 +52,6 @@ export interface WorkspaceSettings {
     weekStartsOn: number;
     workingDays: number[];
     businessHours: { start: string; end: string };
-    fiscalYearStartMonth?: number;
 }
 
 // ============================================================
@@ -501,14 +500,12 @@ export interface LoginResponse {
 // Home / dashboard aggregations
 // ============================================================
 
+/** F24 (ISS-057): a label and a number. The trend badge was hardcoded to
+ *  0/flat/false and the sparkline plotted creation dates, not the metric. */
 export interface HomeKpi {
     label: string;
     value: number;
     valueDisplay: string;
-    trend: number; // percent change
-    trendDirection: "up" | "down" | "flat";
-    isPositive: boolean; // is "up" good?
-    sparkline: number[]; // last 7 days
 }
 
 export interface HomeKpiSet {
@@ -556,4 +553,24 @@ export interface MyWorkBucket {
     next: Task[];
     unscheduled: Task[];
     done: Task[];
+}
+
+/**
+ * One breached-SLA row from `GET /api/v1/sla/breached` (§29).
+ *
+ * F28 (ISS-082, decision D12.4): this endpoint shipped complete and tested on
+ * the server and had ZERO callers in the client — there was no `slaApi` at all,
+ * and the only SLA surface was the badge on a task drawer. The queue it was
+ * built to produce is now the `/sla` page.
+ */
+export interface SlaBreach {
+    taskId: string;
+    customId: string | null;
+    name: string;
+    taskTypeId: string;
+    /** ISO-8601. The deadline that has already passed. */
+    slaDueAt: string;
+    /** How far past the deadline, in minutes, as of the request. */
+    minutesBreached: number;
+    assignees: User[];
 }

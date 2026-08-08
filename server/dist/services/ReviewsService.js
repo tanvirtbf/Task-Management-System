@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ReviewsService = exports.isHeadOfSpace = void 0;
 const _shared_1 = require("../db/schema/_shared");
 const errors_1 = require("../errors");
+const scopeGuard_1 = require("../rbac/scopeGuard");
 const taskSerializer_1 = require("../serializers/taskSerializer");
 const userSerializer_1 = require("../serializers/userSerializer");
 const dhakaTime_1 = require("../utils/dhakaTime");
@@ -78,7 +79,7 @@ class ReviewsService {
         if (space.archivedAt) {
             throw errors_1.AppError.conflict("space.archived", "This space is archived; review actions need a live department");
         }
-        if (input.role === constants_1.Roles.OWNER || input.role === constants_1.Roles.ADMIN) {
+        if ((await (0, scopeGuard_1.liveLegacyRole)(input.role)) === constants_1.Roles.OWNER || (await (0, scopeGuard_1.liveLegacyRole)(input.role)) === constants_1.Roles.ADMIN) {
             return space;
         }
         if ((0, exports.isHeadOfSpace)(input.userId, space)) {
@@ -213,7 +214,8 @@ class ReviewsService {
         if (!task) {
             throw errors_1.AppError.notFound("task.not_found", `Task ${input.taskIdOrKey} does not exist`);
         }
-        const isAdmin = input.role === constants_1.Roles.OWNER || input.role === constants_1.Roles.ADMIN;
+        const liveRole = await (0, scopeGuard_1.liveLegacyRole)(input.role);
+        const isAdmin = liveRole === constants_1.Roles.OWNER || liveRole === constants_1.Roles.ADMIN;
         if (!isAdmin) {
             const assignees = (await this.tasks.assigneesByTask([task.id])).get(task.id) ??
                 [];
@@ -333,11 +335,18 @@ class ReviewsService {
         const hasMore = rows.length > limit;
         const page = hasMore ? rows.slice(0, limit) : rows;
         const taskIds = page.map((t) => t.id);
+        // F26 (ISS-023): the same computation the other ten call sites make.
+        const redactGuest = input.role === constants_1.Roles.GUEST;
         const [assignees, watchers, tags, customFieldValues] = await Promise.all([
             this.tasks.assigneesByTask(taskIds),
             this.tasks.watchersByTask(taskIds),
             this.tasks.tagsByTask(taskIds),
-            this.tasks.customFieldValuesByTask(taskIds, false),
+            // F26 (ISS-023): this was the ONE of eleven call sites that
+            // hardcoded the flag, so a guest reading the review queue
+            // would have seen hidden custom-field values the other ten
+            // sites redact. Latent until ISS-042 made the flag settable at
+            // all — which F26 also does, so it is latent no longer.
+            this.tasks.customFieldValuesByTask(taskIds, redactGuest),
         ]);
         const parentIds = [
             ...new Set(page.flatMap((t) => (t.parentTaskId ? [t.parentTaskId] : []))),

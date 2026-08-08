@@ -3,28 +3,44 @@ import { TokenService } from "../services/TokenService";
 import type { JobContext, JobOutcome } from "./types";
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
- * §28 #5 session-cleanup (hourly): hard-delete `sessions` rows whose refresh
- * window expired more than 30 days ago (`expires_at < NOW() - 30 days`).
- * Revoked-but-not-yet-expired rows are intentionally kept until they too age
- * out (the contract keys only on `expires_at + 30d`).
+ * §28 #5 session-cleanup (hourly), two prune rules since F10 (ISS-017):
  *
- * Idempotent: a pure `DELETE ... WHERE expires_at < cutoff` removes nothing new
- * on a re-run in the same hour (the cutoff barely moves). `dry_run` counts the
- * same rows without deleting.
+ *   1. `expires_at < NOW() - 30d`  — the original rule: long-dead windows go.
+ *   2. `revoked_at < NOW() - 7d`   — a revoked session can never authenticate
+ *      again (rotation, logout, reset, deactivation all revoke); before this
+ *      rule it still survived until `expires_at + 30d` ≈ 60 days, which at
+ *      BeautyBooth's refresh cadence (~3.2k rows/day) is a ~190k-row steady
+ *      state. Seven days keeps a comfortable forensic window; steady state
+ *      drops to ~23k rows.
+ *
+ * Idempotent: both are pure `DELETE ... WHERE < cutoff` — a re-run in the same
+ * hour removes nothing new. `dry_run` counts the same rows without deleting.
  */
 export const sessionCleanup = async ({
     dryRun,
 }: JobContext): Promise<JobOutcome> => {
     const tokens = new TokenService(getDb());
-    const cutoff = new Date(Date.now() - THIRTY_DAYS_MS);
+    const expiryCutoff = new Date(Date.now() - THIRTY_DAYS_MS);
+    const revokedCutoff = new Date(Date.now() - SEVEN_DAYS_MS);
 
     if (dryRun) {
-        const wouldDelete = await tokens.countExpiredBefore(cutoff);
+        const wouldDelete = await tokens.countPrunable(
+            expiryCutoff,
+            revokedCutoff,
+        );
         return { processed: wouldDelete, wouldDelete };
     }
 
-    const deleted = await tokens.deleteExpiredBefore(cutoff);
-    return { processed: deleted, deleted };
+    const deletedExpired = await tokens.deleteExpiredBefore(expiryCutoff);
+    const deletedRevoked = await tokens.deleteRevokedBefore(revokedCutoff);
+    const deleted = deletedExpired + deletedRevoked;
+    return {
+        processed: deleted,
+        deleted,
+        deleted_expired: deletedExpired,
+        deleted_revoked: deletedRevoked,
+    };
 };

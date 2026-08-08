@@ -64,6 +64,11 @@ export interface UpdateListBody {
     icon?: string;
     color?: string;
     default_task_type_id?: string | null;
+    /**
+     * F28 (ISS-036, D12.7) — move the list to another space. Never nullable: a
+     * list always belongs to a space. `is_private` stays absent by design.
+     */
+    space_id?: string;
 }
 
 export interface UpdateListRequest extends AuthRequest {

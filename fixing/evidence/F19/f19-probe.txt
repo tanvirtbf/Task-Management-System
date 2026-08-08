@@ -1,0 +1,41 @@
+
+  === F19 — the notification system (D6-D8) ===
+
+  --- 1. the surface: 7 types, no email channel ---
+  OK    notifications.type enum has 7 values (was 12)                 7 values
+  OK    all five producerless types are gone from the enum            
+  OK    user_notification_prefs.email_enabled column is GONE          
+  OK    GET /preferences: exactly 7 types, no email_enabled anywhere  7 types
+  OK    PUT with email_enabled -> 422 naming the removal              got 422
+  OK    PUT with a REMOVED type -> 422 unknown type                   got 422
+  OK    fixture: arif assigned (notified) + a watcher                 watch 204
+
+  --- 2. ISS-064: a plain comment notifies the attached people ---
+  OK    comment 201 -> ASSIGNEE got type=comment                      got 201
+  OK    …WATCHER got type=comment too                                 
+  OK    …the AUTHOR did not                                           
+  OK    a MENTIONED watcher gets `mentioned` only, never both         mentioned +1, comment +0
+  OK    …while the (unmentioned) assignee still gets `comment`        
+
+  --- 3. the status_change producer ---
+  OK    status change 200 -> assignee notified                        got 200
+  OK    …watcher too                                                  
+  OK    …the actor not                                                
+  OK    the title names the task and the status                       moved "F19 notif task" to Done
+
+  --- 4. D7: preferences actually suppress ---
+  OK    arif turns `comment` OFF (200)                                got 200
+  OK    new comment -> arif got NOTHING (was: toggle stored and ignored)delta 0
+  OK    …but the watcher (still on) DID get it                        
+  OK    toggle back ON -> it flows again                              
+
+  --- 5. every surviving type, produced live ---
+  OK    form_submitted produced (public submit -> creator)            
+  OK    task_reviewed produced (head approves -> assignee)            rev 201
+  OK    report_ready produced (the real weekly job, regenerated slot) generated 6
+
+  === CLEANUP ===
+  tasks 46 (46) | notif 57 (57) | reports 12 (12) | forms 0 (0) | prefs 0 (0)
+
+  PASS — 7 real types, all producible; preferences finally govern delivery.
+

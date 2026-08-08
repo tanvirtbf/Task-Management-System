@@ -1,4 +1,8 @@
 import { syncUserSystemRole } from "../rbac/bootstrap";
+import { strictDecodeCursor } from "../utils/pagination";
+import { holds } from "../rbac/can";
+import { currentActor } from "../rbac/context";
+import { liveLegacyRole } from "../rbac/scopeGuard";
 import { MySql2Database } from "drizzle-orm/mysql2";
 import type { Logger } from "winston";
 import * as schema from "../db/schema";
@@ -328,13 +332,50 @@ export class UserService {
         }
 
         const isSelf = input.actorId === input.userId;
+        // F7 / D3.1 compose: editing your OWN profile is feature logic and
+        // stays free; editing SOMEONE ELSE's now requires the legacy admin
+        // floor AND the `member.edit_profile` grant — the roles-grid toggle
+        // becomes real. Compose cannot widen access.
+        // F10 (ISS-021): the floor reads the LIVE role, not the token claim.
+        const actorRole = await liveLegacyRole(input.actorRole);
         const isAdmin =
-            input.actorRole === "owner" || input.actorRole === "admin";
+            (actorRole === "owner" || actorRole === "admin") &&
+            holds(await currentActor(), "member.edit_profile");
         if (!isSelf && !isAdmin) {
             throw AppError.forbidden(
                 "user.forbidden_edit",
                 "You can only edit your own profile",
             );
+        }
+
+        // F12 (ISS-030): changing the LOGIN IDENTITY is an admin action.
+        //
+        // A member could move their own account to any address with no
+        // verification and no notice to anyone. Three consequences, all real:
+        // the original holder is never told; the old corporate address is
+        // freed, so a later invite to it silently creates a SECOND account
+        // (this happened by accident during testing and had to be untangled by
+        // hand); and combined with forgot-password it is a persistence
+        // primitive — a minute at an unlocked laptop moves the account to an
+        // attacker's mailbox and survives every later password reset.
+        //
+        // The issue's own Expected line offers two acceptable outcomes:
+        // verify the new address, or make it admin-only. Admin-only is what
+        // ships here — it needs no schema column and no mail round-trip, and
+        // these are corporate addresses created by invite, so self-service
+        // email change was never a needed capability. A same-value no-op is
+        // still allowed so a plain profile PATCH that echoes the current email
+        // does not start failing.
+        if (input.patch.email !== undefined && !isAdmin) {
+            const unchanged =
+                input.patch.email.toLowerCase() === current.email.toLowerCase();
+            if (!unchanged) {
+                throw AppError.forbidden(
+                    "user.email_change_forbidden",
+                    "Only an admin can change a login email address",
+                    [{ field: "email", issue: "admin only" }],
+                );
+            }
         }
 
         // Email is treated as globally unique (the app-wide `findByEmail`
@@ -439,6 +480,26 @@ export class UserService {
                 return current;
             }
 
+            // F22 (ISS-020): demoting the LAST active admin-capable account is
+            // a lockout, not a role change. Same backstop as deactivate();
+            // unreachable while an active owner exists (the owner cannot be
+            // demoted here), so it guards the imported/hand-edited workspace.
+            // (newRole is member|guest by the validator, so any change away
+            // from admin is a demotion; the owner cannot reach here.)
+            if (current.role === "admin" && current.status === "active") {
+                const others = await this.users.countActiveAdminCapable(
+                    input.workspaceId,
+                    input.userId,
+                    tx,
+                );
+                if (others === 0) {
+                    throw AppError.conflict(
+                        "role.last_admin",
+                        "This is the workspace's last active admin — demoting them would leave nobody able to administer it",
+                    );
+                }
+            }
+
             await this.users.update(input.userId, { role: input.newRole }, tx);
             // RBAC (landmine L13): `users.role` is only the mirror — the
             // authority lives in `user_roles`. Swapping the system-role
@@ -514,21 +575,41 @@ export class UserService {
                 return; // idempotent no-op (re-checked under the row lock)
             }
 
+            // F22 (ISS-020): the last-admin backstop, mirroring the rule the
+            // dynamic-RBAC path already enforces (`RolesAdminService`). The
+            // owner guards above make this unreachable while an active owner
+            // exists — it protects the workspace whose owner is somehow
+            // inactive (imports, direct SQL): the final admin-capable account
+            // cannot be deactivated into a lockout. (The owner guard above
+            // already threw, so only "admin" can reach here.)
+            if (current.role === "admin") {
+                const others = await this.users.countActiveAdminCapable(
+                    input.workspaceId,
+                    input.userId,
+                    tx,
+                );
+                if (others === 0) {
+                    throw AppError.conflict(
+                        "role.last_admin",
+                        "This is the workspace's last active admin — deactivating them would leave nobody able to administer it",
+                    );
+                }
+            }
+
             await this.users.update(
                 input.userId,
                 { status: "deactivated" },
                 tx,
             );
             await this.tokens.revokeAllForUser(input.userId, tx);
-            // Dept Review V1 — a deactivated user must not remain a department
-            // head. Users are soft-deactivated (never deleted), so the FK's
-            // ON DELETE SET NULL can never fire; this app-side null is the only
-            // mechanism. Reactivation deliberately does NOT restore headships.
-            await this.spaces.clearHeadships(
-                input.userId,
-                input.workspaceId,
-                tx,
-            );
+            // F22 (ISS-019): headship SURVIVES a deactivation now. The old
+            // clearHeadships call silently orphaned the department — P4 proved
+            // it: Marketing lost its head, the weekly HR report generated with
+            // no head, /dept access was gone, nobody was told, and
+            // reactivation did NOT give it back. A deactivated head cannot log
+            // in anyway (every session is revoked above), so keeping the
+            // pointer costs nothing and a returning head finds their
+            // department intact. Replacing them remains a one-PATCH admin act.
             await this.activity.record(
                 {
                     workspaceId: input.workspaceId,
@@ -756,15 +837,16 @@ const encodeCursor = (value: string): string =>
  * request *parameter* (400 `pagination.invalid_cursor`), not a 422 — the client
  * cannot "fix" an opaque token, only drop it and restart paging.
  */
+// F23 (ISS-008): the lenient decode accepted cursors the server never
+// issued — `garbage` is base64url-alphabet, decoded to mojibake, and silently
+// restarted pagination at page 1 WITH a fresh next_cursor (a retrying client
+// looped forever); a tampered `<cursor>XX` shifted the window. The shared
+// strict decoder round-trips the bytes and refuses everything else.
 const decodeCursor = (cursor: string): string => {
-    if (!/^[A-Za-z0-9_-]+$/.test(cursor)) {
-        throw AppError.badRequest(
-            "pagination.invalid_cursor",
-            "The pagination cursor is malformed.",
-        );
-    }
-    const decoded = Buffer.from(cursor, "base64url").toString("utf8");
-    if (decoded.length === 0) {
+    const decoded = strictDecodeCursor(cursor);
+    // An issued users cursor wraps a user id — id-alphabet only. Printable
+    // junk that happens to round-trip ("not json or id") is still foreign.
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(decoded)) {
         throw AppError.badRequest(
             "pagination.invalid_cursor",
             "The pagination cursor is malformed.",

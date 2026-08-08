@@ -71,8 +71,20 @@ router.patch("/sprints/:id", authenticate_1.default, (0, requirePermission_1.req
 router.post("/sprints/:id/start", authenticate_1.default, (0, requirePermission_1.requirePermission)("sprint.manage"), sprints_1.sprintIdParamValidator, validate_1.validate, (req, res, next) => controller.start(req, res, next));
 // #7 — POST /api/v1/sprints/:id/close (👑) — active → closed.
 router.post("/sprints/:id/close", authenticate_1.default, (0, requirePermission_1.requirePermission)("sprint.manage"), sprints_1.sprintIdParamValidator, validate_1.validate, (req, res, next) => controller.close(req, res, next));
+// #10 — DELETE /api/v1/sprints/:id (👑) — remove a sprint entirely.
+//
+// F28 (ISS-013, decision D12.6). There was no way to delete a sprint at all: one
+// created with wrong dates or a typo'd name was permanent and had to be removed
+// with direct SQL. `sprint.manage` is the same grant that creates and updates
+// one, so no new permission is introduced. An ACTIVE sprint is refused in-service
+// (409 `sprint.active_immutable`); the tasks detach via the schema's existing
+// `tasks.sprint_id ON DELETE SET NULL` and are never deleted.
+//
+// Registered BEFORE the `/sprints/:id/tasks/:taskId` route below only for
+// readability — Express matches on segment count, so the two cannot collide.
+router.delete("/sprints/:id", authenticate_1.default, (0, requirePermission_1.requirePermission)("sprint.manage"), sprints_1.sprintIdParamValidator, validate_1.validate, (req, res, next) => controller.remove(req, res, next));
 // #8 — POST /api/v1/sprints/:id/tasks (🔐) — bulk attach tasks.
-router.post("/sprints/:id/tasks", authenticate_1.default, sprints_1.addSprintTasksValidator, validate_1.validate, (req, res, next) => controller.addTasks(req, res, next));
+router.post("/sprints/:id/tasks", authenticate_1.default, (0, requirePermission_1.requirePermission)("sprint.assign_tasks"), sprints_1.addSprintTasksValidator, validate_1.validate, (req, res, next) => controller.addTasks(req, res, next));
 // #9 — DELETE /api/v1/sprints/:id/tasks/:taskId (🔐) — detach one task.
-router.delete("/sprints/:id/tasks/:taskId", authenticate_1.default, sprints_1.removeSprintTaskValidator, validate_1.validate, (req, res, next) => controller.removeTask(req, res, next));
+router.delete("/sprints/:id/tasks/:taskId", authenticate_1.default, (0, requirePermission_1.requirePermission)("sprint.assign_tasks"), sprints_1.removeSprintTaskValidator, validate_1.validate, (req, res, next) => controller.removeTask(req, res, next));
 exports.default = router;

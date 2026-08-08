@@ -1,0 +1,13 @@
+=== 50 concurrent GETs — what are the failures? ===
+  status distribution: {"200 ":13,"500 internal":37}
+  a failure body: {"error":{"code":"internal","message":"Internal server error","request_id":"req_b964481d-af9d-4f3d-a8d5-3baa5b0d79e5"}}
+
+=== the same 50, but sequential ===
+  sequential: 50/50 succeeded
+
+=== ramp: how many concurrent before it breaks? ===
+    5 concurrent -> 5 ok, 0 failed
+   10 concurrent -> 10 ok, 0 failed
+   15 concurrent -> 15 ok, 0 failed
+   20 concurrent -> 20 ok, 0 failed
+   30 concurrent -> 27 ok, 3 failed

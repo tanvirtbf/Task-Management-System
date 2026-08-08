@@ -3,10 +3,13 @@ import {
     asc,
     desc,
     eq,
+    gte,
     inArray,
     isNull,
+    lte,
     ne,
     notInArray,
+    sql,
 } from "drizzle-orm";
 import { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../db/schema";
@@ -68,6 +71,33 @@ export class SprintsRepo {
      * stable tie-break). The optional `status` filter is served by
      * `idx_sprints_workspace_status (workspace_id, status, start_date)`.
      */
+    /**
+     * F22 (ISS-011): the first sprint whose [start, end] overlaps the given
+     * range (two closed ranges overlap unless one ends before the other
+     * starts). `excludeId` lets an UPDATE ignore itself.
+     */
+    async findOverlapping(
+        workspaceId: string,
+        startDate: Date,
+        endDate: Date,
+        excludeId?: string,
+        exec: DbExecutor = this.db,
+    ): Promise<{ id: string; name: string } | null> {
+        const rows = await exec
+            .select({ id: sprints.id, name: sprints.name })
+            .from(sprints)
+            .where(
+                and(
+                    eq(sprints.workspaceId, workspaceId),
+                    lte(sprints.startDate, endDate),
+                    gte(sprints.endDate, startDate),
+                    excludeId ? ne(sprints.id, excludeId) : undefined,
+                ),
+            )
+            .limit(1);
+        return rows[0] ?? null;
+    }
+
     async listByWorkspace(
         workspaceId: string,
         status?: SprintStatus,
@@ -243,6 +273,38 @@ export class SprintsRepo {
             .update(sprints)
             .set({ status })
             .where(and(eq(sprints.id, id), eq(sprints.workspaceId, workspaceId)));
+    }
+
+    /**
+     * Hard-delete a sprint (F28 / ISS-013, decision D12.6). There is no archive
+     * concept for a sprint, so this is a real DELETE.
+     *
+     * Its tasks are NOT deleted: `tasks.sprint_id` is declared
+     * `ON DELETE SET NULL`, so the database detaches them as part of this
+     * statement. The schema was built for this — which is why the fix is a
+     * route, not a migration.
+     */
+    async deleteById(
+        id: string,
+        workspaceId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<void> {
+        await exec
+            .delete(sprints)
+            .where(and(eq(sprints.id, id), eq(sprints.workspaceId, workspaceId)));
+    }
+
+    /** How many live+archived tasks the FK will detach — reported to the caller. */
+    async countTasksInSprint(
+        id: string,
+        workspaceId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<number> {
+        const rows = await exec
+            .select({ n: sql<number>`COUNT(*)` })
+            .from(tasks)
+            .where(and(eq(tasks.sprintId, id), eq(tasks.workspaceId, workspaceId)));
+        return Number(rows[0]?.n ?? 0);
     }
 
     // ─── tasks (sprint link) ────────────────────────────────────────────────────

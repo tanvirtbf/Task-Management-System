@@ -1,0 +1,62 @@
+  logged in to the perf workspace: yes
+  volume: {"tasks":5000,"comments":20000,"activity":50000}
+
+=== 1. ENDPOINT LATENCY AT VOLUME (median of 7) ===
+  endpoint                                       status    median      min      max    bytes
+  GET /home/kpis                                    200    24.1ms     22ms     64ms      906
+  GET /tasks/my-work                                200    24.4ms     16ms     54ms   104447
+  GET /home/agenda                                  200     5.5ms      4ms      8ms        2
+  GET /lists/:id/tasks?limit=50                     200    17.3ms     10ms     21ms    58707
+  GET /lists/:id/tasks?limit=200                    200    19.6ms     16ms     24ms   146716
+  GET /search?q=Perf                                200   124.9ms    106ms    146ms    33388
+  GET /search?q=task%20250                          200    83.5ms     78ms    127ms    12985
+  GET /tasks/:id                                    200     7.4ms      6ms     11ms     1160
+  GET /tasks/:id/comments                           200     5.9ms      5ms      8ms     1176
+  GET /tasks/:id/activity?limit=50                  200     7.4ms      5ms     10ms     4281
+  GET /activity?limit=50                            200     4.0ms      3ms      6ms       81
+  GET /activity/recent                              200     2.6ms      2ms      4ms       11
+  GET /spaces                                       200     5.3ms      5ms      6ms     2128
+  GET /users?limit=50                               200     5.3ms      4ms      7ms     9441
+  GET /notifications?limit=50                       200     6.2ms      3ms      8ms       81
+
+=== 2. PAGINATION AT DEPTH ===
+  workspace activity: page 1 = 7.2ms   page 1 = 7.2ms   -> flat (cursor pagination holds)
+
+=== 3. QUERY COUNT PER ENDPOINT (N+1 detection) ===
+  GET /lists/:id/tasks?limit=50               8 queries
+  GET /home/kpis                              8 queries
+  GET /tasks/:id                              6 queries
+  GET /activity?limit=50                      2 queries
+  GET /search?q=Perf                         13 queries
+
+=== 4. EXPLAIN on the hot queries ===
+  query                   type      key used                          rows  Extra
+  list tasks              ref       uq_tasks_list_number               125  Using where; Using filesort   <-- REVIEW
+  my open tasks           ref       idx_task_assignees_user            125  Using index
+  search tasks (LIKE)     ref       uq_tasks_custom_id                2226  Using where
+  task comments           ref       idx_comments_task_time               4  Using filesort   <-- REVIEW
+  task activity           ref       idx_task_activity_task_time         10  Using filesort   <-- REVIEW
+  workspace activity      ref       idx_workspace_activity_workspace_time       1  Using filesort   <-- REVIEW
+  overdue count           ref       uq_tasks_custom_id                2226  Using where
+
+=== 5. CONCURRENCY — 50 simultaneous requests ===
+  GET /lists/:id/tasks?limit=50     50 in 639ms (12.8ms/req avg) | non-200: 37
+  GET /home/kpis                    50 in 257ms (5.1ms/req avg) | non-200: 35
+  MySQL Threads_connected after the burst: 86 (pool max is DB_POOL_MAX, default 10)
+
+=== 6. TABLE SIZES ===
+  task_activity               47218 rows    23.1 MB
+  comments                    20034 rows    12.6 MB
+  tasks                        4452 rows     6.5 MB
+  task_assignees               5000 rows     2.3 MB
+  lists                          40 rows     0.1 MB
+  sessions                        1 rows     0.1 MB
+  spaces                          8 rows     0.1 MB
+  statuses                      120 rows     0.1 MB
+
+  SLOW ENDPOINTS (>300ms median): none
+=== pagination at depth: task activity, 10 rows on one task ===
+  walked 1 pages | page 1 = 14.4ms | page 1 = 14.4ms -> flat
+
+=== list tasks, deep offset via cursor ===
+  125 tasks in the list | walked 13 pages | page 1 = 14.7ms | page 13 = 13.7ms -> flat

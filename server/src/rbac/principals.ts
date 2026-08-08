@@ -126,6 +126,56 @@ export const publicFormPrincipal = (input: {
 export const isPublic = (actor: ActorPermissions | null | undefined): boolean =>
     actor?.kind === "public";
 
+// ─── 2b. the bug-report intake (F28 / ISS-094) ───────────────────────────────
+
+/**
+ * F28 (ISS-094, decision D12.1) surfaced a key that opened no door: every role
+ * holds `bug.report` — reporting a bug is precisely how a NON-engineer (or a
+ * guest) reaches the engineering team — but the mechanism behind
+ * `POST /eng/report-bug` is a task insert, and `TaskWriteService.create`
+ * asserts `task.create`, which D12.1 revoked from the seeded Guest role. The
+ * route admitted the request and the service then 403'd it.
+ *
+ * The route gate is the authority for this flow: once `bug.report` is proven,
+ * the intake runs under this principal — the same shape as the public form
+ * above, with the same narrowing. The actor carries ONLY `task.create`, only
+ * inside the Bug Triage list's space, and the scope covers that one list, so
+ * even a defect that hands this principal to a listing query can only ever
+ * surface bug triage.
+ *
+ * Attribution is untouched: `created_by`, activity rows and notifications all
+ * flow from the service input's `actorId`, which stays the real caller —
+ * `userId` here records the same person for anything that reads the actor.
+ */
+export const bugIntakeActor = (input: {
+    workspaceId: string;
+    /** The space owning the Bug Triage list — the only place this reaches. */
+    spaceId: string;
+    /** The signed-in reporter; kept as the acting identity. */
+    reporterId: string;
+}): ActorPermissions => ({
+    kind: "intake",
+    userId: input.reporterId,
+    workspaceId: input.workspaceId,
+    isOwner: false,
+    legacyRole: "member",
+    version: 0,
+    perms: new Map<string, PermissionEntry>([
+        ["task.create", spaceOnly(input.spaceId)],
+    ]),
+});
+
+/** The intake principal `reportBug` installs around its create call. */
+export const bugIntakePrincipal = (input: {
+    workspaceId: string;
+    spaceId: string;
+    listId: string;
+    reporterId: string;
+}): Principal => ({
+    actor: bugIntakeActor(input),
+    scope: makeScope([input.spaceId], [input.listId]),
+});
+
 // ─── 3. deliberate elevation (L1, L4) ────────────────────────────────────────
 
 /**

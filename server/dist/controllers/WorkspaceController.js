@@ -12,7 +12,6 @@ const toWireWorkspace = (w) => ({
     working_days: w.workingDays,
     business_hours_start: w.businessHoursStart,
     business_hours_end: w.businessHoursEnd,
-    fiscal_year_start_month: w.fiscalYearStartMonth,
 });
 class WorkspaceController {
     workspaceService;
@@ -106,10 +105,6 @@ class WorkspaceController {
         if (body.business_hours_end !== undefined) {
             patch.businessHoursEnd = body.business_hours_end;
             changedFields.push("business_hours_end");
-        }
-        if (body.fiscal_year_start_month !== undefined) {
-            patch.fiscalYearStartMonth = body.fiscal_year_start_month;
-            changedFields.push("fiscal_year_start_month");
         }
         return { patch, changedFields };
     }

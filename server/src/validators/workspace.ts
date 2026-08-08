@@ -19,7 +19,7 @@ const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/; // "HH:MM:SS"
  * `Intl.DateTimeFormat` constructor (throws `RangeError` on an unknown zone) —
  * the canonical check, and fully typed (unlike `Intl.supportedValuesOf`).
  */
-const isIanaTimezone = (value: string): boolean => {
+export const isIanaTimezone = (value: string): boolean => {
     try {
         new Intl.DateTimeFormat("en-US", { timeZone: value });
         return true;
@@ -125,15 +125,6 @@ export const workspaceUpdateValidator = checkSchema({
             options: TIME_RE,
             errorMessage: "business_hours_end must be HH:MM:SS",
         },
-    },
-    fiscal_year_start_month: {
-        in: ["body"],
-        optional: true,
-        isInt: {
-            options: { min: 1, max: 12 },
-            errorMessage: "fiscal_year_start_month must be an integer 1-12",
-        },
-        toInt: true,
     },
     // Not `optional`: the custom validator must run even when the field is
     // absent (returning true), and reject it whenever it is present.

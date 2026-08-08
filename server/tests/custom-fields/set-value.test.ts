@@ -399,7 +399,7 @@ describe("PUT /api/v1/tasks/:id/custom-fields/:fieldId", () => {
             const res = await http.put(path("t-x", "cf-x")).send({ text: "x" });
             expect(res.status).toBe(401);
         });
-        for (const role of ["owner", "admin", "member", "guest"] as const) {
+        for (const role of ["owner", "admin", "member"] as const) {
             it(`allows a ${role} to set a value (200)`, async () => {
                 const u = await makeUser({ role });
                 const t = await makeTask({
@@ -416,5 +416,154 @@ describe("PUT /api/v1/tasks/:id/custom-fields/:fieldId", () => {
                 expect(res.status).toBe(200);
             });
         }
+
+        // F28 (ISS-094, D12.1): `customfield.set_value` left the seeded Guest
+        // role — writing task data is not a read-and-comment capability.
+        it("REFUSES a guest (403) — customfield.set_value revoked", async () => {
+            const u = await makeUser({ role: "guest" });
+            const t = await makeTask({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+            });
+            const f = await seedField({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+                type: "text",
+            });
+            const client = await makeLoggedInClient(u);
+            const res = await client.put(path(t.id, f)).send({ text: "x" });
+            expect(res.status).toBe(403);
+        });
+    });
+});
+
+// ─── F29 (ISS-043): phone + money validate what their names promise ──────────
+describe("phone + money depth (F29)", () => {
+    const seedPair = async (
+        type: "phone" | "money",
+        config?: Record<string, unknown>,
+    ) => {
+        const u = await makeUser({ role: "member" });
+        const t = await makeTask({ workspaceId: u.workspaceId, createdBy: u.id });
+        const f = await seedField({
+            workspaceId: u.workspaceId,
+            createdBy: u.id,
+            type,
+            ...(config ? { config } : {}),
+        });
+        const client = await makeLoggedInClient(u);
+        return { client, t, f };
+    };
+
+    describe("phone — the BD check finally fires (default_country defaults to BD)", () => {
+        /**
+         * The regex `^01[3-9]\d{8}$` existed since P12 and NEVER ran: it was
+         * gated on `config.default_country === "BD"` and nothing set that, so
+         * a "Customer phone" field was free text. BD is the default now (this
+         * is a Bangladesh business); a field opts out by naming another
+         * country. Both real-world spellings pass; stored verbatim.
+         */
+        it("accepts a valid BD mobile (01712345678)", async () => {
+            const { client, t, f } = await seedPair("phone");
+            const res = await client
+                .put(path(t.id, f))
+                .send({ text: "01712345678" });
+            expect(res.status).toBe(200);
+            expect(res.body.custom_field_values[f]).toMatchObject({ text: "01712345678" });
+        });
+
+        it("accepts the +880 spelling", async () => {
+            const { client, t, f } = await seedPair("phone");
+            const res = await client
+                .put(path(t.id, f))
+                .send({ text: "+8801712345678" });
+            expect(res.status).toBe(200);
+        });
+
+        it("accepts the bare-880 spelling", async () => {
+            const { client, t, f } = await seedPair("phone");
+            const res = await client
+                .put(path(t.id, f))
+                .send({ text: "8801712345678" });
+            expect(res.status).toBe(200);
+        });
+
+        it("REFUSES an invalid prefix (01234567890) — ISS-043's own repro", async () => {
+            const { client, t, f } = await seedPair("phone");
+            const res = await client
+                .put(path(t.id, f))
+                .send({ text: "01234567890" });
+            expect(res.status).toBe(422);
+            expect(res.body.error.code).toBe("validation.failed");
+        });
+
+        it("REFUSES free text", async () => {
+            const { client, t, f } = await seedPair("phone");
+            const res = await client
+                .put(path(t.id, f))
+                .send({ text: "call me maybe" });
+            expect(res.status).toBe(422);
+        });
+
+        it("another default_country opts out of the BD rule", async () => {
+            const { client, t, f } = await seedPair("phone", {
+                default_country: "US",
+            });
+            const res = await client
+                .put(path(t.id, f))
+                .send({ text: "+1 (555) 010-9999" });
+            expect(res.status).toBe(200);
+        });
+    });
+
+    describe("money — no more −500 NOTACURRENCY", () => {
+        it("accepts { amount: 1500, currency: 'BDT' }", async () => {
+            const { client, t, f } = await seedPair("money");
+            const res = await client
+                .put(path(t.id, f))
+                .send({ amount: 1500, currency: "BDT" });
+            expect(res.status).toBe(200);
+            expect(res.body.custom_field_values[f]).toMatchObject({ amount: 1500, currency: "BDT" });
+        });
+
+        it("REFUSES a negative amount — a refund is its own record", async () => {
+            const { client, t, f } = await seedPair("money");
+            const res = await client
+                .put(path(t.id, f))
+                .send({ amount: -500, currency: "BDT" });
+            expect(res.status).toBe(422);
+        });
+
+        it("REFUSES NOTACURRENCY — ISS-043's own repro", async () => {
+            const { client, t, f } = await seedPair("money");
+            const res = await client
+                .put(path(t.id, f))
+                .send({ amount: 1500, currency: "NOTACURRENCY" });
+            expect(res.status).toBe(422);
+        });
+
+        it("REFUSES lowercase bdt — ISO-4217 codes are uppercase", async () => {
+            const { client, t, f } = await seedPair("money");
+            const res = await client
+                .put(path(t.id, f))
+                .send({ amount: 1500, currency: "bdt" });
+            expect(res.status).toBe(422);
+        });
+
+        it("REFUSES XYZ — right shape, not a real currency (ICU list)", async () => {
+            const { client, t, f } = await seedPair("money");
+            const res = await client
+                .put(path(t.id, f))
+                .send({ amount: 1500, currency: "XYZ" });
+            expect(res.status).toBe(422);
+        });
+
+        it("USD is still fine — the rule is ISO-4217, not BDT-only", async () => {
+            const { client, t, f } = await seedPair("money");
+            const res = await client
+                .put(path(t.id, f))
+                .send({ amount: 99, currency: "USD" });
+            expect(res.status).toBe(200);
+        });
     });
 });

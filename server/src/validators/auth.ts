@@ -1,4 +1,5 @@
 import { checkSchema } from "express-validator";
+import { newPasswordSchema } from "./passwordPolicy";
 
 /**
  * Validators for §2 Authentication endpoints. Pair each `checkSchema(...)`
@@ -70,19 +71,9 @@ export const resetPasswordValidator = checkSchema({
             errorMessage: "Reset token is too long (max 512 chars)",
         },
     },
-    new_password: {
-        in: ["body"],
-        notEmpty: {
-            errorMessage: "New password is required",
-        },
-        isString: {
-            errorMessage: "New password must be a string",
-        },
-        isLength: {
-            options: { min: 8, max: 200 },
-            errorMessage: "New password must be between 8 and 200 characters",
-        },
-    },
+    // F12 (ISS-083): the shared policy — complexity + a common-password
+    // denylist. See validators/passwordPolicy.ts for the reasoning.
+    new_password: newPasswordSchema,
 });
 
 /**
@@ -102,15 +93,8 @@ export const changePasswordValidator = checkSchema({
                 "Current password must be between 1 and 200 characters",
         },
     },
-    new_password: {
-        in: ["body"],
-        notEmpty: { errorMessage: "New password is required" },
-        isString: { errorMessage: "New password must be a string" },
-        isLength: {
-            options: { min: 8, max: 200 },
-            errorMessage: "New password must be between 8 and 200 characters",
-        },
-    },
+    // F12 (ISS-083): the shared policy.
+    new_password: newPasswordSchema,
 });
 
 /**
@@ -161,15 +145,8 @@ export const acceptInvitationValidator = checkSchema({
             errorMessage: "Invitation token is too long (max 512 chars)",
         },
     },
-    password: {
-        in: ["body"],
-        notEmpty: { errorMessage: "Password is required" },
-        isString: { errorMessage: "Password must be a string" },
-        isLength: {
-            options: { min: 8, max: 200 },
-            errorMessage: "Password must be between 8 and 200 characters",
-        },
-    },
+    // F12 (ISS-083): the same policy the reset/change paths use.
+    password: newPasswordSchema,
 });
 
 /**

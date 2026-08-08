@@ -1,0 +1,12 @@
+=== form-submission-expiry failure, in full ===
+  HTTP 200 body: {"ok":false,"dry_run":false,"error":"Unknown column 'form_submissions.expires_at' in 'where clause'"}
+  -> HTTP 200 with ok:false is the documented contract so cron can branch on the body
+
+=== department-report: does a second run re-notify? ===
+  run 1: {"ok":true,"dry_run":false,"processed":7,"generated":7,"selfHealed":0,"skippedNoActivity":2,"notified":0} -> report_ready rows 82 -> 82
+  run 2: {"ok":true,"dry_run":false,"processed":7,"generated":7,"selfHealed":0,"skippedNoActivity":2,"notified":0} -> report_ready rows 82 -> 82
+  no double-notify: CONFIRMED
+
+=== CLEANUP ===
+  removed: reports 8 | notifications 36
+  tasks 51 (51) | attachments 1 (1) | notifications 65 (65) | department_reports 12 (12) | sessions 440 (440)

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.itemIdParamValidator = exports.updateItemValidator = exports.bulkAddItemsValidator = exports.addItemValidator = exports.checklistIdParamValidator = exports.updateChecklistValidator = exports.createChecklistValidator = exports.listChecklistsValidator = void 0;
+exports.itemIdParamValidator = exports.updateItemValidator = exports.updateItemBodyGuard = exports.bulkAddItemsValidator = exports.addItemValidator = exports.checklistIdParamValidator = exports.updateChecklistValidator = exports.createChecklistValidator = exports.listChecklistsValidator = void 0;
 const express_validator_1 = require("express-validator");
 /**
  * Validators for §15 Checklists. Pair each `checkSchema(...)` with the `validate`
@@ -91,14 +91,19 @@ exports.addItemValidator = (0, express_validator_1.checkSchema)({
     parent_item_id: optionalId("parent_item_id"),
     position: optionalPosition,
 });
-/** `POST /checklists/:id/items/bulk` — `{ texts: string[] }` (template apply). */
+/** `POST /checklists/:id/items/bulk` — `{ texts: string[] }` (template apply).
+ *
+ * F29 (ISS-068): capped at 200, copying `bulkTasksValidator`'s bound. This was
+ * `min: 1` with no max — 5,000 items landed in one transaction, and since
+ * `GET /tasks/:id/checklists` embeds items unpaginated, every later read of
+ * that task paid for it. 200 mirrors the only other bulk write in the API. */
 exports.bulkAddItemsValidator = (0, express_validator_1.checkSchema)({
     id: idParam(),
     texts: {
         in: ["body"],
         isArray: {
-            options: { min: 1 },
-            errorMessage: "texts must be a non-empty array",
+            options: { min: 1, max: 200 },
+            errorMessage: "texts must be an array of 1–200 items",
         },
     },
     "texts.*": {
@@ -112,7 +117,30 @@ exports.bulkAddItemsValidator = (0, express_validator_1.checkSchema)({
         },
     },
 });
-/** `PATCH /checklist-items/:id`. */
+/**
+ * `PATCH /checklist-items/:id`.
+ *
+ * F23 (ISS-067): the body is a CLOSED set — `text`, `assignee_id`, `position`.
+ * It used to answer 200 to anything and silently discard the rest, and the
+ * most likely stranger is `is_completed`: the obvious way for a new client or
+ * the AI assistant to tick a box, accepted, ignored, reported as success. The
+ * real path is `POST /checklist-items/:id/toggle`, and the 422 now says so.
+ */
+const ITEM_PATCH_KEYS = new Set(["text", "assignee_id", "position"]);
+exports.updateItemBodyGuard = (0, express_validator_1.body)().custom((value) => {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+        throw new Error("Body must be an object");
+    }
+    for (const key of Object.keys(value)) {
+        if (ITEM_PATCH_KEYS.has(key))
+            continue;
+        if (key === "is_completed") {
+            throw new Error("is_completed is not settable here — use POST /checklist-items/:id/toggle");
+        }
+        throw new Error(`Unknown field "${key}" — this endpoint accepts text, assignee_id, position`);
+    }
+    return true;
+});
 exports.updateItemValidator = (0, express_validator_1.checkSchema)({
     id: idParam(),
     text: {

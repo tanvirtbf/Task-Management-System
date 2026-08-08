@@ -1,0 +1,40 @@
+=== 1. report-bug from every role ===
+  owner         -> 201     task #5 name="TEST-p29b 500 error from owner"
+  member        -> 201     task #6 name="TEST-p29b 500 error from member"
+  space-scoped  -> 404 list.not_found
+  guest         -> 201     task #7 name="TEST-p29b 500 error from guest"
+  routed to: {"name":"Bug Triage","sp":"Engineering"} | type: {"name":"Bug","is_dev_type":1}
+  severity: S2 | reporter_team: ops | sla_due_at: 2026-08-06T09:43:54.000Z | assignees: []
+  description built from the intake fields: "**Steps to reproduce**\n1. open checkout 2. pay\n\n**What happened**\nTEST-p29b 500 error from owner\n\n**Expected**"
+  missing steps      -> 422 validation.failed
+  bad reporter_team  -> 422 validation.failed
+  bad severity       -> 422 validation.failed
+
+=== 2. S0 auto-assign to the on-call engineer ===
+  put jhankar@beautybooth.com.bd on call for THIS week (2026-07-27) -> 200
+  v_current_on_call rows now: 1
+  GET /on-call/current -> 200      "jhankar@beautybooth.com.bd"
+  an S0 bug -> assignees: ["u-RFc1GIoS_nvSDOHovy9UVQ"] auto-assigned to the on-call engineer
+  an S3 bug -> assignees: [] correctly NOT auto-assigned
+
+=== 3. eng/home ===
+  current_on_call: {"id":"u-RFc1GIoS_nvSDOHovy9UVQ","first_name":"Jhankar","last_name":"Mahbub","email":"jhankar@beautybooth.com.bd","role":"member","avatar_url":null,"status":"active","timezone":"Asia/Dhaka","created_at":"2026-07-23T14:23:07.000Z","last_login_at":null}
+  tiles: {"open_bugs":8,"my_sprint_tasks":0,"prs_awaiting_me":0,"open_incidents":0,"stale_tickets":0,"current_on_call":"set","active_sprint":"set"}
+  open_bugs api: 8 | hand-count: 8 match
+  stale_tickets api: 0 | hand-count >7d: 2 | >14d: 0 -> a 14-day window
+  guest /eng/home -> 200      open_bugs.top rows: 5 fields per row: 50
+     guest sees custom_field_values: {}
+
+=== 4. POSTMORTEM (items = label -> BOOLEAN) ===
+  on a BUG (not an incident) -> 409 incident.not_incident
+  on an OPEN incident        -> 409 incident.not_resolved
+  on a RESOLVED incident     -> 200      keys: ["task_id","items","updated_by","created_at","updated_at"]
+  read back -> 200      labels: ["UPPER Label","Timeline written","snake_case_label","Action items filed","Root cause identified"]
+  labels verbatim? yes — the label-keyed map is NOT case-transformed
+  values: {"UPPER Label":false,"Timeline written":true,"snake_case_label":true,"Action items filed":false,"Root cause identified":true}
+  a non-boolean value -> 422 validation.failed
+  re-save -> 200      rows in task_postmortems: 1
+  guest saves a postmortem -> 200
+
+=== CLEANUP ===
+  tasks 51 (51) | on_call_shifts 1 (1) | postmortems 0 (0)

@@ -1,0 +1,158 @@
+{
+ "ranAt": "2026-08-03T06:15:37.556Z",
+ "processTZ": "Asia/Dhaka",
+ "sessionTZ": "SYSTEM",
+ "healthy": false,
+ "results": [
+  {
+   "column": "tasks.sla_due_at",
+   "writtenBy": "app",
+   "asked": "2026-08-04T06:15:38.349Z",
+   "stored": "2026-08-04 06:15:38",
+   "wire": "2026-08-04T06:15:38.000Z",
+   "driftStored": -6,
+   "driftWire": 6,
+   "note": "PATCH /tasks/:id/sla"
+  },
+  {
+   "column": "tasks.completed_at",
+   "writtenBy": "app",
+   "asked": "2026-08-03T06:15:38.626Z",
+   "stored": "2026-08-03 06:15:39",
+   "wire": "2026-08-03T06:15:39.000Z",
+   "driftStored": -6,
+   "driftWire": 6,
+   "note": "set on status -> done"
+  },
+  {
+   "column": "tasks.archived_at",
+   "writtenBy": "app",
+   "asked": "2026-08-03T06:15:38.827Z",
+   "stored": "2026-08-03 06:15:39",
+   "wire": null,
+   "driftStored": -6,
+   "driftWire": null,
+   "note": "POST /archive (not on the wire)"
+  },
+  {
+   "column": "tasks.created_at",
+   "writtenBy": "MySQL",
+   "asked": "2026-08-03T06:15:38.952Z",
+   "stored": "2026-08-03 12:15:39",
+   "wire": "2026-08-03T12:15:39.000Z",
+   "driftStored": 0,
+   "driftWire": 6,
+   "note": "CURRENT_TIMESTAMP default — the CONTROL"
+  },
+  {
+   "column": "tasks.updated_at [assign]",
+   "writtenBy": "app",
+   "asked": "2026-08-03T06:15:40.313Z",
+   "stored": "2026-08-03 06:15:40",
+   "wire": "2026-08-03T06:15:40.000Z",
+   "driftStored": -6,
+   "driftWire": 6,
+   "note": "touchUpdatedAt — Drizzle writes it"
+  },
+  {
+   "column": "tasks.updated_at [patch]",
+   "writtenBy": "MySQL",
+   "asked": "2026-08-03T06:15:41.513Z",
+   "stored": "2026-08-03 12:15:41",
+   "wire": "2026-08-03T12:15:41.000Z",
+   "driftStored": 0,
+   "driftWire": 6,
+   "note": "ON UPDATE CURRENT_TIMESTAMP"
+  },
+  {
+   "column": "tasks.updated_at MONOTONIC?",
+   "writtenBy": "-",
+   "asked": null,
+   "stored": null,
+   "wire": null,
+   "driftStored": null,
+   "driftWire": null,
+   "note": "yes"
+  },
+  {
+   "column": "comments.created_at",
+   "writtenBy": "MySQL",
+   "asked": "2026-08-03T06:15:41.699Z",
+   "stored": "2026-08-03 12:15:41",
+   "wire": "2026-08-03T12:15:41.000Z",
+   "driftStored": 0,
+   "driftWire": 6,
+   "note": "CURRENT_TIMESTAMP"
+  },
+  {
+   "column": "comment edit window",
+   "writtenBy": "-",
+   "asked": null,
+   "stored": null,
+   "wire": null,
+   "driftStored": null,
+   "driftWire": null,
+   "note": "editable up to 374 min, refused from 375 min (intended: 15) — ISS-063"
+  },
+  {
+   "column": "notifications.snoozed_until",
+   "writtenBy": "app",
+   "asked": "2026-08-03T11:15:42.612Z",
+   "stored": "2026-08-03 11:15:43",
+   "wire": null,
+   "driftStored": -6,
+   "driftWire": null,
+   "note": "POST /snooze"
+  },
+  {
+   "column": "sessions.expires_at",
+   "writtenBy": "app",
+   "asked": null,
+   "stored": "2026-09-02 06:15:43",
+   "wire": null,
+   "driftStored": null,
+   "driftWire": null,
+   "note": "created_at=2026-08-03 12:15:42 (MySQL) — the two are written by different paths"
+  },
+  {
+   "column": "sessions.created_at",
+   "writtenBy": "MySQL",
+   "asked": "2026-08-03T06:15:42.651Z",
+   "stored": "2026-08-03 12:15:42",
+   "wire": null,
+   "driftStored": 0,
+   "driftWire": null,
+   "note": "CURRENT_TIMESTAMP"
+  },
+  {
+   "column": "checklist_items.completed_at",
+   "writtenBy": "app",
+   "asked": "2026-08-03T06:15:43.151Z",
+   "stored": "2026-08-03 06:15:43",
+   "wire": null,
+   "driftStored": -6,
+   "driftWire": null,
+   "note": "POST /toggle"
+  },
+  {
+   "column": "tasks.due_date (DATE)",
+   "writtenBy": "app",
+   "asked": "2026-08-10",
+   "stored": "2026-08-10",
+   "wire": "2026-08-10",
+   "driftStored": 0,
+   "driftWire": 0,
+   "note": "DATE has no zone — must round-trip byte-identically under ANY process TZ"
+  },
+  {
+   "column": "tasks.start_date (DATE)",
+   "writtenBy": "app",
+   "asked": "2026-08-01",
+   "stored": "2026-08-01",
+   "wire": "2026-08-01",
+   "driftStored": 0,
+   "driftWire": 0,
+   "note": ""
+  }
+ ]
+}

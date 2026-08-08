@@ -1,0 +1,65 @@
+=== 1. ONE ROW PER ACTION — drive every kind of change on one task ===
+  GET /tasks/:id/activity -> 200 | envelope keys: data,pagination | rows: 12
+  action counts: {"task_unarchived":1,"task_archived":1,"dependency_added":1,"comment_posted":1,"tag_removed":1,"tag_added":1,"assignee_removed":1,"assignee_added":1,"task_updated":2,"status_changed":1,"task_created":1}
+  12 changes made; actions that produced NO row:
+      checklist_created
+      watcher_added
+  a sample row: {"id":"act-ShsoMiu2UOj9vRdaOBWCGw","task_id":"t-1rSK4FPBTYjP6SJv20RFGQ","actor":{"id":"u-ohsNaae2ShvNIZpMlJHVRQ","first_name":"Owner","last_name":"User","email":"owner@company.local","role":"owner","avatar_url":null,"status":"active","timezone":"Asia/Dhaka","created_at":"2026-07-23T14:23:07.000Z","last_login_at":"2026-07-30T08:31:26.000Z"},"action":"task_unarchived","context":null,"created_at":"2026-07-30T14:31:26.000Z"}
+  actor hydrated? full object, keys=10
+  context on status_changed: {"to":"st-2EvMNXnB4hI4UOM_y49RCA","from":"st-H0HNIloUYmJ5CF_GSGAllw"}
+  context on task_updated  : {"fields":["status_id"]}
+
+=== 2. ORDERING + PAGINATION ===
+  API order matches internal_id DESC (newest first)? yes OK
+  ?limit=3 -> 3 rows | pagination: {"next_cursor":"NDg4","has_more":true,"total_estimate":12}
+  page 2   -> 3 rows | overlap with page 1: 0 OK
+  walking every page: 12 rows in 3 pages | table says 12 OK
+  ?action=status_changed -> ["status_changed"]
+  ?action=nonexistent    -> []
+  ?limit=0          -> 422 validation.failed     
+  ?limit=-1         -> 422 validation.failed     
+  ?limit=abc        -> 422 validation.failed     
+  ?limit=99999      -> 200                       12 rows
+  ?cursor=garbage   -> 400 pagination.invalid_cursor
+  unknown task id -> 404 task.not_found
+
+=== 3. BULK operations — one row per task, not a storm ===
+  POST /tasks/bulk (3 tasks, 1 field) -> 422 validation.failed | activity rows before 3 after 3 *** 0 rows ***
+  same, 2 fields at once              -> 422 validation.failed | + 0 rows *** per-field rows ***
+
+=== 4. ACTOR hydration edge cases ===
+  task_activity rows with a NULL actor (system events): 0
+  a system row on the wire: {"id":"ta-p20-sys","task_id":"t-1rSK4FPBTYjP6SJv20RFGQ","actor":null,"action":"task_updated","context":{"fields":["sla_due_at"]},"created_at":"2026-07-30T14:31:26.000Z"}
+  a DEACTIVATED actor still hydrates: no row by that actor
+
+=== 5. GET /activity/recent ===
+  -> 200 | shape: keys=data | count: 20
+  sample: {"id":"wsa-6ETIsmwKXktpyuiIApxSuQ","actor":{"id":"u-ohsNaae2ShvNIZpMlJHVRQ","first_name":"Owner","last_name":"User","email":"owner@company.local","role":"owner","avatar_url":null,"status":"active","timezone":"Asia/Dhaka","created_at":"2026-07-23T14:23:07.000Z","last_login_at":"2026-07-30T08:31:26.000Z"},"entity_type":"list","entity_id":"l--cses342aa1K24qpFrZlyQ","action":"created","context":{"name":"TEST-p20-list","space_id":"sp-hb8qbLyl_mAOfp5Wj1ia5g"},"created_at":"2026-07-30T14:31:25.000Z"}
+  ?limit=3      -> 200                       3 rows
+  ?limit=0      -> 422 validation.failed     
+  ?limit=abc    -> 422 validation.failed     
+  ?limit=500    -> 200                       50 rows
+
+=== 6. GET /activity (workspace feed) ===
+  -> 200 | envelope: data,pagination | pagination: {"next_cursor":"Mjg4","has_more":true,"total_estimate":276}
+  sample: {"id":"wsa-6ETIsmwKXktpyuiIApxSuQ","actor":{"id":"u-ohsNaae2ShvNIZpMlJHVRQ","first_name":"Owner","last_name":"User","email":"owner@company.local","role":"owner","avatar_url":null,"status":"active","timezone":"Asia/Dhaka","created_at":"2026-07-23T14:23:07.000Z","last_login_at":"2026-07-30T08:31:26.000Z"},"entity_type":"list","entity_id":"l--cses342aa1K24qpFrZlyQ","action":"created","context":{"name":"TEST-p20-list","space_id":"sp-hb8qbLyl_mAOfp5Wj1ia5g"},"created_at":"2026-07-30T14:31:25.000Z"}
+  ?entity_type=space                -> 200                       47 rows
+  ?entity_type=bogus                -> 422 validation.failed     
+  ?actor_id=u-ohsNaae2ShvNIZpMlJHVRQ-> 200                       50 rows
+  ?from=2020-01-01T00:00:00Z        -> 200                       50 rows
+  ?to=2020-01-01T00:00:00Z          -> 200                       0 rows
+  ?from=notadate                    -> 422 validation.failed     
+  ?limit=2&limit=3                  -> 422 validation.failed     
+  ?cursor=garbage                   -> 400 pagination.invalid_cursor
+  entity_type=user rows all really user rows? yes OK
+  ip_address on the wire? no (not serialized)
+
+=== 7. WHO can read the audit feed? ===
+  member (arif)                 -> 200     100 rows  | people-management rows visible: 0
+  space-scoped (marketing.only) -> 200     100 rows  | people-management rows visible: 0
+  guest                         -> 200     100 rows  | people-management rows visible: 0
+  marketing.only /activity/recent — space/list rows it can see: ["created:TEST-p20-list","deleted:TEST-p19c","archived:l-XGYPljdTC7B7U00mpWtQag","created:TEST-p19c","deleted:TEST-p19-list","archived:l-PeJD0DieiO9Y2O3u6ooTPg"]
+
+=== CLEANUP ===
+  orphan statuses 0 | tasks 51 (51) | lists 14 (14) | statuses 70 (70)
+  active users: 15

@@ -96,6 +96,11 @@ export const tasks = mysqlTable(
         startDate: date("start_date"),
         dueDate: date("due_date"),
         completedAt: timestamp("completed_at"),
+        // Overdue-alert claim (upgrades/014): set by the overdue-alert job in
+        // the same tx as its `overdue` notification fanout (exactly once per
+        // due_date); TaskWriteService clears it whenever due_date changes so a
+        // moved deadline re-arms the alert.
+        overdueNotifiedAt: timestamp("overdue_notified_at"),
 
         // ─── Dept Review V1 — current review state (denorm; app-maintained in
         // the same tx as the task_reviews insert — NO triggers). reviewedAt is
@@ -231,6 +236,21 @@ export const tasks = mysqlTable(
             t.slaDueAt,
             t.completedAt,
             t.archivedAt,
+        ),
+        // F30 (ISS-088): list pagination orders by `internal_id` while every
+        // index above ends in a status/date column, so the page was found by
+        // index and then FILESORTED. This matches the actual ORDER BY of
+        // `TasksRepo.listByList` and removes the sort at any list size.
+        listInternalIdx: index("idx_tasks_list_internal").on(
+            t.primaryListId,
+            t.internalId,
+        ),
+        // upgrades/014: the overdue-alert job's every-10-min scan.
+        overdueScanIdx: index("idx_tasks_overdue_scan").on(
+            t.dueDate,
+            t.completedAt,
+            t.archivedAt,
+            t.overdueNotifiedAt,
         ),
     }),
 );
@@ -391,6 +411,12 @@ export const taskActivity = mysqlTable(
         taskTimeIdx: index("idx_task_activity_task_time").on(
             t.taskId,
             t.createdAt,
+        ),
+        // F30 (ISS-088): the feed orders by `internal_id` DESC; the time index
+        // above cannot serve that order, so every page filesorted.
+        taskInternalIdx: index("idx_task_activity_task_internal").on(
+            t.taskId,
+            t.internalId,
         ),
     }),
 );

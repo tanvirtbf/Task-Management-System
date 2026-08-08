@@ -177,6 +177,17 @@ export class TaskDependenciesService {
             );
         }
 
+        // F22 (ISS-051, P18 update): an ARCHIVED endpoint refuses new edges —
+        // the same guard every other task write already has.
+        for (const t of [blocker, blocked]) {
+            if (t.archivedAt) {
+                throw AppError.conflict(
+                    "task.archived",
+                    `Task ${t.id} is archived — unarchive it to link dependencies`,
+                );
+            }
+        }
+
         const edge = await this.db.transaction(async (tx) => {
             await this.assertNoCycle(taskId, relatedTaskId, tx);
 
@@ -250,6 +261,24 @@ export class TaskDependenciesService {
 
         const edge = await this.deps.findByIdInWorkspace(depId, workspaceId);
         if (!edge) {
+            throw AppError.notFound(
+                "dep.not_found",
+                `Dependency ${depId} does not exist`,
+            );
+        }
+
+        // F9 (ISS-053): unlinking is a statement about BOTH endpoints. The
+        // create path already refuses an invisible endpoint (404); the delete
+        // path did not, so a space-scoped user could sever an edge into a
+        // space they cannot see. Resolve both ends through the same
+        // visibility-filtered read the hydration uses — fewer than two rows
+        // means one end is invisible, and the edge "does not exist" for this
+        // caller (D-9: deny reads by 404, no existence oracle).
+        const visibleEnds = await this.deps.findTaskRowsByIds(
+            [edge.taskId, edge.relatedTaskId],
+            workspaceId,
+        );
+        if (visibleEnds.length < 2) {
             throw AppError.notFound(
                 "dep.not_found",
                 `Dependency ${depId} does not exist`,

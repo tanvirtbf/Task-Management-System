@@ -42,4 +42,7 @@ exports.workspaceActivity = (0, mysql_core_1.mysqlTable)("workspace_activity", {
         .onUpdate("cascade"),
     workspaceTimeIdx: (0, mysql_core_1.index)("idx_workspace_activity_workspace_time").on(t.workspaceId, t.createdAt),
     entityIdx: (0, mysql_core_1.index)("idx_workspace_activity_entity").on(t.entityType, t.entityId),
+    // F30 (ISS-088): both feed reads order by `internal_id` DESC — the
+    // time index cannot serve that order, so every page filesorted.
+    workspaceInternalIdx: (0, mysql_core_1.index)("idx_workspace_activity_ws_internal").on(t.workspaceId, t.internalId),
 }));

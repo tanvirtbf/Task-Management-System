@@ -1,0 +1,5 @@
+F5 gate — home + collab + tasks, serial — 2026-08-04T12:11:27+06:00
+home     Test Suites: 1 passed, 1 total|Tests:       23 passed, 23 total|
+collab   Test Suites: 2 passed, 2 total|Tests:       47 passed, 47 total|
+tasks    Test Suites: 1 failed, 9 passed, 10 total|Tests:       1 failed, 358 passed, 359 total|
+gate finished 2026-08-04T12:27:51+06:00

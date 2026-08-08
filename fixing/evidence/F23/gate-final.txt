@@ -1,0 +1,18 @@
+F19-F23 consolidated gate — FINAL settled tree, serial — 2026-08-06T10:07:31+06:00
+notifications      Test Suites: 2 failed, 5 passed, 7 total|Tests:       1 failed, 67 passed, 68 total|
+collab             Test Suites: 1 failed, 1 passed, 2 total|Tests:       1 failed, 46 passed, 47 total|
+home               Test Suites: 1 passed, 1 total|Tests:       23 passed, 23 total|
+search             Test Suites: 1 failed, 1 total|Tests:       1 failed, 31 passed, 32 total|
+users              Test Suites: 2 failed, 6 passed, 8 total|Tests:       3 failed, 279 passed, 282 total|
+spaces             Test Suites: 2 failed, 5 passed, 7 total|Tests:       4 failed, 240 passed, 244 total|
+lists              Test Suites: 1 failed, 4 passed, 5 total|Tests:       1 failed, 170 passed, 171 total|
+forms              Test Suites: 8 passed, 8 total|Tests:       85 passed, 85 total|
+statuses           Test Suites: 5 passed, 5 total|Tests:       209 passed, 209 total|
+taskdeps           Test Suites: 2 failed, 1 passed, 3 total|Tests:       27 failed, 18 passed, 45 total|
+sprints            
+tagsreview         
+taskTypes          
+workspaceActivity  
+membership         
+tasks              
+gate finished 2026-08-06T10:38:19+06:00

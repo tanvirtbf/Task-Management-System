@@ -1,0 +1,36 @@
+=== boot behaviour by ENCRYPTION_KEY state (from the server logs) ===
+  malformed key ('not-a-valid-64-hex-key') -> the process REFUSES TO BOOT:
+     'ENCRYPTION_KEY is set but malformed - need 64 hex chars (256-bit)'
+  absent key ('')                          -> boots, with a warning:
+     'ENCRYPTION_KEY missing - public form submissions will return 503 until it is set'
+
+=== the keyless instance on :5712 ===
+  GET /public/forms/:slug -> 200      (a read needs no key)
+  POST submit             -> 503 form.encryption_unavailable      clean 503
+     body: {"error":{"code":"form.encryption_unavailable","message":"Form intake is temporarily unavailable (encryption not configured)","request_id":"req_5a5298
+     tasks on the list: 0 -> 0 NO orphan intake task (gap-scan C4 holds)
+     submission rows: 0
+
+=== reading EXISTING encrypted rows on a keyless box ===
+  submit on the KEYED box -> 201      (creates one encrypted row)
+  GET /forms/:id/submissions on the KEYLESS box -> 200                           
+     row: {"id":"fsub-byyfqBcDQS6NKtjY8yzCLg","form_id":"frm-BYsBoeS1Y8QeEfIdng_R5w","task_id":"t-utQpyaZ0d-_nF5keGmW_oA","submitter_email":null,"data":"{\"ciphertext\":\"61d02080baf10a511e837bbd037a9be053b562a
+     data field: returned as the raw CIPHERTEXT envelope
+  the same call on the KEYED box -> 200      {"name":"TEST-p26d encrypted row"}
+
+=== CLEANUP ===
+node:internal/process/promises:394
+    triggerUncaughtException(err, true /* fromPromise */);
+    ^
+
+Error: Cannot delete or update a parent row: a foreign key constraint fails (`taskmanagement`.`tasks`, CONSTRAINT `fk_tasks_list` FOREIGN KEY (`primary_list_id`) REFERENCES `lists` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE)
+    at C:\Users\Tanvir\AppData\Local\Temp\claude\E--Task-Management-System\0c5a6be8-84af-4c0b-91a3-1cb6f5c4eb9d\scratchpad\p26d.cjs:71:14
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5) {
+  code: 'ER_ROW_IS_REFERENCED_2',
+  errno: 1451,
+  sqlState: '23000',
+  sqlMessage: 'Cannot delete or update a parent row: a foreign key constraint fails (`taskmanagement`.`tasks`, CONSTRAINT `fk_tasks_list` FOREIGN KEY (`primary_list_id`) REFERENCES `lists` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE)',
+  sql: "DELETE FROM lists WHERE name LIKE 'TEST-p26%'"
+}
+
+Node.js v22.21.1

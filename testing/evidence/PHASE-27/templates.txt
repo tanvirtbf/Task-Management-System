@@ -1,0 +1,57 @@
+=== 1. CRUD ===
+  create -> 201      keys: ["id","workspace_id","type","name","description","icon","color","structure","usage_count","created_by","created_at","updated_at"]
+  DUPLICATE name -> 409 template.duplicate
+  no structure   -> 422 validation.failed
+  empty name     -> 422 validation.failed
+  bad type       -> 422 validation.failed
+  GET list  -> 200      | GET one -> 200
+  GET unknown -> 404 template.not_found
+  PATCH name -> 200
+  PATCH unknown -> 404 template.not_found
+
+=== 2. The `structure` blob and the case transform ===
+  structure keys on the wire: ["tags","priority","taskTypeId","description","checklistName","checklistItems"]
+  taskTypeId survived? yes, camelCase intact
+  stored in the DB: {"tags": ["tag-abas9DoMdlMIQa-gxISmHg"], "priority": 3, "taskTypeId": "tt-Xtba3baw07I8h-WWPXcXhA", "description": "TEST-p27 prefilled description", "c
+  sent keys : ["taskTypeId","checklistItems","snake_case_key","camelCaseKey","UPPER_KEY","nested"]
+  read back : ["nested","UPPER_KEY","taskTypeId","camelCaseKey","checklistItems","snake_case_key"]
+  nested    : sent ["innerCamel","inner_snake"] read ["innerCamel","inner_snake"]
+  verbatim? *** MUTATED ***
+
+=== 3. APPLY ===
+  apply -> 201      keys: ["id","task_number","name","primary_list_id","task_type_id","priority","tags","subtasks_count","checklists","created_at"]
+     task name: "TEST-p27 Renamed" | priority: 3 | type: template's
+     tags: ["tag-abas9DoMdlMIQa-gxISmHg"] | description: "TEST-p27 prefilled description"
+     checklist: "TEST-p27 steps" with 2 items: ["TEST-p27 step one","TEST-p27 step two"]
+     activity: ["created_from_template"]
+  apply with a custom task_name -> 201
+  apply to an unknown list  -> 404 list.not_found
+  apply an unknown template -> 404 template.not_found
+  apply an EMPTY structure  -> 404 template.not_found
+  structure with a DEAD task type -> 422 template.invalid_task_type apply -> 404 template.not_found
+  structure with a DEAD tag       -> 422 template.invalid_tag apply -> 404 template.not_found
+  apply to an ARCHIVED list -> 409 list.archived
+
+=== 4. APPLY TWICE — idempotent or duplicating? ===
+  two applies: 201 / 201 | tasks on the list 2 -> 4 DUPLICATES (a new task each time)
+  distinct task ids? yes
+  usage_count: 4
+
+=== 5. A LARGE structure (60 checklist items) ===
+  apply 60 items -> 201      32ms
+     items materialised: 60 of 60
+  a 2000-item template -> 201                            (no cap on structure size)
+
+=== 6. ATOMICITY — a template whose tag dies between create and apply ===
+  tag deleted after the template was saved -> apply: 422 template.invalid_tag      
+     tasks created anyway? 0 none — clean refusal
+
+=== 7. ACCESS ===
+  guest creates a template -> 403 auth.forbidden
+  guest applies one        -> 201
+  no token                 -> 401
+  DELETE a template -> 204
+  DELETE it again   -> 404 template.not_found
+
+=== CLEANUP ===
+  orphan statuses 0 | tasks 51 (51) | lists 14 (14) | statuses 70 (70) | templates 0 (0) | tags 8 (8)

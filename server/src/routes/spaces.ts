@@ -3,6 +3,7 @@ import express, {
     type Request,
     type Response,
 } from "express";
+import { allowQuery } from "../middlewares/allowQuery";
 import { SpacesController } from "../controllers/SpacesController";
 import { SpacesService } from "../services/SpacesService";
 import { SpacesRepo } from "../repositories/SpacesRepo";
@@ -86,6 +87,8 @@ const reviewsController = new ReviewsController(reviewsService, logger);
 router.get(
     "/",
     authenticate,
+    // F23 (ISS-014): a mistyped filter is a 422, not the full set.
+    allowQuery(["include_archived","limit","cursor"]),
     listSpacesValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>

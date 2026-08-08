@@ -80,6 +80,9 @@ const WIRE_KEYS = [
     "type",
     "config",
     "is_required",
+    // F26 (ISS-042): the guest-redaction flag reaches the wire at last — the
+    // redaction always worked, the column was in no serializer.
+    "hidden_from_guests",
     "default_value",
     "position",
 ].sort();
@@ -114,7 +117,11 @@ describe("GET /api/v1/custom-fields", () => {
                 config: { max_length: 60 },
             });
             expect(f).not.toHaveProperty("workspace_id");
-            expect(f).not.toHaveProperty("hidden_from_guests");
+            // F26 (ISS-042): `hidden_from_guests` is now DELIBERATELY on the
+            // wire — it is the one guest-redaction control the product
+            // implements, and it appeared in no serializer, so it could not be
+            // switched on except by hand in SQL.
+            expect(f).toHaveProperty("hidden_from_guests", false);
             expect(f).not.toHaveProperty("created_by");
         });
 

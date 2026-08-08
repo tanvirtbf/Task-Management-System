@@ -1,0 +1,5 @@
+F4 gate — sla + eng, serial, after the tasks module frees the box — 2026-08-04T11:31:03+06:00
+tasks    Test Suites: 1 failed, 9 passed, 10 total|Tests:       1 failed, 358 passed, 359 total|   <- the 1 = ISS-087 (pre-existing, owned by F11); identical to F3 tasks-clean.txt
+sla      Test Suites: 2 passed, 2 total|Tests:       24 passed, 24 total|
+eng      Test Suites: 3 passed, 3 total|Tests:       78 passed, 78 total|
+gate finished 2026-08-04T11:44:58+06:00

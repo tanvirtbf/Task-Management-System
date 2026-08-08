@@ -1,0 +1,14 @@
+  --- 8. Offboarding: deactivate -> sessions dead -> work retained ---
+  OK    owner deactivates the leaver (204)                            got 204
+  OK    status = deactivated                                          deactivated
+  OK    live sessions revoked (0 remaining)                           0 live
+  OK    their task assignments RETAINED                               1 assignment(s)
+  OK    they can no longer sign in                                    login refused
+
+  === CLEANUP ===
+  users 15 (15) | tasks 46 (46) | forms 0 (0) | on_call 1 (1) | reports 12 (12)
+  form_submissions cols 10 (8 — ISS-025 drift restored)
+
+  SCORE: 47 passed, 0 failed  (P39 baseline: 22/22)
+  PASS — nobody lost a job function.
+

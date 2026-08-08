@@ -1,0 +1,30 @@
+
+  === F15 — the counters ===
+
+  --- ISS-065: comments_count vs SOFT delete ---
+  OK    fixture task created                                    got 201
+  OK    3 comments -> counter 3, matches the live rows          counter 3
+  OK    delete one (204) -> counter 2 (was STUCK at 3)          counter 2, live rows 2
+  OK    …and the badge now equals what a reader actually sees   counter 2, list returns 2
+  OK    an EDIT must not move the counter                       counter 2
+  OK    restoring a soft-deleted comment brings it BACK to 3    counter 3
+
+  --- ISS-046: subtasks_count / subtasks_completed ---
+  OK    2 children -> 2/0 (was 0/0 — maintained by nothing)     2/0
+  OK    mark one done -> 2/1                                    2/1
+  OK    move it back to open -> 2/0 (moves BOTH ways)           2/0
+  OK    archive a child -> 1/0 (leaves the count, like the list)1/0
+  OK    …and the badge equals the subtask LIST                  counter 1, list returns 1
+  OK    unarchive -> back to 2/0                                2/0
+  OK    BULK both to done -> 2/2 (one recompute per parent)     2/2 (bulk 200)
+  OK    hard-delete a child -> 1/1                              1/1
+
+  --- ISS-080: forms.submission_count vs the retention job ---
+  OK    3 submissions -> count 3                                count 3
+  OK    the retention job deletes 1 -> count follows to 2 (was STUCK at 3)count 2, rows 2, job deleted 1
+
+  === CLEANUP ===
+  tasks 46 (46) | comments 7 (7) | forms 0 (0) | notif 57 (57)
+
+  PASS — all three counters track the rows, in both directions.
+

@@ -48,7 +48,7 @@ const signAccess = (
     jwt.sign(
         { sub: user.id, role: user.role, workspaceId: user.workspaceId },
         secret,
-        { algorithm: "HS256", ...opts },
+        { algorithm: "HS256", expiresIn: "15m", ...opts },
     );
 
 const userById = async (id: string) => {
@@ -137,18 +137,56 @@ describe("PATCH /api/v1/users/:id", () => {
         });
 
         it("lowercases a changed email before storing and returning it", async () => {
+            // F12 (ISS-030): changing a LOGIN EMAIL is admin-only now, so the
+            // lowercasing rule is exercised through an admin. A member editing
+            // their own address is the vulnerability itself and is asserted
+            // just below.
+            const { admin, client } = await adminClient("admin");
+            const target = await makeUser({
+                workspaceId: admin.workspaceId,
+                role: "member",
+            });
+
+            const res = await client
+                .patch(PATH(target.id))
+                .send({ email: "New.Address@Seed.TEST" });
+
+            expect(res.status).toBe(200);
+            expect(res.body.email).toBe("new.address@seed.test");
+            expect((await userById(target.id)).email).toBe(
+                "new.address@seed.test",
+            );
+        });
+
+        it("refuses a member changing their OWN login email (ISS-030)", async () => {
+            // A member could move their own account to any address, with no
+            // verification and no notice: it frees the corporate address (a
+            // later invite then creates a SECOND account at it) and, with
+            // forgot-password, is a persistence primitive.
             const member = await makeUser({ role: "member" });
             const client = await makeLoggedInClient(member);
 
             const res = await client
                 .patch(PATH(member.id))
-                .send({ email: "New.Address@Seed.TEST" });
+                .send({ email: "attacker@evil.test" });
+
+            expect(res.status).toBe(403);
+            expect(res.body.error.code).toBe("user.email_change_forbidden");
+            expect((await userById(member.id)).email).toBe(member.email);
+        });
+
+        it("still lets a member echo their own unchanged email", async () => {
+            // A plain profile PATCH that happens to include the current address
+            // must not start failing.
+            const member = await makeUser({ role: "member" });
+            const client = await makeLoggedInClient(member);
+
+            const res = await client
+                .patch(PATH(member.id))
+                .send({ first_name: "Nadia", email: member.email });
 
             expect(res.status).toBe(200);
-            expect(res.body.email).toBe("new.address@seed.test");
-            expect((await userById(member.id)).email).toBe(
-                "new.address@seed.test",
-            );
+            expect(res.body.first_name).toBe("Nadia");
         });
 
         it("sets and then clears avatar_url (null) (200)", async () => {
@@ -564,7 +602,16 @@ describe("PATCH /api/v1/users/:id", () => {
             expect(res.body.first_name).toBe("রহিম 🌟 José");
         });
 
-        it("accepts a timezone at exactly the 64-char boundary (200)", async () => {
+        it("refuses a 64-char timezone that is not a real IANA zone (ISS-031)", async () => {
+            // This test used to assert that `"a".repeat(64)` was ACCEPTED —
+            // the column is VARCHAR(64), so the only rule was length. That is
+            // exactly ISS-031: the workspace validator has always checked the
+            // value against the IANA list, the user profile did not, and
+            // `users.timezone` is on the wire in GET /users and /auth/me, so a
+            // client doing `Intl.DateTimeFormat(…, {timeZone})` threw a
+            // RangeError on that row. The IANA rule is strictly narrower than
+            // the length rule (the longest real zone is ~32 chars), so the
+            // 64-char boundary is now unreachable BY DESIGN.
             const member = await makeUser({ role: "member" });
             const client = await makeLoggedInClient(member);
 
@@ -572,7 +619,20 @@ describe("PATCH /api/v1/users/:id", () => {
                 .patch(PATH(member.id))
                 .send({ timezone: "a".repeat(64) });
 
+            expect(res.status).toBe(422);
+            expect(res.body.error.code).toBe("validation.failed");
+        });
+
+        it("accepts a long REAL IANA zone", async () => {
+            const member = await makeUser({ role: "member" });
+            const client = await makeLoggedInClient(member);
+
+            const res = await client
+                .patch(PATH(member.id))
+                .send({ timezone: "America/Argentina/ComodRivadavia" });
+
             expect(res.status).toBe(200);
+            expect(res.body.timezone).toBe("America/Argentina/ComodRivadavia");
         });
 
         it("trims surrounding whitespace in a name before storing", async () => {

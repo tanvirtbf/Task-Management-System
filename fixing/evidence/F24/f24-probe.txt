@@ -1,0 +1,36 @@
+
+  === F24 — Home page honesty ===
+
+  --- ISS-057: the fabricated signals are gone ---
+  OK    GET /home/kpis returns the six tiles                          6 tiles
+  OK    a tile is label+value+valueDisplay ONLY (no trend, no sparkline)label,value,valueDisplay
+  OK    no trend / trendDirection / isPositive / sparkline anywhere on the wire
+  OK    the client card no longer imports Trend or Sparkline          
+
+  --- the six NUMBERS still match hand-written SQL (P19's check) ---
+  OK    owner · myTasks                                               wire 2 vs SQL 2
+  OK    owner · dueToday                                              wire 0 vs SQL 0
+  OK    owner · overdue                                               wire 2 vs SQL 2
+  OK    owner · awaitingReview                                        wire 0 vs SQL 0
+  OK    a dept head · myTasks                                         wire 2 vs SQL 2
+  OK    a dept head · dueToday                                        wire 0 vs SQL 0
+  OK    a dept head · overdue                                         wire 1 vs SQL 1
+  OK    a dept head · awaitingReview                                  wire 1 vs SQL 1
+
+  --- ISS-059: the tile counts the queue this company uses ---
+  OK    pr_status='open' is still 0 rows workspace-wide (the old metric)0 rows
+  OK    …while the real review queue is non-empty                     3 completed tasks unreviewed
+  OK    a DEPT HEAD now sees a non-zero Awaiting My Review            value 1
+  OK    HomeRepo no longer filters on pr_status                       
+
+  --- ISS-056: the Agenda card stops inventing a time ---
+  OK    GET /home/agenda still answers 200                            got 200
+  OK    every due_date on the wire is DATE-only (no time component)   0 rows
+  OK    the client no longer calls toLocaleTimeString on a date       
+  OK    …and sorts by something real (priority), not by a constant instant
+
+  === CLEANUP ===
+  read-only probe — nothing written
+
+  PASS — the numbers are unchanged and correct; the inventions around them are gone.
+

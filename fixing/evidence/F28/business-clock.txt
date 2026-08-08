@@ -1,0 +1,24 @@
+  business day length: 9h
+
+  filed Thu 06 Aug, 17:30   (Thu 17:30 Dhaka - 30 min before close, weekend next)
+    S0  2 business hours -> Sun 09 Aug, 10:30     [wall-clock was Thu 06 Aug, 19:30]
+    S1  1 business day   -> Sun 09 Aug, 17:30     [wall-clock was Fri 07 Aug, 17:30]
+    S2  7 business days  -> Mon 17 Aug, 17:30     [wall-clock was Thu 13 Aug, 17:30]
+
+  filed Thu 06 Aug, 09:00   (Thu 09:00 Dhaka - start of a working day)
+    S0  2 business hours -> Thu 06 Aug, 11:00     [wall-clock was Thu 06 Aug, 11:00]
+    S1  1 business day   -> Thu 06 Aug, 18:00     [wall-clock was Fri 07 Aug, 09:00]
+    S2  7 business days  -> Sun 16 Aug, 18:00     [wall-clock was Thu 13 Aug, 09:00]
+
+  filed Fri 07 Aug, 12:00   (Fri 12:00 Dhaka - a NON-working day)
+    S0  2 business hours -> Sun 09 Aug, 11:00     [wall-clock was Fri 07 Aug, 14:00]
+    S1  1 business day   -> Sun 09 Aug, 18:00     [wall-clock was Sat 08 Aug, 12:00]
+    S2  7 business days  -> Mon 17 Aug, 18:00     [wall-clock was Fri 14 Aug, 12:00]
+
+  filed Sun 02 Aug, 19:00   (Sun 19:00 Dhaka - after close)
+    S0  2 business hours -> Mon 03 Aug, 11:00     [wall-clock was Sun 02 Aug, 21:00]
+    S1  1 business day   -> Mon 03 Aug, 18:00     [wall-clock was Mon 03 Aug, 19:00]
+    S2  7 business days  -> Tue 11 Aug, 18:00     [wall-clock was Sun 09 Aug, 19:00]
+
+  no working days configured -> falls back to wall clock: true
+  inverted window          -> falls back to wall clock: true

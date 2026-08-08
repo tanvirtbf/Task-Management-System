@@ -1,0 +1,12 @@
+=== assignee shape: agenda vs a normal task read ===
+  agenda assignee[0] : "u-ohsNaae2ShvNIZpMlJHVRQ"
+  GET /tasks/:id     : "u-ohsNaae2ShvNIZpMlJHVRQ"
+  identical? yes - same serializer
+  my-work today[0]   : "u-ohsNaae2ShvNIZpMlJHVRQ"
+
+=== guest: does the KPI count more than the guest can actually read? ===
+  guest openTeamTasks KPI: 32
+  tasks the guest can actually page through, list by list: 52
+  -> the KPI is NOT wider than their own reach - consistent
+
+CLEANUP: orphans 0 | tasks 51 (51) | lists 14 (14)

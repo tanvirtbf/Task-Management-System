@@ -1,0 +1,50 @@
+vite v7.3.3 building client environment for production...
+transforming...
+✓ 3632 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                   1.02 kB │ gzip:   0.49 kB
+dist/assets/antd-BDNOyzxu.css                     2.86 kB │ gzip:   1.14 kB
+dist/assets/index-CaGGZMky.css                   12.81 kB │ gzip:   3.39 kB
+dist/assets/StoryPointsBadge-BBx6vHqZ.js          0.50 kB │ gzip:   0.35 kB
+dist/assets/BugSeverityBadge-DGgCBZTX.js          0.95 kB │ gzip:   0.60 kB
+dist/assets/useInfiniteQuery-B_6RqpeZ.js          1.12 kB │ gzip:   0.47 kB
+dist/assets/SettingsHeader-BtH-w1rj.js            1.82 kB │ gzip:   0.68 kB
+dist/assets/SlaQueuePage-B_hv_gYv.js              2.37 kB │ gzip:   1.14 kB
+dist/assets/SettingsLayout-BmwUaS7s.js            2.78 kB │ gzip:   1.20 kB
+dist/assets/OnCallRotationPage-c9avF2q0.js        3.66 kB │ gzip:   1.61 kB
+dist/assets/WorkspaceSettings-DFopIfae.js         3.67 kB │ gzip:   1.56 kB
+dist/assets/ImportExportSettings-BGo2Zh21.js      3.74 kB │ gzip:   1.55 kB
+dist/assets/TagsSettings-BiViLMWh.js              3.87 kB │ gzip:   1.65 kB
+dist/assets/ProfileSettings-B3QJKiIB.js           4.33 kB │ gzip:   1.79 kB
+dist/assets/ReportsListPage-Dx1flIXo.js           4.59 kB │ gzip:   1.98 kB
+dist/assets/SprintBoardPage-CCiQk-4S.js           4.68 kB │ gzip:   1.92 kB
+dist/assets/FormsListPage-BCCOI0Lr.js             5.03 kB │ gzip:   1.99 kB
+dist/assets/SpacePage--alXa4Bz.js                 5.22 kB │ gzip:   1.90 kB
+dist/assets/RolesSettings-C3jh2qW6.js             5.53 kB │ gzip:   2.40 kB
+dist/assets/TaskTypesSettings-ttNzbwi0.js         5.65 kB │ gzip:   2.19 kB
+dist/assets/PublicFormPage-CBi8P8Cx.js            5.98 kB │ gzip:   2.20 kB
+dist/assets/TemplatesSettings-Cl1oxyk3.js         6.12 kB │ gzip:   2.32 kB
+dist/assets/EngineeringHomePage-BLcNZpgi.js       6.22 kB │ gzip:   2.10 kB
+dist/assets/MembersSettings-CW7zYqH8.js           6.31 kB │ gzip:   2.38 kB
+dist/assets/StatusesSettings-Bro6-SAw.js          6.34 kB │ gzip:   2.84 kB
+dist/assets/SearchPage-WHI--oSc.js                6.56 kB │ gzip:   2.66 kB
+dist/assets/CustomFieldsSettings-BAgfn0-Y.js      6.63 kB │ gzip:   2.37 kB
+dist/assets/InboxPage-C0NmLRA1.js                 8.39 kB │ gzip:   3.10 kB
+dist/assets/ReportDetailPage--jZxvmOW.js         11.76 kB │ gzip:   3.86 kB
+dist/assets/DepartmentPage-QxYBPzaX.js           12.38 kB │ gzip:   4.16 kB
+dist/assets/FormBuilderPage-Dbv6feh7.js          16.05 kB │ gzip:   4.66 kB
+dist/assets/icons-C3CGlMp5.js                    31.74 kB │ gzip:   9.68 kB
+dist/assets/core.esm-CRMpAnYE.js                 43.13 kB │ gzip:  14.37 kB
+dist/assets/ListPage-DIhyMnhK.js                 63.87 kB │ gzip:  17.21 kB
+dist/assets/TaskDetailDrawer-4pfrhl_X.js        108.43 kB │ gzip:  30.77 kB
+dist/assets/react-Cyd7RrNT.js                   284.40 kB │ gzip:  91.24 kB
+dist/assets/index-D6phPI3D.js                   368.32 kB │ gzip: 111.07 kB
+dist/assets/editor-2EwLskGu.js                  375.48 kB │ gzip: 119.91 kB
+dist/assets/antd-BxUNTJjQ.js                  1,178.21 kB │ gzip: 365.71 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 9.10s

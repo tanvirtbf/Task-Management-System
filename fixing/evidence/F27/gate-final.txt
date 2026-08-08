@@ -1,0 +1,19 @@
+Block F gate — FINAL, solo runs with 30s drain (chain-flake rule) — 2026-08-06T14:16:49+06:00
+(tagsreview 149, taskTypes 184, collab 47, taskdeps 67 were already green in the first pass)
+home           Test Suites: 1 passed, 1 total|Tests:       23 passed, 23 total|
+spaces         Test Suites: 2 failed, 5 passed, 7 total|Tests:       2 failed, 243 passed, 245 total|
+lists          Test Suites: 5 passed, 5 total|Tests:       172 passed, 172 total|
+rbac           Test Suites: 11 passed, 11 total|Tests:       287 passed, 287 total|
+customfields   Test Suites: 1 failed, 6 passed, 7 total|Tests:       1 failed, 89 passed, 90 total|
+statuses       Test Suites: 5 passed, 5 total|Tests:       209 passed, 209 total|
+gate finished 2026-08-06T14:24:40+06:00
+
+── after the last three spec updates (spaces colour-loop name collision, the
+   spaces rename spec, the custom-field leak-guard that predated ISS-042) ──
+spaces         246/246
+customfields    90/90
+
+ALL TEN BLOCK F MODULES GREEN:
+  home 23 · spaces 246 · lists 172 · rbac 287 · customfields 90 · statuses 209
+  tagsreview 149 · taskTypes 184 · collab 47 · taskdeps 67
+  client vitest 44/44

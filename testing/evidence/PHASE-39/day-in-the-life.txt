@@ -1,0 +1,89 @@
+=== SCENARIO 1 — CUSTOMER SERVICE: complaint via public form -> resolve -> head review ===
+   1.  CS head publishes a complaint form            201                       
+   2.  adds two questions                            201                       
+   3.  a customer opens the public link (no login)   200                       fields=2
+   4.  customer submits the complaint                201                       
+        OK   a task was created from the submission
+   5.  CS head assigns it to Arif                    204                       
+   6.  Arif comments                                 201                       
+   7.  head replies, mentioning Arif                 201                       
+        OK   the @mention notified Arif
+   8.  Arif attaches the customer's photo            201                       
+   9.  escalates the priority                        200                       
+   10. resolves it                                   200                       
+   11. CS head reviews and approves                  201                       
+        final state: {"review_status":"approved","comments_count":2,"attachments_count":1}
+        OK   the review verdict is denormalised onto the task
+        OK   attachments_count is right
+        OK   comments_count is right
+
+=== SCENARIO 2 — ORDERS & FULFILMENT: checklist + subtasks + cross-space dependency ===
+   1.  O&F head raises the order issue, due today    201                       
+   2.  adds a 3-step checklist                       201                       
+   3.  creates a subtask                             201                       
+   4.  Inventory head raises a stock-check task in THEIR space201                       
+   5.  O&F links the order to the Inventory task (cross-space)201                       
+        OK   a cross-space dependency is allowed
+        OK   my-work today bucket returned 0 tasks for the O&F head
+   6.  Inventory completes the blocker               200                       
+   7.  O&F completes the order task                  200                       
+   8.  ticks the first checklist step                200                       
+
+=== SCENARIO 3 — MARKETING: template -> campaign task -> multi-assignee -> calendar ===
+   1.  admin saves a campaign template               201                       
+   2.  Marketing head applies it                     201                       
+   3.  assigns two people                            204                       
+   4.  schedules it for next week                    200                       
+        OK   both assignees stuck
+        OK   the template's 3 checklist items materialised
+
+=== SCENARIO 4 — ENGINEERING: bug -> sprint -> PR fields -> SLA -> incident -> postmortem ===
+   1.  a CS person reports a bug                     201                       
+        OK   an SLA deadline was set on the bug
+        OK   it landed in Bug Triage
+   2.  eng head pulls it into the active sprint      204                       
+   3.  engineer fills the branch/PR fields           200                       
+   4.  someone is put on call for this week          200                       
+   5.  an S0 comes in                                201                       
+        OK   the S0 auto-assigned to the on-call engineer
+   6.  an incident is opened                         201                       
+   7.  postmortem attempted while still open         409 incident.not_resolved 
+   8.  resolved, then the postmortem is filed        200                       
+        eng home tiles: {"open_bugs":5,"my_sprint_tasks":"set","prs_awaiting_me":"set","open_incidents":0,"stale_tickets":"set","current_on_call":"set","active_sprint":"set"}
+
+=== SCENARIO 5 — WEEKLY MANAGEMENT CYCLE ===
+   1.  HR generates the CS weekly report             200                       
+   2.  the CS head reads it                          200                       
+   3.  head adds a note                              200                       
+   4.  HR/owner acknowledges                         200                       
+   5.  an ordinary member tries to read it           403 report.forbidden      
+        OK   a member cannot read another department's report
+
+=== SCENARIO 6 — NEW HIRE: invite -> what they can see ===
+   1.  owner invites a new member                    201                       
+        OK   the account exists in `invited` state
+        OK   an invitation token was issued
+   2.  trying to assign work to an invited (not yet active) user422 task.invalid_assignee 
+
+=== SCENARIO 7 — SCOPED USER: what a department-only account really sees ===
+   spaces visible to cs.only@: ["Customer Service"]
+        OK   cs.only sees exactly their own department
+   1.  cs.only reads a Marketing task                404 task.not_found        
+        OK   cross-department read is denied
+   2.  cs.only opens Eng Home (the SCAN-M5 nav they can see)200                       
+   their Open Team Tasks KPI: 6 | CS open tasks in the DB: 6
+        OK   the workspace-wide KPI is narrowed to their space
+
+=== SCENARIO 8 — OFFBOARDING ===
+   1.  owner deactivates a leaver                    204                       
+   status: deactivated | live sessions 0 -> 0 | assigned tasks 9 -> 9
+        OK   the account is deactivated
+        OK   their sessions were revoked
+        OK   their task assignments are RETAINED (work is not orphaned)
+        OK   they can no longer sign in
+   (reactivated for the next phase)
+
+=== CLEANUP ===
+   tasks 51 (51) | forms 1 (1) | templates 0 (0) | users 16 (16) | on_call 1 (1) | reports 12 (12)
+
+=== SCORE: 22 passed, 0 failed ===

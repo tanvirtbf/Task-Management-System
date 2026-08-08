@@ -1,0 +1,71 @@
+
+  === F4 — the P30 SLA sweep, on the fixed clock ===
+  frame: session +00:00 · process TZ UTC
+
+  --- 1. what the system STORES vs what it INTENDS (P30: all 360 min short) ---
+  OK    S0 stored at +120 min (was −240, born breached)           stored +120 min
+  OK    S0 is NOT already breached at creation                    
+  OK    S1 stored at +1440 min (was +1080)                        stored +1440
+  OK    S2 stored at +10080 min (was +9720)                       stored +10080
+  OK    S3 stores no SLA                                          
+  OK    Complaint stored at +1440 min                             stored +1440
+  OK    a plain Task stores no SLA                                
+
+  --- 2. how late before it is REPORTED (P30: invisible until >6h, then −360) ---
+  OK    not-yet-due (+5 min): endpoint omits it                   
+  OK    not-yet-due (+5 min): view omits it                       
+  late by   endpoint                  view                  verdict
+  1 min     listed, =1                listed, =1            OK (truth 1)
+  30 min    listed, =30               listed, =30           OK (truth 30)
+  1 h       listed, =60               listed, =60           OK (truth 60)
+  3 h       listed, =180              listed, =180          OK (truth 180)
+  5 h       listed, =300              listed, =300          OK (truth 300)
+  6 h       listed, =360              listed, =360          OK (truth 360)
+  6.5 h     listed, =390              listed, =390          OK (truth 390)
+  7 h       listed, =420              listed, =420          OK (truth 420)
+  12 h      listed, =720              listed, =720          OK (truth 720)
+  24 h      listed, =1440             listed, =1440         OK (truth 1440)
+  every offset accurate and endpoint==view — the 6 h blind window is gone
+  OK    row shape unchanged                                       assignees,custom_id,minutes_breached,name,sla_due_at,task_id,task_type_id
+  OK    assignees hydrated as User objects                        owner@company.local
+
+  --- 3. filters (P30: PASS — must still pass) ---
+  OK    no filter → 200                                           
+  OK    ?severity=S1 lists the S1, not the S0                     1 row(s)
+  OK    ?severity=S0 lists the S0 only                            1 row(s)
+  OK    ?severity=bogus → 422                                     
+  OK    ?team=engineering (dev-type alias) → 200, lists the bugs  2 row(s)
+  OK    ?team=ops → 200, 0 rows                                   
+  OK    ?team=bogus → 422                                         
+  OK    ?limit=1 → 200 (param ignored — not implemented), ordered most-overdue-first2 row(s), top late 1440 min
+
+  --- 4. PATCH /tasks/:id/sla (P30: guards PASS but stored 6 h off) ---
+  OK    a future override → 200, wire EXACTLY as asked (was 6 h off)asked 2026-08-06T05:30:34.000Z wire 2026-08-06T05:30:34.000Z
+  OK    …and the DB stores that exact instant                     stored 2026-08-06T05:30:34.000Z
+  OK    a past timestamp → 422 sla.invalid_due_at                 
+  OK    null → 200, cleared                                       
+  OK    malformed → 422                                           
+  OK    unknown task → 404 task.not_found                         
+  OK    a guest → 403                                             
+  OK    an archived task → 409 task.archived                      
+
+  --- 5. severity change recomputes from the PATCH moment (characterised V1) ---
+  OK    PATCH bug_severity S0 → sla_due_at recomputed to +120 min stored +120 min
+  OK    …the manual override is gone (documented V1 behaviour)    
+
+  --- 6. exclusions (P30: PASS — must still pass) ---
+  OK    a completed task 12 h late is absent (endpoint + view)    
+  OK    an archived task 12 h late is absent (endpoint + view)    
+
+  --- 7. report-bug auto-assigns the CURRENT on-call engineer ---
+  OK    POST /eng/report-bug (S1) → created                       status 201
+  OK    …auto-assigned to the on-call engineer (dhakaToday path)  expects jhankar@beautybooth.com.bd
+  OK    …S1 SLA stored at +1440 min                               stored +1440
+  OK    no severity → defaults S2, +10080 min, NO auto-assign     S2, +10080, assignees 0
+  OK    /eng/home names the same current_on_call                  jhankar@beautybooth.com.bd
+
+  --- CLEANUP ---
+  tasks 46 (46) | notifications 57 (57) | comments 7 (7)
+
+  PASS — every P30 row now lands where §29 intends. ISS-081 stays closed.
+

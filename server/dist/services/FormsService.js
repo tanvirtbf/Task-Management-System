@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.FormsService = void 0;
+const pagination_1 = require("../utils/pagination");
 const errors_1 = require("../errors");
 const utils_1 = require("../utils");
 const encryption_1 = require("../utils/encryption");
@@ -172,7 +173,12 @@ class FormsService {
             throw errors_1.AppError.conflict("form.slug_taken", "That public slug is already in use");
         }
         for (let attempt = 1;; attempt += 1) {
-            const slug = explicitSlug ?? `${slugify(input.title)}-${(0, utils_1.randomToken)(6)}`;
+            // F18 (ISS-077): lowercase the token. `slugify()` lowercases the
+            // title and `SLUG_RE` allows lowercase only — so a mixed-case
+            // token produced a slug the API's OWN validator refused, and a
+            // form could never be written back unchanged.
+            const slug = explicitSlug ??
+                `${slugify(input.title)}-${(0, utils_1.randomToken)(6).toLowerCase()}`;
             const row = {
                 id,
                 listId: input.listId,
@@ -328,6 +334,38 @@ class FormsService {
                 field: "id",
                 issue: `${i.id} is not a field of this form`,
             })));
+        }
+        // F18 (ISS-078): completeness + uniqueness. A partial payload left two
+        // fields at position 0, and `ORDER BY position` then returns them in
+        // arbitrary order — so the PUBLIC form could render its questions in a
+        // different sequence on different requests, with no way to notice from
+        // the API (the reorder said 200). The public form is the workspace's
+        // intake surface; question order is part of the product.
+        const ids = new Set(input.items.map((i) => i.id));
+        if (ids.size !== input.items.length) {
+            throw errors_1.AppError.validationFailed([
+                {
+                    field: "body",
+                    issue: "Duplicate field id in reorder request",
+                },
+            ]);
+        }
+        if (input.items.length !== owned.size) {
+            throw errors_1.AppError.validationFailed([
+                {
+                    field: "body",
+                    issue: `Reorder must name every field of the form exactly once (got ${input.items.length} of ${owned.size})`,
+                },
+            ]);
+        }
+        const positions = new Set(input.items.map((i) => i.position));
+        if (positions.size !== input.items.length) {
+            throw errors_1.AppError.validationFailed([
+                {
+                    field: "body",
+                    issue: "Positions must be distinct — duplicate positions make the question order ambiguous",
+                },
+            ]);
         }
         await this.db.transaction(async (tx) => {
             for (const item of input.items) {
@@ -625,11 +663,9 @@ const clampLimit = (raw) => {
 };
 const encodeCursor = (value) => Buffer.from(value.toString(), "utf8").toString("base64url");
 const decodeCursor = (cursor) => {
-    if (!/^[A-Za-z0-9_-]+$/.test(cursor)) {
-        throw errors_1.AppError.badRequest("pagination.invalid_cursor", "The pagination cursor is malformed.");
-    }
-    const decoded = Buffer.from(cursor, "base64url").toString("utf8");
-    if (!/^\d+$/.test(decoded)) {
+    // F23 (ISS-008): strict round-trip decode, then digits-only.
+    const decoded = (0, pagination_1.strictDecodeCursor)(cursor);
+    if (!/^\d{1,18}$/.test(decoded)) {
         throw errors_1.AppError.badRequest("pagination.invalid_cursor", "The pagination cursor is malformed.");
     }
     return BigInt(decoded);

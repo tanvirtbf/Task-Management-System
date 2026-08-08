@@ -19,16 +19,17 @@ export interface WireOnCallShift {
 }
 
 /**
- * Render a MySQL DATE as `YYYY-MM-DD` from LOCAL date components (mirrors
- * `taskSerializer.toWireDate`): mysql2 materialises a DATE as a Date at local
- * midnight, so `toISOString()` could shift it across the UTC boundary. Accepts
- * a pre-formatted string defensively (string-mode columns / drivers).
+ * Render a MySQL DATE as `YYYY-MM-DD` from **UTC** date components (mirrors
+ * `taskSerializer.toWireDate`). A DATE is a calendar day with no timezone, and
+ * Drizzle materialises it at UTC midnight, so UTC components are exact under any
+ * process TZ. Changed from local components in F3 — see the note there.
+ * Accepts a pre-formatted string defensively (string-mode columns / drivers).
  */
 const toWireDate = (value: Date | string): string => {
     if (typeof value === "string") return value.slice(0, 10);
-    const year = value.getFullYear();
-    const month = String(value.getMonth() + 1).padStart(2, "0");
-    const day = String(value.getDate()).padStart(2, "0");
+    const year = value.getUTCFullYear();
+    const month = String(value.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(value.getUTCDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
 };
 

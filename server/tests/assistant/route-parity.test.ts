@@ -47,6 +47,8 @@ const SEGMENT_TO_ROUTE: Record<string, string> = {
     search: "/search",
     dept: "/dept",
     reports: "/reports",
+    // F28 (ISS-082, D12.4) — the breached-SLA queue.
+    sla: "/sla",
     forms: "/forms",
     eng: "/eng",
     "eng/sprint": "/eng/sprint",

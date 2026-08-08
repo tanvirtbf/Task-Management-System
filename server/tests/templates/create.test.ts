@@ -398,3 +398,47 @@ describe("POST /api/v1/templates", () => {
         });
     });
 });
+
+// ─── F29 (ISS-068): the SECOND entry point to the same unbounded surface ─────
+describe("POST /api/v1/templates — checklistItems cap (F29)", () => {
+    /**
+     * P27 found a template carrying 2,000 checklist items was accepted (201),
+     * and applying it would materialise all of them in one transaction —
+     * around the bulk endpoint's new cap. Both entry points are bounded
+     * together at the same 200.
+     */
+    it("accepts a structure carrying 200 items", async () => {
+        const { client } = await setup();
+
+        const res = await client.post(TEMPLATES).send({
+            type: "task",
+            name: "Big Playbook",
+            structure: validStructure({
+                checklistItems: Array.from({ length: 200 }, (_, i) => ({
+                    text: `Step ${i + 1}`,
+                })),
+            }),
+        });
+
+        expect(res.status).toBe(201);
+        expect(res.body.structure.checklistItems).toHaveLength(200);
+    });
+
+    it("REFUSES 201 items (422) and stores nothing", async () => {
+        const { ws, client } = await setup();
+
+        const res = await client.post(TEMPLATES).send({
+            type: "task",
+            name: "Too Big Playbook",
+            structure: validStructure({
+                checklistItems: Array.from({ length: 201 }, (_, i) => ({
+                    text: `Step ${i + 1}`,
+                })),
+            }),
+        });
+
+        expect(res.status).toBe(422);
+        expect(res.body.error.code).toBe("validation.failed");
+        expect(await rowsIn(ws.id)).toHaveLength(0);
+    });
+});

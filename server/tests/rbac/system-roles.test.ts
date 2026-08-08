@@ -78,34 +78,46 @@ describe("system roles — definitions", () => {
 });
 
 describe("system roles — pinned snapshot of §0.4", () => {
-    it("GUEST = what any authenticated user can do today, minus file upload", () => {
+    /**
+     * F28 (ISS-094, decision D12.1). This list used to be NINETEEN keys — the
+     * whole pre-RBAC "any authenticated user" set — because the seeded roles
+     * were built to reproduce the old product exactly while the toggles were
+     * dormant. F7 made all 56 real, and a guest could then delete any task in
+     * the workspace and read every public-form submission. Guest is now what its
+     * name says: read, comment, report a bug.
+     */
+    it("GUEST = read the workspace, comment, report a bug — nothing else", () => {
         expect(sorted(guest)).toEqual(
             [
                 "activity.view",
                 "assistant.use",
                 "bug.report",
-                "checklist.manage",
                 "comment.create",
+                "member.view",
+                "space.view",
+                "task.view",
+            ].sort(),
+        );
+    });
+
+    it("MEMBER = GUEST + file upload + every write a guest no longer has", () => {
+        expect(minus(member, guest)).toEqual(
+            [
+                "attachment.upload",
+                "checklist.manage",
                 "customfield.set_value",
                 "dependency.manage",
                 "form.view_submissions",
-                "member.view",
                 "postmortem.manage",
-                "space.view",
                 "sprint.assign_tasks",
                 "task.archive",
                 "task.assign",
                 "task.create",
                 "task.delete",
                 "task.edit",
-                "task.view",
                 "template.apply",
             ].sort(),
         );
-    });
-
-    it("MEMBER = GUEST + attachment upload (the only difference today)", () => {
-        expect(minus(member, guest)).toEqual(["attachment.upload"]);
     });
 
     it("ADMIN = MEMBER + everything the owner/admin route gates protect", () => {
@@ -194,7 +206,7 @@ describe("system roles — §0.4 spot checks (readable form)", () => {
         }
     });
 
-    it("everyone can read the workspace and work on tasks (today's reality)", () => {
+    it("every INTERNAL user can read the workspace and work on tasks", () => {
         for (const k of [
             "space.view",
             "task.view",
@@ -214,6 +226,51 @@ describe("system roles — §0.4 spot checks (readable form)", () => {
             "sprint.assign_tasks",
             "postmortem.manage",
             "form.view_submissions",
+        ]) {
+            expect(member.has(k)).toBe(true);
+        }
+    });
+
+    /**
+     * F28 / D12.1 — the regression guard for ISS-094. Each key here was held by
+     * the seeded Guest role until 2026-08-06, at scope=all. The two the issue
+     * named are marked; the other ten were found by measuring rather than by
+     * reading the issue, which is why this asserts the whole revocation and not
+     * just the reported part.
+     */
+    it("a GUEST cannot write to tasks, engineering, or customer form data", () => {
+        for (const k of [
+            // workspace-wide task writes — task.delete is the sharp one
+            "task.create",
+            "task.edit",
+            "task.assign",
+            "task.archive",
+            "task.delete",
+            // a task's structure
+            "checklist.manage",
+            "dependency.manage",
+            "customfield.set_value",
+            "template.apply",
+            // the two ISS-094 named
+            "sprint.assign_tasks",
+            "postmortem.manage",
+            // contact details customers typed into a public form
+            "form.view_submissions",
+        ]) {
+            expect(guest.has(k)).toBe(false);
+            expect(member.has(k)).toBe(true); // internal users keep all of it
+        }
+    });
+
+    it("a guest can still read, comment and report a bug", () => {
+        for (const k of [
+            "space.view",
+            "task.view",
+            "member.view",
+            "activity.view",
+            "comment.create",
+            "assistant.use",
+            "bug.report",
         ]) {
             expect(guest.has(k)).toBe(true);
         }

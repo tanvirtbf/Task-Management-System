@@ -1,0 +1,37 @@
+
+  === F9 — the three space-filter leaks (ISS-053 / 060 / 084) ===
+
+  OK    confidential space + list + task built                            201 201 201
+  OK    confidential form built                                           got 201
+  OK    probe user: one role, space-assigned to Marketing only            got 201
+  OK    probe creates their Marketing task                                got 201
+  OK    owner links it to the confidential task (cross-space edge)        got 201
+
+  --- ISS-053: dependency hydration + unlink ---
+  OK    sanity: the confidential task itself is 404 to them               got 404
+  OK    their task's dependencies: the invisible other end is GONE        200, blocks 0
+  OK    they can no longer UNLINK it (404, was 204)                       got 404
+  OK    the owner still sees the full edge (visibility, not deletion)     200, blocks 1
+
+  --- ISS-060: the audit feed ---
+  OK    guest: user-entity rows -> 0 (was 42, incl. deactivations)        200, 0 rows
+  OK    member: user-entity rows -> 0                                     200, 0
+  OK    owner: user-entity rows still there (audit is admin material)     200, 6
+  OK    guest's whole feed is space/list rows only                        ["list","space"]
+  OK    narrowed user's feed: only THEIR space's rows                     200, 0 rows, foreign 0
+  OK    /activity/recent: no confidential space/list names                
+
+  --- ISS-084: forms across spaces ---
+  OK    narrowed user's GET /forms: the confidential form is absent       200, 0 row(s)
+  OK    …and by id -> 404 (was 200 with the full field list)              got 404
+  OK    the owner still reads it (200)                                    got 200
+
+  --- sweep: the two seeded department accounts ---
+  OK    marketing.only: forms clean + activity 403 clean                  forms 0, activity 403
+  OK    cs.only: forms clean + activity 403 clean                         forms 0, activity 403
+
+  === CLEANUP ===
+  users 15 (15) | spaces 6 (6) | tasks 46 (46) | forms 0 (0) | roles 5 (5)
+
+  PASS — all three leaks closed; owners/admins unchanged. ISS-053/060/084 fixed.
+

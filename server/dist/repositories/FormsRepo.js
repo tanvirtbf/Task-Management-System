@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.FormsRepo = void 0;
 const drizzle_orm_1 = require("drizzle-orm");
 const schema_1 = require("../db/schema");
+const context_1 = require("../rbac/context");
 /**
  * Data access for `forms`. `forms` has NO `workspace_id` column — tenant
  * isolation is enforced via the `forms → lists → spaces.workspace_id` join in
@@ -15,25 +16,34 @@ class FormsRepo {
     constructor(db) {
         this.db = db;
     }
-    /** Workspace-scoped single-form lookup (404 source for the admin endpoints). */
+    /**
+     * Workspace-scoped single-form lookup (404 source for the admin endpoints).
+     *
+     * F9 (ISS-084): also filtered by the caller's space visibility — a form's
+     * title and field list describe what a department collects, and this read
+     * (with `listByWorkspace`) was serving them across departments while the
+     * per-list route and every write were already scoped. Invisible → 404,
+     * same as `GET /tasks/:id` (D-9). The anonymous public path resolves by
+     * slug, not through here, and is untouched.
+     */
     async findByIdInWorkspace(formId, workspaceId, exec = this.db) {
         const [row] = await exec
             .select({ form: schema_1.forms })
             .from(schema_1.forms)
             .innerJoin(schema_1.lists, (0, drizzle_orm_1.eq)(schema_1.lists.id, schema_1.forms.listId))
             .innerJoin(schema_1.spaces, (0, drizzle_orm_1.eq)(schema_1.spaces.id, schema_1.lists.spaceId))
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.forms.id, formId), (0, drizzle_orm_1.eq)(schema_1.spaces.workspaceId, workspaceId)))
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.forms.id, formId), (0, drizzle_orm_1.eq)(schema_1.spaces.workspaceId, workspaceId), await (0, context_1.listScopeFilter)(schema_1.forms.listId)))
             .limit(1);
         return row?.form ?? null;
     }
-    /** All forms in the workspace (newest first). */
+    /** All forms VISIBLE to the caller (newest first) — F9/ISS-084 scoped. */
     async listByWorkspace(workspaceId) {
         const rows = await this.db
             .select({ form: schema_1.forms })
             .from(schema_1.forms)
             .innerJoin(schema_1.lists, (0, drizzle_orm_1.eq)(schema_1.lists.id, schema_1.forms.listId))
             .innerJoin(schema_1.spaces, (0, drizzle_orm_1.eq)(schema_1.spaces.id, schema_1.lists.spaceId))
-            .where((0, drizzle_orm_1.eq)(schema_1.spaces.workspaceId, workspaceId))
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.spaces.workspaceId, workspaceId), await (0, context_1.listScopeFilter)(schema_1.forms.listId)))
             .orderBy((0, drizzle_orm_1.desc)(schema_1.forms.createdAt));
         return rows.map((r) => r.form);
     }

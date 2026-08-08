@@ -17,6 +17,19 @@ class SprintsRepo {
      * stable tie-break). The optional `status` filter is served by
      * `idx_sprints_workspace_status (workspace_id, status, start_date)`.
      */
+    /**
+     * F22 (ISS-011): the first sprint whose [start, end] overlaps the given
+     * range (two closed ranges overlap unless one ends before the other
+     * starts). `excludeId` lets an UPDATE ignore itself.
+     */
+    async findOverlapping(workspaceId, startDate, endDate, excludeId, exec = this.db) {
+        const rows = await exec
+            .select({ id: schema_1.sprints.id, name: schema_1.sprints.name })
+            .from(schema_1.sprints)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.sprints.workspaceId, workspaceId), (0, drizzle_orm_1.lte)(schema_1.sprints.startDate, endDate), (0, drizzle_orm_1.gte)(schema_1.sprints.endDate, startDate), excludeId ? (0, drizzle_orm_1.ne)(schema_1.sprints.id, excludeId) : undefined))
+            .limit(1);
+        return rows[0] ?? null;
+    }
     async listByWorkspace(workspaceId, status, exec = this.db) {
         return exec
             .select()
@@ -125,6 +138,28 @@ class SprintsRepo {
             .update(schema_1.sprints)
             .set({ status })
             .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.sprints.id, id), (0, drizzle_orm_1.eq)(schema_1.sprints.workspaceId, workspaceId)));
+    }
+    /**
+     * Hard-delete a sprint (F28 / ISS-013, decision D12.6). There is no archive
+     * concept for a sprint, so this is a real DELETE.
+     *
+     * Its tasks are NOT deleted: `tasks.sprint_id` is declared
+     * `ON DELETE SET NULL`, so the database detaches them as part of this
+     * statement. The schema was built for this — which is why the fix is a
+     * route, not a migration.
+     */
+    async deleteById(id, workspaceId, exec = this.db) {
+        await exec
+            .delete(schema_1.sprints)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.sprints.id, id), (0, drizzle_orm_1.eq)(schema_1.sprints.workspaceId, workspaceId)));
+    }
+    /** How many live+archived tasks the FK will detach — reported to the caller. */
+    async countTasksInSprint(id, workspaceId, exec = this.db) {
+        const rows = await exec
+            .select({ n: (0, drizzle_orm_1.sql) `COUNT(*)` })
+            .from(schema_1.tasks)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.sprintId, id), (0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId)));
+        return Number(rows[0]?.n ?? 0);
     }
     // ─── tasks (sprint link) ────────────────────────────────────────────────────
     /**

@@ -1,0 +1,6 @@
+  40 concurrent against a DELIBERATELY tiny pool (2 conns, 1 queue slot):
+     40 x  503 service.unavailable
+  Retry-After header: 2
+  message: The server is busy. Please retry in a moment.
+
+  OK — shed as 503 service.unavailable with Retry-After, ZERO generic 500s.

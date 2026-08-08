@@ -1,0 +1,7 @@
+16:38:13 [33mwarn[39m Dropping database taskmanagement_perf (--drop given)
+16:38:14 [32minfo[39m Ensuring database taskmanagement_perf exists
+16:38:14 [32minfo[39m Applying schema.sql (E:\Task Management System\database\schema.sql)
+16:38:17 [32minfo[39m Database setup complete {"db":"taskmanagement_perf","tables":41,"views":5,"triggers":7}
+  FRESH PROD-SHAPED DB: tables=41  views=5  triggers=7
+  documented expectation 41 / 5 / 7 -> MATCH
+  form_submissions has encrypted_at/expires_at: YES - so PROD is fine; only the dev DB drifted (ISS-025)

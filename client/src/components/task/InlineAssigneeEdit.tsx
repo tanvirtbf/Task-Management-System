@@ -154,6 +154,7 @@ export const InlineAssigneeEdit = ({
             overlayInnerStyle={{ padding: 0 }}
         >
             <button
+                aria-label="Edit assignees"
                 onClick={(e) => {
                     e.stopPropagation();
                     setOpen(!open);

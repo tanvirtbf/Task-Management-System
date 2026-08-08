@@ -1,0 +1,10 @@
+F13 — bind proof (ISS-089)
+
+  dev  (NODE_ENV=dev,  port 5721):  listening on ::          <- wildcard, unchanged by design
+  prod (NODE_ENV=prod, port 5722):  listening on 127.0.0.1  <- loopback only
+  prod log line: "Listening on 127.0.0.1:5722 (loopback only)"
+
+Dev keeps the wildcard on purpose: the CORS policy deliberately allows private-LAN
+origins so a phone on the same Wi-Fi can use the app, which is pointless if the port
+itself is unreachable. Production has nginx in front on 127.0.0.1:5501, so nothing
+legitimate changes there.

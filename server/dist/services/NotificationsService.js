@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.NotificationsService = void 0;
+const pagination_1 = require("../utils/pagination");
 const errors_1 = require("../errors");
 const notificationSerializer_1 = require("../serializers/notificationSerializer");
 /**
@@ -173,6 +174,8 @@ const encodeCursor = (c) => Buffer.from(`${c.isRead ? 1 : 0}.${c.internalId}`, "
  * not a 422 — the client cannot "fix" an opaque token, only drop it and restart.
  */
 const decodeCursor = (cursor) => {
+    // F23 (ISS-008): refuse any cursor that does not round-trip byte-exact.
+    (0, pagination_1.strictDecodeCursor)(cursor);
     if (!/^[A-Za-z0-9_-]+$/.test(cursor)) {
         throw errors_1.AppError.badRequest("pagination.invalid_cursor", "The pagination cursor is malformed.");
     }

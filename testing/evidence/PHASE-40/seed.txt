@@ -1,0 +1,8 @@
+  scaffolding: 1 ws, 40 users, 8 spaces, 40 lists, 120 statuses  (931ms)
+  5 000 tasks (1140ms)
+  5 000 assignees (320ms)
+  20 000 comments (6584ms)
+  50 000 activity rows (3361ms)
+
+  FINAL: tasks 5000 | comments 20000 | activity 50000 | users 40 | lists 40
+  total seed time: 12s

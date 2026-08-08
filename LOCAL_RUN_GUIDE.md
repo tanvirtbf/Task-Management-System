@@ -134,9 +134,10 @@ There is deliberately no in-process scheduler; schedule these externally (Window
 | Job | Cadence | Trigger |
 |-----|---------|---------|
 | `snooze-wake` | every 5 min | `POST /api/v1/jobs/snooze-wake` |
+| `overdue-alert` | every 10 min | `POST /api/v1/jobs/overdue-alert` — emails + in-app notifies assignees of newly past-due tasks (once per task per deadline) |
 | `session-cleanup`, `attachment-janitor`, `r2-purge` | daily | `POST /api/v1/jobs/<slug>` |
 | **`department-report`** | **weekly, Monday 09:00 (Asia/Dhaka)** | `POST /api/v1/jobs/department-report` |
-| `form-submission-expiry` | daily | CLI only |
+| `form-submission-expiry` | daily | `POST /api/v1/jobs/form-submission-expiry` |
 
 - HTTP triggers need the header `X-Internal-Token: <INTERNAL_JOB_TOKEN from server/.env>`.
 - CLI (no server needed): `cd server && npm run job <slug>` — add `-- --dry-run` to count without writing (e.g. `npm run job department-report -- --dry-run`).

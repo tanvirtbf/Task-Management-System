@@ -109,6 +109,14 @@ class TagsRepo {
      * soft-delete. Pass `exec` to run inside the delete tx (so the paired
      * `workspace_activity` write is atomic with this delete).
      */
+    /** F22 (ISS-011): how many tasks still carry this tag. */
+    async countTaskLinks(tagId, exec = this.db) {
+        const [row] = await exec
+            .select({ n: (0, drizzle_orm_1.count)() })
+            .from(schema_1.taskTags)
+            .where((0, drizzle_orm_1.eq)(schema_1.taskTags.tagId, tagId));
+        return row?.n ?? 0;
+    }
     async delete(id, workspaceId, exec = this.db) {
         await exec
             .delete(schema_1.tags)

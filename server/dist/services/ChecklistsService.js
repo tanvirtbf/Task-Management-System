@@ -28,7 +28,20 @@ class ChecklistsService {
         const task = await this.requireTask(input.idOrKey, input.workspaceId);
         const created = await this.db.transaction(async (tx) => {
             const position = await this.checklists.nextChecklistPosition(task.id, tx);
-            return this.checklists.insertChecklist({ taskId: task.id, name: input.name, position }, tx);
+            const row = await this.checklists.insertChecklist({ taskId: task.id, name: input.name, position }, tx);
+            // F21 (ISS-062): creating a checklist finally leaves a trace —
+            // before this, ticking one box was logged while creating or
+            // deleting the whole list was not, so "who deleted the acceptance
+            // criteria?" was unanswerable.
+            await this.activity.recordMany([
+                {
+                    taskId: task.id,
+                    actorId: input.actorId,
+                    action: "checklist_created",
+                    context: { checklist_id: row.id, name: input.name },
+                },
+            ], tx);
+            return row;
         });
         return (0, checklistSerializer_1.toWireChecklist)(created, []);
     }
@@ -50,7 +63,22 @@ class ChecklistsService {
     /** DELETE — drop a checklist (items cascade). */
     async deleteChecklist(input) {
         const checklist = await this.requireChecklist(input.id, input.workspaceId);
-        await this.checklists.deleteChecklist(checklist.id);
+        await this.db.transaction(async (tx) => {
+            await this.checklists.deleteChecklist(checklist.id, tx);
+            // F21 (ISS-062): the delete records WHAT was deleted (the name —
+            // the row is gone, so the trace is the only place it survives).
+            await this.activity.recordMany([
+                {
+                    taskId: checklist.taskId,
+                    actorId: input.actorId,
+                    action: "checklist_deleted",
+                    context: {
+                        checklist_id: checklist.id,
+                        name: checklist.name,
+                    },
+                },
+            ], tx);
+        });
     }
     /** POST — add a single item, appended after the checklist's existing items. */
     async addItem(input) {
@@ -67,13 +95,26 @@ class ChecklistsService {
         const created = await this.db.transaction(async (tx) => {
             const position = input.position ??
                 (await this.checklists.nextItemPosition(checklist.id, tx));
-            return this.checklists.insertItem({
+            const row = await this.checklists.insertItem({
                 checklistId: checklist.id,
                 text: input.text,
                 parentItemId: input.parentItemId ?? null,
                 assigneeId: input.assigneeId ?? null,
                 position,
             }, tx);
+            await this.activity.recordMany([
+                {
+                    taskId: checklist.taskId,
+                    actorId: input.actorId,
+                    action: "checklist_item_added",
+                    context: {
+                        checklist_id: checklist.id,
+                        item_id: row.id,
+                        text: input.text.slice(0, 120),
+                    },
+                },
+            ], tx);
+            return row;
         });
         return (0, checklistSerializer_1.toWireItem)(created);
     }
@@ -150,8 +191,22 @@ class ChecklistsService {
     }
     /** DELETE item. */
     async deleteItem(input) {
-        const { item } = await this.requireItem(input.id, input.workspaceId);
-        await this.checklists.deleteItem(item.id);
+        const { item, checklist } = await this.requireItem(input.id, input.workspaceId);
+        await this.db.transaction(async (tx) => {
+            await this.checklists.deleteItem(item.id, tx);
+            await this.activity.recordMany([
+                {
+                    taskId: checklist.taskId,
+                    actorId: input.actorId,
+                    action: "checklist_item_deleted",
+                    context: {
+                        checklist_id: checklist.id,
+                        item_id: item.id,
+                        text: item.text.slice(0, 120),
+                    },
+                },
+            ], tx);
+        });
     }
     // ─── helpers ──────────────────────────────────────────────────────────────
     /** Resolve `:id` (internal id or custom_id) to a task in the workspace. */

@@ -1,7 +1,18 @@
-import { and, asc, desc, eq, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import {
+    and,
+    asc,
+    desc,
+    eq,
+    inArray,
+    isNotNull,
+    isNull,
+    lt,
+    sql,
+} from "drizzle-orm";
 import { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../db/schema";
-import { attachments, tasks } from "../db/schema";
+import { attachments, r2PurgeQueue, tasks } from "../db/schema";
+import { fakeId } from "../utils";
 import type { DbExecutor } from "./types";
 
 /**
@@ -240,6 +251,71 @@ export class AttachmentsRepo {
                     isNotNull(attachments.deletedAt),
                 ),
             );
+        return result.affectedRows;
+    }
+
+    // ─── F16 (ISS-022): the hard-delete → R2 purge queue ─────────────────────
+
+    /**
+     * The R2 keys of EVERY attachment on the given tasks — soft-deleted rows
+     * included, because a task hard delete cascades those away too, before the
+     * ordinary purge flow would have reached them.
+     */
+    async storageKeysByTasks(
+        taskIds: string[],
+        exec: DbExecutor = this.db,
+    ): Promise<Array<{ storageKey: string; thumbnailKey: string | null }>> {
+        if (taskIds.length === 0) return [];
+        return exec
+            .select({
+                storageKey: attachments.storageKey,
+                thumbnailKey: attachments.thumbnailKey,
+            })
+            .from(attachments)
+            .where(inArray(attachments.taskId, taskIds));
+    }
+
+    /**
+     * Queue R2 keys for deletion. Runs INSIDE the hard-delete transaction, so
+     * either the task goes and its keys are queued, or neither happens — the
+     * window in which bytes could orphan does not exist.
+     */
+    async enqueueR2Purge(
+        rows: Array<{ storageKey: string; thumbnailKey: string | null }>,
+        exec: DbExecutor = this.db,
+    ): Promise<void> {
+        if (rows.length === 0) return;
+        await exec.insert(r2PurgeQueue).values(
+            rows.map((r) => ({
+                id: fakeId("r2q"),
+                storageKey: r.storageKey,
+                thumbnailKey: r.thumbnailKey,
+            })),
+        );
+    }
+
+    /** The queued keys, oldest first — the r2-purge job drains these. */
+    async findQueuedPurge(): Promise<
+        Array<{ id: string; storageKey: string; thumbnailKey: string | null }>
+    > {
+        return this.db
+            .select({
+                id: r2PurgeQueue.id,
+                storageKey: r2PurgeQueue.storageKey,
+                thumbnailKey: r2PurgeQueue.thumbnailKey,
+            })
+            .from(r2PurgeQueue)
+            .orderBy(asc(r2PurgeQueue.queuedAt));
+    }
+
+    /** Remove a drained queue row (its R2 objects are confirmed gone). */
+    async deleteQueuedPurge(
+        id: string,
+        exec: DbExecutor = this.db,
+    ): Promise<number> {
+        const [result] = await exec
+            .delete(r2PurgeQueue)
+            .where(eq(r2PurgeQueue.id, id));
         return result.affectedRows;
     }
 }

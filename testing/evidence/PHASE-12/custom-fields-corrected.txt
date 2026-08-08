@@ -1,0 +1,42 @@
+=== 4b. VALUES with the CORRECT envelopes ===
+  phone (envelope is {text}):
+  {"text":"01712345678"}                         (valid BD mobile)                -> 200                     stored: {"text":"01712345678"}
+  {"text":"01234567890"}                         (invalid BD prefix (012))        -> 200                     stored: {"text":"01234567890"}
+  {"text":"+8801712345678"}                      (with country code)              -> 200                     stored: {"text":"+8801712345678"}
+  money (envelope is {amount:int, currency}):
+  {"amount":1500,"currency":"BDT"}               (valid)                          -> 200                     stored: {"amount":1500,"currency":"BDT"}
+  {"amount":1500.5,"currency":"BDT"}             (non-integer amount)             -> 422 validation.failed   stored: {"amount":1500,"currency":"BDT"}
+  {"amount":-500,"currency":"BDT"}               (negative)                       -> 200                     stored: {"amount":-500,"currency":"BDT"}
+  {"amount":1500}                                (no currency)                    -> 422 validation.failed   stored: {"amount":-500,"currency":"BDT"}
+  {"amount":1500,"currency":""}                  (empty currency)                 -> 422 validation.failed   stored: {"amount":-500,"currency":"BDT"}
+  {"amount":1500,"currency":"NOTACURRENCY"}      (bogus currency code)            -> 200                     stored: {"amount":1500,"currency":"NOTACURRENCY"}
+  files:
+  {"attachment_ids":[]}                          (empty array)                    -> 422 validation.failed   stored: null
+  {"attachment_ids":["att-nope"]}                (unknown attachment)             -> 422 validation.failed   stored: null
+  {"text":"x"}                                   (text envelope on a files field) -> 422 validation.failed   stored: null
+  cross-type: a {text} envelope on a MONEY field:
+  {"text":"1500"}                                (wrong envelope for the type)    -> 422 validation.failed   stored: {"amount":1500,"currency":"NOTACURRENCY"}
+
+=== 2b. hidden_from_guests — settable at all? ===
+  POST with hidden_from_guests:true  -> stored: 0
+  PATCH hidden_from_guests:true      -> 200 stored: 0
+
+=== 5b. REDACTION — with the flag forced on in the DB ===
+  owner sees SECRET: true | VISIBLE: true
+  guest sees SECRET: false | VISIBLE: true
+  => REDACTION WORKS when the flag is set ✓
+  is the hidden field's DEFINITION visible to the guest? yes (name/type exposed, value hidden)
+
+=== 3b. GET /custom-fields returns 0 — why? ===
+  GET /custom-fields                        -> 200 count: 0
+  GET /custom-fields?scope_type=workspace                    -> 200    count: 0
+  GET /custom-fields?scope_type=list&scope_id=l-Lg5FhLxITGZMFU3xHm2BIA -> 200    count: 0
+  GET /custom-fields?limit=200                               -> 200    count: 0
+  GET /custom-fields?scope_type=space&scope_id=sp-hb8qbLyl_mAOfp5Wj1ia5g -> 200    count: 0
+  workspace-scoped fields in the DB: 5
+
+=== 6b. customfield.set_value ENFORCEMENT (P5 deferred) ===
+  marketing.only creates a task in their own list -> 409 list.archived
+
+=== CLEANUP ===
+  orphan statuses 0 | custom_fields 0 | values 0 | options 0 | tasks 51 | lists 14 | statuses 70

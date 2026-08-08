@@ -11,6 +11,7 @@ import { TaskActivityRepo } from "../repositories/TaskActivityRepo";
 import { getDb } from "../db/client";
 import logger from "../config/logger";
 import authenticate from "../middlewares/authenticate";
+import { requirePermission } from "../middlewares/requirePermission";
 import { validate } from "../middlewares/validate";
 import {
     createDependencyValidator,
@@ -64,6 +65,7 @@ router.get(
 router.post(
     "/task-dependencies",
     authenticate,
+    requirePermission("dependency.manage"),
     createDependencyValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -76,6 +78,7 @@ router.post(
 router.delete(
     "/task-dependencies/:id",
     authenticate,
+    requirePermission("dependency.manage"),
     dependencyIdParamValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>

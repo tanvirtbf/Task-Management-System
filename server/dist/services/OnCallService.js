@@ -8,11 +8,17 @@ const errors_1 = require("../errors");
  * engineer. No `workspace_activity` audit row — the audit enum has no on-call
  * entity type (same treatment as forms).
  */
-/** Parse a validated `YYYY-MM-DD` to a LOCAL-midnight Date (Drizzle `date()` mode — matches the factory + serializer). */
-const toLocalDate = (iso) => {
+/**
+ * Parse a validated `YYYY-MM-DD` to a **UTC-midnight** Date for a Drizzle
+ * `date()` column — matches `onCallSerializer.toWireDate`, which reads it back
+ * with `getUTC*`. Changed from local midnight in F3; see `TaskWriteService`.
+ */
+const toDateOnly = (iso) => {
     const [y, m, d] = iso.split("-").map(Number);
-    return new Date(y, m - 1, d);
+    return new Date(Date.UTC(y, m - 1, d));
 };
+/** Whole days in ms — safe to add to a UTC-midnight date (UTC has no DST). */
+const DAY_MS = 24 * 60 * 60 * 1000;
 /** mysql2 transient lock errors worth retrying a transaction on. */
 const isRetryableTxError = (err) => {
     const e = err;
@@ -73,8 +79,13 @@ class OnCallService {
         if (!activeIds.has(engineerId)) {
             throw errors_1.AppError.unprocessable("on_call.invalid_engineer", `Engineer ${engineerId} is not an active member of this workspace`);
         }
-        const weekStartDate = toLocalDate(weekStart);
-        const weekEndDate = new Date(weekStartDate.getFullYear(), weekStartDate.getMonth(), weekStartDate.getDate() + 6);
+        const weekStartDate = toDateOnly(weekStart);
+        // +6 days in UTC. This must NOT use local getters: `weekStartDate` is UTC
+        // midnight, and rebuilding a date from LOCAL components off it lands on the
+        // wrong instant under any non-zero offset — in Dhaka it produced a week_end
+        // one day short, so Sunday had nobody on call. (Caught in F3, after the
+        // local→UTC switch above; the two halves have to move together.)
+        const weekEndDate = new Date(weekStartDate.getTime() + 6 * DAY_MS);
         let lastErr;
         for (let attempt = 0; attempt < 3; attempt++) {
             try {

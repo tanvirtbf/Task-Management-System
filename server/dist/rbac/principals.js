@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.elevateToSpaces = exports.elevate = exports.elevationReasons = exports.isPublic = exports.publicFormPrincipal = exports.publicFormActor = exports.isSystem = exports.systemPrincipal = exports.systemActor = exports.SYSTEM_USER_ID = void 0;
+exports.elevateToSpaces = exports.elevate = exports.elevationReasons = exports.bugIntakePrincipal = exports.bugIntakeActor = exports.isPublic = exports.publicFormPrincipal = exports.publicFormActor = exports.isSystem = exports.systemPrincipal = exports.systemActor = exports.SYSTEM_USER_ID = void 0;
 const scope_1 = require("./scope");
 /** The `user_id` recorded for job-driven work. Not a real row. */
 exports.SYSTEM_USER_ID = "system";
@@ -72,6 +72,44 @@ const publicFormPrincipal = (input) => ({
 exports.publicFormPrincipal = publicFormPrincipal;
 const isPublic = (actor) => actor?.kind === "public";
 exports.isPublic = isPublic;
+// ─── 2b. the bug-report intake (F28 / ISS-094) ───────────────────────────────
+/**
+ * F28 (ISS-094, decision D12.1) surfaced a key that opened no door: every role
+ * holds `bug.report` — reporting a bug is precisely how a NON-engineer (or a
+ * guest) reaches the engineering team — but the mechanism behind
+ * `POST /eng/report-bug` is a task insert, and `TaskWriteService.create`
+ * asserts `task.create`, which D12.1 revoked from the seeded Guest role. The
+ * route admitted the request and the service then 403'd it.
+ *
+ * The route gate is the authority for this flow: once `bug.report` is proven,
+ * the intake runs under this principal — the same shape as the public form
+ * above, with the same narrowing. The actor carries ONLY `task.create`, only
+ * inside the Bug Triage list's space, and the scope covers that one list, so
+ * even a defect that hands this principal to a listing query can only ever
+ * surface bug triage.
+ *
+ * Attribution is untouched: `created_by`, activity rows and notifications all
+ * flow from the service input's `actorId`, which stays the real caller —
+ * `userId` here records the same person for anything that reads the actor.
+ */
+const bugIntakeActor = (input) => ({
+    kind: "intake",
+    userId: input.reporterId,
+    workspaceId: input.workspaceId,
+    isOwner: false,
+    legacyRole: "member",
+    version: 0,
+    perms: new Map([
+        ["task.create", spaceOnly(input.spaceId)],
+    ]),
+});
+exports.bugIntakeActor = bugIntakeActor;
+/** The intake principal `reportBug` installs around its create call. */
+const bugIntakePrincipal = (input) => ({
+    actor: (0, exports.bugIntakeActor)(input),
+    scope: (0, scope_1.makeScope)([input.spaceId], [input.listId]),
+});
+exports.bugIntakePrincipal = bugIntakePrincipal;
 const ELEVATION_REASONS = [
     "job",
     "dept_review_stats",

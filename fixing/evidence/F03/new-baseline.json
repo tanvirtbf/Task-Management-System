@@ -1,0 +1,22 @@
+{
+ "users": 15,
+ "spaces": 6,
+ "lists": 13,
+ "statuses": 65,
+ "tasks": 46,
+ "comments": 7,
+ "checklists": 3,
+ "checklist_items": 14,
+ "attachments": 0,
+ "notifications": 57,
+ "forms": 0,
+ "form_fields": 0,
+ "form_submissions": 0,
+ "templates": 0,
+ "sprints": 1,
+ "on_call_shifts": 1,
+ "task_reviews": 9,
+ "department_reports": 12,
+ "tags": 8,
+ "task_dependencies": 0
+}

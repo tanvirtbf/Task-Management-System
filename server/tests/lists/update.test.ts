@@ -9,7 +9,7 @@ import {
     makeWorkspace,
 } from "../test-utils/factories";
 import { getDb } from "../../src/db/client";
-import { lists, statuses, workspaceActivity } from "../../src/db/schema";
+import { lists, spaces, statuses, workspaceActivity } from "../../src/db/schema";
 import { fakeId } from "../../src/utils";
 import { Config } from "../../src/config";
 import type { Role } from "../../src/constants";
@@ -141,7 +141,7 @@ const signAccess = (
     jwt.sign(
         { sub: user.id, role: user.role, workspaceId: user.workspaceId },
         secret,
-        { algorithm: "HS256", ...opts },
+        { algorithm: "HS256", expiresIn: "15m", ...opts },
     );
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -278,12 +278,15 @@ describe("PATCH /api/v1/lists/:id", () => {
             expect(res.body.error.code).toBe("validation.failed");
         });
 
+        // F28 (D12.7): `space_id` left this list — it is a real field now, and
+        // it is covered by its own describe block at the bottom of the file.
+        // `is_private` and `position` are still unknown here.
         it("returns 422 for a body with only unknown fields", async () => {
             const { listId, client } = await setup();
 
             const res = await client
                 .patch(url(listId))
-                .send({ is_private: true, position: 9, space_id: "sp-x" });
+                .send({ is_private: true, position: 9 });
 
             expect(res.status).toBe(422);
             expect(res.body.error.code).toBe("validation.failed");
@@ -464,14 +467,16 @@ describe("PATCH /api/v1/lists/:id", () => {
 
     // ─── f. References & conflict ───────────────────────────────────────────
     describe("References & conflict", () => {
-        it("allows renaming to a sibling list's name (no unique constraint)", async () => {
+        it("refuses renaming onto a sibling list's name (F27/ISS-035, D11)", async () => {
+            // D11: the rule holds on RENAME as well as create — otherwise the
+            // duplicate is one PATCH away and the create rule is decorative.
             const { u, space, listId, client } = await setup();
             await insertList({ spaceId: space.id, createdBy: u.id, name: "Sibling" });
 
             const res = await client.patch(url(listId)).send({ name: "Sibling" });
 
-            expect(res.status).toBe(200);
-            expect(res.body.name).toBe("Sibling");
+            expect(res.status).toBe(409);
+            expect(res.body.error.code).toBe("list.duplicate");
         });
 
         it("returns 422 list.invalid_task_type for an unknown default_task_type_id", async () => {
@@ -530,14 +535,19 @@ describe("PATCH /api/v1/lists/:id", () => {
             expect(res.body.error.code).toBe("list.invalid_task_type");
         });
 
-        it("ignores body space_id / created_by / is_private / position (mass-assignment)", async () => {
+        /**
+         * F28 (ISS-036, D12.7). `space_id` used to be in this list — the spec
+         * proved it was ignored. It is now a real field, so the mass-assignment
+         * guarantee is narrower AND sharper: `created_by`, `is_private` and
+         * `position` are still unpatchable, and `space_id` is patchable but
+         * still cannot reach ANOTHER WORKSPACE's space, which was the actual
+         * security property this spec protected.
+         */
+        it("ignores body created_by / is_private / position (mass-assignment)", async () => {
             const { u, space, listId, client } = await setup();
-            const wsB = await makeWorkspace();
-            const spaceB = await makeSpace({ workspaceId: wsB.id });
 
             const res = await client.patch(url(listId)).send({
                 name: "Legit",
-                space_id: spaceB.id,
                 created_by: "u-attacker",
                 is_private: true,
                 position: 999,
@@ -548,6 +558,22 @@ describe("PATCH /api/v1/lists/:id", () => {
             expect(res.body.created_by).toBe(u.id);
             expect(res.body.is_private).toBe(false);
             expect(res.body.position).toBe(0);
+        });
+
+        it("cannot move a list into ANOTHER workspace's space", async () => {
+            const { space, listId, client } = await setup();
+            const wsB = await makeWorkspace();
+            const spaceB = await makeSpace({ workspaceId: wsB.id });
+
+            const res = await client
+                .patch(url(listId))
+                .send({ name: "Legit", space_id: spaceB.id });
+
+            expect(res.status).toBe(404);
+            expect(res.body.error.code).toBe("space.not_found");
+            // and the whole patch is rejected — the name did not change either
+            expect((await listRow(listId)).spaceId).toBe(space.id);
+            expect((await listRow(listId)).name).not.toBe("Legit");
         });
     });
 
@@ -657,5 +683,219 @@ describe("PATCH /api/v1/lists/:id", () => {
             expect(res.body.name).toBe(name);
             expect((await listRow(listId)).name).toBe(name);
         });
+    });
+});
+
+// ─── F28 (ISS-036, decision D12.7): moving a list to another space ───────────
+describe("PATCH /api/v1/lists/:id — space_id (the MOVE)", () => {
+    /**
+     * A list created in the wrong department used to be stuck there forever:
+     * `updateListValidator` accepted only name/description/icon/color/
+     * default_task_type_id, so `space_id` was a 422. The only route was to
+     * build a replacement in the right space and hand-move every task, and
+     * there is no bulk move. ISS-036's own scenario — complaint work that
+     * starts in Customer Service and belongs in the Complain Department — is
+     * ordinary for an 8-department workspace.
+     *
+     * The half NOT built is `is_private`, deliberately: `rbac/scope.ts` records
+     * that `lists.is_private` is enforced nowhere, so making it settable would
+     * ship a toggle a user can switch on while every member keeps seeing the
+     * list. That is pinned below too, so a future "consistency" change has to
+     * argue with a test.
+     */
+    it("moves the list into another space in the same workspace", async () => {
+        const { u, space, listId, client } = await setup();
+        const target = await makeSpace({
+            workspaceId: u.workspaceId,
+            createdBy: u.id,
+        });
+
+        const res = await client.patch(url(listId)).send({ space_id: target.id });
+
+        expect(res.status).toBe(200);
+        expect(res.body.space_id).toBe(target.id);
+        expect((await listRow(listId)).spaceId).toBe(target.id);
+        expect(space.id).not.toBe(target.id);
+    });
+
+    it("keeps the list's statuses — a move is not a rebuild", async () => {
+        const { u, listId, client } = await setup();
+        const before = await statusCount(listId);
+        const target = await makeSpace({
+            workspaceId: u.workspaceId,
+            createdBy: u.id,
+        });
+
+        await client.patch(url(listId)).send({ space_id: target.id });
+
+        expect(await statusCount(listId)).toBe(before);
+    });
+
+    it("records space_id in the activity row's changed fields", async () => {
+        const { u, listId, client } = await setup();
+        const target = await makeSpace({
+            workspaceId: u.workspaceId,
+            createdBy: u.id,
+        });
+
+        await client.patch(url(listId)).send({ space_id: target.id });
+
+        const rows = await activityRows(u.workspaceId);
+        const updated = rows.filter(
+            (r) => r.entityId === listId && r.action === "updated",
+        );
+        expect(updated).toHaveLength(1);
+        const ctx = updated[0].context as { fields?: string[] };
+        expect(ctx.fields).toContain("space_id");
+    });
+
+    it("accepts space_id alongside other fields", async () => {
+        const { u, listId, client } = await setup();
+        const target = await makeSpace({
+            workspaceId: u.workspaceId,
+            createdBy: u.id,
+        });
+
+        const res = await client
+            .patch(url(listId))
+            .send({ space_id: target.id, name: "Complaints" });
+
+        expect(res.status).toBe(200);
+        expect(res.body.space_id).toBe(target.id);
+        expect(res.body.name).toBe("Complaints");
+    });
+
+    it("treats a move to the list's CURRENT space as a no-op, not an error", async () => {
+        const { space, listId, client } = await setup();
+        const res = await client.patch(url(listId)).send({ space_id: space.id });
+        expect(res.status).toBe(200);
+        expect(res.body.space_id).toBe(space.id);
+    });
+
+    it("404 space.not_found for an unknown target space", async () => {
+        const { listId, client } = await setup();
+        const res = await client.patch(url(listId)).send({ space_id: "sp-nope" });
+        expect(res.status).toBe(404);
+        expect(res.body.error.code).toBe("space.not_found");
+    });
+
+    it("404 for a space in ANOTHER workspace (no existence oracle)", async () => {
+        const { listId, client } = await setup();
+        const otherWs = await makeWorkspace();
+        const otherUser = await makeUser({
+            workspaceId: otherWs.id,
+            role: "owner",
+        });
+        const foreign = await makeSpace({
+            workspaceId: otherWs.id,
+            createdBy: otherUser.id,
+        });
+
+        const res = await client.patch(url(listId)).send({ space_id: foreign.id });
+
+        expect(res.status).toBe(404);
+        expect(res.body.error.code).toBe("space.not_found");
+    });
+
+    it("409 space.archived — a live list may not land in an archived space", async () => {
+        const { u, listId, client } = await setup();
+        const target = await makeSpace({
+            workspaceId: u.workspaceId,
+            createdBy: u.id,
+        });
+        await getDb()
+            .update(spaces)
+            .set({ archivedAt: new Date() })
+            .where(eq(spaces.id, target.id));
+
+        const res = await client.patch(url(listId)).send({ space_id: target.id });
+
+        expect(res.status).toBe(409);
+        expect(res.body.error.code).toBe("space.archived");
+    });
+
+    /**
+     * F27 added `uq_lists_space_name`, so the target space may already own this
+     * name. Without the guard the move would surface as a raw ER_DUP_ENTRY.
+     */
+    it("409 list.duplicate when the target space already has that name", async () => {
+        const { u, listId, client } = await setup({
+            list: { name: "Complaints" },
+        });
+        const target = await makeSpace({
+            workspaceId: u.workspaceId,
+            createdBy: u.id,
+        });
+        await insertList({
+            spaceId: target.id,
+            createdBy: u.id,
+            name: "Complaints",
+        });
+
+        const res = await client.patch(url(listId)).send({ space_id: target.id });
+
+        expect(res.status).toBe(409);
+        expect(res.body.error.code).toBe("list.duplicate");
+        expect((await listRow(listId)).spaceId).not.toBe(target.id);
+    });
+
+    it("the duplicate check is case-INSENSITIVE, like the index", async () => {
+        const { u, listId, client } = await setup({ list: { name: "complaints" } });
+        const target = await makeSpace({
+            workspaceId: u.workspaceId,
+            createdBy: u.id,
+        });
+        await insertList({
+            spaceId: target.id,
+            createdBy: u.id,
+            name: "COMPLAINTS",
+        });
+
+        const res = await client.patch(url(listId)).send({ space_id: target.id });
+        expect(res.status).toBe(409);
+        expect(res.body.error.code).toBe("list.duplicate");
+    });
+
+    it("a simultaneous rename is what the duplicate check uses", async () => {
+        const { u, listId, client } = await setup({ list: { name: "Orders" } });
+        const target = await makeSpace({
+            workspaceId: u.workspaceId,
+            createdBy: u.id,
+        });
+        await insertList({
+            spaceId: target.id,
+            createdBy: u.id,
+            name: "Complaints",
+        });
+
+        // "Orders" is free in the target, but the patch renames it to a name
+        // that is NOT — the check must consider the incoming name, not the old.
+        const res = await client
+            .patch(url(listId))
+            .send({ space_id: target.id, name: "Complaints" });
+
+        expect(res.status).toBe(409);
+        expect(res.body.error.code).toBe("list.duplicate");
+    });
+
+    it("422 for an empty space_id", async () => {
+        const { listId, client } = await setup();
+        const res = await client.patch(url(listId)).send({ space_id: "   " });
+        expect(res.status).toBe(422);
+        expect(res.body.error.code).toBe("validation.failed");
+    });
+
+    it("422 for a null space_id — a list always belongs to a space", async () => {
+        const { listId, client } = await setup();
+        const res = await client.patch(url(listId)).send({ space_id: null });
+        expect(res.status).toBe(422);
+        expect(res.body.error.code).toBe("validation.failed");
+    });
+
+    it("still REFUSES is_private — it is enforced nowhere (rbac/scope.ts)", async () => {
+        const { listId, client } = await setup();
+        const res = await client.patch(url(listId)).send({ is_private: true });
+        expect(res.status).toBe(422);
+        expect((await listRow(listId)).isPrivate).toBe(false);
     });
 });

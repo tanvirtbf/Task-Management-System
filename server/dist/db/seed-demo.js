@@ -66,17 +66,20 @@ const logger_1 = __importDefault(require("../config/logger"));
 const bootstrap_1 = require("../rbac/bootstrap");
 const dhakaTime_1 = require("../utils/dhakaTime");
 // ─── date helpers ────────────────────────────────────────────────────────────
-const pad = (n) => String(n).padStart(2, "0");
-const ymdOffset = (days) => {
-    const d = new Date();
-    d.setDate(d.getDate() + days);
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-};
-const toLocalDate = (s) => {
+//
+// F3: these built LOCAL-midnight Dates, which land in a DATE column **one day
+// early** now that the mysql2 driver is pinned to `+00:00` (local midnight in
+// Dhaka is 18:00 UTC the previous day, and DATE truncates the time off). Both
+// the calendar day and the Date must therefore be derived in the same frame the
+// driver writes in. `dhakaToday()` gives the day a Dhaka user means; `Date.UTC`
+// puts it at the UTC midnight the column stores. Same rule as the services'
+// `toDateOnly`.
+const ymdOffset = (days) => (0, dhakaTime_1.addDaysYmd)((0, dhakaTime_1.dhakaToday)(), days);
+const toDateOnly = (s) => {
     const [y, m, d] = s.split("-").map(Number);
-    return new Date(y, m - 1, d);
+    return new Date(Date.UTC(y, m - 1, d));
 };
-const dueOff = (days) => toLocalDate(ymdOffset(days));
+const dueOff = (days) => toDateOnly(ymdOffset(days));
 // A Thursday inside the last completed Dhaka week — used to backdate DONE tasks
 // + their reviews so the weekly `department-report` job produces real reports.
 const LAST_WEEK = (0, dhakaTime_1.previousWeekStart)((0, dhakaTime_1.dhakaWeekOf)(new Date()).weekStart);
@@ -85,9 +88,14 @@ const LAST_WEEK_INSTANT = new Date((0, dhakaTime_1.weekBoundsUtc)(LAST_WEEK).fro
 // checklist and extra-notification helpers below.
 const taskIdByName = {};
 const seed = async () => {
-    // The npm script's `cross-env NODE_ENV=dev` is NOT a guard — config always
-    // loads server/.env regardless of NODE_ENV, so on a production box this
-    // script would truncate the live database. Refuse, loudly.
+    // ── THREE INDEPENDENT REFUSALS (F14 / ISS-002) ──────────────────────────
+    //
+    // This script truncates EVERY table. The npm script used to hard-code
+    // `cross-env NODE_ENV=dev`, which overwrote the real environment and so
+    // made `Config.IS_PROD` permanently false on the documented invocation
+    // path — the exact layer meant to stop a production run was the one the
+    // script disabled. `cross-env` is gone from package.json, and a third
+    // guard now backs the other two up so no single mistake can defeat them.
     if (config_1.Config.IS_PROD) {
         logger_1.default.error(`REFUSING to run the demo seed: NODE_ENV=${config_1.Config.NODE_ENV}. This truncates EVERY table in ${config_1.Config.DB_NAME}.`);
         process.exit(1);
@@ -95,6 +103,23 @@ const seed = async () => {
     if (process.env.ALLOW_DEMO_SEED !== "1") {
         logger_1.default.error(`REFUSING to run the demo seed: it truncates EVERY table in "${config_1.Config.DB_NAME}" on ${config_1.Config.DB_HOST}. Re-run with ALLOW_DEMO_SEED=1 if that is really what you want.`);
         process.exit(1);
+    }
+    // Guard 3 — the one that does not depend on an environment variable at
+    // all, mirroring what `db:setup` already does with its table count. A
+    // production database is recognised by its DATA: real users are the tell,
+    // because the demo seed's own output is a known, small, fixed set. Set
+    // `ALLOW_DEMO_SEED_OVER_DATA=1` to override on a dev box that genuinely
+    // holds more (the deliberate escape hatch — loud, and separate).
+    {
+        await (0, client_1.initDb)();
+        const [rows] = await (0, client_1.getPool)().query("SELECT COUNT(*) AS n FROM users WHERE email NOT LIKE '%@company.local' AND email NOT LIKE '%@beautybooth.com.bd' AND email NOT LIKE '%@test.local'");
+        const strangers = Number(rows[0]?.n ?? 0);
+        if (strangers > 0 && process.env.ALLOW_DEMO_SEED_OVER_DATA !== "1") {
+            logger_1.default.error(`REFUSING to run the demo seed: "${config_1.Config.DB_NAME}" holds ${strangers} user account(s) that the demo seed did not create. ` +
+                `This looks like a real workspace, and the seed would truncate every table in it. ` +
+                `If you are certain, re-run with ALLOW_DEMO_SEED_OVER_DATA=1.`);
+            process.exit(1);
+        }
     }
     const db = await (0, client_1.initDb)();
     const pool = (0, client_1.getPool)();
@@ -356,6 +381,17 @@ const seed = async () => {
             taskTypeId: TT[typeName],
             dueDate: s.due === undefined || s.due === null ? null : dueOff(s.due),
             completedAt: done ? LAST_WEEK_INSTANT : null,
+            // F30 close-out (ISS-092): a DONE task backdated to last week must
+            // be CREATED before that — leaving created_at to the CURRENT_
+            // TIMESTAMP default produced 12 tasks "completed before they were
+            // created", a fixture trap that mimics the real ISS-052 symptom.
+            // Two days before the completion instant keeps the demo history
+            // coherent; live tasks keep the default (created "now" is right).
+            ...(done
+                ? {
+                    createdAt: new Date(LAST_WEEK_INSTANT.getTime() - 2 * 86_400_000),
+                }
+                : {}),
             reviewStatus: s.review ? s.review.st : null,
             reviewedAt: s.review ? LAST_WEEK_INSTANT : null,
             reviewedBy: s.review ? U[s.review.by] : null,
@@ -516,14 +552,15 @@ const seed = async () => {
     });
     if (notifRows.length)
         await db.insert(S.notifications).values(notifRows);
-    // ── 12. on-call (current week → Jhankar) ─────────────────────────────────
-    const now = new Date();
-    const addDays = (b, d) => new Date(b.getFullYear(), b.getMonth(), b.getDate() + d);
+    // ── 12. on-call (a 7-day window covering today → Jhankar) ────────────────
+    // Deliberately NOT a Mon–Sun week: it is centred on today so that "who is on
+    // call right now?" always has an answer whenever the demo is seeded.
+    // `dueOff` keeps this on the same UTC-midnight footing as every other DATE.
     await db.insert(S.onCallShifts).values({
         id: (0, utils_1.fakeId)("ocs"),
         workspaceId: ws,
-        weekStart: addDays(now, -3),
-        weekEnd: addDays(now, 3),
+        weekStart: dueOff(-3),
+        weekEnd: dueOff(3),
         engineerId: U[10],
         createdBy: U[2],
     });

@@ -1,0 +1,43 @@
+Block E final confirmation — search+users+spaces+sprints (specs updated) + the 6 unmeasured — 2026-08-06T11:11:01+06:00
+(notifications, collab, home, lists, forms, statuses, taskdeps: solo-green on this tree — see gate-final.txt + red-details.txt)
+search             Test Suites: 1 passed, 1 total|Tests:       32 passed, 32 total|
+users              Test Suites: 8 passed, 8 total|Tests:       282 passed, 282 total|
+spaces             Test Suites: 1 failed, 6 passed, 7 total|Tests:       1 failed, 243 passed, 244 total|
+sprints            Test Suites: 8 failed, 1 passed, 9 total|Tests:       117 failed, 33 passed, 150 total|
+tagsreview         
+taskTypes          
+workspaceActivity  
+membership         
+tasks              
+chain finished 2026-08-06T11:19:29+06:00
+
+── remaining five (30s drain pause between modules; sprints/spaces re-proven solo above) ──
+tagsreview         Test Suites: 2 failed, 2 passed, 4 total|Tests:       10 failed, 139 passed, 149 total|
+taskTypes          Test Suites: 2 failed, 2 passed, 4 total|Tests:       8 failed, 176 passed, 184 total|
+workspaceActivity  Test Suites: 2 passed, 2 total|Tests:       41 passed, 41 total|
+membership         Test Suites: 5 passed, 5 total|Tests:       97 passed, 97 total|
+tasks              
+chain finished 2026-08-06T11:37:22+06:00
+
+── after updating the stale specs (round 2: tags, task-types) — solo re-runs ──
+search             32/32
+users              282/282
+spaces             244/244   (list suite 58/58 after the pagination spec update)
+sprints            150/150
+tagsreview         149/149
+taskTypes          184/184
+workspaceActivity   41/41
+membership          97/97
+home                23/23
+lists              171/171
+forms               85/85
+statuses           209/209
+notifications       68/68    (solo — the chain run flaked on a drained pool)
+collab              47/47    (solo — same)
+taskdeps            67/67    (solo — same)
+tasks              359/359
+
+NOTE ON THE CHAIN RUNS: a 16-module serial chain on one box produces spurious
+mass-failures once earlier modules leave the pool draining (taskdeps showed
+27 failed in-chain and 67/67 solo; sprints 117 failed in-chain and 150/150
+solo). Every module here was re-measured SOLO, which is the number that counts.

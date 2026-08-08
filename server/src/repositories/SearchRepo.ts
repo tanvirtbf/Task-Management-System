@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull, like, or } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, like, or, sql } from "drizzle-orm";
 import { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../db/schema";
 import { comments, lists, spaces, tasks, users } from "../db/schema";
@@ -77,6 +77,7 @@ export class SearchRepo {
         limit: number,
     ): Promise<TaskRow[]> {
         const pattern = `%${escapeLike(q)}%`;
+        const prefix = `${escapeLike(q)}%`;
         return this.db
             .select()
             .from(tasks)
@@ -84,7 +85,15 @@ export class SearchRepo {
                 and(
                     eq(tasks.workspaceId, workspaceId),
                     isNull(tasks.archivedAt),
-                    or(like(tasks.name, pattern), eq(tasks.customId, q)),
+                    or(
+                        like(tasks.name, pattern),
+                        // F20 (ISS-074): the DESCRIPTION joins the predicate.
+                        // For the ops teams it is where the order number and
+                        // SKU live — and comments were already searched, so
+                        // its absence was an inconsistency, not a policy.
+                        like(tasks.description, pattern),
+                        eq(tasks.customId, q),
+                    ),
                     // RBAC P18 — search was the single biggest leak in the
                     // scan: task names, list names, space names and comment
                     // bodies, workspace-wide, to anyone.
@@ -94,7 +103,20 @@ export class SearchRepo {
                     ),
                 ),
             )
-            .orderBy(asc(tasks.internalId))
+            // F20 (ISS-075): relevance ladder instead of oldest-first. An
+            // exact custom_id hit floats to the very top, then an exact name,
+            // then a name prefix, then any name substring (so a name match
+            // beats a description-only match), newest first within each band.
+            // Before this, `ORDER BY internal_id ASC` meant that at a few
+            // thousand tasks the limit filled with the OLDEST matches and the
+            // wanted task was never on the page.
+            .orderBy(
+                desc(sql`(${tasks.customId} = ${q})`),
+                desc(sql`(${tasks.name} = ${q})`),
+                desc(sql`(${tasks.name} LIKE ${prefix})`),
+                desc(sql`(${tasks.name} LIKE ${pattern})`),
+                desc(tasks.internalId),
+            )
             .limit(limit);
     }
 
@@ -201,7 +223,14 @@ export class SearchRepo {
                     ),
                 ),
             )
-            .orderBy(asc(users.id))
+            // F20 (ISS-075): a name/email PREFIX hit outranks a mid-string
+            // one; alphabetical inside each band (was: insertion order).
+            .orderBy(
+                desc(sql`(${users.firstName} LIKE ${`${escapeLike(q)}%`})`),
+                desc(sql`(${users.email} LIKE ${`${escapeLike(q)}%`})`),
+                asc(users.firstName),
+                asc(users.id),
+            )
             .limit(limit);
     }
 

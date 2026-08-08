@@ -6,6 +6,7 @@ import type { SprintStatus } from "../repositories/SprintsRepo";
 import type {
     AddSprintTasksRequest,
     CloseSprintRequest,
+    DeleteSprintRequest,
     CreateSprintRequest,
     GetActiveSprintRequest,
     GetSprintRequest,
@@ -218,6 +219,35 @@ export class SprintsController {
     }
 
     /** DELETE /api/v1/sprints/:id/tasks/:taskId — detach one task (🔐). Returns 204. */
+    /**
+     * #10 `DELETE /api/v1/sprints/:id` (F28 / ISS-013, D12.6).
+     *
+     * 204 with no body, like the other deletes in this API. The number of tasks
+     * the FK detached is logged rather than returned, because the response shape
+     * for a delete is settled across the product and one endpoint returning a
+     * body would be the contract inconsistency F23 spent a phase removing.
+     */
+    async remove(req: DeleteSprintRequest, res: Response, next: NextFunction) {
+        try {
+            const { detached } = await this.service.remove({
+                id: req.params.id,
+                workspaceId: req.auth.workspaceId,
+                actorId: req.auth.sub,
+            });
+
+            this.logger.info("sprints.delete.ok", {
+                requestId: req.requestId,
+                workspaceId: req.auth.workspaceId,
+                sprintId: req.params.id,
+                detachedTasks: detached,
+            });
+
+            res.status(204).end();
+        } catch (err) {
+            next(err);
+        }
+    }
+
     async removeTask(
         req: RemoveSprintTaskRequest,
         res: Response,

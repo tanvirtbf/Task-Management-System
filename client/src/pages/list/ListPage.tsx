@@ -211,6 +211,7 @@ const ListPage = () => {
                         <Button
                             size="small"
                             type="text"
+                            aria-label="List actions"
                             icon={
                                 <MoreHorizontal size={14} strokeWidth={1.75} />
                             }

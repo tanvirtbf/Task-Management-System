@@ -54,7 +54,12 @@ export const Topbar = () => (
                 flexShrink: 0,
             }}
         >
-            <OnCallBadge />
+            {/* F34 (ISS-097): hidden below 480px (index.css) — the fixed
+                right cluster was 6px wider than a 390px viewport, and this
+                FYI chip is what sensibly yields. */}
+            <span className="topbar-oncall">
+                <OnCallBadge />
+            </span>
             <QuickCreateButton />
             <NotificationBell />
             <UserMenu />

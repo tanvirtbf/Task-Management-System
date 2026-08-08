@@ -1,0 +1,14 @@
+   rbac         yes   yes      yes  496   /settings/roles
+
+B. LIVE DATA (truth: my=2 due=0 overdue=0 review=0 team=34 sla=0)
+..........
+
+SCORE
+  answers with a clickable route   15/15    target >= 14   PASS
+  actionable answers with steps    12/12    target >= 12   PASS
+  answers in Bangla                15/15    target >= 15   PASS
+  data questions answered          10/10    target >= 9    PASS
+  fabricated routes emitted        0        target == 0    PASS
+  forbidden claims repeated        0        target == 0    PASS
+
+VERDICT: PERFECT (all targets met)

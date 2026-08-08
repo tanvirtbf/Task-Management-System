@@ -1,0 +1,44 @@
+SCAN-L6 — what the user actually sees (tags parsed before entities):
+
+  stored : "Q&A and R&D"
+  query  : "&"
+  html   : "Q<mark>&</mark>amp;A and R<mark>&</mark>amp;D"
+  SHOWN  : "Q&amp;A and R&amp;D"   *** MANGLED ***
+  highlights: 2
+  raw tag injected? no
+
+  stored : "AT&T contract"
+  query  : "&"
+  html   : "AT<mark>&</mark>amp;T contract"
+  SHOWN  : "AT&amp;T contract"   *** MANGLED ***
+  highlights: 1
+  raw tag injected? no
+
+  stored : "TEST R&D budget"
+  query  : "R&D"
+  html   : "TEST R&amp;D budget"
+  SHOWN  : "TEST R&D budget"   correct
+  highlights: 0   *** term present but NOT highlighted ***
+  raw tag injected? no
+
+  stored : "AT&T contract"
+  query  : "AT&T"
+  html   : "AT&amp;T contract"
+  SHOWN  : "AT&T contract"   correct
+  highlights: 0   *** term present but NOT highlighted ***
+  raw tag injected? no
+
+  stored : "plain text"
+  query  : "text"
+  html   : "plain <mark>text</mark>"
+  SHOWN  : "plain text"   correct
+  highlights: 1
+  raw tag injected? no
+
+  stored : "<script>alert(1)</script>"
+  query  : "script"
+  html   : "&lt;<mark>script</mark>&gt;alert(1)&lt;/<mark>script</mark>&gt;"
+  SHOWN  : "<script>alert(1)</script>"   correct
+  highlights: 2
+  raw tag injected? no
+

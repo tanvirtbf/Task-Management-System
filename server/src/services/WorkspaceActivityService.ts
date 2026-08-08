@@ -1,4 +1,5 @@
 import { AppError } from "../errors";
+import { strictDecodeCursor } from "../utils/pagination";
 import {
     WorkspaceActivityRepo,
     type ActivityRow,
@@ -194,13 +195,10 @@ const encodeCursor = (value: string): string =>
  * 422 — the client cannot "fix" an opaque token, only drop it and restart.
  */
 const decodeCursor = (cursor: string): string => {
-    if (!/^[A-Za-z0-9_-]+$/.test(cursor)) {
-        throw AppError.badRequest(
-            "pagination.invalid_cursor",
-            "The pagination cursor is malformed.",
-        );
-    }
-    const decoded = Buffer.from(cursor, "base64url").toString("utf8");
+    // F23 (ISS-008): strict ROUND-TRIP decode first — a tampered
+    // `<valid-cursor>XX` could decode to different digits and silently shift
+    // the window; a cursor the server never issued must always be a 400.
+    const decoded = strictDecodeCursor(cursor);
     if (!/^\d+$/.test(decoded)) {
         throw AppError.badRequest(
             "pagination.invalid_cursor",

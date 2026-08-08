@@ -1,0 +1,55 @@
+
+  === F16 — orphans and cascades ===
+
+  --- fixture: parent + child, each with a notification and a file ---
+  OK    2 task-notifications + 3 attachment rows exist            notifs 2, rows 3 (1 soft-deleted)
+
+  --- ISS-073 + ISS-022: the hard delete ---
+  OK    hard delete (204) takes the whole subtree                 got 204
+  OK    notifications for BOTH tasks are gone (was: stayed forever)remaining 0
+  OK    attachment rows cascaded (as before)                      
+  OK    ALL 3 R2 keys queued — incl. the child's and the soft-deleted one3 queued
+
+  --- the r2-purge job drains the queue ---
+  OK    dry run REPORTS the queue without draining it             wouldDrainQueue 3
+  OK    real run drains 3 (R2 objects deleted first, rows second) queueDrained 3, r2Errors 0
+  OK    queue empty afterwards                                    
+
+  --- ISS-041: unarchive restores what archive took down ---
+  OK    archive: space cascade took L2 (L1 was already archived)  {"l1":true,"l2":true}
+  OK    unarchive: L2 is BACK (was: space came back empty)        l2 archived=false
+  OK    …and the INDEPENDENTLY archived L1 STAYS archived         l1 archived=true
+  OK    the audit row says how many lists came back               lists_restored 1
+
+  --- P37's 24-query orphan sweep, re-run ---
+  tasks with a dead list                      0     clean
+  tasks with a dead status                    0     clean
+  tasks with a dead type                      0     clean
+  tasks with a dead parent                    0     clean
+  lists with a dead space                     0     clean
+  statuses (scope=list) with a dead list      0     clean
+  comments with a dead task                   0     clean
+  checklists with a dead task                 0     clean
+  checklist_items with a dead checklist       0     clean
+  attachments with a dead task                0     clean
+  task_assignees with a dead task             0     clean
+  task_assignees with a dead user             0     clean
+  task_activity with a dead task              0     clean
+  NOTIFICATIONS pointing at a dead task       0     clean
+  notifications pointing at a dead comment    0     clean
+  notifications with a dead user              0     clean
+  task_dependencies with a dead task          0     clean
+  form_fields with a dead form                0     clean
+  form_submissions with a dead form           0     clean
+  department_reports with a dead space        0     clean
+  task_reviews with a dead task               0     clean
+  spaces with a dead head                     0     clean
+  sessions with a dead user                   0     clean
+  tasks whose sprint is gone                  0     clean
+  -> 24 of 24 clean  (P37 scored 23 of 24 — the notification row was the one)
+
+  === CLEANUP ===
+  tasks 46 (46) | lists 13 (13) | spaces 6 (6) | notif 57 (57) | queue 0 (0)
+
+  PASS — nothing orphans: not inbox entries, not R2 bytes, not a department's boards.
+

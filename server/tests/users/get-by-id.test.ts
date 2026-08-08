@@ -6,6 +6,7 @@ import {
     makeWorkspace,
 } from "../test-utils/factories";
 import { getDb } from "../../src/db/client";
+import { syncUserSystemRole } from "../../src/rbac/bootstrap";
 import { users, workspaceActivity } from "../../src/db/schema";
 import { Config } from "../../src/config";
 import type { Role } from "../../src/constants";
@@ -57,7 +58,15 @@ interface SeedUserSpec {
     avatarUrl?: string;
 }
 
-/** Bulk-insert users with controlled ids in one round-trip. */
+/**
+ * Bulk-insert users with controlled ids in one round-trip.
+ *
+ * F10: also assigns each one its system role — the bulk insert writes `users`
+ * rows directly and so skipped the `syncUserSystemRole` call every real
+ * creation path runs. Without it a seeded user holds NO permissions, and the
+ * seeded caller 403s on the `member.view` gate F7 added. See the twin comment
+ * in `list.test.ts`.
+ */
 const seedUsers = async (workspaceId: string, specs: SeedUserSpec[]) => {
     const db = getDb();
     await db.insert(users).values(
@@ -73,6 +82,11 @@ const seedUsers = async (workspaceId: string, specs: SeedUserSpec[]) => {
             ...(s.avatarUrl !== undefined ? { avatarUrl: s.avatarUrl } : {}),
         })),
     );
+    for (const s of specs) {
+        await syncUserSystemRole(db, workspaceId, s.id, s.role ?? "member", {
+            bump: false,
+        });
+    }
 };
 
 /** Mint a raw access token for the negative-auth cases. */
@@ -84,7 +98,7 @@ const signAccess = (
     jwt.sign(
         { sub: user.id, role: user.role, workspaceId: user.workspaceId },
         secret,
-        { algorithm: "HS256", ...opts },
+        { algorithm: "HS256", expiresIn: "15m", ...opts },
     );
 
 const countWorkspaceActivity = async (): Promise<number> => {

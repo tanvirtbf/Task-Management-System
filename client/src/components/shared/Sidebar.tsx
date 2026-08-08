@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
@@ -19,12 +19,15 @@ import {
     X,
     UserCheck,
     BarChart3,
+    AlarmClock,
 } from "lucide-react";
 import { Dropdown, Input, App as AntApp } from "antd";
+import type { MenuProps } from "antd";
 import { workspaceApi, notificationsApi } from "../../http/api";
 import { useUiStore } from "../../stores/ui";
 import { useAuthStore } from "../../stores/auth";
 import { useSpaces } from "../../hooks/useReferenceData";
+import { usePermissions } from "../../hooks/usePermissions";
 import { tokens } from "../../theme";
 import { Logo } from "../ui/Logo";
 import { SidebarNavItem } from "./SidebarNavItem";
@@ -37,6 +40,26 @@ export const Sidebar = () => {
     const navigate = useNavigate();
     const { message } = AntApp.useApp();
     const { sidebarCollapsed, toggleSidebar } = useUiStore();
+    const setSidebarCollapsed = useUiStore((s) => s.setSidebarCollapsed);
+
+    /**
+     * F34 (ISS-097): at phone width the expanded sidebar (248px) ate two
+     * thirds of a 390px viewport, leaving the topbar a 142px column it could
+     * not fit — the app panned sideways. Auto-collapse when the viewport
+     * enters the narrow range (640px matches the smallest tablet breakpoint
+     * the F31 sweep covers between phone and 768). One-way on purpose: the
+     * user can re-expand by hand, and widening the window never fights their
+     * choice.
+     */
+    useEffect(() => {
+        const mq = window.matchMedia("(max-width: 640px)");
+        const apply = () => {
+            if (mq.matches) setSidebarCollapsed(true);
+        };
+        apply();
+        mq.addEventListener("change", apply);
+        return () => mq.removeEventListener("change", apply);
+    }, [setSidebarCollapsed]);
     const user = useAuthStore((s) => s.user);
     const logout = useAuthStore((s) => s.logout);
     const [treeSearch, setTreeSearch] = useState("");
@@ -58,25 +81,58 @@ export const Sidebar = () => {
     // headship would deep-link into a 409). Omitted from the collapsed rail —
     // the Engineering section precedent.
     const { data: allSpaces = [] } = useSpaces();
+    /**
+     * F26 (SCAN-M5): the client gates on the SAME permissions the server
+     * enforces (F7 made all 56 real). `/me/permissions` is already wired; it
+     * was simply never consulted by the nav.
+     */
+    const { holds, ready: permsReady } = usePermissions();
+    /**
+     * The Engineering block used to render UNCONDITIONALLY, outside the
+     * conditional that gates Department and Reports — so every Marketing-only
+     * user saw Eng Home, Sprint Board and On-call rotation. There is no
+     * "eng.view" permission (the catalog has no such key), so the honest
+     * signal is holding any of the engineering-domain grants. Measured on the
+     * seeded roles: an engineer holds sprint.assign_tasks + postmortem.manage,
+     * an owner holds all four, and `marketing.only@` holds none of them —
+     * exactly the separation SCAN-M5 asks for. (The Report-a-bug button stays
+     * for everyone: reporting a bug is how a NON-engineer reaches the team.)
+     *
+     * This carried an extra `permRole !== "guest"` term until F28. It was there
+     * because the seeded Guest role held `postmortem.manage` and
+     * `sprint.assign_tasks` at scope=all (ISS-094), so a grant-only test would
+     * have shown a guest the entire Engineering section. D12.1 revoked those
+     * grants, so the grant check alone is now correct and the term is gone —
+     * which is the outcome the note here asked for.
+     */
+    const canSeeEngineering =
+        holds("sprint.manage") ||
+        holds("sprint.assign_tasks") ||
+        holds("oncall.manage") ||
+        holds("postmortem.manage");
     const canSeeDept =
         user?.role === "owner" ||
         user?.role === "admin" ||
         allSpaces.some((s) => !s.archivedAt && s.headUserId === user?.id);
 
+    // F26 (SCAN-M5): each entry carries the permission its DESTINATION
+    // already enforces (the routes are wrapped in <RequirePermission>), so a
+    // member no longer clicks through to a Forbidden page — or, for "New
+    // space", to a 403 toast.
     const workspaceMenuItems = [
-        {
+        holds("workspace.settings") && {
             key: "settings",
             icon: <Settings size={13} strokeWidth={1.75} />,
             label: "Workspace settings",
             onClick: () => navigate("/settings/workspace"),
         },
-        {
+        holds("member.view") && {
             key: "members",
             icon: <Users size={13} strokeWidth={1.75} />,
             label: "Members",
             onClick: () => navigate("/settings/members"),
         },
-        {
+        holds("space.create") && {
             key: "newSpace",
             icon: <Plus size={13} strokeWidth={1.75} />,
             label: "New space",
@@ -104,7 +160,7 @@ export const Sidebar = () => {
                 navigate("/login");
             },
         },
-    ];
+    ].filter(Boolean) as NonNullable<MenuProps["items"]>;
 
     const width = sidebarCollapsed
         ? tokens.layout.sidebarCollapsedWidth
@@ -262,6 +318,21 @@ export const Sidebar = () => {
                             label="Search"
                             rightSlot={<KbdHint k="⌘K" />}
                         />
+                        {/*
+                          * F28 (ISS-082, D12.4). Deliberately UNGATED, matching
+                          * its endpoint: `GET /sla/breached` is 🔐 any
+                          * authenticated member (a dashboard read) and the
+                          * catalog has no `sla.view` key — `task.sla_override`
+                          * guards the admin override, not the queue. Gating the
+                          * nav on a permission the route does not check would
+                          * be the UI lying in the other direction, which is the
+                          * whole subject of Block F.
+                          */}
+                        <SidebarNavItem
+                            to="/sla"
+                            icon={<AlarmClock size={15} strokeWidth={1.75} />}
+                            label="SLA breaches"
+                        />
                         {canSeeDept && (
                             <>
                                 <SidebarNavItem
@@ -289,22 +360,33 @@ export const Sidebar = () => {
                                 />
                             </>
                         )}
-                        <SectionHeader title="Engineering" icon={<Code size={11} />} />
-                        <SidebarNavItem
-                            to="/eng"
-                            icon={<Code size={15} strokeWidth={1.75} />}
-                            label="Eng Home"
-                        />
-                        <SidebarNavItem
-                            to="/eng/sprint"
-                            icon={<Zap size={15} strokeWidth={1.75} />}
-                            label="Sprint Board"
-                        />
-                        <SidebarNavItem
-                            to="/eng/on-call"
-                            icon={<Shield size={15} strokeWidth={1.75} />}
-                            label="On-call rotation"
-                        />
+                        {permsReady && canSeeEngineering && (
+                            <>
+                                <SectionHeader
+                                    title="Engineering"
+                                    icon={<Code size={11} />}
+                                />
+                                <SidebarNavItem
+                                    to="/eng"
+                                    icon={<Code size={15} strokeWidth={1.75} />}
+                                    label="Eng Home"
+                                />
+                                <SidebarNavItem
+                                    to="/eng/sprint"
+                                    icon={<Zap size={15} strokeWidth={1.75} />}
+                                    label="Sprint Board"
+                                />
+                                <SidebarNavItem
+                                    to="/eng/on-call"
+                                    icon={
+                                        <Shield size={15} strokeWidth={1.75} />
+                                    }
+                                    label="On-call rotation"
+                                />
+                            </>
+                        )}
+                        {/* Reporting a bug is how a NON-engineer reaches the
+                            engineering team — never gated. */}
                         <div style={{ padding: "4px 6px" }}>
                             <ReportBugButton />
                         </div>

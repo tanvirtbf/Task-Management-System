@@ -1,0 +1,25 @@
+real now (UTC): 2026-07-30T04:14:54.584Z
+════════════════════════════════════════════════════════════════════════════════════════════
+CASE: DB_TIMEZONE unset  (dev default, session=Dhaka)
+  intended deadline (true)  : 2026-07-30T05:14:55.902Z   (= NOW + 60 min)
+  API reads it back as      : 2026-07-30T05:14:56.000Z   *** round-trip DRIFT ***
+  stored in DB (session tz) : 2026-07-30 05:14:56
+  MySQL: minutes from NOW() : -299   *** MySQL thinks it is -299 min away — WRONG ***
+  MySQL: sla_due_at < NOW() : true   *** already 'breached' though it is in the FUTURE ***
+  MySQL: < UTC_TIMESTAMP()  : false
+════════════════════════════════════════════════════════════════════════════════════════════
+CASE: DB_TIMEZONE=+06:00 (documented PROD setting)
+  intended deadline (true)  : 2026-07-30T05:14:57.369Z   (= NOW + 60 min)
+  API reads it back as      : 2026-07-30T05:14:57.000Z   *** round-trip DRIFT ***
+  stored in DB (session tz) : 2026-07-30 05:14:57
+  MySQL: minutes from NOW() : -300   *** MySQL thinks it is -300 min away — WRONG ***
+  MySQL: sla_due_at < NOW() : true   *** already 'breached' though it is in the FUTURE ***
+  MySQL: < UTC_TIMESTAMP()  : false
+════════════════════════════════════════════════════════════════════════════════════════════
+CASE: DB_TIMEZONE=+00:00 (UTC session)
+  intended deadline (true)  : 2026-07-30T05:14:58.983Z   (= NOW + 60 min)
+  API reads it back as      : 2026-07-30T05:14:59.000Z   *** round-trip DRIFT ***
+  stored in DB (session tz) : 2026-07-30 11:14:59
+  MySQL: minutes from NOW() : 60   ✓ MySQL agrees it is 60 min away
+  MySQL: sla_due_at < NOW() : false   ✓
+  MySQL: < UTC_TIMESTAMP()  : false

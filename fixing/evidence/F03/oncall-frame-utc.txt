@@ -1,0 +1,26 @@
+
+  === F3 — on-call rollover frame ===
+
+  session tz            SYSTEM
+  app  dhakaToday()     2026-08-03
+  view Dhaka expression 2026-08-03
+  SQL  UTC_DATE()       2026-08-03   <- what schema.sql used to say
+  SQL  CURDATE()        2026-08-03   <- what the live view used to say
+
+  OK    app and view derive the same 'today'                2026-08-03 == 2026-08-03
+  OK    endpoint returns the shift covering today           status 200, week 2026-08-03..2026-08-09
+  OK    v_current_on_call lists the same shift              view rows 1
+  OK    endpoint and view agree                             both list it
+  OK    last week's shift is NOT reported as current        endpoint omits it, view rows 0
+
+  simulated week edge — week Mon 2026-08-03 .. Sun 2026-08-09:
+    Mon 02:00 Dhaka       utc-day 2026-08-02  dhaka-day 2026-08-03   view(new)=true   old(UTC)=false   <- the 6h window the old view got wrong
+    Mon 09:00 Dhaka       utc-day 2026-08-03  dhaka-day 2026-08-03   view(new)=true   old(UTC)=true  
+    Sun 23:00 Dhaka       utc-day 2026-08-09  dhaka-day 2026-08-09   view(new)=true   old(UTC)=true  
+    next Mon 05:00 Dhaka  utc-day 2026-08-09  dhaka-day 2026-08-10   view(new)=false  old(UTC)=true    <- the 6h window the old view got wrong
+  OK    the view's window tracks the Dhaka week, not the UTC week
+
+  cleanup: on_call_shifts 1 (baseline had 1)
+
+  PASS — the roster still rolls over at Dhaka midnight.
+

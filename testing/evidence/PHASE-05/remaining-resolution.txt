@@ -1,0 +1,15 @@
+=== 1. the 500 on GET /forms/:id/submissions — reproduce as OWNER ===
+  form created: frm-6jYyDJmMXafP_eB_R21AqQ slug: undefined
+  GET /forms/:id/submissions as OWNER -> 500 {"error":{"code":"internal","message":"Internal server error","request_id":"req_5a776fce-7374-4fd5-b308-e6c7be531008"}}
+  ... with ?limit=10 -> 500 {"error":{"code":"internal","message":"Internal server error","request_id":"req_7861c7be-9b60-423a-a780-9134cd646487"}}
+
+=== 2. remaining permissions with corrected fixtures ===
+  POST /templates structure={"tasks":[{"name":"x"}]} -> 422 {"error":{"code":"validation.failed","message":"One or more fields failed validation","request_id":"req_4c41f981-a1f1-44b7-a3d8-5d596d7e6845","details
+  POST /templates structure=[{"name":"x"}] -> 422 {"error":{"code":"validation.failed","message":"One or more fields failed validation","request_id":"req_6e98af48-9e29-4bc0-9acd-d90517b5755e","details
+  POST /templates structure={"items":[{"name":"x"}]} -> 422 {"error":{"code":"validation.failed","message":"One or more fields failed validation","request_id":"req_36fa3627-0623-4127-b55a-d04e3ac9c17a","details
+  PUT custom-field value body={"value":"p5c"} -> 422 {"error":{"code":"validation.failed","message":"One or more fields failed validation","request_id":"req_8a130b62-f508-40da-af17-2ef2db5e5944
+  PUT custom-field value body={"value":{"text":"p5c"}} -> 422 {"error":{"code":"validation.failed","message":"One or more fields failed validation","request_id":"req_85a72f8d-78e2-4f68-9d4e-ad1a19903438
+  PUT custom-field value body="p5c" -> 400 {"error":{"code":"bad_request","message":"Unexpected token '\"', \"\"p5c\"\" is not valid JSON","request_id":"req_9b0a0e0c-6999-439b-b28e-ed
+  PUT custom-field value body={"text":"p5c"} -> 200 ok
+  incident-ish task type: Incident
+  review on a Done task (as owner) -> 201 ok

@@ -109,7 +109,15 @@ const structureFieldRules: Schema = {
     "structure.checklistItems": {
         in: ["body"],
         optional: true,
-        isArray: { errorMessage: "structure.checklistItems must be an array" },
+        // F29 (ISS-068): the SECOND entry point to the same unbounded surface —
+        // a template carrying 2,000 items was accepted (201) and applying it
+        // would materialise all of them in one transaction. Bounded together
+        // with `bulkAddItemsValidator`, at the same 200.
+        isArray: {
+            options: { max: 200 },
+            errorMessage:
+                "structure.checklistItems must be an array of at most 200 items",
+        },
     },
     "structure.checklistItems.*.text": {
         in: ["body"],

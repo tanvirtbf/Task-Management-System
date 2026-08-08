@@ -1,0 +1,42 @@
+====================================================================================================
+F1 CLOCK PROBE   db=taskmanagement   api=:5711   run=2026-08-03T06:19:05.648Z
+====================================================================================================
+
+--- 1. THE SIX SETTINGS THAT MUST AGREE (plan §2) ---
+  process TZ                Asia/Dhaka                        expect: Asia/Dhaka
+  MySQL session time_zone   SYSTEM                            expect: +06:00 or SYSTEM(=Dhaka)
+  MySQL global time_zone    SYSTEM                            expect: -
+  MySQL NOW()               2026-08-03 12:19:05               expect: = Dhaka wall clock
+  MySQL UTC_TIMESTAMP()     2026-08-03 06:19:05               expect: = NOW() - 6h
+  node new Date()           2026-08-03T06:19:05.648Z          expect: -
+  NOW() vs node clock            0 h   AGREE
+
+--- 2. WRITE A KNOWN INSTANT, READ IT BACK THREE WAYS ---
+  column                        by      asked (UTC)           stored (raw SQL)       DB drift wire drift
+  ----------------------------------------------------------------------------------------------------
+  tasks.sla_due_at              app     2026-08-04 06:19:05   2026-08-04 06:19:06     -6.00 h     6.00 h   PATCH /tasks/:id/sla
+  tasks.completed_at            app     2026-08-03 06:19:06   2026-08-03 06:19:06     -6.00 h     6.00 h   set on status -> done
+  tasks.archived_at             app     2026-08-03 06:19:06   2026-08-03 06:19:06     -6.00 h          -   POST /archive (not on the wire)
+  tasks.created_at              MySQL   2026-08-03 06:19:06   2026-08-03 12:19:06      0.00 h     6.00 h   CURRENT_TIMESTAMP default — the CONTROL
+  tasks.updated_at [assign]     app     2026-08-03 06:19:07   2026-08-03 06:19:08     -6.00 h     6.00 h   touchUpdatedAt — Drizzle writes it
+  tasks.updated_at [patch]      MySQL   2026-08-03 06:19:08   2026-08-03 12:19:08      0.00 h     6.00 h   ON UPDATE CURRENT_TIMESTAMP
+  updated_at >= created_at ?    -       *** NO — created 2026-08-03 12:19:08, then one assign set updated_at to 2026-08-03 06:19:09 (-6h EARLIER than creation). ISS-052 ***
+  comments.created_at           MySQL   2026-08-03 06:19:08   2026-08-03 12:19:08      0.00 h     6.00 h   CURRENT_TIMESTAMP
+  comment edit window           -       editable up to 374 min, refused from 375 min (intended: 15) — ISS-063
+  notifications.snoozed_until   app     2026-08-03 11:19:09   2026-08-03 11:19:10     -6.00 h          -   POST /snooze
+  sessions.expires_at           app     -                     2026-09-02 06:19:10           -          -   created_at=2026-08-03 12:19:10 (MySQL) — the two are written by different paths
+  sessions.created_at           MySQL   2026-08-03 06:19:09   2026-08-03 12:19:10      0.00 h          -   CURRENT_TIMESTAMP
+  checklist_items.completed_at  app     2026-08-03 06:19:10   2026-08-03 06:19:10     -6.00 h          -   POST /toggle
+  tasks.due_date (DATE)         app     2026-08-10            2026-08-10               0.00 h     0.00 h   DATE has no zone — must round-trip byte-identically under ANY process TZ
+  tasks.start_date (DATE)       app     2026-08-01            2026-08-01               0.00 h     0.00 h
+
+--- 3. VERDICT ---
+  columns whose STORED value differs from what was asked : 6  -> tasks.sla_due_at (-6h), tasks.completed_at (-6h), tasks.archived_at (-6h), tasks.updated_at [assign] (-6h), notifications.snoozed_until (-6h), checklist_items.completed_at (-6h)
+  columns whose WIRE value differs from what is stored   : 6  -> tasks.sla_due_at (6h), tasks.completed_at (6h), tasks.created_at (6h), tasks.updated_at [assign] (6h), tasks.updated_at [patch] (6h), comments.created_at (6h)
+  DATE columns that failed to round-trip                 : 0
+
+  FAIL — 12 observation(s) drift. This is ISS-001.
+
+--- 4. CLEANUP ---
+  tasks 51 (51) | lists 14 (14) | statuses 70 (70) | comments 8 (8) | notifications 65 (65)
+  json -> fixing/evidence/F01/before-dhaka.json

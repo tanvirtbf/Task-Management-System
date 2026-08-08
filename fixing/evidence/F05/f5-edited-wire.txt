@@ -1,0 +1,13 @@
+
+  === F5 — edited_at on the wire (ISS-063b, server half) ===
+
+  OK    a fresh comment has edited_at = null                      null
+  OK    PATCH within the window → 200 with edited_at set          2026-08-04T06:07:52.584Z
+  OK    the LIST read (what the drawer renders) carries it        2026-08-04T06:07:53.000Z
+  OK    …and the rewritten body                                   rewritten wording
+  OK    a deleted comment is a tombstone (client hides the marker)deleted_at=2026-08-04T06:07:53.000Z
+
+  cleanup: tasks 46 (46) | comments 7 (7)
+
+  PASS — the wire half holds; the DOM half is the Playwright proof.
+

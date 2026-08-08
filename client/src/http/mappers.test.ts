@@ -60,7 +60,6 @@ describe("workspaceToWire — C3 save-blockers", () => {
         weekStartsOn: 0,
         workingDays: [1, 2, 3, 4, 5],
         businessHours: { start: "09:00", end: "18:00" },
-        fiscalYearStartMonth: 1,
     };
 
     it("NEVER emits default_locale, even when the draft carries it", () => {

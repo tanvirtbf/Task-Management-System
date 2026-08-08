@@ -53,6 +53,7 @@ const insertSpace = async (
     return id;
 };
 
+let listSeq = 0;
 const insertList = async (
     spaceId: string,
     createdBy: string,
@@ -60,10 +61,14 @@ const insertList = async (
 ): Promise<string> => {
     const db = getDb();
     const id = overrides.id ?? fakeId("l");
+    // F27 (ISS-035): list names are unique per SPACE now, and several specs
+    // here put a second list in the same space to prove status scoping. The
+    // name is irrelevant to what they test, so make it distinct.
+    listSeq += 1;
     await db.insert(lists).values({
         id,
         spaceId,
-        name: "Test List",
+        name: `Test List ${listSeq}`,
         createdBy,
         archivedAt: overrides.archivedAt ?? null,
     });
@@ -201,43 +206,52 @@ describe("PATCH /api/v1/lists/:listId/statuses/reorder", () => {
         });
 
         it("returns the full list (every status), as a bare array in GET shape", async () => {
-            const { client, listId, s1 } = await setup();
-            const res = await client
-                .patch(PATH(listId))
-                .send([{ id: s1.id, position: 0 }]);
+            const { client, listId, s0, s1, s2 } = await setup();
+            const res = await client.patch(PATH(listId)).send([
+                { id: s1.id, position: 0 },
+                { id: s2.id, position: 1 },
+                { id: s0.id, position: 2 },
+            ]);
             expect(Array.isArray(res.body)).toBe(true);
             expect(res.body).toHaveLength(3);
             expect(Object.keys(res.body[0]).sort()).toEqual(STATUS_KEYS);
         });
 
-        it("accepts a partial subset — unlisted statuses keep their position", async () => {
+        it("refuses a partial subset (ISS-037 — it left two statuses colliding at 0)", async () => {
+            // This spec used to ASSERT the bug: it sent one item and then
+            // asserted s2@0 AND s0@0 — the very collision ISS-037 records.
+            // The reorder must now name every status exactly once.
             const { client, listId, s0, s2 } = await setup();
             const res = await client
                 .patch(PATH(listId))
                 .send([{ id: s2.id, position: 0 }]);
-            expect(res.status).toBe(200);
-            expect(await positionOf(s2.id)).toBe(0);
-            expect(await positionOf(s0.id)).toBe(0); // unchanged
+            expect(res.status).toBe(422);
+            expect(res.body.error.code).toBe("validation.failed");
+            expect(JSON.stringify(res.body)).toContain("exactly once");
+            expect(await positionOf(s2.id)).toBe(2); // untouched
+            expect(await positionOf(s0.id)).toBe(0); // untouched
         });
 
-        it("accepts a single-item array", async () => {
+        it("refuses a single item of a multi-status list (ISS-037)", async () => {
             const { client, listId, s0 } = await setup();
             const res = await client
                 .patch(PATH(listId))
                 .send([{ id: s0.id, position: 9 }]);
-            expect(res.status).toBe(200);
-            expect(await positionOf(s0.id)).toBe(9);
+            expect(res.status).toBe(422);
+            expect(await positionOf(s0.id)).toBe(0); // untouched
         });
 
-        it("allows duplicate target positions (read path tie-breaks by id)", async () => {
-            const { client, listId, s0, s1 } = await setup();
+        it("refuses duplicate target positions (ISS-037 — order became ambiguous)", async () => {
+            const { client, listId, s0, s1, s2 } = await setup();
             const res = await client.patch(PATH(listId)).send([
                 { id: s0.id, position: 5 },
                 { id: s1.id, position: 5 },
+                { id: s2.id, position: 6 },
             ]);
-            expect(res.status).toBe(200);
-            expect(await positionOf(s0.id)).toBe(5);
-            expect(await positionOf(s1.id)).toBe(5);
+            expect(res.status).toBe(422);
+            expect(JSON.stringify(res.body)).toContain("distinct");
+            expect(await positionOf(s0.id)).toBe(0); // untouched
+            expect(await positionOf(s1.id)).toBe(1); // untouched
         });
     });
 
@@ -381,18 +395,22 @@ describe("PATCH /api/v1/lists/:listId/statuses/reorder", () => {
     // ─── d. Authorization ─────────────────────────────────────────────────────
     describe("Authorization", () => {
         it("allows an owner (200)", async () => {
-            const { client, listId, s0 } = await setup({ role: "owner" });
-            const res = await client
-                .patch(PATH(listId))
-                .send([{ id: s0.id, position: 1 }]);
+            const { client, listId, s0, s1, s2 } = await setup({ role: "owner" });
+            const res = await client.patch(PATH(listId)).send([
+                { id: s0.id, position: 1 },
+                { id: s1.id, position: 0 },
+                { id: s2.id, position: 2 },
+            ]);
             expect(res.status).toBe(200);
         });
 
         it("allows an admin (200)", async () => {
-            const { client, listId, s0 } = await setup({ role: "admin" });
-            const res = await client
-                .patch(PATH(listId))
-                .send([{ id: s0.id, position: 1 }]);
+            const { client, listId, s0, s1, s2 } = await setup({ role: "admin" });
+            const res = await client.patch(PATH(listId)).send([
+                { id: s0.id, position: 1 },
+                { id: s1.id, position: 0 },
+                { id: s2.id, position: 2 },
+            ]);
             expect(res.status).toBe(200);
         });
 
@@ -557,10 +575,13 @@ describe("PATCH /api/v1/lists/:listId/statuses/reorder", () => {
     // ─── k. Boundary values ───────────────────────────────────────────────────
     describe("Boundary values", () => {
         it("accepts a large position value", async () => {
-            const { client, listId, s0 } = await setup();
-            const res = await client
-                .patch(PATH(listId))
-                .send([{ id: s0.id, position: 2_000_000_000 }]);
+            // Positions must be DISTINCT, not contiguous — large gaps are fine.
+            const { client, listId, s0, s1, s2 } = await setup();
+            const res = await client.patch(PATH(listId)).send([
+                { id: s0.id, position: 2_000_000_000 },
+                { id: s1.id, position: 0 },
+                { id: s2.id, position: 1 },
+            ]);
             expect(res.status).toBe(200);
             expect(await positionOf(s0.id)).toBe(2_000_000_000);
         });
@@ -585,9 +606,13 @@ describe("PATCH /api/v1/lists/:listId/statuses/reorder", () => {
         });
 
         it("changes only position — name / color / status_group are untouched", async () => {
-            const { client, listId, s0 } = await setup();
+            const { client, listId, s0, s1, s2 } = await setup();
             const before = await fetchStatus(s0.id);
-            await client.patch(PATH(listId)).send([{ id: s0.id, position: 8 }]);
+            await client.patch(PATH(listId)).send([
+                { id: s0.id, position: 8 },
+                { id: s1.id, position: 0 },
+                { id: s2.id, position: 1 },
+            ]);
             const after = await fetchStatus(s0.id);
             expect(after.name).toBe(before.name);
             expect(after.color).toBe(before.color);

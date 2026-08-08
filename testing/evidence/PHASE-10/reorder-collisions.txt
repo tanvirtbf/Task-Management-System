@@ -1,0 +1,17 @@
+baseline: To Do@0 > In Progress@1 > In Review@2 > Done@3 > Closed@4
+
+=== A. set EVERY status to position 0 ===
+  DB positions: In Review=0, Done=0, In Progress=0, Closed=0, To Do=0
+  3 consecutive GETs:
+    In Review > Done > In Progress > Closed > To Do
+    In Review > Done > In Progress > Closed > To Do
+    In Review > Done > In Progress > Closed > To Do
+
+=== B. PARTIAL reorder — move one status to position 0 ===
+  normalised: To Do@0 > In Progress@1 > In Review@2 > Done@3 > Closed@4
+  after moving 'Closed' to position 0:
+  DB positions: Closed=0, To Do=0, In Progress=1, In Review=2, Done=3
+  colliding positions: Closed@0, To Do@0
+
+=== CLEANUP ===
+  orphans removed 0 | statuses 70 (expect 70) | lists 14 | tasks 51

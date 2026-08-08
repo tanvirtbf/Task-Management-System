@@ -15,6 +15,8 @@ export type GetActiveSprintRequest = AuthRequest;
 export type GetSprintRequest = AuthRequest;
 export type StartSprintRequest = AuthRequest;
 export type CloseSprintRequest = AuthRequest;
+/** F28 (ISS-013, D12.6) — DELETE /sprints/:id. Params only, like start/close. */
+export type DeleteSprintRequest = AuthRequest;
 export type RemoveSprintTaskRequest = AuthRequest;
 
 /**

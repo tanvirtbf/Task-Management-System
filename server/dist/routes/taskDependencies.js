@@ -12,6 +12,7 @@ const TaskActivityRepo_1 = require("../repositories/TaskActivityRepo");
 const client_1 = require("../db/client");
 const logger_1 = __importDefault(require("../config/logger"));
 const authenticate_1 = __importDefault(require("../middlewares/authenticate"));
+const requirePermission_1 = require("../middlewares/requirePermission");
 const validate_1 = require("../middlewares/validate");
 const taskDependencies_1 = require("../validators/taskDependencies");
 const router = express_1.default.Router();
@@ -37,9 +38,9 @@ router.get("/tasks/:id/dependencies", authenticate_1.default, taskDependencies_1
 // `dep.self` (self-loop), 404 `task.not_found` (either endpoint), 422 `dep.cycle`
 // (would close a cycle), 409 `dep.duplicate` (edge exists). Workspace scope + the
 // actor come from `req.auth`, never the body. Returns 201 with the created edge.
-router.post("/task-dependencies", authenticate_1.default, taskDependencies_1.createDependencyValidator, validate_1.validate, (req, res, next) => controller.create(req, res, next));
+router.post("/task-dependencies", authenticate_1.default, (0, requirePermission_1.requirePermission)("dependency.manage"), taskDependencies_1.createDependencyValidator, validate_1.validate, (req, res, next) => controller.create(req, res, next));
 // ─── DELETE /api/v1/task-dependencies/:id ─────────────────────────────────────
 // 🔐 any authenticated member. Removes one edge resolved within the caller's
 // workspace (404 `dep.not_found` otherwise). Returns 204.
-router.delete("/task-dependencies/:id", authenticate_1.default, taskDependencies_1.dependencyIdParamValidator, validate_1.validate, (req, res, next) => controller.delete(req, res, next));
+router.delete("/task-dependencies/:id", authenticate_1.default, (0, requirePermission_1.requirePermission)("dependency.manage"), taskDependencies_1.dependencyIdParamValidator, validate_1.validate, (req, res, next) => controller.delete(req, res, next));
 exports.default = router;

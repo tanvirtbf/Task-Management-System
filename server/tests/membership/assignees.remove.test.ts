@@ -260,8 +260,8 @@ describe("DELETE /api/v1/tasks/:id/assignees/:userId", () => {
         });
     });
 
-    describe("Authorization (🔐 any member — no role gate)", () => {
-        for (const role of ["owner", "admin", "member", "guest"] as const) {
+    describe("Authorization (task.assign — every internal role holds it)", () => {
+        for (const role of ["owner", "admin", "member"] as const) {
             it(`allows a ${role} to remove an assignee (204)`, async () => {
                 const u = await makeUser({ role });
                 const t = await makeTask({
@@ -275,6 +275,23 @@ describe("DELETE /api/v1/tasks/:id/assignees/:userId", () => {
                 expect(res.status).toBe(204);
             });
         }
+
+        // F28 (ISS-094, D12.1): the seeded Guest role held `task.assign` at
+        // scope=all — pre-RBAC, any authenticated user could re-staff any task.
+        // Guest is a read-and-comment persona now; the route's gate makes this
+        // 403. See tests/rbac/system-roles.test.ts for the full revocation.
+        it("REFUSES a guest (403) — task.assign is no longer a guest grant", async () => {
+            const u = await makeUser({ role: "guest" });
+            const t = await makeTask({
+                workspaceId: u.workspaceId,
+                createdBy: u.id,
+            });
+            await seedAssignee(t.id, u.id);
+            const client = await makeLoggedInClient(u);
+
+            const res = await client.delete(assigneePath(t.id, u.id));
+            expect(res.status).toBe(403);
+        });
     });
 
     describe("Resource lifecycle", () => {

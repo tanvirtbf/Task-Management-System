@@ -3,6 +3,7 @@ import express, {
     type Request,
     type Response,
 } from "express";
+import { allowQuery } from "../middlewares/allowQuery";
 import { TaskTypeController } from "../controllers/TaskTypeController";
 import { TaskTypeService } from "../services/TaskTypeService";
 import { TaskTypesRepo } from "../repositories/TaskTypesRepo";
@@ -45,6 +46,8 @@ const taskTypeController = new TaskTypeController(taskTypeService, logger);
 router.get(
     "/",
     authenticate,
+    // F23 (ISS-014): a mistyped filter is a 422, not the full set.
+    allowQuery(["limit","cursor"]),
     (req: Request, res: Response, next: NextFunction) =>
         taskTypeController.list(req as AuthRequest, res, next),
 );

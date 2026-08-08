@@ -1,0 +1,7 @@
+  the SAME row read with two different session frames:
+    session default(SYSTEM=Dhaka)   stored=2026-08-03 14:37:26   vs wire 2026-08-03T08:37:26.000Z   drift 6.00h
+    session +06:00                  stored=2026-08-03 14:37:26   vs wire 2026-08-03T08:37:26.000Z   drift 6.00h
+    session +00:00                  stored=2026-08-03 08:37:26   vs wire 2026-08-03T08:37:26.000Z   drift 0.00h  <- MATCHES the app
+
+  -> the app now speaks UTC. A SQL client must SET time_zone='+00:00' to see what the app sees.
+  cleanup: tasks 46 (46)

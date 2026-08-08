@@ -1,0 +1,48 @@
+  OK    throwaway accounts created and logged in                
+
+  === F12 — password policy + account safety ===
+
+  --- ISS-083: the five passwords P38 proved were ACCEPTED ---
+  candidate         status  reason returned
+  password          422     New password must not be a commonly-used password
+  12345678          422     New password must not be a straight run of letters or digits
+  PASSWORD          422     New password must not be a commonly-used password
+  aaaaaaaa          422     New password must not be the same character repeated
+  alllowercase      422     New password must combine at least three of: lowercase, upperc
+  (all five were 204-accepted before F12)
+
+  --- more of the same class ---
+  OK    Password1!    refused (denylist survives decoration)    got 422
+  OK    abcdefgh      refused (straight alphabet run)           got 422
+  OK    1234567       refused (too short AND sequential)        got 422
+  OK    qwerty123     refused (keyboard walk)                   got 422
+  OK    11111111      refused (repeated character)              got 422
+
+  --- and the ones that must still be ACCEPTED ---
+  OK    accepted: "Str0ng#Pass"                                 got 204
+  OK    accepted: "correct horse battery staple"                got 204
+  OK    …and the new password actually signs in                 
+  OK    a 28-char passphrase passes on LENGTH (no symbol rule)  current: "correct horse battery staple"
+
+  --- the same policy on the other two surfaces ---
+  OK    forgot-password issued a token                          status 202, token row present
+  OK    reset-password refuses a weak password (policy, not token)got 422 New password must not be a commonly-used
+  OK    accept-invitation refuses a weak password too           got 422 New password must not be a straight run 
+
+  --- ISS-030: changing the login email ---
+  OK    member moves their OWN email -> 403 (was 200, written)  got 403 user.email_change_forbidden
+  OK    …and the address did NOT change                         f12.a@test.local
+  OK    the rest of their own profile is still self-editable    got 200
+  OK    a same-value email echo is still allowed (no false break)got 200
+  OK    an ADMIN can still change it (200)                      got 200
+
+  --- ISS-031: a bogus IANA timezone ---
+  OK    user profile: bogus zone -> 422 (was 200, written)      got 422 timezone must be a valid IANA zone (e.g.
+  OK    workspace: still 422 (unchanged — the rule it always had)got 422
+  OK    a real zone is still accepted (200)                     got 200
+
+  === CLEANUP ===
+  users 15 (15) | invitations 0 | workspace tz Asia/Dhaka | notif 57 (57)
+
+  PASS — weak passwords refused everywhere, login email is admin-only, zones validated. 
+

@@ -1,0 +1,16 @@
+real now (UTC): 2026-07-30T04:15:47.310Z
+════════════════════════════════════════════════════════════════════════════════════════════
+CASE: DB_TIMEZONE unset  (dev default)
+  GET /sla/breached returned 0 item(s)
+  task due 3h in the FUTURE  -> listed as breached? no   ✓
+  task due 3h in the PAST    -> listed as breached? NO   *** MISSED ***
+════════════════════════════════════════════════════════════════════════════════════════════
+CASE: DB_TIMEZONE=+06:00 (documented PROD setting)
+  GET /sla/breached returned 0 item(s)
+  task due 3h in the FUTURE  -> listed as breached? no   ✓
+  task due 3h in the PAST    -> listed as breached? NO   *** MISSED ***
+════════════════════════════════════════════════════════════════════════════════════════════
+CASE: DB_TIMEZONE=+00:00 (UTC session)
+  GET /sla/breached returned 0 item(s)
+  task due 3h in the FUTURE  -> listed as breached? no   ✓
+  task due 3h in the PAST    -> listed as breached? NO   *** MISSED ***

@@ -1,0 +1,4 @@
+F8 gate — rbac + tasks, serial — 2026-08-04T14:24:39+06:00
+rbac     Test Suites: 11 passed, 11 total|Tests:       286 passed, 286 total|
+tasks    Test Suites: 1 failed, 9 passed, 10 total|Tests:       1 failed, 358 passed, 359 total|
+gate finished 2026-08-04T14:42:50+06:00

@@ -35,8 +35,20 @@ export const CommandPaletteTrigger = () => {
                 (e.currentTarget.style.background = tokens.colors.bgPage)
             }
         >
-            <Search size={14} strokeWidth={1.75} />
-            <span style={{ flex: 1, textAlign: "left" }}>
+            <Search size={14} strokeWidth={1.75} style={{ flexShrink: 0 }} />
+            {/* F34 (ISS-097): the label must SHRINK — its nowrap min-content
+                was one of the floors that made the topbar wider than a phone
+                viewport. Ellipsize instead of propping the row open. */}
+            <span
+                style={{
+                    flex: 1,
+                    minWidth: 0,
+                    textAlign: "left",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                }}
+            >
                 Search tasks, lists…
             </span>
         </button>

@@ -1,0 +1,159 @@
+{
+ "ranAt": "2026-08-03T06:19:05.648Z",
+ "processTZ": "Asia/Dhaka",
+ "sessionTZ": "SYSTEM",
+ "healthy": false,
+ "results": [
+  {
+   "column": "tasks.sla_due_at",
+   "writtenBy": "app",
+   "asked": "2026-08-04T06:19:05.860Z",
+   "stored": "2026-08-04 06:19:06",
+   "wire": "2026-08-04T06:19:06.000Z",
+   "driftStored": -6,
+   "driftWire": 6,
+   "note": "PATCH /tasks/:id/sla"
+  },
+  {
+   "column": "tasks.completed_at",
+   "writtenBy": "app",
+   "asked": "2026-08-03T06:19:06.065Z",
+   "stored": "2026-08-03 06:19:06",
+   "wire": "2026-08-03T06:19:06.000Z",
+   "driftStored": -6,
+   "driftWire": 6,
+   "note": "set on status -> done"
+  },
+  {
+   "column": "tasks.archived_at",
+   "writtenBy": "app",
+   "asked": "2026-08-03T06:19:06.226Z",
+   "stored": "2026-08-03 06:19:06",
+   "wire": null,
+   "driftStored": -6,
+   "driftWire": null,
+   "note": "POST /archive (not on the wire)"
+  },
+  {
+   "column": "tasks.created_at",
+   "writtenBy": "MySQL",
+   "asked": "2026-08-03T06:19:06.298Z",
+   "stored": "2026-08-03 12:19:06",
+   "wire": "2026-08-03T12:19:06.000Z",
+   "driftStored": 0,
+   "driftWire": 6,
+   "note": "CURRENT_TIMESTAMP default — the CONTROL"
+  },
+  {
+   "column": "tasks.updated_at [assign]",
+   "writtenBy": "app",
+   "asked": "2026-08-03T06:19:07.557Z",
+   "stored": "2026-08-03 06:19:08",
+   "wire": "2026-08-03T06:19:08.000Z",
+   "driftStored": -6,
+   "driftWire": 6,
+   "note": "touchUpdatedAt — Drizzle writes it"
+  },
+  {
+   "column": "tasks.updated_at [patch]",
+   "writtenBy": "MySQL",
+   "asked": "2026-08-03T06:19:08.719Z",
+   "stored": "2026-08-03 12:19:08",
+   "wire": "2026-08-03T12:19:08.000Z",
+   "driftStored": 0,
+   "driftWire": 6,
+   "note": "ON UPDATE CURRENT_TIMESTAMP"
+  },
+  {
+   "column": "updated_at >= created_at ?",
+   "writtenBy": "-",
+   "asked": null,
+   "stored": null,
+   "wire": null,
+   "driftStored": null,
+   "driftWire": null,
+   "note": "*** NO — created 2026-08-03 12:19:08, then one assign set updated_at to 2026-08-03 06:19:09 (-6h EARLIER than creation). ISS-052 ***",
+   "iss052": true
+  },
+  {
+   "column": "comments.created_at",
+   "writtenBy": "MySQL",
+   "asked": "2026-08-03T06:19:08.960Z",
+   "stored": "2026-08-03 12:19:08",
+   "wire": "2026-08-03T12:19:08.000Z",
+   "driftStored": 0,
+   "driftWire": 6,
+   "note": "CURRENT_TIMESTAMP"
+  },
+  {
+   "column": "comment edit window",
+   "writtenBy": "-",
+   "asked": null,
+   "stored": null,
+   "wire": null,
+   "driftStored": null,
+   "driftWire": null,
+   "note": "editable up to 374 min, refused from 375 min (intended: 15) — ISS-063"
+  },
+  {
+   "column": "notifications.snoozed_until",
+   "writtenBy": "app",
+   "asked": "2026-08-03T11:19:09.697Z",
+   "stored": "2026-08-03 11:19:10",
+   "wire": null,
+   "driftStored": -6,
+   "driftWire": null,
+   "note": "POST /snooze"
+  },
+  {
+   "column": "sessions.expires_at",
+   "writtenBy": "app",
+   "asked": null,
+   "stored": "2026-09-02 06:19:10",
+   "wire": null,
+   "driftStored": null,
+   "driftWire": null,
+   "note": "created_at=2026-08-03 12:19:10 (MySQL) — the two are written by different paths"
+  },
+  {
+   "column": "sessions.created_at",
+   "writtenBy": "MySQL",
+   "asked": "2026-08-03T06:19:09.732Z",
+   "stored": "2026-08-03 12:19:10",
+   "wire": null,
+   "driftStored": 0,
+   "driftWire": null,
+   "note": "CURRENT_TIMESTAMP"
+  },
+  {
+   "column": "checklist_items.completed_at",
+   "writtenBy": "app",
+   "asked": "2026-08-03T06:19:10.141Z",
+   "stored": "2026-08-03 06:19:10",
+   "wire": null,
+   "driftStored": -6,
+   "driftWire": null,
+   "note": "POST /toggle"
+  },
+  {
+   "column": "tasks.due_date (DATE)",
+   "writtenBy": "app",
+   "asked": "2026-08-10",
+   "stored": "2026-08-10",
+   "wire": "2026-08-10",
+   "driftStored": 0,
+   "driftWire": 0,
+   "note": "DATE has no zone — must round-trip byte-identically under ANY process TZ"
+  },
+  {
+   "column": "tasks.start_date (DATE)",
+   "writtenBy": "app",
+   "asked": "2026-08-01",
+   "stored": "2026-08-01",
+   "wire": "2026-08-01",
+   "driftStored": 0,
+   "driftWire": 0,
+   "note": ""
+  }
+ ]
+}

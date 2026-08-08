@@ -35,6 +35,8 @@ export interface CustomFieldRecord {
     type: CustomFieldType;
     config: Record<string, unknown>;
     isRequired: boolean;
+    /** F26 (ISS-042): the guest-redaction flag, now on the wire. */
+    hiddenFromGuests: boolean;
     defaultValue: unknown;
     position: number;
 }
@@ -53,6 +55,7 @@ export interface CustomFieldUpdateFields {
     name?: string;
     config?: Record<string, unknown>;
     isRequired?: boolean;
+    hiddenFromGuests?: boolean;
     position?: number;
 }
 
@@ -64,6 +67,7 @@ const FIELD_COLUMNS = {
     type: customFields.type,
     config: customFields.config,
     isRequired: customFields.isRequired,
+    hiddenFromGuests: customFields.hiddenFromGuests,
     defaultValue: customFields.defaultValue,
     position: customFields.position,
 };

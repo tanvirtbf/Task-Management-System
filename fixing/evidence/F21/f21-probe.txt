@@ -1,0 +1,27 @@
+
+  === F21 — activity and audit quality ===
+
+  --- ISS-049: task_updated records values, skips no-ops ---
+  OK    a real change writes ONE row with per-field {from,to}         {"fields":["name","priority"],"changes":{"name":{"to":"F21 audit task rename
+  OK    a NO-OP patch writes NO row (was: logged anyway)              0 new rows
+  OK    a STATUS-ONLY patch writes only status_changed (no shadow row)status_changed
+
+  --- ISS-049 (bulk): per-task values, no contentless rows ---
+  OK    the task that CHANGED records {from:1, to:3} (was: {bulk:true}){"bulk":true,"fields":["priority"],"changes":{"priority":{"to":3
+  OK    the task ALREADY at 3 gets NO row (was: a contentless one)    0 rows
+
+  --- ISS-062: checklists leave a trace ---
+  OK    create checklist -> checklist_created (was: no trace)         
+  OK    add item -> checklist_item_added (was: no trace)              
+  OK    delete item -> row carries the TEXT (the row itself is gone)  {"text":"F21 the box to tick","item_id":"ci-zxRptrCCK3Bk
+  OK    delete checklist -> "who deleted the acceptance criteria?" answerable{"name":"F21 acceptance criteria","checklist_id":"ch-FWU
+
+  --- ISS-061: the client speaks the server's vocabulary ---
+  OK    every task-activity code has an English rendering (26 codes)  
+  OK    the dead mock vocabulary is gone from the switch              
+
+  === CLEANUP ===
+  tasks 46 (46) | task_activity rows for strays 0
+
+  PASS — the audit trail records what happened, and the drawer can say it.
+

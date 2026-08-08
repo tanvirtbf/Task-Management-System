@@ -64,11 +64,6 @@ export const workspaces = mysqlTable(
         businessHoursEnd: time("business_hours_end")
             .notNull()
             .default("18:00:00"),
-        fiscalYearStartMonth: tinyint("fiscal_year_start_month", {
-            unsigned: true,
-        })
-            .notNull()
-            .default(7),
         /**
          * Dynamic RBAC cache stamp. Bumped on ANY role / grant / assignment
          * change so the per-request permission cache (keyed by
@@ -85,10 +80,6 @@ export const workspaces = mysqlTable(
         weekStartsOnCk: check(
             "ck_workspaces_week_starts_on",
             sql`${t.weekStartsOn} BETWEEN 0 AND 6`,
-        ),
-        fiscalMonthCk: check(
-            "ck_workspaces_fiscal_month",
-            sql`${t.fiscalYearStartMonth} BETWEEN 1 AND 12`,
         ),
         hoursCk: check(
             "ck_workspaces_hours",

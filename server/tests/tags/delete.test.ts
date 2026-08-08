@@ -1,5 +1,5 @@
 import jwt from "jsonwebtoken";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { oneOff } from "../test-utils/app";
 import {
     makeLoggedInClient,
@@ -64,6 +64,15 @@ const linkTaskTag = async (taskId: string, tagId: string) => {
     await db.insert(taskTags).values({ taskId, tagId });
 };
 
+/** Detach again — F22 made deleting an IN-USE tag a 409, so the delete specs
+ *  drop the links first when the delete itself is what they exercise. */
+const unlinkTaskTag = async (taskId: string, tagId: string) => {
+    const db = getDb();
+    await db
+        .delete(taskTags)
+        .where(and(eq(taskTags.taskId, taskId), eq(taskTags.tagId, tagId)));
+};
+
 const signAccess = (
     user: { id: string; workspaceId: string; role: Role },
     secret: string,
@@ -72,7 +81,7 @@ const signAccess = (
     jwt.sign(
         { sub: user.id, role: user.role, workspaceId: user.workspaceId },
         secret,
-        { algorithm: "HS256", ...opts },
+        { algorithm: "HS256", expiresIn: "15m", ...opts },
     );
 
 /** An owner (default) + a tag in their workspace + a logged-in client. */
@@ -132,7 +141,10 @@ describe("DELETE /api/v1/tags/:id", () => {
 
     // ─── f. FK cascade to task_tags (the §9 headline behavior) ──────────────
     describe("Cascade to task_tags", () => {
-        it("removes the tag from a task that had it, but keeps the task", async () => {
+        it("refuses to delete an IN-USE tag (F22/ISS-011 — tag.in_use)", async () => {
+            // Pre-F22 this spec asserted the bug as the headline behaviour:
+            // 204 + the FK silently stripping the tag from its tasks. §32 has
+            // always promised 409 tag.in_use; now it is real.
             const { u, tag, client } = await setup();
             const task = await makeTask({ workspaceId: u.workspaceId, createdBy: u.id });
             await linkTaskTag(task.id, tag.id);
@@ -140,27 +152,30 @@ describe("DELETE /api/v1/tags/:id", () => {
 
             const res = await client.delete(url(tag.id));
 
-            expect(res.status).toBe(204);
-            expect(await linksForTag(tag.id)).toHaveLength(0); // cascade fired
-            expect(await taskExists(task.id)).toBe(true); // task survives
+            expect(res.status).toBe(409);
+            expect(res.body.error.code).toBe("tag.in_use");
+            expect(await linksForTag(tag.id)).toHaveLength(1); // link intact
+            expect(await taskExists(task.id)).toBe(true);
         });
 
-        it("removes the tag from EVERY task that had it (multi-task cascade)", async () => {
+        it("deletes cleanly once every task has dropped it (the cascade path is unreachable while in use)", async () => {
             const { u, tag, client } = await setup();
             const t1 = await makeTask({ workspaceId: u.workspaceId, createdBy: u.id });
             const t2 = await makeTask({ workspaceId: u.workspaceId, createdBy: u.id });
-            const t3 = await makeTask({ workspaceId: u.workspaceId, createdBy: u.id });
             await linkTaskTag(t1.id, tag.id);
             await linkTaskTag(t2.id, tag.id);
-            await linkTaskTag(t3.id, tag.id);
-            expect(await linksForTag(tag.id)).toHaveLength(3);
 
-            await client.delete(url(tag.id));
+            const blocked = await client.delete(url(tag.id));
+            expect(blocked.status).toBe(409); // F22: in use on two tasks
 
+            await unlinkTaskTag(t1.id, tag.id);
+            await unlinkTaskTag(t2.id, tag.id);
+            const res = await client.delete(url(tag.id));
+
+            expect(res.status).toBe(204);
             expect(await linksForTag(tag.id)).toHaveLength(0);
             expect(await taskExists(t1.id)).toBe(true);
             expect(await taskExists(t2.id)).toBe(true);
-            expect(await taskExists(t3.id)).toBe(true);
         });
 
         it("leaves a different tag's links on the same task intact", async () => {
@@ -170,6 +185,7 @@ describe("DELETE /api/v1/tags/:id", () => {
             await linkTaskTag(task.id, tag.id);
             await linkTaskTag(task.id, keep.id);
 
+            await unlinkTaskTag(task.id, tag.id); // F22: an in-use tag is a 409
             await client.delete(url(tag.id));
 
             expect(await linksForTag(tag.id)).toHaveLength(0);

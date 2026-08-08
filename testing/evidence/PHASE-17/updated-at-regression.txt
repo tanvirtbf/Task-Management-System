@@ -1,0 +1,7 @@
+real now UTC: 2026-07-30T08:02:37.871Z | Dhaka: 14:02:37
+  after create          API created=2026-07-30T14:02:37.000Z  updated=2026-07-30T14:02:37.000Z
+                        DB  created=2026-07-30 14:02:37        updated=2026-07-30 14:02:37
+  after a PATCH         API created=2026-07-30T14:02:37.000Z  updated=2026-07-30T14:02:39.000Z
+                        DB  created=2026-07-30 14:02:37        updated=2026-07-30 14:02:39
+
+  => updated_at is 0h relative to created_at (should be ~0h and POSITIVE)

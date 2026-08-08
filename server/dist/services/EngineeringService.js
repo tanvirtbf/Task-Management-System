@@ -3,6 +3,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.EngineeringService = void 0;
 const errors_1 = require("../errors");
 const constants_1 = require("../constants");
+const context_1 = require("../rbac/context");
+const principals_1 = require("../rbac/principals");
 const taskSerializer_1 = require("../serializers/taskSerializer");
 const userSerializer_1 = require("../serializers/userSerializer");
 const TITLE_MAX = 120;
@@ -45,11 +47,19 @@ const composeDescription = (input) => {
     parts.push(`_Reported via Report-a-Bug (team: ${input.reporterTeam})._`);
     return parts.join("\n\n");
 };
-/** Local `YYYY-MM-DD` for a MySQL DATE (matches the task serializer). */
+/**
+ * `YYYY-MM-DD` for a MySQL DATE, from **UTC** components (matches the task and
+ * sprint serializers — Drizzle materialises a DATE at UTC midnight).
+ *
+ * F3: was LOCAL components. This is a third hand-rolled copy of
+ * `sprintSerializer.formatWireDate`, and the duplication is exactly why the
+ * copies could drift apart; they are aligned now. Worth collapsing into the one
+ * exported helper next time this file is open — out of F3's scope (rule X5).
+ */
 const ymd = (d) => {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(d.getUTCDate()).padStart(2, "0");
     return `${y}-${m}-${day}`;
 };
 const toWireSprint = (s) => ({
@@ -102,8 +112,8 @@ class EngineeringService {
         if (!bugTaskTypeId) {
             throw errors_1.AppError.conflict("eng.not_configured", 'This workspace has no "Bug" task type; create one before reporting bugs');
         }
-        const bugListId = await this.repo.findBugTriageListId(input.workspaceId);
-        if (!bugListId) {
+        const bugList = await this.repo.findBugTriageList(input.workspaceId);
+        if (!bugList) {
             throw errors_1.AppError.conflict("eng.not_configured", 'This workspace has no "Bug Triage" list; create one before reporting bugs');
         }
         // Auto-assign the current on-call engineer for high-severity bugs only
@@ -117,18 +127,31 @@ class EngineeringService {
             if (onCallId)
                 assignees = [onCallId];
         }
-        const task = await this.taskWrite.create({
+        // F28 (ISS-094, D12.1): run the insert under the NAMED intake principal.
+        // The route gate (`bug.report`) is the authority for this flow — every
+        // role holds that key because reporting a bug is how a non-engineer
+        // reaches the team — but `create()` asserts `task.create`, which the
+        // Guest role no longer holds. Without this block a guest's bug.report
+        // grant opened no door: the route admitted, the service 403'd.
+        // Attribution is untouched — created_by / activity / notifications all
+        // flow from `input.actorId` below. See rbac/principals.ts §2b.
+        const task = await (0, context_1.runWithPrincipal)((0, principals_1.bugIntakePrincipal)({
+            workspaceId: input.workspaceId,
+            spaceId: bugList.spaceId,
+            listId: bugList.id,
+            reporterId: input.actorId,
+        }), () => this.taskWrite.create({
             workspaceId: input.workspaceId,
             actorId: input.actorId,
             role: input.role,
-            primaryListId: bugListId,
+            primaryListId: bugList.id,
             taskTypeId: bugTaskTypeId,
             name: deriveTitle(input.happened, input.steps),
             description: composeDescription(input),
             bugSeverity: severity, // null → create() defaults a Bug to S2
             reporterTeam: input.reporterTeam,
             assignees,
-        });
+        }));
         this.logger.debug("eng.report_bug.created", {
             workspaceId: input.workspaceId,
             taskId: task.id,

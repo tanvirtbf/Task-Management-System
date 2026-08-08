@@ -32,9 +32,7 @@ const {
     DB_TIMEZONE,
 
     ACCESS_TOKEN_SECRET,
-    REFRESH_TOKEN_SECRET,
-    COOKIE_SECRET,
-    ACCESS_TOKEN_TTL,
+    REFRESH_TOKEN_SECRET,    ACCESS_TOKEN_TTL,
     REFRESH_TOKEN_TTL,
 
     SMTP_HOST,
@@ -111,9 +109,7 @@ export const Config = {
     DB_TIMEZONE,
 
     ACCESS_TOKEN_SECRET,
-    REFRESH_TOKEN_SECRET,
-    COOKIE_SECRET,
-    ACCESS_TOKEN_TTL,
+    REFRESH_TOKEN_SECRET,    ACCESS_TOKEN_TTL,
     REFRESH_TOKEN_TTL,
 
     // Mailer — prefer MAIL_* (set in .env); fall back to legacy SMTP_*/EMAIL_*.

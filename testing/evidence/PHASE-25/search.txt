@@ -1,0 +1,87 @@
+=== 1. COVERAGE — which entity types come back? ===
+  q=ZQXJV -> 200      | envelope keys: ["tasks","lists","spaces","users","comments","total"]
+  counts: {"tasks":2,"lists":1,"spaces":0,"users":0,"comments":1}
+  task hit names: ["TEST-p25 ZQXJV needle","TEST-p25 order \\u0985\\u09b0\\u09cd\\u09a1\\u09be\\u09b0 ZQXJV"]
+  -> matched in the DESCRIPTION too? no - name only
+  -> matched in a COMMENT? yes
+  q=arif  -> counts: {"tasks":0,"lists":0,"spaces":0,"users":1,"comments":1} | users: ["arif@beautybooth.com.bd"]
+  q=Marketing -> counts: {"tasks":0,"lists":0,"spaces":1,"users":1,"comments":0}
+
+=== 2. QUERY LENGTH and shape ===
+  ""                      (empty)             -> 200                       {"tasks":0,"lists":0,"spaces":0,"users":0,"comments":0}
+  "   "                   (whitespace only)   -> 200                       {"tasks":0,"lists":0,"spaces":0,"users":0,"comments":0}
+  "Z"                     (1 char)            -> 200                       {"tasks":6,"lists":1,"spaces":0,"users":0,"comments":1}
+  "ZQ"                    (2 chars)           -> 200                       {"tasks":2,"lists":1,"spaces":0,"users":0,"comments":1}
+  "ZQX"                   (3 chars)           -> 200                       {"tasks":2,"lists":1,"spaces":0,"users":0,"comments":1}
+  "zzzzzzzzzzzzzzzzzzzzz  (200 chars)         -> 200                       {"tasks":0,"lists":0,"spaces":0,"users":0,"comments":0}
+  "zzzzzzzzzzzzzzzzzzzzz  (201 chars)         -> 422 validation.failed     
+  no q param at all      -> 200                       {"tasks":0,"lists":0,"spaces":0,"users":0,"comments":0}
+
+=== 3. LIKE wildcards in user input (the search is LIKE-based, not FULLTEXT) ===
+  "%"                       (a lone percent)              -> 200     {"tasks":3,"lists":0,"spaces":0,"users":0,"comments":0}
+  "_"                       (a lone underscore)           -> 200     {"tasks":0,"lists":0,"spaces":0,"users":0,"comments":0}
+  "TEST-p25%needle"         (% in the middle)             -> 200     {"tasks":0,"lists":0,"spaces":0,"users":0,"comments":0}
+  "TEST_p25 ZQXJV needle"   (_ where a - belongs)         -> 200     {"tasks":0,"lists":0,"spaces":0,"users":0,"comments":0}
+  "100%"                    (a literal percent a user might type)-> 200     {"tasks":0,"lists":0,"spaces":0,"users":0,"comments":0}
+
+=== 4. SCRIPT and character handling (names printed as escapes on purpose) ===
+  \u0995\u09be\u099c        (Bangla word (3 chars))   -> 200     1 tasks "TEST-p25 \\u0995\\u09be\\u099c \\u09b6\\u09c1\\u09b0\\u09c1"
+  \u09b6\u09c1\u09b0\u09c1  (another Bangla word)     -> 200     1 tasks "TEST-p25 \\u0995\\u09be\\u099c \\u09b6\\u09c1\\u09b0\\u09c1"
+  order \u0985\u09b0        (mixed latin + Bangla)    -> 200     1 tasks "TEST-p25 order \\u0985\\u09b0\\u09cd\\u09a1\\u09be\\u09b0 ZQXJV"
+  \ud83d\ude80              (an emoji)                -> 200     1 tasks "TEST-p25 \\ud83d\\ude80 launch"
+  R&D                       (ampersand)               -> 200     1 tasks "TEST-p25 R&D (50%) c/o - test"
+  (50%)                     (parentheses + percent)   -> 200     1 tasks "TEST-p25 R&D (50%) c/o - test"
+  c/o                       (a slash)                 -> 200     1 tasks "TEST-p25 R&D (50%) c/o - test"
+
+=== 5. INJECTION-shaped input ===
+  "' OR 1=1 --"                     -> 200     {"tasks":0,"lists":0,"spaces":0,"users":0,"comments":0}
+  "\"; DROP TABLE tasks; --"        -> 200     {"tasks":0,"lists":0,"spaces":0,"users":0,"comments":0}
+  "<script>alert(1)</script>"       -> 200     {"tasks":0,"lists":0,"spaces":0,"users":0,"comments":0}
+  "${7*7}"                          -> 200     {"tasks":0,"lists":0,"spaces":0,"users":0,"comments":0}
+  "../../etc/passwd"                -> 200     {"tasks":0,"lists":0,"spaces":0,"users":0,"comments":0}
+  "\\"                              -> 200     {"tasks":0,"lists":0,"spaces":0,"users":0,"comments":0}
+  "a' UNION SELECT 1,2,3 -- "       -> 200     {"tasks":0,"lists":0,"spaces":0,"users":0,"comments":0}
+  tasks table still present: 57 rows
+
+=== 6. types= filter, limit, ordering ===
+  ?q=ZQXJV&types=task           -> 200                       {"tasks":2,"lists":0,"spaces":0,"users":0,"comments":0}
+  ?q=ZQXJV&types=task,list      -> 200                       {"tasks":2,"lists":1,"spaces":0,"users":0,"comments":0}
+  ?q=ZQXJV&types=bogus          -> 200                       {"tasks":0,"lists":0,"spaces":0,"users":0,"comments":0}
+  ?q=ZQXJV&types=               -> 200                       {"tasks":2,"lists":1,"spaces":0,"users":0,"comments":1}
+  ?q=ZQXJV&limit=1              -> 200                       {"tasks":1,"lists":1,"spaces":0,"users":0,"comments":1}
+  ?q=ZQXJV&limit=1000           -> 200                       {"tasks":2,"lists":1,"spaces":0,"users":0,"comments":1}
+  ?q=ZQXJV&limit=0              -> 422 validation.failed     
+  ?q=ZQXJV&limit=abc            -> 422 validation.failed     
+  q=TEST-p25 ordering (task ids in returned order vs internal_id):
+     returned: 6 | same order as internal_id ASC? yes - insertion order, NOT relevance
+
+=== 7. SCOPING ===
+  marketing.only q=ZQXJV -> 200     {"tasks":1,"lists":0,"spaces":0,"users":0,"comments":0}
+     task names: ["TEST-p25 ZQXJV marketing-side"]
+     leaked anything from Politics? no - correctly scoped
+     spaces they can see via search: []
+  guest q=ZQXJV          -> 200     {"tasks":4,"lists":1,"spaces":0,"users":0,"comments":1}
+     guest sees task names: ["TEST-p25 ZQXJV needle","TEST-p25 order \\u0985\\u09b0\\u09cd\\u09a1\\u09be\\u09b0 ZQXJV","TEST-p25 ZQXJV politics-only
+     fields on a guest's task hit: ["id","custom_id","task_number","workspace_id","primary_list_id","name","description","status_id","priority","task_type_id","parent_task_id","nesting_depth","is_milestone","start_date","due_date","completed_at","review_status","reviewed_at","reviewed_by","sla_due_at","recurrence_pattern","recurrence_days","recurrence_ends_at","time_estimate_seconds","time_tracked_seconds","subtasks_count","subtasks_completed","comments_count","attachments_count","sprint_id","story_points","reviewer_id","branch_name","pr_url","pr_status","bug_severity","bug_reproducibility","bug_environment","bug_browser","reporter_team","deployed_at","rollback_reason","assignees","watchers","tags","custom_field_values","archived_at","created_by","created_at","updated_at"]
+  no token               -> 401
+
+=== 8. custom_id exact match ===
+  q=ZZTOP-77 -> 200     {"tasks":1,"lists":0,"spaces":0,"users":0,"comments":0} found by custom_id
+  q=zztop-77 (lowercase) -> {"tasks":1,"lists":0,"spaces":0,"users":0,"comments":0}
+
+=== CLEANUP ===
+node:internal/process/promises:394
+    triggerUncaughtException(err, true /* fromPromise */);
+    ^
+
+Error: Can't update table 'tasks' in stored function/trigger because it is already used by statement which invoked this stored function/trigger.
+    at C:\Users\Tanvir\AppData\Local\Temp\claude\E--Task-Management-System\0c5a6be8-84af-4c0b-91a3-1cb6f5c4eb9d\scratchpad\p25.cjs:128:14
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5) {
+  code: 'ER_CANT_UPDATE_USED_TABLE_IN_SF_OR_TRG',
+  errno: 1442,
+  sqlState: 'HY000',
+  sqlMessage: "Can't update table 'tasks' in stored function/trigger because it is already used by statement which invoked this stored function/trigger.",
+  sql: "DELETE FROM comments WHERE task_id IN (SELECT id FROM tasks WHERE name LIKE 'TEST-p25%')"
+}
+
+Node.js v22.21.1

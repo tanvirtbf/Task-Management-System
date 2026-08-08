@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.invitationTokenValidator = exports.acceptInvitationValidator = exports.forgotPasswordValidator = exports.changePasswordValidator = exports.resetPasswordValidator = exports.loginValidator = void 0;
 const express_validator_1 = require("express-validator");
+const passwordPolicy_1 = require("./passwordPolicy");
 /**
  * Validators for §2 Authentication endpoints. Pair each `checkSchema(...)`
  * with the `validate` middleware so failures are translated into the spec
@@ -69,19 +70,9 @@ exports.resetPasswordValidator = (0, express_validator_1.checkSchema)({
             errorMessage: "Reset token is too long (max 512 chars)",
         },
     },
-    new_password: {
-        in: ["body"],
-        notEmpty: {
-            errorMessage: "New password is required",
-        },
-        isString: {
-            errorMessage: "New password must be a string",
-        },
-        isLength: {
-            options: { min: 8, max: 200 },
-            errorMessage: "New password must be between 8 and 200 characters",
-        },
-    },
+    // F12 (ISS-083): the shared policy — complexity + a common-password
+    // denylist. See validators/passwordPolicy.ts for the reasoning.
+    new_password: passwordPolicy_1.newPasswordSchema,
 });
 /**
  * `POST /api/v1/auth/change-password` (authenticated). The caller proves
@@ -99,15 +90,8 @@ exports.changePasswordValidator = (0, express_validator_1.checkSchema)({
             errorMessage: "Current password must be between 1 and 200 characters",
         },
     },
-    new_password: {
-        in: ["body"],
-        notEmpty: { errorMessage: "New password is required" },
-        isString: { errorMessage: "New password must be a string" },
-        isLength: {
-            options: { min: 8, max: 200 },
-            errorMessage: "New password must be between 8 and 200 characters",
-        },
-    },
+    // F12 (ISS-083): the shared policy.
+    new_password: passwordPolicy_1.newPasswordSchema,
 });
 /**
  * `POST /api/v1/auth/forgot-password`. Email-only — mirrors `loginValidator`'s
@@ -155,15 +139,8 @@ exports.acceptInvitationValidator = (0, express_validator_1.checkSchema)({
             errorMessage: "Invitation token is too long (max 512 chars)",
         },
     },
-    password: {
-        in: ["body"],
-        notEmpty: { errorMessage: "Password is required" },
-        isString: { errorMessage: "Password must be a string" },
-        isLength: {
-            options: { min: 8, max: 200 },
-            errorMessage: "Password must be between 8 and 200 characters",
-        },
-    },
+    // F12 (ISS-083): the same policy the reset/change paths use.
+    password: passwordPolicy_1.newPasswordSchema,
 });
 /**
  * `GET /api/v1/auth/invitation/:token`. Bounds the path token defensively (it is

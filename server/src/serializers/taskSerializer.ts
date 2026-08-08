@@ -75,17 +75,24 @@ export interface TaskHydration {
 }
 
 /**
- * Format a MySQL DATE to the `YYYY-MM-DD` wire form using local date
- * components: the mysql2 driver materialises a DATE as a Date at local
- * midnight, so `toISOString()` could shift it across the UTC boundary. Accepts
- * a pre-formatted string defensively (string-mode columns).
+ * Format a MySQL DATE to the `YYYY-MM-DD` wire form using **UTC** components.
+ *
+ * A DATE is a calendar day with no timezone, so the formatting must not depend
+ * on one. Drizzle's `MySqlDate.mapFromDriverValue` does `new Date("YYYY-MM-DD")`,
+ * which is UTC midnight, and F3's `toDateOnly` writes UTC midnight — so reading
+ * back the UTC components is exact and identical under any process TZ.
+ *
+ * (This previously used LOCAL components. That was correct only while the
+ * process TZ had a non-negative offset: under Dhaka, UTC midnight is 06:00 the
+ * same day, so the day survived by luck. In, say, New York it would have
+ * rendered the previous day.) Accepts a pre-formatted string defensively.
  */
 const toWireDate = (value: Date | string | null): string | null => {
     if (value === null) return null;
     if (typeof value === "string") return value.slice(0, 10);
-    const year = value.getFullYear();
-    const month = String(value.getMonth() + 1).padStart(2, "0");
-    const day = String(value.getDate()).padStart(2, "0");
+    const year = value.getUTCFullYear();
+    const month = String(value.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(value.getUTCDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
 };
 

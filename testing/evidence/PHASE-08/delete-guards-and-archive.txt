@@ -1,0 +1,45 @@
+=== A. remove the duplicate 'Marketing' my test created ===
+┌─────────┬─────────────────────────────┬─────────────┬────────────────────────────┬───────────────────────┬───────┐
+│ (index) │ id                          │ name        │ head_user_id               │ c                     │ lists │
+├─────────┼─────────────────────────────┼─────────────┼────────────────────────────┼───────────────────────┼───────┤
+│ 0       │ 'sp-jh3Gafsqo-WNY9EPqcTC8w' │ 'Marketing' │ 'u-ia1-Y219W_rIcEXnXdK4cA' │ '2026-07-23 14:23:07' │ 3     │
+│ 1       │ 'sp-L5azpHaiWH_Lw93zVZMXhQ' │ 'Marketing' │ null                       │ '2026-07-30 12:16:41' │ 0     │
+└─────────┴─────────────────────────────┴─────────────┴────────────────────────────┴───────────────────────┴───────┘
+  deleted duplicate sp-L5azpHaiWH_Lw93zVZMXhQ -> 1
+  'Marketing' spaces now: 1
+
+=== B. DELETE GUARDS — properly, archiving first ===
+  EMPTY + archived        -> DELETE 204
+  HAS A LIST + archived   -> DELETE 409 space.not_empty
+     after removing the list -> DELETE 204
+  'Marketing' has 2 report(s), 3 list(s)
+  archive Marketing       -> 204
+  DELETE archived Marketing -> 409 space.not_empty
+     Marketing still present: yes ✓
+  unarchive Marketing     -> 204
+
+=== C. what did CREATE store for an unknown head_user_id? ===
+  POST with head_user_id='u-nope' -> 201, stored head: null (silently dropped)
+  PATCH the same value            -> 422 space.head_invalid
+
+=== D. can an ARCHIVED space still be modified? ===
+  PATCH name on an archived space   -> 200
+     name in DB: TEST-p8b-renamed-while-archived | still archived: true
+  set a head on an archived space   -> 200
+  create a list inside it           -> 409 space.archived
+
+=== CLEANUP ===
+  removed: 2
+┌─────────┬──────────────────────────┬─────────────────────────────┬───────┬──────────┐
+│ (index) │ name                     │ head                        │ lists │ archived │
+├─────────┼──────────────────────────┼─────────────────────────────┼───────┼──────────┤
+│ 0       │ 'Accounts'               │ '—'                         │ 0     │ false    │
+│ 1       │ 'Complain Department'    │ '—'                         │ 0     │ false    │
+│ 2       │ 'Customer Service'       │ 'rakib@beautybooth.com.bd'  │ 2     │ false    │
+│ 3       │ 'Engineering'            │ 'tanvir@beautybooth.com.bd' │ 2     │ false    │
+│ 4       │ 'Marketing'              │ 'nusrat@beautybooth.com.bd' │ 3     │ false    │
+│ 5       │ 'Orders & Fulfillment'   │ 'sadia@beautybooth.com.bd'  │ 2     │ false    │
+│ 6       │ 'Politics'               │ '—'                         │ 1     │ false    │
+│ 7       │ 'Product & Inventory'    │ 'imran@beautybooth.com.bd'  │ 2     │ false    │
+│ 8       │ 'Social Media & Content' │ 'mitu@beautybooth.com.bd'   │ 2     │ false    │
+└─────────┴──────────────────────────┴─────────────────────────────┴───────┴──────────┘

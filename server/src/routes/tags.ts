@@ -3,6 +3,7 @@ import express, {
     type Request,
     type Response,
 } from "express";
+import { allowQuery } from "../middlewares/allowQuery";
 import { TagController } from "../controllers/TagController";
 import { TagService } from "../services/TagService";
 import { TagsRepo } from "../repositories/TagsRepo";
@@ -42,6 +43,8 @@ const tagController = new TagController(tagService, logger);
 router.get(
     "/",
     authenticate,
+    // F23 (ISS-014): a mistyped filter is a 422, not the full set.
+    allowQuery(["limit","cursor"]),
     (req: Request, res: Response, next: NextFunction) =>
         tagController.list(req as AuthRequest, res, next),
 );

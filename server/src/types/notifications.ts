@@ -38,10 +38,13 @@ export interface SnoozeNotificationRequest extends AuthRequest {
     body: SnoozeNotificationBody;
 }
 
-/** One type's preference in the `PUT /preferences` body — both channels required. */
+/**
+ * One type's preference in the `PUT /preferences` body. F19 (D8): the
+ * `email_enabled` channel was removed — it promised delivery that had no
+ * implementation.
+ */
 export interface NotificationPrefInput {
     in_app_enabled: boolean;
-    email_enabled: boolean;
 }
 
 /**

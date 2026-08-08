@@ -11,6 +11,7 @@ import { R2Service } from "../services/R2Service";
 import { getDb } from "../db/client";
 import logger from "../config/logger";
 import authenticate from "../middlewares/authenticate";
+import { requirePermission } from "../middlewares/requirePermission";
 import { validate } from "../middlewares/validate";
 import { uploadSignLimiter } from "../middlewares/rateLimit";
 import {
@@ -52,6 +53,7 @@ const attachmentsController = new AttachmentsController(
 router.post(
     "/uploads/sign",
     authenticate,
+    requirePermission("attachment.upload"),
     uploadSignLimiter,
     signUploadValidator,
     validate,
@@ -65,6 +67,7 @@ router.post(
 router.post(
     "/attachments/:id/finalize",
     authenticate,
+    requirePermission("attachment.upload"),
     finalizeValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -115,6 +118,7 @@ router.get(
 router.post(
     "/tasks/:id/attachments",
     authenticate,
+    requirePermission("attachment.upload"),
     uploadSignLimiter, // M5: the byte-carrying route needs the 60/min/user cap too
     express.raw({ type: () => true, limit: "30mb" }),
     (req: Request, res: Response, next: NextFunction) =>

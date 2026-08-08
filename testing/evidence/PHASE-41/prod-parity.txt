@@ -1,0 +1,64 @@
+=== 1. RATE LIMITERS (deferred here from P26, P33, P38) ===
+  login attempt 1  -> 401   RateLimit-Limit=5
+  login attempt 2  -> 401   RateLimit-Limit=5
+  login attempt 3  -> 401   RateLimit-Limit=5
+  login attempt 6  -> 429  code="auth.rate_limited" Retry-After=60 RateLimit-Limit=5
+  login attempt 7  -> 429  code="auth.rate_limited" Retry-After=60 RateLimit-Limit=5
+  login attempt 8  -> 429  code="auth.rate_limited" Retry-After=60 RateLimit-Limit=5
+  -> the login limiter engaged at attempt 6 (documented: 5/min)
+
+  bypass attempts against the login limiter:
+    spoofed XFF             -> 401  *** BYPASSED ***
+    lower-case XFF          -> 401  *** BYPASSED ***
+    spoofed X-Real-IP       -> 429  still limited
+    spoofed CF header       -> 429  still limited
+    XFF chain               -> 401  *** BYPASSED ***
+
+=== 2. PROD-MODE RESPONSE HEADERS ===
+  strict-transport-security       "max-age=15552000; includeSubDomains"
+  content-security-policy         null
+  x-content-type-options          "nosniff"
+  x-frame-options                 "DENY"
+  referrer-policy                 "no-referrer"
+  x-powered-by                    "Express"
+  access-control-allow-origin     null
+  (the real HSTS/CSP terminate at nginx/Cloudflare in this deployment — nginx sets neither, see the config review)
+
+=== 3. COOKIE FLAGS in prod mode ===
+  login status: 429
+
+=== 4. ENV MATRIX — every variable Config reads ===
+  Config reads 39 variables
+  absent from .env         (9): DB_SOCKET_PATH, DB_TIMEZONE, SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM, EMAIL_FROM_NAME, OPENAI_MAX_OUTPUT_TOKENS
+  present but EMPTY in .env(2): API_URL, CORS_ALLOWED_ORIGINS
+  absent from .env.example (8): SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, EMAIL_FROM, EMAIL_FROM_NAME, R2_SIGNED_URL_TTL, OPENAI_MAX_OUTPUT_TOKENS
+
+=== 5. PROD-CRITICAL VALUES in the shipped .env ===
+  NODE_ENV                dev
+  PORT                    5501
+  DB_HOST                 localhost
+  DB_NAME                 taskmanagement
+  DB_SOCKET_PATH          <empty>
+  DB_TIMEZONE             <empty>
+  DB_POOL_MAX             20
+  DB_POOL_QUEUE_LIMIT     50
+  CORS_ORIGINS            <empty>
+  COOKIE_DOMAIN           <empty>
+  MAIL_HOST               live.smtp.mailtrap.io
+
+=== 6. /metrics and /health reachability through nginx ===
+  nginx proxies only: = /api/v1/assistant/chat | /api/v1/ | /assets/ | = /index.html | /
+  /metrics has a location block: NO
+  -> /metrics from the internet falls into `location /` -> try_files -> index.html (the SPA), so it is NOT exposed
+  -> BUT /health is unreachable the same way, so external uptime checks cannot use it
+  security headers set by nginx: NONE
+  SPA fallback present: yes
+  SSE location (buffering off) present: yes
+  client_max_body_size: 32m
+
+=== 7. PM2 ===
+  instances: 1 | exec_mode: fork
+  TZ: Asia/Dhaka | NODE_ENV: prod
+  max_memory_restart: 400M
+  script: dist/server.js | cwd: /var/www/html/tasks-beautybooth/server
+  server/dist/server.js exists in the repo: yes

@@ -4,6 +4,8 @@ import * as schema from "../db/schema";
 import { taskDependencies, tasks } from "../db/schema";
 import type { Task as TaskRow } from "../db/schema";
 import { fakeId } from "../utils";
+import { listScopeFilter } from "../rbac/context";
+import { taskOwnEscape } from "../rbac/ownEscape";
 import type { DbExecutor } from "./types";
 
 /**
@@ -79,7 +81,20 @@ export class TaskDependenciesRepo {
             .select()
             .from(tasks)
             .where(
-                and(inArray(tasks.id, ids), eq(tasks.workspaceId, workspaceId)),
+                and(
+                    inArray(tasks.id, ids),
+                    eq(tasks.workspaceId, workspaceId),
+                    // F9 (ISS-053): the other-end hydration was the ONE read
+                    // path that skipped the caller's visibility — a
+                    // cross-space edge served the full 50-field task of a
+                    // space the caller cannot open. Same filter + own-escape
+                    // as SearchRepo; an invisible other end simply does not
+                    // hydrate, and the service drops the edge.
+                    await listScopeFilter(
+                        tasks.primaryListId,
+                        await taskOwnEscape(),
+                    ),
+                ),
             );
     }
 

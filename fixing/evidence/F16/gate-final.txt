@@ -1,0 +1,15 @@
+F16+F17+F18 consolidated gate — FINAL code, serial — 2026-08-06T00:52:00+06:00
+(the first F16 gate straddled the F18 edits mid-run — ts-jest compiles per-file at require time, so its spaces/lists rows measured a broken intermediate tree and are void)
+spaces         Test Suites: 1 failed, 6 passed, 7 total|Tests:       1 failed, 243 passed, 244 total|
+lists          Test Suites: 5 passed, 5 total|Tests:       171 passed, 171 total|
+forms          Test Suites: 8 passed, 8 total|Tests:       85 passed, 85 total|
+statuses       Test Suites: 1 failed, 4 passed, 5 total|Tests:       8 failed, 201 passed, 209 total|
+notifications  Test Suites: 7 passed, 7 total|Tests:       84 passed, 84 total|
+attachments    Test Suites: 6 passed, 6 total|Tests:       106 passed, 106 total|
+jobs           Test Suites: 5 passed, 5 total|Tests:       32 passed, 32 total|
+tasks          Test Suites: 10 passed, 10 total|Tests:       359 passed, 359 total|
+gate finished 2026-08-06T01:14:23+06:00
+
+── re-run after updating the 9 stale specs (8 reorder + 1 unarchive — each pinned the pre-fix behaviour) ──
+statuses       Test Suites: 5 passed, 5 total|Tests:       209 passed, 209 total|
+spaces         Test Suites: 7 passed, 7 total|Tests:       244 passed, 244 total|

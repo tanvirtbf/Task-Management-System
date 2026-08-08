@@ -129,6 +129,7 @@ export const ListViewRow = ({
                     transition: "opacity var(--transition-base)",
                 }}
                 className="row-drag-handle"
+                aria-label="Drag to reorder"
                 onClick={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
             >
@@ -153,7 +154,7 @@ export const ListViewRow = ({
                     flexShrink: 0,
                 }}
             >
-                <Checkbox checked={isSelected} />
+                <Checkbox checked={isSelected} aria-label="Select task" />
             </span>
 
             {/* Priority */}
@@ -277,6 +278,7 @@ export const ListViewRow = ({
                 <button
                     onClick={(e) => e.stopPropagation()}
                     className="row-actions"
+                    aria-label="Task actions"
                     style={{
                         background: "none",
                         border: 0,

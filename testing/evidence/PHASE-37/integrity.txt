@@ -1,0 +1,76 @@
+=== 1. TRIGGERS — all ten, one at a time ===
+  present: 10 | attachments_after_insert, attachments_after_update, comments_after_insert, comments_after_delete, form_submissions_after_insert, task_dependencies_no_self_insert, task_dependencies_no_self_update, subtasks_after_insert, subtasks_after_update, subtasks_after_delete
+  comments_count after 1 comment: 1 (expect 1)
+  after SOFT-deleting it:         1 (ISS-065: stays 1)
+  after a HARD delete:            0 (the trigger fires on real DELETE)
+  attachments_count, row PENDING: 0 (expect 0 — only complete rows count)
+  after pending -> complete:      1 (expect 1)
+  after a soft delete:            0 (expect 0 — the UPDATE trigger works both ways)
+  subtasks_count with 1 child:    0/0 (ISS-046: never maintained)
+  forms.submission_count (seed):   0
+  the 3 STALE dev triggers (SCAN-H4): trg_subtasks_after_insert, trg_subtasks_after_update, trg_subtasks_after_delete
+
+=== 2. VIEWS vs hand-computed ===
+  views defined: v_active_sprint, v_breached_sla, v_current_on_call, v_open_bugs, v_open_tasks
+  v_active_sprint         1 rows
+  v_breached_sla          0 rows
+  v_current_on_call       0 rows
+  v_open_bugs             0 rows
+  v_open_tasks            34 rows
+  v_active_sprint 1 vs sprints status=active 1 match
+  v_current_on_call 0 vs hand 0 match
+  v_breached_sla 0 vs hand(NOW()) 0 match
+
+=== 3. FK CASCADES ===
+  before hard delete: {"task_assignees":1,"task_watchers":1,"comments":1,"checklists":1,"task_activity":3}
+  after : {"task_assignees":0,"task_watchers":0,"comments":0,"checklists":0,"task_activity":0} all cascaded
+  checklist_items under the deleted checklist: 0
+  a LIST with tasks -> delete: 409 list.not_archived (FK is ON DELETE RESTRICT)
+
+=== 4. ORPHAN SWEEP across the schema ===
+  tasks with a dead list                    0     clean
+  tasks with a dead status                  0     clean
+  tasks with a dead type                    0     clean
+  tasks with a dead parent                  0     clean
+  lists with a dead space                   0     clean
+  statuses (scope=list) with a dead list    0     clean
+  comments with a dead task                 0     clean
+  checklists with a dead task               0     clean
+  checklist_items with a dead checklist     0     clean
+  attachments with a dead task              0     clean
+  task_assignees with a dead task           0     clean
+  task_assignees with a dead user           0     clean
+  task_activity with a dead task            0     clean
+  NOTIFICATIONS pointing at a dead task     1     *** ORPHANS ***
+  notifications pointing at a dead comment  0     clean
+  notifications with a dead user            0     clean
+  task_dependencies with a dead task        0     clean
+  form_fields with a dead form              0     clean
+  form_submissions with a dead form         0     clean
+  department_reports with a dead space      0     clean
+  task_reviews with a dead task             0     clean
+  spaces with a dead head                   0     clean
+  sessions with a dead user                 0     clean
+  tasks whose sprint is gone                0     clean
+  -> 1 orphaned relationships
+
+=== 5. CONCURRENCY ===
+  two simultaneous PATCHes: 200/200 -> final priority 4 (last-write-wins, both 200)
+  two simultaneous assigns: 204/204 -> rows 1 (expect 1)
+  two simultaneous archives: 204/204
+
+=== 6. UNIQUE CONSTRAINTS UNDER A RACE ===
+  two identical tag names: 409 tag.duplicate / 201 -> rows 1
+  two identical custom_ids: 409 task.duplicate_custom_id / 201 -> rows 1
+  two simultaneous creates -> task_numbers 6 / 7 distinct (the race retry works)
+
+=== 7. ATOMICITY — a bulk with one bad id ===
+  bulk with a bad id -> 404 task.not_found | priority { priority: 0 } -> { priority: 0 } *** partial write ***
+
+=== 8. TIMEZONE — the 23:59 / 00:01 boundary ===
+  due_date sent 2026-08-10 -> stored 2026-08-10 -> wire 2026-08-10 round-trips clean
+  created_at stored 2026-07-30 16:02:07 -> wire 2026-07-30T16:02:07.000Z (a 6-hour gap is ISS-001)
+  MySQL NOW(): 2026-07-30 16:02:07 | node: 2026-07-30T10:02:07.162Z
+
+=== CLEANUP ===
+  tasks 51 (51) | lists 14 (14) | statuses 70 (70) | tags 8 (8) | comments 8 (8) | attachments 1 (1)

@@ -2,6 +2,9 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ReportsService = void 0;
 const errors_1 = require("../errors");
+const can_1 = require("../rbac/can");
+const scopeGuard_1 = require("../rbac/scopeGuard");
+const context_1 = require("../rbac/context");
 const dhakaTime_1 = require("../utils/dhakaTime");
 const reportSerializer_1 = require("../serializers/reportSerializer");
 const constants_1 = require("../constants");
@@ -156,7 +159,15 @@ class ReportsService {
         const afterKey = input.cursor
             ? decodeReportCursor(input.cursor)
             : undefined;
-        const headVisibility = this.isAdmin(input.role)
+        // F7 / D3.1 compose: head-scoped visibility is feature logic (D-5) and
+        // is untouched; the "admins see every department" fast-path now also
+        // requires the `report.view` grant. An admin whose role has the toggle
+        // off falls back to head scoping (usually an empty list) — the toggle
+        // is real, and department heads are unaffected. NEVER make this a
+        // route gate: heads are legacy `member`s and would lose dept-review.
+        const adminSeesAll = this.isAdmin(await (0, scopeGuard_1.liveLegacyRole)(input.role)) &&
+            (0, can_1.holds)(await (0, context_1.currentActor)(), "report.view");
+        const headVisibility = adminSeesAll
             ? undefined
             : {
                 userId: input.userId,
@@ -193,7 +204,11 @@ class ReportsService {
         if (!row) {
             throw errors_1.AppError.notFound("report.not_found", `Report ${input.id} does not exist`);
         }
-        if (!this.isAdmin(input.role)) {
+        // Same compose as `list` — the admin fast-path needs the grant; the
+        // snapshot-head / current-head branches are feature logic, untouched.
+        const adminSeesAll = this.isAdmin(await (0, scopeGuard_1.liveLegacyRole)(input.role)) &&
+            (0, can_1.holds)(await (0, context_1.currentActor)(), "report.view");
+        if (!adminSeesAll) {
             const snapshotHead = row.headUserId === input.userId;
             let currentHead = false;
             if (!snapshotHead) {
@@ -238,7 +253,7 @@ class ReportsService {
         if (space.archivedAt) {
             throw errors_1.AppError.conflict("space.archived", "This space is archived; reports need a live department");
         }
-        if (!this.isAdmin(input.role) &&
+        if (!this.isAdmin(await (0, scopeGuard_1.liveLegacyRole)(input.role)) &&
             space.headUserId !== input.userId) {
             throw errors_1.AppError.forbidden("report.forbidden", "Only owners/admins and the department's head may generate its report");
         }

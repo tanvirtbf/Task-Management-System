@@ -1,0 +1,3 @@
+  010_name_uniqueness.sql: 15 statements
+  taskmanagement        15/15 applied
+  taskmanagement_qa     15/15 applied

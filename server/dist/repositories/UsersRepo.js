@@ -297,6 +297,18 @@ class UsersRepo {
             .limit(params.limit);
     }
     /** Exact count for the same filter set — feeds `pagination.total_estimate`. */
+    /**
+     * F22 (ISS-020): the ACTIVE admin-capable accounts (role owner|admin)
+     * other than  — the last-admin guards refuse any transition
+     * that would drive this to zero.
+     */
+    async countActiveAdminCapable(workspaceId, excludeId, exec = this.db) {
+        const [row] = await exec
+            .select({ n: (0, drizzle_orm_1.count)() })
+            .from(schema_1.users)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.workspaceId, workspaceId), (0, drizzle_orm_1.eq)(schema_1.users.status, "active"), (0, drizzle_orm_1.inArray)(schema_1.users.role, ["owner", "admin"]), (0, drizzle_orm_1.ne)(schema_1.users.id, excludeId)));
+        return row?.n ?? 0;
+    }
     async countByWorkspace(params) {
         const [row] = await this.db
             .select({ value: (0, drizzle_orm_1.count)() })

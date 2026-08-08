@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
+const allowQuery_1 = require("../middlewares/allowQuery");
 const TaskTypeController_1 = require("../controllers/TaskTypeController");
 const TaskTypeService_1 = require("../services/TaskTypeService");
 const TaskTypesRepo_1 = require("../repositories/TaskTypesRepo");
@@ -27,7 +28,9 @@ const taskTypeController = new TaskTypeController_1.TaskTypeController(taskTypeS
 // Authenticated — any role may list the workspace's task types (only create /
 // update / delete are owner/admin per Appendix B). Workspace scoping comes from
 // `req.auth.workspaceId`, never from client input.
-router.get("/", authenticate_1.default, (req, res, next) => taskTypeController.list(req, res, next));
+router.get("/", authenticate_1.default, 
+// F23 (ISS-014): a mistyped filter is a 422, not the full set.
+(0, allowQuery_1.allowQuery)(["limit", "cursor"]), (req, res, next) => taskTypeController.list(req, res, next));
 // ─── POST /api/v1/task-types ─────────────────────────────────────────────────
 // 👑 Owner/admin only. `requirePermission` runs before validation so a member is
 // rejected (403) without their body being inspected. The new type is created

@@ -3,6 +3,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AttachmentsService = void 0;
 const errors_1 = require("../errors");
 const constants_1 = require("../constants");
+const can_1 = require("../rbac/can");
+const scopeGuard_1 = require("../rbac/scopeGuard");
+const context_1 = require("../rbac/context");
 const utils_1 = require("../utils");
 const attachmentSerializer_1 = require("../serializers/attachmentSerializer");
 const attachmentPolicy_1 = require("./attachmentPolicy");
@@ -33,7 +36,7 @@ class AttachmentsService {
         if (!task) {
             throw errors_1.AppError.notFound("task.not_found", `Task ${input.scopeId} does not exist`);
         }
-        if (input.role === constants_1.Roles.GUEST) {
+        if ((await (0, scopeGuard_1.liveLegacyRole)(input.role)) === constants_1.Roles.GUEST) {
             throw errors_1.AppError.forbidden("auth.forbidden", "Guests cannot upload attachments");
         }
         if (input.sizeBytes > attachmentPolicy_1.MAX_ATTACHMENT_BYTES) {
@@ -76,7 +79,7 @@ class AttachmentsService {
         if (!task) {
             throw errors_1.AppError.notFound("task.not_found", `Task ${input.taskId} does not exist`);
         }
-        if (input.role === constants_1.Roles.GUEST) {
+        if ((await (0, scopeGuard_1.liveLegacyRole)(input.role)) === constants_1.Roles.GUEST) {
             throw errors_1.AppError.forbidden("auth.forbidden", "Guests cannot upload attachments");
         }
         if (input.body.length > attachmentPolicy_1.MAX_ATTACHMENT_BYTES) {
@@ -188,7 +191,13 @@ class AttachmentsService {
     async softDelete(input) {
         const att = await this.resolveLive(input.id, input.workspaceId);
         const isOwner = att.uploadedBy === input.actorId;
-        const isAdmin = input.role === constants_1.Roles.OWNER || input.role === constants_1.Roles.ADMIN;
+        // F7 / D3.1 compose: the uploader branch stays free; the admin branch
+        // now also requires the `attachment.delete_any` grant, making the
+        // roles-grid toggle real. Compose cannot widen access.
+        // F10 (ISS-021): live role, not the token claim.
+        const role = await (0, scopeGuard_1.liveLegacyRole)(input.role);
+        const isAdmin = (role === constants_1.Roles.OWNER || role === constants_1.Roles.ADMIN) &&
+            (0, can_1.holds)(await (0, context_1.currentActor)(), "attachment.delete_any");
         if (!isOwner && !isAdmin) {
             throw errors_1.AppError.forbidden("auth.forbidden", "Only the uploader or an admin can delete this attachment");
         }

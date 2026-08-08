@@ -1,0 +1,12 @@
+=== space.has_reports delete guard (deferred out of P8) ===
+  DELETE a space with NO reports -> 409 "space.not_archived"
+  generated a report for a new space -> 200
+  DELETE that space              -> 409 "space.not_archived" guard fires
+
+CLEANUP: spaces 9 (9) | department_reports 12 (12) | notifications 65 (65)
+=== space delete needs ARCHIVE first; then the has_reports guard ===
+  archived, NO reports  -> DELETE 204 "deleted"
+  generate a report      -> 200
+  archived, HAS a report -> DELETE 409 "space.has_reports" *** the has_reports guard FIRES ***
+
+CLEANUP: spaces 9 (9) | department_reports 12 (12) | notifications 65 (65)

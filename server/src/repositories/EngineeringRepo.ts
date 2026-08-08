@@ -25,6 +25,7 @@ import {
     type Sprint,
     type TaskPostmortem,
 } from "../db/schema";
+import { dhakaToday } from "../utils/dhakaTime";
 
 /** Status groups that count as "closed work" — excluded from the open rollups. */
 const DONE_GROUPS = ["done", "closed"] as const;
@@ -77,13 +78,18 @@ export class EngineeringRepo {
     }
 
     /**
-     * The workspace's non-archived "Bug Triage" list id (case-insensitive name
+     * The workspace's non-archived "Bug Triage" list (case-insensitive name
      * match), or null. `lists` has no `workspace_id`, so isolation rides the
      * `lists → spaces.workspace_id` join.
+     *
+     * Returns the list's `spaceId` too (F28): the report-bug intake principal
+     * is narrowed to the space that owns this list, and the join already has it.
      */
-    async findBugTriageListId(workspaceId: string): Promise<string | null> {
+    async findBugTriageList(
+        workspaceId: string,
+    ): Promise<{ id: string; spaceId: string } | null> {
         const rows = await this.db
-            .select({ id: lists.id })
+            .select({ id: lists.id, spaceId: lists.spaceId })
             .from(lists)
             .innerJoin(spaces, eq(lists.spaceId, spaces.id))
             .where(
@@ -95,7 +101,7 @@ export class EngineeringRepo {
             )
             .orderBy(lists.createdAt)
             .limit(1);
-        return rows[0]?.id ?? null;
+        return rows[0] ?? null;
     }
 
     /**
@@ -103,6 +109,11 @@ export class EngineeringRepo {
      * "This week" = today within `[week_start, week_end]`; the most recent
      * matching shift wins. Filtering to `status = 'active'` avoids handing an
      * assignment to a deactivated user (which `create()` would reject as 422).
+     *
+     * "Today" is `dhakaToday()`, bound as a parameter, not SQL `CURDATE()` —
+     * see the matching note on `OnCallRepo.findCurrent` for why (F3 pinned the
+     * MySQL session to UTC; these are Dhaka business-day DATE columns). Both
+     * paths must agree or a bug's auto-assignee and the on-call board diverge.
      */
     async findCurrentOnCallEngineerId(
         workspaceId: string,
@@ -115,7 +126,7 @@ export class EngineeringRepo {
                 and(
                     eq(onCallShifts.workspaceId, workspaceId),
                     eq(users.status, "active"),
-                    sql`CURDATE() BETWEEN ${onCallShifts.weekStart} AND ${onCallShifts.weekEnd}`,
+                    sql`${dhakaToday()} BETWEEN ${onCallShifts.weekStart} AND ${onCallShifts.weekEnd}`,
                 ),
             )
             .orderBy(desc(onCallShifts.weekStart))

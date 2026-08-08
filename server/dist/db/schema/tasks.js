@@ -62,6 +62,11 @@ exports.tasks = (0, mysql_core_1.mysqlTable)("tasks", {
     startDate: (0, mysql_core_1.date)("start_date"),
     dueDate: (0, mysql_core_1.date)("due_date"),
     completedAt: (0, mysql_core_1.timestamp)("completed_at"),
+    // Overdue-alert claim (upgrades/014): set by the overdue-alert job in
+    // the same tx as its `overdue` notification fanout (exactly once per
+    // due_date); TaskWriteService clears it whenever due_date changes so a
+    // moved deadline re-arms the alert.
+    overdueNotifiedAt: (0, mysql_core_1.timestamp)("overdue_notified_at"),
     // ─── Dept Review V1 — current review state (denorm; app-maintained in
     // the same tx as the task_reviews insert — NO triggers). reviewedAt is
     // app-written UTC. Cleared whenever the task leaves a done group. ─────
@@ -163,6 +168,13 @@ exports.tasks = (0, mysql_core_1.mysqlTable)("tasks", {
     severityIdx: (0, mysql_core_1.index)("idx_tasks_severity").on(t.bugSeverity, t.statusId),
     recurrenceIdx: (0, mysql_core_1.index)("idx_tasks_recurrence").on(t.recurrencePattern, t.dueDate),
     slaIdx: (0, mysql_core_1.index)("idx_tasks_sla").on(t.slaDueAt, t.completedAt, t.archivedAt),
+    // F30 (ISS-088): list pagination orders by `internal_id` while every
+    // index above ends in a status/date column, so the page was found by
+    // index and then FILESORTED. This matches the actual ORDER BY of
+    // `TasksRepo.listByList` and removes the sort at any list size.
+    listInternalIdx: (0, mysql_core_1.index)("idx_tasks_list_internal").on(t.primaryListId, t.internalId),
+    // upgrades/014: the overdue-alert job's every-10-min scan.
+    overdueScanIdx: (0, mysql_core_1.index)("idx_tasks_overdue_scan").on(t.dueDate, t.completedAt, t.archivedAt, t.overdueNotifiedAt),
 }));
 // ─── task_assignees ─ M2M users ↔ tasks ───────────────────────────────────────
 exports.taskAssignees = (0, mysql_core_1.mysqlTable)("task_assignees", {
@@ -289,4 +301,7 @@ exports.taskActivity = (0, mysql_core_1.mysqlTable)("task_activity", {
         .onDelete("set null")
         .onUpdate("cascade"),
     taskTimeIdx: (0, mysql_core_1.index)("idx_task_activity_task_time").on(t.taskId, t.createdAt),
+    // F30 (ISS-088): the feed orders by `internal_id` DESC; the time index
+    // above cannot serve that order, so every page filesorted.
+    taskInternalIdx: (0, mysql_core_1.index)("idx_task_activity_task_internal").on(t.taskId, t.internalId),
 }));

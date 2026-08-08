@@ -1,0 +1,42 @@
+====================================================================================================
+F1 CLOCK PROBE   db=taskmanagement   api=:5711   run=2026-08-03T11:01:46.417Z
+====================================================================================================
+
+--- 1. THE SIX SETTINGS THAT MUST AGREE (plan §2) ---
+  process TZ                Asia/Dhaka                        expect: Asia/Dhaka
+  MySQL session time_zone   SYSTEM                            expect: +06:00 or SYSTEM(=Dhaka)
+  MySQL global time_zone    SYSTEM                            expect: -
+  MySQL NOW()               2026-08-03 17:01:46               expect: = Dhaka wall clock
+  MySQL UTC_TIMESTAMP()     2026-08-03 11:01:46               expect: = NOW() - 6h
+  node new Date()           2026-08-03T11:01:46.417Z          expect: -
+  NOW() vs node clock            0 h   AGREE
+
+--- 2. WRITE A KNOWN INSTANT, READ IT BACK THREE WAYS ---
+  column                        by      asked (UTC)           stored (raw SQL)       DB drift wire drift
+  ----------------------------------------------------------------------------------------------------
+  tasks.sla_due_at              app     2026-08-04 11:01:46   2026-08-04 17:01:47      0.00 h     0.00 h   PATCH /tasks/:id/sla
+  tasks.completed_at            app     2026-08-03 11:01:46   2026-08-03 17:01:47      0.00 h     0.00 h   set on status -> done
+  tasks.archived_at             app     2026-08-03 11:01:46   2026-08-03 17:01:47      0.00 h          -   POST /archive (not on the wire)
+  tasks.created_at              MySQL   2026-08-03 11:01:46   2026-08-03 17:01:46      0.00 h     0.00 h   CURRENT_TIMESTAMP default — the CONTROL
+  tasks.updated_at [assign]     app     2026-08-03 11:01:47   2026-08-03 17:01:48      0.00 h     0.00 h   touchUpdatedAt — Drizzle writes it
+  tasks.updated_at [patch]      MySQL   2026-08-03 11:01:49   2026-08-03 17:01:49      0.00 h     0.00 h   ON UPDATE CURRENT_TIMESTAMP
+  updated_at >= created_at ?    -       yes (0h)
+  comments.created_at           MySQL   2026-08-03 11:01:49   2026-08-03 17:01:49      0.00 h     0.00 h   CURRENT_TIMESTAMP
+  comment edit window           -       editable up to 10 min, refused from 16 min (intended: 15) — ISS-063
+  notifications.snoozed_until   app     2026-08-03 16:01:49   2026-08-03 22:01:50      0.00 h          -   POST /snooze
+  sessions.expires_at           app     -                     2026-09-02 17:01:50           -          -   created_at=2026-08-03 17:01:49 (MySQL) — the two are written by different paths
+  sessions.created_at           MySQL   2026-08-03 11:01:49   2026-08-03 17:01:49      0.00 h          -   CURRENT_TIMESTAMP
+  checklist_items.completed_at  app     2026-08-03 11:01:49   2026-08-03 17:01:50      0.00 h          -   POST /toggle
+  tasks.due_date (DATE)         app     2026-08-10            2026-08-10               0.00 h     0.00 h   DATE has no zone — must round-trip byte-identically under ANY process TZ
+  tasks.start_date (DATE)       app     2026-08-01            2026-08-01               0.00 h     0.00 h
+
+--- 3. VERDICT ---
+  columns whose STORED value differs from what was asked : 0
+  columns whose WIRE value differs from what is stored   : 0
+  DATE columns that failed to round-trip                 : 0
+
+  PASS — every column round-trips with zero drift.
+
+--- 4. CLEANUP ---
+  tasks 46 (46) | lists 13 (13) | statuses 65 (65) | comments 7 (7) | notifications 57 (57)
+  json -> fixing/evidence/F03/after.json

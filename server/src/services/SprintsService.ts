@@ -26,12 +26,18 @@ const isDuplicateKeyError = (err: unknown): boolean => {
 /**
  * Parse a `YYYY-MM-DD` wire date into a LOCAL-midnight `Date` for the MySQL DATE
  * column (Drizzle `date()` mode "date"). Local midnight round-trips cleanly
- * through the serializer's local-component formatting, avoiding the UTC-boundary
- * shift a `new Date("YYYY-MM-DD")` (UTC midnight) would cause. Mirrors §10.
+ * through the serializer's **UTC**-component formatting, so the calendar day is
+ * exact under any process TZ. Mirrors §10's `toDateOnly`.
+ *
+ * F3: this built LOCAL midnight and the comment argued that avoided a
+ * "UTC-boundary shift". That was true only while the driver ran on the process
+ * TZ; with the session pinned to UTC it is exactly backwards — local midnight in
+ * Dhaka is 18:00 UTC the previous day, which a DATE column truncates to the wrong
+ * day. UTC midnight is what Drizzle reads back, so both ends now agree.
  */
-const toLocalDate = (value: string): Date => {
+const toDateOnly = (value: string): Date => {
     const [y, m, d] = value.split("-").map(Number);
-    return new Date(y, m - 1, d);
+    return new Date(Date.UTC(y, m - 1, d));
 };
 
 export interface ListSprintsInput {
@@ -151,6 +157,21 @@ export class SprintsService {
     async create(input: CreateSprintInput): Promise<WireSprint> {
         this.assertDateOrder(input.startDate, input.endDate);
 
+        // F22 (ISS-011): §32 promises `sprint.overlap` — one team, one sprint
+        // at a time. Two overlapping sprints made "which sprint is this week?"
+        // ambiguous for the engineering pages.
+        const clash = await this.sprints.findOverlapping(
+            input.workspaceId,
+            toDateOnly(input.startDate),
+            toDateOnly(input.endDate),
+        );
+        if (clash) {
+            throw AppError.conflict(
+                "sprint.overlap",
+                `Dates overlap sprint "${clash.name}" (${clash.id})`,
+            );
+        }
+
         const row = await this.db.transaction(async (tx) => {
             let created: Sprint;
             try {
@@ -159,8 +180,8 @@ export class SprintsService {
                         workspaceId: input.workspaceId,
                         name: input.name,
                         goal: input.goal,
-                        startDate: toLocalDate(input.startDate),
-                        endDate: toLocalDate(input.endDate),
+                        startDate: toDateOnly(input.startDate),
+                        endDate: toDateOnly(input.endDate),
                         committedPoints: input.committedPoints,
                     },
                     tx,
@@ -241,12 +262,33 @@ export class SprintsService {
             const effEnd = fields.endDate ?? curEnd;
             this.assertDateOrder(effStart, effEnd);
 
+            // F22 (ISS-011): the same overlap rule on a date change, ignoring
+            // the sprint itself.
+            if (
+                fields.startDate !== undefined ||
+                fields.endDate !== undefined
+            ) {
+                const clash = await this.sprints.findOverlapping(
+                    input.workspaceId,
+                    toDateOnly(effStart),
+                    toDateOnly(effEnd),
+                    current.id,
+                    tx,
+                );
+                if (clash) {
+                    throw AppError.conflict(
+                        "sprint.overlap",
+                        `Dates overlap sprint "${clash.name}" (${clash.id})`,
+                    );
+                }
+            }
+
             if (fields.startDate !== undefined && fields.startDate !== curStart) {
-                patch.startDate = toLocalDate(fields.startDate);
+                patch.startDate = toDateOnly(fields.startDate);
                 changed.push("start_date");
             }
             if (fields.endDate !== undefined && fields.endDate !== curEnd) {
-                patch.endDate = toLocalDate(fields.endDate);
+                patch.endDate = toDateOnly(fields.endDate);
                 changed.push("end_date");
             }
 
@@ -439,6 +481,79 @@ export class SprintsService {
             );
 
             return { rolled_over: rolledOver };
+        });
+    }
+
+    /**
+     * #10 — delete a sprint (F28 / ISS-013, decision D12.6).
+     *
+     * There was no way to remove a sprint at all: one created with wrong dates
+     * or a typo'd name was permanent, and cleaning it up meant direct SQL.
+     *
+     * **An ACTIVE sprint is refused** (`409 sprint.active_immutable`). Close it
+     * or move it back to planned first. The cleanup story the issue is about —
+     * a mistake noticed shortly after creation — is a planned sprint, so it is
+     * unaffected; what the guard prevents is one click silently un-sprinting
+     * every task in a sprint the team is currently working. Same spirit as the
+     * `space.archived` / `task.archived` guards F22 made real.
+     *
+     * Tasks are **detached, never deleted** — `tasks.sprint_id` is
+     * `ON DELETE SET NULL` in the schema. The count of tasks that will come
+     * loose is returned so the caller can say so.
+     *
+     * Serialised on the workspace lock like start/close, so a delete cannot
+     * interleave with a status transition and remove a sprint that just became
+     * active.
+     */
+    async remove(input: SprintActionInput): Promise<{ detached: number }> {
+        const { id, workspaceId, actorId } = input;
+
+        return this.db.transaction(async (tx) => {
+            await this.sprints.lockWorkspace(workspaceId, tx);
+            const current = await this.sprints.lockByIdInWorkspace(
+                id,
+                workspaceId,
+                tx,
+            );
+            if (!current) {
+                throw AppError.notFound(
+                    "sprint.not_found",
+                    `Sprint ${id} does not exist`,
+                );
+            }
+            if (current.status === "active") {
+                throw AppError.conflict(
+                    "sprint.active_immutable",
+                    "An active sprint cannot be deleted — close it first",
+                );
+            }
+
+            const detached = await this.sprints.countTasksInSprint(
+                id,
+                workspaceId,
+                tx,
+            );
+            await this.sprints.deleteById(id, workspaceId, tx);
+
+            // Recorded on the WORKSPACE feed, not the task feed: the sprint row
+            // is gone, so a per-task activity row would point at nothing.
+            await this.wsActivity.record(
+                {
+                    workspaceId,
+                    actorId,
+                    entityType: "sprint",
+                    entityId: id,
+                    action: "deleted",
+                    context: {
+                        name: current.name,
+                        status: current.status,
+                        detached_tasks: detached,
+                    },
+                },
+                tx,
+            );
+
+            return { detached };
         });
     }
 

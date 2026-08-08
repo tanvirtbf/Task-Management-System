@@ -1,0 +1,35 @@
+=== 1. BULK — redo with the real key (`ids`, not `task_ids`) ===
+  3 tasks, 1 field  -> 200      activity rows +3 exactly 1 per task OK
+  3 tasks, 2 fields -> 422 validation.failed activity rows +0 *** 0 ***
+  a NO-OP bulk (same value again) -> 200      activity rows +3 writes 3 rows anyway (matches the P15 no-op finding)
+  context written by bulk: [{"bulk":true},{"bulk":true}]
+  one bad id in the batch -> 404 task.not_found   rows written: 0 fail-atomic OK
+
+=== 2. DEACTIVATED actor — redo (arif must ACT first) ===
+  arif edits the task -> 200
+  their row after deactivation: actor still hydrated — name=Arif status=active
+  (reactivated)
+
+=== 3. CHECKLIST + WATCHER — which task changes leave no trace? ===
+  create checklist -> 201      | add item -> 422 validation.failed | toggle item -> 404 checklist_item.not_found
+  activity rows on the task: ["task_created"]
+  toggling an item wrote 0 row(s); adding a watcher wrote 0
+  -> creating a checklist and adding items leave NO trace, but ticking one does
+
+=== 4. LIMIT clamps ===
+  /activity/recent?limit=500        -> 200     50 rows
+  /activity?limit=500               -> 200     200 rows
+  /activity?limit=101               -> 200     101 rows
+  /tasks/t-6b8gev_PiTVQackPuX10Tw/activity?limit=99999-> 200     3 rows
+
+=== 5. WHO can read the workspace audit trail? (targeted at the sensitive rows) ===
+  owner          -> 200     42 user rows   {"reactivated":4,"deactivated":5,"profile_updated":10,"password_reset_requested":1,"invited":10,"role_changed":12}
+  member (arif)  -> 200     42 user rows   {"reactivated":4,"deactivated":5,"profile_updated":10,"password_reset_requested":1,"invited":10,"role_changed":12}
+  space-scoped   -> 200     42 user rows   {"reactivated":4,"deactivated":5,"profile_updated":10,"password_reset_requested":1,"invited":10,"role_changed":12}
+  guest          -> 200     42 user rows   {"reactivated":4,"deactivated":5,"profile_updated":10,"password_reset_requested":1,"invited":10,"role_changed":12}
+      a guest can read, verbatim: {"action":"deactivated","actor":"owner@company.local","entity":"u-76AuOtG-wzFTpMxhix2_qA","context":{"from":"active"}}
+  space-scoped user, ?entity_type=space: 47 rows, 45 of them about spaces OUTSIDE their own
+      e.g. {"name":"TEST-p12c-space"}
+
+=== CLEANUP ===
+  orphan statuses 0 | tasks 51 (51) | lists 14 (14) | active users 15

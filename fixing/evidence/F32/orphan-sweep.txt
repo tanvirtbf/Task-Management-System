@@ -1,0 +1,12 @@
+  department_reports with a dead space        0     clean
+  task_reviews with a dead task               0     clean
+  spaces with a dead head                     0     clean
+  sessions with a dead user                   0     clean
+  tasks whose sprint is gone                  0     clean
+  -> 24 of 24 clean  (P37 scored 23 of 24 — the notification row was the one)
+
+  === CLEANUP ===
+  tasks 46 (46) | lists 13 (13) | spaces 6 (6) | notif 11 (57) | queue 0 (0)
+
+  PASS — nothing orphans: not inbox entries, not R2 bytes, not a department's boards.
+

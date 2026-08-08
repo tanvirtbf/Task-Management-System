@@ -11,6 +11,7 @@ import { getDb } from "../../src/db/client";
 import { users } from "../../src/db/schema";
 import { Config } from "../../src/config";
 import type { Role } from "../../src/constants";
+import { utcYmd } from "../test-utils/dates";
 
 /**
  * Tests for `GET /api/v1/on-call/schedule` (§21 #2).
@@ -31,11 +32,11 @@ const signAccess = (
     jwt.sign(
         { sub: user.id, role: user.role, workspaceId: user.workspaceId },
         secret,
-        { algorithm: "HS256", ...opts },
+        { algorithm: "HS256", expiresIn: "15m", ...opts },
     );
 
-/** Local-midnight Date for a fixed calendar day (matches the factory's convention). */
-const day = (y: number, m: number, d: number): Date => new Date(y, m - 1, d);
+/** UTC-midnight Date for a fixed calendar day — see `test-utils/dates.ts` (F3). */
+const day = utcYmd;
 
 const setup = async (opts: { role?: Role } = {}) => {
     const u = await makeUser({ role: opts.role ?? "owner" });

@@ -15,6 +15,7 @@ import {
     makeTask,
     makeUser,
 } from "../test-utils/factories";
+import { utcDate } from "../test-utils/dates";
 
 /**
  * Dept Review V1 test helpers (DEPARTMENT_REVIEW_PLAN.md P4).
@@ -123,12 +124,9 @@ export interface MakeDoneTaskInput {
  * (app-written UTC) — the state that enters the head's review queue. Optional
  * assignees are attached (department membership is assignee-derived, D-2).
  */
-/** "YYYY-MM-DD" → LOCAL-midnight Date (Drizzle `date()` mode "date" — same
- *  convention as `makeSprint` in the shared factories). */
-const toLocalDate = (value: string): Date => {
-    const [y, m, d] = value.split("-").map(Number);
-    return new Date(y, m - 1, d);
-};
+/** "YYYY-MM-DD" → UTC-midnight Date. See `test-utils/dates.ts` for why a DATE
+ *  fixture must never be built at LOCAL midnight (F3). */
+const toLocalDate = utcDate;
 
 export const makeDoneTask = async (input: MakeDoneTaskInput) => {
     const db = getDb();

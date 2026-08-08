@@ -1,5 +1,8 @@
 import { AppError } from "../errors";
 import { Roles, type Role } from "../constants";
+import { holds } from "../rbac/can";
+import { liveLegacyRole } from "../rbac/scopeGuard";
+import { currentActor } from "../rbac/context";
 import { fakeId } from "../utils";
 import { TasksRepo } from "../repositories/TasksRepo";
 import {
@@ -105,7 +108,7 @@ export class AttachmentsService {
             );
         }
 
-        if (input.role === Roles.GUEST) {
+        if ((await liveLegacyRole(input.role)) === Roles.GUEST) {
             throw AppError.forbidden(
                 "auth.forbidden",
                 "Guests cannot upload attachments",
@@ -183,7 +186,7 @@ export class AttachmentsService {
                 `Task ${input.taskId} does not exist`,
             );
         }
-        if (input.role === Roles.GUEST) {
+        if ((await liveLegacyRole(input.role)) === Roles.GUEST) {
             throw AppError.forbidden(
                 "auth.forbidden",
                 "Guests cannot upload attachments",
@@ -346,8 +349,14 @@ export class AttachmentsService {
         const att = await this.resolveLive(input.id, input.workspaceId);
 
         const isOwner = att.uploadedBy === input.actorId;
+        // F7 / D3.1 compose: the uploader branch stays free; the admin branch
+        // now also requires the `attachment.delete_any` grant, making the
+        // roles-grid toggle real. Compose cannot widen access.
+        // F10 (ISS-021): live role, not the token claim.
+        const role = await liveLegacyRole(input.role);
         const isAdmin =
-            input.role === Roles.OWNER || input.role === Roles.ADMIN;
+            (role === Roles.OWNER || role === Roles.ADMIN) &&
+            holds(await currentActor(), "attachment.delete_any");
         if (!isOwner && !isAdmin) {
             throw AppError.forbidden(
                 "auth.forbidden",

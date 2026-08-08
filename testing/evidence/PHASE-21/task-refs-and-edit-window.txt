@@ -1,0 +1,23 @@
+=== #TASK-ID resolution, with a real custom_id present ===
+  target custom_id: BB-4242
+  see #BB-4242          (the target's custom_id)          -> 201   comment_referenced on target: +1
+  see #bb-4242          (lowercase)                       -> 201   comment_referenced on target: +1
+  see #BB-9999          (a custom_id nobody has)          -> 201   comment_referenced on target: +0
+  see #T-1              (the T-<task_number> form the UI shows)-> 201   comment_referenced on target: +0
+  -> the UI shows a task as T-<task_number> when custom_id is null;
+     50 of the 51 seeded tasks have custom_id = NULL: 49 of 53
+
+=== the exact edit-window boundary ===
+  -370 min  -> 200
+  -374 min  -> 200
+  -375 min  -> 403 comment.edit_window_expired
+  -376 min  -> 403 comment.edit_window_expired
+  -380 min  -> 403 comment.edit_window_expired
+  => editable up to ~374 min; refused from ~375 min. Intended: 15 min.
+     375 min = 6 h 15 m = the 6-hour ISS-001 skew + the intended 15 minutes.
+
+=== comment wire shape: is the author hydrated? ===
+  keys: ["id","task_id","parent_comment_id","author_id","body","edited_at","deleted_at","created_at","replies"]
+  author_id only, no author object -> the client must resolve names from its own user map
+
+CLEANUP: orphans 0 | tasks 51 (51) | comments 8 (8)

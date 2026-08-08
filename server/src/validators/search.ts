@@ -16,9 +16,19 @@ export const searchValidator = checkSchema({
         optional: true,
         isString: { errorMessage: "q must be a string" },
         trim: true,
-        isLength: {
-            options: { max: 200 },
-            errorMessage: "q is too long (max 200 chars)",
+        // F20 (ISS-076): a minimum for a REAL query. One keystroke used to run
+        // five un-indexable `LIKE '%x%'` scans across the whole workspace. A
+        // blank/whitespace-only q stays a friendly 200-empty (it runs no scan
+        // at all — the long-standing contract the suite pins), so the rule is
+        // "empty OR 2-200", not a bare minimum.
+        custom: {
+            options: (value: unknown): boolean => {
+                if (typeof value !== "string") return false;
+                if (value.length === 0) return true; // blank -> 200 empty
+                return value.length >= 2 && value.length <= 200;
+            },
+            errorMessage:
+                "q must be 2-200 characters (a blank q returns empty results)",
         },
     },
     types: {

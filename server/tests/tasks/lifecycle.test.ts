@@ -35,7 +35,7 @@ const signAccess = (
     jwt.sign(
         { sub: user.id, role: user.role, workspaceId: user.workspaceId },
         secret,
-        { algorithm: "HS256", ...opts },
+        { algorithm: "HS256", expiresIn: "15m", ...opts },
     );
 
 const db = () => getDb();
@@ -140,12 +140,28 @@ describe("§10 task lifecycle (archive / unarchive / delete)", () => {
             expect(res.status).toBe(401);
         });
 
-        it("allows a guest to archive (🔐, 204)", async () => {
+        // F28 (ISS-094, D12.1): this spec asserted 204 — the seeded Guest role
+        // held `task.archive` at scope=all, so an external collaborator could
+        // shelve any task in the workspace. Revoked; a member still can.
+        it("REFUSES a guest (403) — task.archive is no longer a guest grant", async () => {
             const ctx = await seed();
             const t = await ctx.mkTask();
             const guest = await makeUser({ workspaceId: ctx.ws.id, role: "guest" });
             const gc = await makeLoggedInClient(guest);
             const res = await gc.post(ARCHIVE(t.id));
+            expect(res.status).toBe(403);
+            expect((await taskRow(t.id)).archivedAt).toBeNull();
+        });
+
+        it("allows a member to archive (204)", async () => {
+            const ctx = await seed();
+            const t = await ctx.mkTask();
+            const member = await makeUser({
+                workspaceId: ctx.ws.id,
+                role: "member",
+            });
+            const mc = await makeLoggedInClient(member);
+            const res = await mc.post(ARCHIVE(t.id));
             expect(res.status).toBe(204);
         });
     });

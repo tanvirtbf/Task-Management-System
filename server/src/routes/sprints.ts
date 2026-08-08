@@ -28,6 +28,7 @@ import {
 import type {
     AddSprintTasksRequest,
     CloseSprintRequest,
+    DeleteSprintRequest,
     CreateSprintRequest,
     GetActiveSprintRequest,
     GetSprintRequest,
@@ -162,10 +163,32 @@ router.post(
         controller.close(req as CloseSprintRequest, res, next),
 );
 
+// #10 — DELETE /api/v1/sprints/:id (👑) — remove a sprint entirely.
+//
+// F28 (ISS-013, decision D12.6). There was no way to delete a sprint at all: one
+// created with wrong dates or a typo'd name was permanent and had to be removed
+// with direct SQL. `sprint.manage` is the same grant that creates and updates
+// one, so no new permission is introduced. An ACTIVE sprint is refused in-service
+// (409 `sprint.active_immutable`); the tasks detach via the schema's existing
+// `tasks.sprint_id ON DELETE SET NULL` and are never deleted.
+//
+// Registered BEFORE the `/sprints/:id/tasks/:taskId` route below only for
+// readability — Express matches on segment count, so the two cannot collide.
+router.delete(
+    "/sprints/:id",
+    authenticate,
+    requirePermission("sprint.manage"),
+    sprintIdParamValidator,
+    validate,
+    (req: Request, res: Response, next: NextFunction) =>
+        controller.remove(req as DeleteSprintRequest, res, next),
+);
+
 // #8 — POST /api/v1/sprints/:id/tasks (🔐) — bulk attach tasks.
 router.post(
     "/sprints/:id/tasks",
     authenticate,
+    requirePermission("sprint.assign_tasks"),
     addSprintTasksValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -176,6 +199,7 @@ router.post(
 router.delete(
     "/sprints/:id/tasks/:taskId",
     authenticate,
+    requirePermission("sprint.assign_tasks"),
     removeSprintTaskValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>

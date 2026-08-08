@@ -1,12 +1,19 @@
 import { useMemo } from "react";
-import { useQuery, useQueries } from "@tanstack/react-query";
-import { Alert } from "antd";
+import {
+    useQuery,
+    useQueries,
+    useMutation,
+    useQueryClient,
+} from "@tanstack/react-query";
+import { Alert, Button, App as AntApp } from "antd";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { listsApi, statusesApi } from "../../http/api";
 import {
     SettingsHeader,
     SettingsSection,
 } from "../../components/settings/SettingsHeader";
 import { useSpaceMap } from "../../hooks/useReferenceData";
+import { usePermissions } from "../../hooks/usePermissions";
 import { LoadingState } from "../../components/shared/LoadingState";
 import { tokens } from "../../theme";
 
@@ -27,6 +34,11 @@ const GROUP_COLORS = {
 const StatusesSettings = () => {
     const spaceMap = useSpaceMap();
 
+    const qc = useQueryClient();
+    const { message } = AntApp.useApp();
+    // F26: only someone the server would let through sees the arrows.
+    const { holds } = usePermissions();
+    const canReorder = holds("status.manage");
     const { data: lists = [], isLoading } = useQuery({
         queryKey: ["lists"],
         queryFn: () => listsApi.listAll(),
@@ -58,6 +70,49 @@ const StatusesSettings = () => {
                 ),
             );
     }, [lists, statusQueries, spaceMap]);
+
+    /**
+     * F26 (ISS-038): the board's column order could not be changed. The server
+     * endpoint has always worked and the client even had a typed wrapper —
+     * `statusesApi.reorder` — with ZERO callers, so an admin who added a
+     * status got it appended at the end forever.
+     *
+     * Move-left / move-right rather than drag-and-drop: the settings page is a
+     * read-only summary today, this needs no new dependency, and F18 made the
+     * endpoint demand a COMPLETE permutation with distinct positions — which
+     * a swap satisfies by construction (a partial payload is now a 422).
+     */
+    const reorder = useMutation({
+        mutationFn: ({
+            listId,
+            items,
+        }: {
+            listId: string;
+            items: { id: string; position: number }[];
+        }) => statusesApi.reorder(listId, items),
+        onSuccess: (_data, vars) => {
+            qc.invalidateQueries({ queryKey: ["statuses", vars.listId] });
+        },
+        onError: () => message.error("Could not reorder the statuses"),
+    });
+
+    const move = (
+        listId: string,
+        ordered: { id: string }[],
+        from: number,
+        to: number,
+    ) => {
+        if (to < 0 || to >= ordered.length) return;
+        const next = ordered.slice();
+        const [moved] = next.splice(from, 1);
+        next.splice(to, 0, moved);
+        // Send the FULL set with contiguous positions — the permutation the
+        // endpoint requires.
+        reorder.mutate({
+            listId,
+            items: next.map((st, idx) => ({ id: st.id, position: idx })),
+        });
+    };
 
     if (isLoading) return <LoadingState />;
 
@@ -124,6 +179,53 @@ const StatusesSettings = () => {
                                     />
                                     {s.name}
                                 </span>
+                                {canReorder && (
+                                    <span style={{ display: "inline-flex" }}>
+                                        <Button
+                                            type="text"
+                                            size="small"
+                                            disabled={i === 0 || reorder.isPending}
+                                            title="Move earlier"
+                                            onClick={() =>
+                                                move(
+                                                    info.listId,
+                                                    info.statuses,
+                                                    i,
+                                                    i - 1,
+                                                )
+                                            }
+                                            icon={
+                                                <ChevronLeft
+                                                    size={12}
+                                                    strokeWidth={2}
+                                                />
+                                            }
+                                        />
+                                        <Button
+                                            type="text"
+                                            size="small"
+                                            disabled={
+                                                i === info.statuses.length - 1 ||
+                                                reorder.isPending
+                                            }
+                                            title="Move later"
+                                            onClick={() =>
+                                                move(
+                                                    info.listId,
+                                                    info.statuses,
+                                                    i,
+                                                    i + 1,
+                                                )
+                                            }
+                                            icon={
+                                                <ChevronRight
+                                                    size={12}
+                                                    strokeWidth={2}
+                                                />
+                                            }
+                                        />
+                                    </span>
+                                )}
                                 {i < info.statuses.length - 1 && (
                                     <span
                                         style={{

@@ -7,6 +7,7 @@ import {
     makeWorkspace,
 } from "../test-utils/factories";
 import { getDb } from "../../src/db/client";
+import { syncUserSystemRole } from "../../src/rbac/bootstrap";
 import { users, workspaceActivity } from "../../src/db/schema";
 import { Config } from "../../src/config";
 import type { Role } from "../../src/constants";
@@ -59,7 +60,19 @@ interface SeedUserSpec {
     avatarUrl?: string;
 }
 
-/** Bulk-insert users with controlled ids in one round-trip. */
+/**
+ * Bulk-insert users with controlled ids in one round-trip.
+ *
+ * F10: each seeded user also gets its system-role assignment. The bulk insert
+ * writes `users` rows directly (that is the point — controlled ids in one
+ * round-trip), which skipped the `syncUserSystemRole` call that `makeUser` and
+ * every real creation path run. A user with no `user_roles` row holds no
+ * permissions at all, so once `GET /users` gained its `member.view` gate in F7
+ * the seeded CALLER was 403 on their own workspace. The product is right —
+ * "authenticated but powerless" is a valid state — so the fixture is what had
+ * to catch up. `bump: false`: these accounts are brand new, no cached actor can
+ * exist for them, and N bumps would serialise on the workspace row.
+ */
 const seedUsers = async (workspaceId: string, specs: SeedUserSpec[]) => {
     const db = getDb();
     await db.insert(users).values(
@@ -75,6 +88,15 @@ const seedUsers = async (workspaceId: string, specs: SeedUserSpec[]) => {
             ...(s.avatarUrl !== undefined ? { avatarUrl: s.avatarUrl } : {}),
         })),
     );
+    for (const s of specs) {
+        await syncUserSystemRole(
+            db,
+            workspaceId,
+            s.id,
+            s.role ?? "member",
+            { bump: false },
+        );
+    }
 };
 
 const countWorkspaceActivity = async (): Promise<number> => {
@@ -103,7 +125,7 @@ const signAccess = (
     jwt.sign(
         { sub: user.id, role: user.role, workspaceId: user.workspaceId },
         secret,
-        { algorithm: "HS256", ...opts },
+        { algorithm: "HS256", expiresIn: "15m", ...opts },
     );
 
 /**
@@ -563,7 +585,11 @@ describe("GET /api/v1/users", () => {
             expect(res.body.pagination.total_estimate).toBe(2);
         });
 
-        it("ignores a ?workspace_id query param (caller stays token-scoped)", async () => {
+        it("refuses a ?workspace_id query param (F23/ISS-014 — a typo is a 422, not silence)", async () => {
+            // This spec used to assert the SILENT-IGNORE convention as the
+            // isolation property. F23's allowQuery refuses unknown parameters
+            // outright, which is strictly stronger: the parameter cannot cross
+            // tenants because the request never executes at all.
             const wsA = await makeWorkspace();
             const wsB = await makeWorkspace();
             await seedUsers(wsA.id, [{ id: "a-000" }]);
@@ -576,7 +602,9 @@ describe("GET /api/v1/users", () => {
 
             const res = await client.get(`${USERS}?workspace_id=${wsB.id}`);
 
-            expect(idsOf(res.body)).toEqual(["a-000"]);
+            expect(res.status).toBe(422);
+            expect(res.body.error.code).toBe("validation.failed");
+            expect(JSON.stringify(res.body)).toContain("workspace_id");
         });
     });
 
@@ -904,14 +932,16 @@ describe("GET /api/v1/users", () => {
             expect(res.body.error.code).toBe("validation.failed");
         });
 
-        it("survives an absurdly long base64url cursor (decodes below all ids)", async () => {
+        it("refuses an absurdly long base64url cursor (F23/ISS-008 — foreign cursors are 400)", async () => {
+            // Pre-F23 this decoded to NUL bytes and silently restarted at page
+            // one — exactly the forever-loop ISS-008 records. Every cursor the
+            // server did not issue is now a 400.
             const { client } = await seedWorkspaceWithUsers(3);
 
             const res = await client.get(`${USERS}?cursor=${"A".repeat(10000)}`);
 
-            expect(res.status).toBe(200);
-            // All A's decode to NUL bytes, which sort before any "u-..." id.
-            expect(idsOf(res.body)).toEqual(["u-000", "u-001", "u-002"]);
+            expect(res.status).toBe(400);
+            expect(res.body.error.code).toBe("pagination.invalid_cursor");
         });
 
         it("serves the request regardless of an exotic Accept header", async () => {

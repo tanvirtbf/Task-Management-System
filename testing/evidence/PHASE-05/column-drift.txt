@@ -1,0 +1,14 @@
+schema.sql tables parsed: 41  live tables: 46
+
+=== COLUMN DRIFT: in schema.sql but MISSING from the live dev DB ===
+  form_submissions            missing: encrypted_at, expires_at
+
+=== in the live DB but NOT in schema.sql ===
+  EXTRA TABLE: v_active_sprint
+  EXTRA TABLE: v_breached_sla
+  EXTRA TABLE: v_current_on_call
+  EXTRA TABLE: v_open_bugs
+  EXTRA TABLE: v_open_tasks
+  workspaces                  extra: business_hours_start, business_hours_end
+
+TOTAL missing columns: 2   extra: 7

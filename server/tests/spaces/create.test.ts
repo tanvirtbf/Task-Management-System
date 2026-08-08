@@ -334,10 +334,16 @@ describe("POST /api/v1/spaces", () => {
                     .send(validBody({ color: bad }));
                 expect422(res);
             }
-            for (const good of ["#abcDEF", "#ABCDEF"]) {
+            // F27 (ISS-033): names are unique per workspace now, so a loop
+            // that creates several spaces has to vary the name. The colour is
+            // what this spec is about.
+            // …and INDEXED, not named after the colour: "#abcDEF" and
+            // "#ABCDEF" differ only in case, and the name rule is
+            // case-insensitive — so naming the spaces after them would collide.
+            for (const [i, good] of ["#abcDEF", "#ABCDEF"].entries()) {
                 const res = await client
                     .post(CREATE_SPACE)
-                    .send(validBody({ color: good }));
+                    .send(validBody({ color: good, name: `Colour ${i}` }));
                 expect(res.status).toBe(201);
             }
         });
@@ -384,12 +390,14 @@ describe("POST /api/v1/spaces", () => {
                     .send(validBody({ position: bad }));
                 expect422(res);
             }
+            // F27 (ISS-033): distinct names — two spaces are created here and
+            // the workspace name rule now applies. Position is the subject.
             const zero = await client
                 .post(CREATE_SPACE)
-                .send(validBody({ position: 0 }));
+                .send(validBody({ position: 0, name: "Position zero" }));
             const max = await client
                 .post(CREATE_SPACE)
-                .send(validBody({ position: 4294967295 }));
+                .send(validBody({ position: 4294967295, name: "Position max" }));
             expect(zero.status).toBe(201);
             expect(max.status).toBe(201);
             expect(max.body.position).toBe(4294967295);
@@ -531,7 +539,10 @@ describe("POST /api/v1/spaces", () => {
 
     // ─── e. No conflict (duplicate names allowed) ─────────────────────────────
     describe("Duplicate names", () => {
-        it("allows two spaces with an identical body (no unique constraint → no 409)", async () => {
+        it("refuses a second space with the same name (F27/ISS-033)", async () => {
+            // This spec used to assert the absence of the constraint as a
+            // feature — and ISS-033 is the incident it allowed: two spaces
+            // called "Marketing" rendering identically in the sidebar.
             const u = await makeUser({ role: "admin" });
             const client = await makeLoggedInClient(u);
 
@@ -539,8 +550,18 @@ describe("POST /api/v1/spaces", () => {
             const second = await client.post(CREATE_SPACE).send(validBody());
 
             expect(first.status).toBe(201);
-            expect(second.status).toBe(201);
-            expect(first.body.id).not.toBe(second.body.id);
+            expect(second.status).toBe(409);
+            expect(second.body.error.code).toBe("space.duplicate");
+        });
+
+        it("still allows the same name in a DIFFERENT workspace", async () => {
+            const a = await makeUser({ role: "admin" });
+            const b = await makeUser({ role: "admin" });
+            const clientA = await makeLoggedInClient(a);
+            const clientB = await makeLoggedInClient(b);
+
+            expect((await clientA.post(CREATE_SPACE).send(validBody())).status).toBe(201);
+            expect((await clientB.post(CREATE_SPACE).send(validBody())).status).toBe(201);
         });
     });
 
@@ -581,12 +602,15 @@ describe("POST /api/v1/spaces", () => {
 
     // ─── g. Idempotency / concurrency ─────────────────────────────────────────
     describe("Idempotency and concurrency", () => {
-        it("does not dedupe identical retries (no Idempotency-Key support)", async () => {
+        it("does not dedupe retries (no Idempotency-Key support)", async () => {
+            // F27: an IDENTICAL retry is now refused by the name rule, so the
+            // absence of Idempotency-Key infrastructure is shown with two
+            // distinct bodies — which is what this spec is actually about.
             const u = await makeUser({ role: "admin" });
             const client = await makeLoggedInClient(u);
 
-            await client.post(CREATE_SPACE).send(validBody());
-            await client.post(CREATE_SPACE).send(validBody());
+            await client.post(CREATE_SPACE).send(validBody({ name: "Retry A" }));
+            await client.post(CREATE_SPACE).send(validBody({ name: "Retry B" }));
 
             expect(await countSpaces(u.workspaceId)).toBe(2);
         });

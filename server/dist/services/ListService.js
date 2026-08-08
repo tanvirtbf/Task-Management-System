@@ -17,6 +17,11 @@ const isForeignKeyConstraintError = (err) => typeof err === "object" &&
  * §6 Lists domain logic. Controllers translate HTTP; this service owns the
  * read flow and the workspace-isolation guard.
  */
+/** mysql2 surfaces a unique-violation as `ER_DUP_ENTRY` / errno 1062. */
+const isDuplicateKeyError = (err) => {
+    const e = err;
+    return e?.code === "ER_DUP_ENTRY" || e?.errno === 1062;
+};
 class ListService {
     db;
     spaces;
@@ -60,7 +65,26 @@ class ListService {
      * by `id` at read time. The just-inserted row is re-read inside the tx so the
      * response carries the authoritative DB `created_at`, identical to a later GET.
      */
+    /**
+     * F27 (ISS-035): translate the new `uq_lists_space_name` violation into
+     * the spec's 409. Two lists with the same name inside one space rendered
+     * as identical children in the sidebar tree with nothing to tell them
+     * apart — the same trap as ISS-033, one level deeper. The INDEX is what
+     * makes this race-free; this only names the error.
+     */
+    async withDuplicateName(name, run) {
+        try {
+            return await run();
+        }
+        catch (err) {
+            if (isDuplicateKeyError(err)) {
+                throw errors_1.AppError.conflict("list.duplicate", `A list called "${name}" already exists in this space`);
+            }
+            throw err;
+        }
+    }
     async create(input) {
+        const nameForConflict = input.name;
         const space = await this.spaces.findByIdInWorkspace(input.spaceId, input.workspaceId);
         if (!space) {
             this.logger.debug("list.create.space_not_found", {
@@ -76,7 +100,7 @@ class ListService {
             });
             throw errors_1.AppError.conflict("space.archived", "Cannot create a list in an archived space");
         }
-        return this.db.transaction(async (tx) => {
+        return this.withDuplicateName(nameForConflict, () => this.db.transaction(async (tx) => {
             // Resolve `default_task_type_id` within the tx so a concurrent
             // task-type delete cannot slip between the check and the insert and
             // turn the FK into a 500.
@@ -119,7 +143,7 @@ class ListService {
                 throw errors_1.AppError.internal();
             }
             return list;
-        });
+        }));
     }
     /**
      * Return every list in a space the caller's workspace owns. The space is
@@ -185,6 +209,7 @@ class ListService {
      * `name` has no unique constraint, so a rename never 409s.
      */
     async update(input) {
+        const nameForConflict = input.name;
         const existing = await this.lists.findRecordByIdInWorkspace(input.listId, input.workspaceId);
         if (!existing) {
             this.logger.debug("list.update.not_found", {
@@ -200,7 +225,7 @@ class ListService {
             });
             throw errors_1.AppError.conflict("list.archived", "Cannot update an archived list");
         }
-        return this.db.transaction(async (tx) => {
+        return this.withDuplicateName(nameForConflict, () => this.db.transaction(async (tx) => {
             if (input.defaultTaskTypeId !== undefined &&
                 input.defaultTaskTypeId !== null) {
                 const taskType = await this.taskTypes.findByIdInWorkspace(input.defaultTaskTypeId, input.workspaceId, tx);
@@ -213,12 +238,49 @@ class ListService {
                     ]);
                 }
             }
+            /**
+             * F28 (ISS-036, decision D12.7) — the MOVE.
+             *
+             * Guards, in the order a caller meets them:
+             *   404 `space.not_found` — unknown, or in another workspace (the
+             *       same non-oracle shape `create` uses)
+             *   409 `space.archived`  — a live list may not land in an archived
+             *       space; it would vanish from the tree
+             *   409 `list.duplicate`  — F27 added `uq_lists_space_name`, so the
+             *       target space may already hold this name. Checked here for a
+             *       clear message; `withDuplicateName` around the transaction is
+             *       still the race-safe arbiter.
+             *
+             * A move to the space the list is already in is a no-op, not an
+             * error — re-sending the current value is how PATCH clients behave.
+             *
+             * ⚠️ VISIBILITY MOVES WITH IT. Reach in this product is space-scoped
+             * (`rbac/scope.ts`), so relocating a list changes WHO CAN SEE ITS
+             * TASKS. That is the feature rather than a side effect, but it is
+             * the kind of thing that surprises someone, so it is documented on
+             * the endpoint and recorded in the activity context below.
+             */
+            if (input.spaceId !== undefined &&
+                input.spaceId !== existing.spaceId) {
+                const target = await this.spaces.findByIdInWorkspace(input.spaceId, input.workspaceId, tx);
+                if (!target) {
+                    throw errors_1.AppError.notFound("space.not_found", `Space ${input.spaceId} does not exist`);
+                }
+                if (target.archivedAt) {
+                    throw errors_1.AppError.conflict("space.archived", "Cannot move a list into an archived space");
+                }
+                const clash = await this.lists.findByNameInSpace(input.spaceId, input.name ?? existing.name, tx);
+                if (clash && clash.id !== input.listId) {
+                    throw errors_1.AppError.conflict("list.duplicate", `That space already has a list named "${input.name ?? existing.name}"`);
+                }
+            }
             await this.lists.update(input.listId, {
                 name: input.name,
                 description: input.description,
                 icon: input.icon,
                 color: input.color,
                 defaultTaskTypeId: input.defaultTaskTypeId,
+                spaceId: input.spaceId,
             }, tx);
             await this.activity.record({
                 workspaceId: input.workspaceId,
@@ -233,7 +295,7 @@ class ListService {
                 throw errors_1.AppError.notFound("list.not_found", `List ${input.listId} does not exist`);
             }
             return updated;
-        });
+        }));
     }
     /**
      * Archive a list the caller's workspace owns (soft-delete). Resolves the id

@@ -11,6 +11,7 @@ import { getDb } from "../../src/db/client";
 import { users } from "../../src/db/schema";
 import { Config } from "../../src/config";
 import type { Role } from "../../src/constants";
+import { dhakaDayOffset } from "../test-utils/dates";
 
 /**
  * Tests for `GET /api/v1/on-call/current` (§21 #1).
@@ -31,18 +32,20 @@ const signAccess = (
     jwt.sign(
         { sub: user.id, role: user.role, workspaceId: user.workspaceId },
         secret,
-        { algorithm: "HS256", ...opts },
+        { algorithm: "HS256", expiresIn: "15m", ...opts },
     );
 
 /**
- * Local-midnight date `offsetDays` from today — matches the factory's date
- * convention and the DB's `CURDATE()` (Node + MySQL share this machine's tz, so
- * `localDate(0)` equals `CURDATE()` with no skew).
+ * A DATE `offsetDays` from **today in Dhaka**, at UTC midnight.
+ *
+ * F3 replaced the old local-midnight helper. Its comment justified itself with
+ * "Node + MySQL share this machine's tz, so `localDate(0)` equals `CURDATE()`" —
+ * both halves of which are now false: the MySQL session is UTC, and the repo no
+ * longer asks SQL for today at all (it binds `dhakaToday()`). Keying the fixture
+ * to the same Dhaka calendar the product uses is what makes this suite stable
+ * regardless of where it runs. See `test-utils/dates.ts`.
  */
-const localDate = (offsetDays: number): Date => {
-    const now = new Date();
-    return new Date(now.getFullYear(), now.getMonth(), now.getDate() + offsetDays);
-};
+const localDate = dhakaDayOffset;
 
 const setup = async (opts: { role?: Role } = {}) => {
     const u = await makeUser({ role: opts.role ?? "owner" });

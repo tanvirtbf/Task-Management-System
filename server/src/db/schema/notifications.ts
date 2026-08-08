@@ -90,7 +90,8 @@ export const userNotificationPrefs = mysqlTable(
             }),
         type: mysqlEnum("type", notificationTypes).notNull(),
         inAppEnabled: boolean("in_app_enabled").notNull().default(true),
-        emailEnabled: boolean("email_enabled").notNull().default(true),
+        // F19 (D8): email_enabled is GONE — it promised a channel with no
+        // implementation (MailService sends exactly two transactional mails).
         updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
     },
     (t) => ({

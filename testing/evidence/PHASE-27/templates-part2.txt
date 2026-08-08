@@ -1,0 +1,26 @@
+=== 1. CREATE-time validation (the earlier 'apply' probes never had a template) ===
+  empty checklistItems                    -> 422 template.empty_structure  
+  no checklistItems key                   -> 422 template.empty_structure  
+  dead task type                          -> 422 template.invalid_task_type
+  dead tag                                -> 422 template.invalid_tag      
+  no taskTypeId (list default should cover it)-> 201                           created
+
+=== 2. template.empty_structure — reachable only via drift ===
+  created -> tpl-BVYsM1jFfG2MBl9WZcUD2Q
+  structure emptied directly in the DB (as if items were removed later)
+  apply -> 422 template.empty_structure
+
+=== 3. structure key order vs key MUTATION (the earlier verdict was order-sensitive) ===
+  sent (sorted): ["UPPER_KEY","camelCaseKey","checklistItems","nested","snake_case_key","taskTypeId"]
+  read (sorted): ["UPPER_KEY","camelCaseKey","checklistItems","nested","snake_case_key","taskTypeId"]
+  same SET of keys? yes — skipDecamelize holds; only JSON key ORDER changed (MySQL normalises it)
+  nested values: {"innerCamel":4,"inner_snake":5}
+
+=== 4. template.apply permission — resolving the P5 'inconclusive' ===
+  guest    creates -> 403 auth.forbidden   applies -> 201
+  marketing.only   applies to a POLITICS list -> 404 list.not_found
+  `template.apply` exists in the catalog: ?
+  -> a guest applying a template CREATES A TASK, so the permission is NOT ENFORCED
+
+=== CLEANUP ===
+  orphans 0 | tasks 51 (51) | lists 14 (14) | statuses 70 (70) | templates 0 (0)

@@ -37,11 +37,6 @@ exports.workspaces = (0, mysql_core_1.mysqlTable)("workspaces", {
     businessHoursEnd: (0, mysql_core_1.time)("business_hours_end")
         .notNull()
         .default("18:00:00"),
-    fiscalYearStartMonth: (0, mysql_core_1.tinyint)("fiscal_year_start_month", {
-        unsigned: true,
-    })
-        .notNull()
-        .default(7),
     /**
      * Dynamic RBAC cache stamp. Bumped on ANY role / grant / assignment
      * change so the per-request permission cache (keyed by
@@ -55,7 +50,6 @@ exports.workspaces = (0, mysql_core_1.mysqlTable)("workspaces", {
     updatedAt: (0, mysql_core_1.timestamp)("updated_at").notNull().defaultNow().onUpdateNow(),
 }, (t) => ({
     weekStartsOnCk: (0, mysql_core_1.check)("ck_workspaces_week_starts_on", (0, drizzle_orm_1.sql) `${t.weekStartsOn} BETWEEN 0 AND 6`),
-    fiscalMonthCk: (0, mysql_core_1.check)("ck_workspaces_fiscal_month", (0, drizzle_orm_1.sql) `${t.fiscalYearStartMonth} BETWEEN 1 AND 12`),
     hoursCk: (0, mysql_core_1.check)("ck_workspaces_hours", (0, drizzle_orm_1.sql) `${t.businessHoursStart} < ${t.businessHoursEnd}`),
 }));
 // ─── users ────────────────────────────────────────────────────────────────────

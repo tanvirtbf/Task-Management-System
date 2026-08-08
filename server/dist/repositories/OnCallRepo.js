@@ -4,6 +4,7 @@ exports.OnCallRepo = void 0;
 const drizzle_orm_1 = require("drizzle-orm");
 const schema_1 = require("../db/schema");
 const utils_1 = require("../utils");
+const dhakaTime_1 = require("../utils/dhakaTime");
 /**
  * Engineer columns hydrated onto every shift. Matches `WireUserSource` exactly
  * so the serializer can feed it straight to `toWireUser`.
@@ -31,8 +32,15 @@ class OnCallRepo {
      * week), the one with the most recent `week_start` wins (spec §21 note).
      * Workspace-scoped: `v_current_on_call` does NOT filter by workspace, so the
      * scoping is done here, against the base table, which also gives us the
-     * engineer join in one round-trip. `CURDATE()` is compared via raw `sql` so
-     * MySQL casts the DATE columns directly (no JS/UTC date math involved).
+     * engineer join in one round-trip.
+     *
+     * "Today" is `dhakaToday()`, bound as a parameter — NOT SQL `CURDATE()`.
+     * `CURDATE()` renders in the MySQL *session* zone, which F3 pinned to UTC so
+     * that TIMESTAMP columns round-trip. But `week_start`/`week_end` are DATE
+     * columns holding Dhaka business days, so a UTC `CURDATE()` would roll the
+     * roster over 6h late — every Monday 00:00–06:00 Dhaka would still report
+     * last week's engineer. Deriving the day app-side keeps the rollover at
+     * Dhaka midnight regardless of the session zone or the box's TZ.
      */
     async findCurrent(workspaceId) {
         const [row] = await this.db
@@ -44,7 +52,7 @@ class OnCallRepo {
         })
             .from(schema_1.onCallShifts)
             .innerJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.users.id, schema_1.onCallShifts.engineerId))
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.onCallShifts.workspaceId, workspaceId), (0, drizzle_orm_1.sql) `${schema_1.onCallShifts.weekStart} <= CURDATE()`, (0, drizzle_orm_1.sql) `${schema_1.onCallShifts.weekEnd} >= CURDATE()`))
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.onCallShifts.workspaceId, workspaceId), (0, drizzle_orm_1.sql) `${schema_1.onCallShifts.weekStart} <= ${(0, dhakaTime_1.dhakaToday)()}`, (0, drizzle_orm_1.sql) `${schema_1.onCallShifts.weekEnd} >= ${(0, dhakaTime_1.dhakaToday)()}`))
             .orderBy((0, drizzle_orm_1.desc)(schema_1.onCallShifts.weekStart))
             .limit(1);
         return row ?? null;

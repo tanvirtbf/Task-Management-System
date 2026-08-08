@@ -1,0 +1,10 @@
+created 3 fields (workspace/space/list scope)
+
+GET /custom-fields  -> HTTP 200
+  RAW BODY: [{"id":"cf-BQNYe3lxulL83xxCzX86mQ","scope_type":"workspace","scope_id":null,"name":"TEST-p12d-ws","type":"text","config":{},"is_required":false,"default_value":null,"position":0},{"id":"cf-sa7z0-YT64eLEiffMw3gPQ","scope_type":"space","scope_id":"sp-hb8qbLyl_mAOfp5Wj1ia5g","name":"TEST-p12d-sp","type":"text","config":{},"is_required":false,"default_value":null,"position":0},{"id":"cf-c9ZJqxmWekVaRs
+  is it a bare array? true | length: 3 | has .data? false
+
+GET /lists/:id/custom-fields -> HTTP 200
+  RAW BODY: [{"id":"cf-BQNYe3lxulL83xxCzX86mQ","scope_type":"workspace","scope_id":null,"name":"TEST-p12d-ws","type":"text","config":{},"is_required":false,"default_value":null,"position":0},{"id":"cf-sa7z0-YT64eLEiffMw3gPQ","scope_type":"space","scope_id":"sp-hb8qbLyl_mAOfp5Wj1ia5g","name":"TEST-p12d-sp","type
+
+cleanup: custom_fields 0 | lists 14

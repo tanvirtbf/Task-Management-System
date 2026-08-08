@@ -114,6 +114,18 @@ exports.createCustomFieldValidator = (0, express_validator_1.checkSchema)({
             errorMessage: "is_required must be a boolean",
         },
     },
+    // F26 (ISS-042): the guest-redaction flag reaches the API at last — the
+    // redaction logic has always worked (TasksRepo filters on it), but the
+    // column appeared in no validator and no serializer, so the one control
+    // the product implements could only be switched on by hand in SQL.
+    hidden_from_guests: {
+        in: ["body"],
+        optional: true,
+        custom: {
+            options: (value) => typeof value === "boolean",
+            errorMessage: "hidden_from_guests must be a boolean",
+        },
+    },
     position: {
         in: ["body"],
         optional: true,
@@ -197,6 +209,18 @@ exports.updateCustomFieldValidator = (0, express_validator_1.checkSchema)({
         custom: {
             options: (value) => typeof value === "boolean",
             errorMessage: "is_required must be a boolean",
+        },
+    },
+    // F26 (ISS-042): the guest-redaction flag reaches the API at last — the
+    // redaction logic has always worked (TasksRepo filters on it), but the
+    // column appeared in no validator and no serializer, so the one control
+    // the product implements could only be switched on by hand in SQL.
+    hidden_from_guests: {
+        in: ["body"],
+        optional: true,
+        custom: {
+            options: (value) => typeof value === "boolean",
+            errorMessage: "hidden_from_guests must be a boolean",
         },
     },
     position: {

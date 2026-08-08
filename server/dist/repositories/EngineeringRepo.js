@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.EngineeringRepo = void 0;
 const drizzle_orm_1 = require("drizzle-orm");
 const schema_1 = require("../db/schema");
+const dhakaTime_1 = require("../utils/dhakaTime");
 /** Status groups that count as "closed work" — excluded from the open rollups. */
 const DONE_GROUPS = ["done", "closed"];
 /** A ticket untouched for this many days counts as stale on the Eng Home. */
@@ -43,32 +44,40 @@ class EngineeringRepo {
         return rows[0]?.id ?? null;
     }
     /**
-     * The workspace's non-archived "Bug Triage" list id (case-insensitive name
+     * The workspace's non-archived "Bug Triage" list (case-insensitive name
      * match), or null. `lists` has no `workspace_id`, so isolation rides the
      * `lists → spaces.workspace_id` join.
+     *
+     * Returns the list's `spaceId` too (F28): the report-bug intake principal
+     * is narrowed to the space that owns this list, and the join already has it.
      */
-    async findBugTriageListId(workspaceId) {
+    async findBugTriageList(workspaceId) {
         const rows = await this.db
-            .select({ id: schema_1.lists.id })
+            .select({ id: schema_1.lists.id, spaceId: schema_1.lists.spaceId })
             .from(schema_1.lists)
             .innerJoin(schema_1.spaces, (0, drizzle_orm_1.eq)(schema_1.lists.spaceId, schema_1.spaces.id))
             .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.spaces.workspaceId, workspaceId), (0, drizzle_orm_1.isNull)(schema_1.lists.archivedAt), (0, drizzle_orm_1.sql) `lower(${schema_1.lists.name}) = 'bug triage'`))
             .orderBy(schema_1.lists.createdAt)
             .limit(1);
-        return rows[0]?.id ?? null;
+        return rows[0] ?? null;
     }
     /**
      * The id of the ACTIVE engineer on call this week in the workspace, or null.
      * "This week" = today within `[week_start, week_end]`; the most recent
      * matching shift wins. Filtering to `status = 'active'` avoids handing an
      * assignment to a deactivated user (which `create()` would reject as 422).
+     *
+     * "Today" is `dhakaToday()`, bound as a parameter, not SQL `CURDATE()` —
+     * see the matching note on `OnCallRepo.findCurrent` for why (F3 pinned the
+     * MySQL session to UTC; these are Dhaka business-day DATE columns). Both
+     * paths must agree or a bug's auto-assignee and the on-call board diverge.
      */
     async findCurrentOnCallEngineerId(workspaceId) {
         const rows = await this.db
             .select({ engineerId: schema_1.onCallShifts.engineerId })
             .from(schema_1.onCallShifts)
             .innerJoin(schema_1.users, (0, drizzle_orm_1.eq)(schema_1.users.id, schema_1.onCallShifts.engineerId))
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.onCallShifts.workspaceId, workspaceId), (0, drizzle_orm_1.eq)(schema_1.users.status, "active"), (0, drizzle_orm_1.sql) `CURDATE() BETWEEN ${schema_1.onCallShifts.weekStart} AND ${schema_1.onCallShifts.weekEnd}`))
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.onCallShifts.workspaceId, workspaceId), (0, drizzle_orm_1.eq)(schema_1.users.status, "active"), (0, drizzle_orm_1.sql) `${(0, dhakaTime_1.dhakaToday)()} BETWEEN ${schema_1.onCallShifts.weekStart} AND ${schema_1.onCallShifts.weekEnd}`))
             .orderBy((0, drizzle_orm_1.desc)(schema_1.onCallShifts.weekStart))
             .limit(1);
         return rows[0]?.engineerId ?? null;

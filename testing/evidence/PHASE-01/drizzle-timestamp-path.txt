@@ -1,0 +1,18 @@
+DB_TIMEZONE=(unset)   session=SYSTEM
+  raw string from DB        : 2026-07-30 10:05:21
+  drizzle Date .toISOString : 2026-07-30T10:05:21.000Z
+  same Date shown as Dhaka  : 2026-07-30 16:05:21
+  same Date shown as UTC    : 2026-07-30 10:05:21   <-- MATCHES raw  ✗ 6h OFF (raw is Dhaka wall-clock)
+
+DB_TIMEZONE=+06:00   session=+06:00
+  raw string from DB        : 2026-07-30 10:05:21
+  drizzle Date .toISOString : 2026-07-30T10:05:21.000Z
+  same Date shown as Dhaka  : 2026-07-30 16:05:21
+  same Date shown as UTC    : 2026-07-30 10:05:21   <-- MATCHES raw  ✗ 6h OFF (raw is Dhaka wall-clock)
+
+DB_TIMEZONE=+00:00   session=+00:00
+  raw string from DB        : 2026-07-30 04:05:21
+  drizzle Date .toISOString : 2026-07-30T04:05:21.000Z
+  same Date shown as Dhaka  : 2026-07-30 10:05:21
+  same Date shown as UTC    : 2026-07-30 04:05:21   <-- MATCHES raw  ✗ 6h OFF (raw is Dhaka wall-clock)
+

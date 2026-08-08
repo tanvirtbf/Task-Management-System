@@ -1,6 +1,7 @@
 import logger from "../config/logger";
 import { attachmentJanitor } from "./attachmentJanitor";
 import { departmentReport } from "./departmentReport";
+import { overdueAlert } from "./overdueAlert";
 import { r2Purge } from "./r2Purge";
 import { sessionCleanup } from "./sessionCleanup";
 import { snoozeWake } from "./snoozeWake";
@@ -19,6 +20,7 @@ const JOBS = {
     "snooze-wake": snoozeWake,
     "form-submission-expiry": formSubmissionExpiry,
     "department-report": departmentReport,
+    "overdue-alert": overdueAlert,
 } as const;
 
 export type JobName = keyof typeof JOBS;

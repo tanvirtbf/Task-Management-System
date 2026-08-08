@@ -1,0 +1,19 @@
+=== A. SPACE archive/unarchive cascade — controlled test ===
+  initial                    space=active  lists=[l1:act, l2:act]  tasks=[act]
+  archive the space   -> 204
+  after space archive        space=ARCHIVED  lists=[l1:ARCH, l2:ARCH]  tasks=[act]
+  unarchive the space -> 204
+  after space unarchive      space=active  lists=[l1:ARCH, l2:ARCH]  tasks=[act]
+  => cascade on archive but NOT on unarchive: this is what silently archived all 3 Marketing lists during P8.
+
+=== B. customfield.set_value ENFORCEMENT (P5 deferred) ===
+  using Marketing list: Eid Campaign 2026
+  marketing.only creates a task -> 201
+  their role holds customfield.set_value? NO
+  they SET a custom-field value -> 200 *** ALLOWED without the grant -> NOT ENFORCED ***
+  they CLEAR the value          -> 204
+
+=== CLEANUP ===
+  delete space: 204
+  orphan statuses 0 | spaces 9 (9) | lists 14 (14) | tasks 51 (51) | custom_fields 0 (0) | statuses 70 (70)
+  archived lists 0 (0) | archived spaces 0 (0)

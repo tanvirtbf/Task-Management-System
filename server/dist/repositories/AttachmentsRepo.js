@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AttachmentsRepo = void 0;
 const drizzle_orm_1 = require("drizzle-orm");
 const schema_1 = require("../db/schema");
+const utils_1 = require("../utils");
 const ATTACHMENT_COLUMNS = {
     id: schema_1.attachments.id,
     taskId: schema_1.attachments.taskId,
@@ -153,6 +154,55 @@ class AttachmentsRepo {
         const [result] = await exec
             .delete(schema_1.attachments)
             .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.attachments.id, id), (0, drizzle_orm_1.isNotNull)(schema_1.attachments.deletedAt)));
+        return result.affectedRows;
+    }
+    // ─── F16 (ISS-022): the hard-delete → R2 purge queue ─────────────────────
+    /**
+     * The R2 keys of EVERY attachment on the given tasks — soft-deleted rows
+     * included, because a task hard delete cascades those away too, before the
+     * ordinary purge flow would have reached them.
+     */
+    async storageKeysByTasks(taskIds, exec = this.db) {
+        if (taskIds.length === 0)
+            return [];
+        return exec
+            .select({
+            storageKey: schema_1.attachments.storageKey,
+            thumbnailKey: schema_1.attachments.thumbnailKey,
+        })
+            .from(schema_1.attachments)
+            .where((0, drizzle_orm_1.inArray)(schema_1.attachments.taskId, taskIds));
+    }
+    /**
+     * Queue R2 keys for deletion. Runs INSIDE the hard-delete transaction, so
+     * either the task goes and its keys are queued, or neither happens — the
+     * window in which bytes could orphan does not exist.
+     */
+    async enqueueR2Purge(rows, exec = this.db) {
+        if (rows.length === 0)
+            return;
+        await exec.insert(schema_1.r2PurgeQueue).values(rows.map((r) => ({
+            id: (0, utils_1.fakeId)("r2q"),
+            storageKey: r.storageKey,
+            thumbnailKey: r.thumbnailKey,
+        })));
+    }
+    /** The queued keys, oldest first — the r2-purge job drains these. */
+    async findQueuedPurge() {
+        return this.db
+            .select({
+            id: schema_1.r2PurgeQueue.id,
+            storageKey: schema_1.r2PurgeQueue.storageKey,
+            thumbnailKey: schema_1.r2PurgeQueue.thumbnailKey,
+        })
+            .from(schema_1.r2PurgeQueue)
+            .orderBy((0, drizzle_orm_1.asc)(schema_1.r2PurgeQueue.queuedAt));
+    }
+    /** Remove a drained queue row (its R2 objects are confirmed gone). */
+    async deleteQueuedPurge(id, exec = this.db) {
+        const [result] = await exec
+            .delete(schema_1.r2PurgeQueue)
+            .where((0, drizzle_orm_1.eq)(schema_1.r2PurgeQueue.id, id));
         return result.affectedRows;
     }
 }

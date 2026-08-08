@@ -1,0 +1,18 @@
+owner links a Marketing task -> a Politics task: 201
+
+marketing.only@ (no Politics access):
+  GET /tasks/<politics id>                 -> 404
+  GET /search?q=CONFIDENTIAL               -> []
+  GET /tasks/<their own>/dependencies      -> 200
+  leaked object keys: 50
+  leaked values: {
+ "name": "TEST-p18c CONFIDENTIAL board memo",
+ "description": "Politics-space only: salary review outcome",
+ "list": "l-j5F8XbnK_pJYkP_67hOaug",
+ "assignees": [
+  "u-O_2loELtxZKyecnzH7KnGw"
+ ]
+}
+  can they DELETE that edge?              -> 204
+
+CLEANUP: tasks 51 (51) | deps 0 (0)

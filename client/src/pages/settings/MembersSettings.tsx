@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { usePermissions } from "../../hooks/usePermissions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     Button,
@@ -44,6 +45,7 @@ const MembersSettings = () => {
     const [query, setQuery] = useState("");
     const [roleFilter, setRoleFilter] = useState<Role | "all">("all");
     const [inviteOpen, setInviteOpen] = useState(false);
+    const { holds } = usePermissions();
 
     const { data: users = [] } = useQuery({
         queryKey: ["users"],
@@ -106,13 +108,18 @@ const MembersSettings = () => {
                 title="Members"
                 description={`${users.length} members in this workspace.`}
                 actions={
-                    <Button
-                        type="primary"
-                        icon={<UserPlus size={14} strokeWidth={1.75} />}
-                        onClick={() => setInviteOpen(true)}
-                    >
-                        Invite member
-                    </Button>
+                    /* F26 (SCAN-M5): gated on the permission the endpoint
+                       enforces — it used to render for everyone and answer
+                       with a 403 toast. */
+                    holds("member.invite") ? (
+                        <Button
+                            type="primary"
+                            icon={<UserPlus size={14} strokeWidth={1.75} />}
+                            onClick={() => setInviteOpen(true)}
+                        >
+                            Invite member
+                        </Button>
+                    ) : null
                 }
             />
 

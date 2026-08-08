@@ -1,0 +1,64 @@
+solo failure details — 2026-08-06T10:49:46+06:00
+════ notifications ════
+Tests:       68 passed, 68 total
+════ collab ════
+Tests:       47 passed, 47 total
+════ search ════
+  ● GET /api/v1/search › Empty query › 200 empty for a blank / whitespace-only q
+    expect(received).toBe(expected) // Object.is equality
+    Expected: 200
+    Received: 422
+Tests:       1 failed, 31 passed, 32 total
+════ users ════
+  ● GET /api/v1/users › Workspace isolation › ignores a ?workspace_id query param (caller stays token-scoped)
+    TypeError: Cannot read properties of undefined (reading 'map')
+  ● GET /api/v1/users › Exploratory › survives an absurdly long base64url cursor (decodes below all ids)
+    expect(received).toBe(expected) // Object.is equality
+    Expected: 200
+    Received: 400
+  ● POST /api/v1/users/invite › Workspace isolation › lands the invite in the caller's workspace, ignoring a body workspace_id
+  ● POST /api/v1/users/invite › Workspace isolation › 409 when the email exists in another workspace (global uniqueness)
+  ● POST /api/v1/users/invite › Security › ignores injected privileged fields (status/id/workspace_id/password_hash)
+  ● POST /api/v1/users/invite › Security › treats a SQL-injection-shaped name as a literal (201, stored verbatim)
+  ● POST /api/v1/users/invite › Security › round-trips a Unicode name intact
+  ● POST /api/v1/users/invite › Concurrency › two parallel invites of the same email yield one 201 and one 409
+  ● POST /api/v1/users/invite › Email dispatch › still returns 201 (and keeps the invitation) when the mailer throws
+  ● POST /api/v1/users/:id/reset-password › Happy path › returns 202 with an empty body for an active member
+  ● POST /api/v1/users/:id/reset-password › Happy path › returns 202 with an empty body for an active member
+    TypeError: Cannot read properties of undefined (reading 'mockRestore')
+  ● POST /api/v1/users/:id/reset-password › Happy path › lets an owner trigger a reset (202)
+  ● POST /api/v1/users/:id/reset-password › Happy path › lets an owner trigger a reset (202)
+    TypeError: Cannot read properties of undefined (reading 'mockRestore')
+  ● POST /api/v1/users/:id/reset-password › Happy path › persists a single-use reset token holding only the hash
+  ● POST /api/v1/users/:id/reset-password › Happy path › persists a single-use reset token holding only the hash
+    TypeError: Cannot read properties of undefined (reading 'mockRestore')
+  ● POST /api/v1/users/:id/reset-password › Happy path › emails a /reset-password/<token> link whose hash matches the row
+  ● POST /api/v1/users/:id/reset-password › Happy path › emails a /reset-password/<token> link whose hash matches the row
+════ spaces ════
+  ● GET /api/v1/spaces › Pagination › returns a large set in a single page with has_more=false
+    expect(received).toHaveLength(expected)
+    Expected length: 150
+    Received length: 100
+    Received array:  [{"archived_at": null, "color": "#4F46E5", "created_at": "2026-08-06T04:56:26.000Z", "created_by": "u-bL3e_D7NYFNkm56T7eMa-g", "description": null, "head": null, "head_user_id": null, "icon": "Folder", "id": "sp-FAsbXU4WCjjECbeMLjGQOQ", "is_private": false, "name": "Space 134", "position": 0}, {"archived_at": null, "color": "#4F46E5", "created_at": "2026-08-06T04:56:26.000Z", "created_by": "u-bL3e_D7NYFNkm56T7eMa-g", "description": null, "head": null, "head_user_id": null, "icon": "Folder", "id": "sp-eEvgNO90ioy7wkOIoqXpGA", "is_private": false, "name": "Space 135", "position": 1}, {"archived_at": null, "color": "#4F46E5", "created_at": "2026-08-06T04:56:26.000Z", "created_by": "u-bL3e_D7NYFNkm56T7eMa-g", "description": null, "head": null, "head_user_id": null, "icon": "Folder", "id": "sp-fJdX1KTIq-PlHWVCXmw3gw", "is_private": false, "name": "Space 136", "position": 2}, {"archived_at": null, "color": "#4F46E5", "created_at": "2026-08-06T04:56:26.000Z", "created_by": "u-bL3e_D7NYFNkm56T7eMa-g", "description": null, "head": null, "head_user_id": null, "icon": "Folder", "id": "sp-EYPEP4sGOOaWVOoDsTvorw", "is_private": false, "name": "Space 137", "position": 3}, {"archived_at": null, "color": "#4F46E5", "created_at": "2026-08-06T04:56:26.000Z", "created_by": "u-bL3e_D7NYFNkm56T7eMa-g", "description": null, "head": null, "head_user_id": null, "icon": "Folder", "id": "sp-4-kq5IkMZswJl30zBUCT5Q", "is_private": false, "name": "Space 138", "position": 4}, {"archived_at": null, "color": "#4F46E5", "created_at": "2026-08-06T04:56:26.000Z", "created_by": "u-bL3e_D7NYFNkm56T7eMa-g", "description": null, "head": null, "head_user_id": null, "icon": "Folder", "id": "sp-B3xsA8JyUuXDvKjPhdVCEA", "is_private": false, "name": "Space 139", "position": 5}, {"archived_at": null, "color": "#4F46E5", "created_at": "2026-08-06T04:56:26.000Z", "created_by": "u-bL3e_D7NYFNkm56T7eMa-g", "description": null, "head": null, "head_user_id": null, "icon": "Folder", "id": "sp-T8o8RBuet9cd3H0d-fSsYQ", "is_private": false, "name": "Space 140", "position": 6}, {"archived_at": null, "color": "#4F46E5", "created_at": "2026-08-06T04:56:26.000Z", "created_by": "u-bL3e_D7NYFNkm56T7eMa-g", "description": null, "head": null, "head_user_id": null, "icon": "Folder", "id": "sp-obaHoK6isR2K-C9Q6gJY1A", "is_private": false, "name": "Space 141", "position": 7}, {"archived_at": null, "color": "#4F46E5", "created_at": "2026-08-06T04:56:26.000Z", "created_by": "u-bL3e_D7NYFNkm56T7eMa-g", "description": null, "head": null, "head_user_id": null, "icon": "Folder", "id": "sp-Kce35BglY6a18IE6Cv-7Yg", "is_private": false, "name": "Space 142", "position": 8}, {"archived_at": null, "color": "#4F46E5", "created_at": "2026-08-06T04:56:26.000Z", "created_by": "u-bL3e_D7NYFNkm56T7eMa-g", "description": null, "head": null, "head_user_id": null, "icon": "Folder", "id": "sp-z36TH6BWniPr3003zLo_Xg", "is_private": false, "name": "Space 143", "position": 9}, …]
+  ● GET /api/v1/spaces › Pagination › ignores an unknown ?cursor query param
+    expect(received).toBe(expected) // Object.is equality
+    Expected: 200
+    Received: 400
+  ● GET /api/v1/spaces › Exploratory › ignores unknown query params
+    expect(received).toBe(expected) // Object.is equality
+    Expected: 200
+    Received: 422
+  ● PATCH /api/v1/spaces/:id › Not-found and archived › updates an archived space (archived != deleted) and keeps archived_at
+    expect(received).toBe(expected) // Object.is equality
+    Expected: 200
+    Received: 409
+Tests:       4 failed, 240 passed, 244 total
+════ lists ════
+Tests:       171 passed, 171 total
+════ sprints ════
+  ● POST /api/v1/sprints › conflict / isolation › 409 sprint.duplicate on a duplicate name in the same workspace
+    expect(received).toBe(expected) // Object.is equality
+    Expected: "sprint.duplicate"
+    Received: "sprint.overlap"
+Tests:       1 failed, 149 passed, 150 total
+done

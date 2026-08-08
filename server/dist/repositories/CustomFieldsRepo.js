@@ -12,6 +12,7 @@ const FIELD_COLUMNS = {
     type: schema_1.customFields.type,
     config: schema_1.customFields.config,
     isRequired: schema_1.customFields.isRequired,
+    hiddenFromGuests: schema_1.customFields.hiddenFromGuests,
     defaultValue: schema_1.customFields.defaultValue,
     position: schema_1.customFields.position,
 };

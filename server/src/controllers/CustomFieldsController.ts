@@ -33,6 +33,14 @@ interface WireCustomField {
     type: string;
     config: Record<string, unknown>;
     is_required: boolean;
+    /**
+     * F26 (ISS-042): the one guest-redaction control the product implements.
+     * The REDACTION works (a guest's custom-field values are filtered by
+     * `TasksRepo.customFieldValuesByTask(ids, redactGuest)`) but the column
+     * appeared in no validator and no serializer, so it could never be turned
+     * on except by editing the database by hand.
+     */
+    hidden_from_guests: boolean;
     default_value: unknown;
     position: number;
     options?: WireCustomFieldOption[];
@@ -48,6 +56,7 @@ const toWireCustomField = (h: HydratedCustomField): WireCustomField => {
         type: field.type,
         config: field.config ?? {},
         is_required: field.isRequired,
+        hidden_from_guests: field.hiddenFromGuests,
         default_value: field.defaultValue ?? null,
         position: field.position,
     };
@@ -138,6 +147,7 @@ export class CustomFieldsController {
                 type: body.type,
                 config: body.config ?? {},
                 isRequired: body.is_required ?? false,
+                hiddenFromGuests: body.hidden_from_guests ?? false,
                 defaultValue: body.default_value ?? null,
                 position: body.position ?? 0,
                 options: body.options ?? [],
@@ -171,6 +181,8 @@ export class CustomFieldsController {
             if (body.config !== undefined) fields.config = body.config;
             if (body.is_required !== undefined)
                 fields.isRequired = body.is_required;
+            if (body.hidden_from_guests !== undefined)
+                fields.hiddenFromGuests = body.hidden_from_guests;
             if (body.position !== undefined) fields.position = body.position;
 
             const field = await this.service.update({

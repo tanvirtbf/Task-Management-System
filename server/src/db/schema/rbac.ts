@@ -99,6 +99,13 @@ export const roles = mysqlTable(
             t.workspaceId,
             t.roleKey,
         ),
+        /** F27 (ISS-027): `role_key` was deduped by silently SUFFIXING it, so
+         *  `role.key_taken` never fired and two roles could carry the same
+         *  display name. The name is unique now; the key stays as it was. */
+        workspaceNameUq: uniqueIndex("uq_roles_workspace_name").on(
+            t.workspaceId,
+            t.name,
+        ),
         wsFk: foreignKey({
             columns: [t.workspaceId],
             foreignColumns: [workspaces.id],

@@ -1,0 +1,13 @@
+objects in bucket 'taskmanager': 6
+
+objects created TODAY with size <=100 bytes (my test uploads): 4
+  workspaces/ws-tcCcv1k2HdlflPAeyTGZIA/attachments/att-1Ret3T4rVls4ymfsG1nDJg.png  5B  2026-07-30T05:20:29.656Z
+  workspaces/ws-tcCcv1k2HdlflPAeyTGZIA/attachments/att-8RemUVm18G3yt-6GgaxsHg.png  14B  2026-07-30T05:20:28.500Z
+  workspaces/ws-tcCcv1k2HdlflPAeyTGZIA/attachments/att-DERzs32cfm2BWLmx8wlrIQ.png  14B  2026-07-30T05:20:28.916Z
+  workspaces/ws-tcCcv1k2HdlflPAeyTGZIA/attachments/att-dfliBhWVTa4GHI1nKuByGw.png  14B  2026-07-30T05:20:28.090Z
+  deleted workspaces/ws-tcCcv1k2HdlflPAeyTGZIA/attachments/att-1Ret3T4rVls4ymfsG1nDJg.png
+  deleted workspaces/ws-tcCcv1k2HdlflPAeyTGZIA/attachments/att-8RemUVm18G3yt-6GgaxsHg.png
+  deleted workspaces/ws-tcCcv1k2HdlflPAeyTGZIA/attachments/att-DERzs32cfm2BWLmx8wlrIQ.png
+  deleted workspaces/ws-tcCcv1k2HdlflPAeyTGZIA/attachments/att-dfliBhWVTa4GHI1nKuByGw.png
+
+objects remaining: 2

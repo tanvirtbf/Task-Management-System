@@ -130,13 +130,40 @@ describe("GET /me/permissions — the seeded roles", () => {
         expect(b.permissions["role.manage"].all).toBe(true);
     });
 
-    it("the guest still cannot upload, exactly as today", async () => {
+    /**
+     * F28 / D12.1. This used to assert that a guest holds `task.edit` — the
+     * seeded Guest role was a member minus file upload. It now carries exactly
+     * the seven read-and-comment keys, and this is the wire proof: the client
+     * gates its buttons on this payload, so a key missing here is a button the
+     * guest never sees.
+     */
+    it("the guest gets seven read-and-comment keys and no writes", async () => {
         const ws = await rbacWorkspace();
         const guest = await userWithSystemRole(ws, "guest");
 
         const b = body(await guest.client.get(PATH));
-        expect(b.permissions["attachment.upload"]).toBeUndefined();
-        expect(b.permissions["task.edit"].all).toBe(true);
+        expect(Object.keys(b.permissions).sort()).toEqual(
+            [
+                "activity.view",
+                "assistant.use",
+                "bug.report",
+                "comment.create",
+                "member.view",
+                "space.view",
+                "task.view",
+            ].sort(),
+        );
+        expect(b.permissions["task.view"].all).toBe(true);
+        for (const k of [
+            "attachment.upload",
+            "task.edit",
+            "task.delete",
+            "form.view_submissions",
+            "sprint.assign_tasks",
+            "postmortem.manage",
+        ]) {
+            expect(b.permissions[k]).toBeUndefined();
+        }
     });
 });
 

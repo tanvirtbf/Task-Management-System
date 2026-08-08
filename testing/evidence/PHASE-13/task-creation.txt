@@ -1,0 +1,88 @@
+fixtures: list l-239A3CkhP8onXQ8aSjjHYA | statuses: To Do,In Progress,In Review,Done,Closed
+
+=== 1. MINIMUM + REQUIRED ===
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (minimum valid)                      -> 201
+  {"name":"TEST-p13-nolist"}                                       (no primary_list_id)                 -> 422 validation.failed [{"field":"primary_list_id","issue":"primary_list_id must be a string"}]
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA"}                   (no name)                            -> 422 validation.failed [{"field":"name","issue":"name must be a string"}]
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":""}         (empty name)                         -> 422 validation.failed [{"field":"name","issue":"name is required"}]
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"   "}      (whitespace-only name)               -> 422 validation.failed [{"field":"name","issue":"name is required"}]
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"xxxxxxxx   (name too long)                      -> 422 validation.failed [{"field":"name","issue":"name must be at most 500 characters"}]
+  {"primary_list_id":"l-nope","name":"TEST-p13-badlist"}           (unknown list)                       -> 404 list.not_found
+  {}                                                               (empty body)                         -> 422 validation.failed [{"field":"primary_list_id","issue":"primary_list_id must be a string"},{"field":"name","i
+
+=== 2. REFERENCE VALIDATION ===
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (explicit valid status)              -> 201
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (unknown status)                     -> 422 task.invalid_status [{"field":"status_id","issue":"is not a status of this list"}]
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (status from ANOTHER list)           -> 422 task.invalid_status [{"field":"status_id","issue":"is not a status of this list"}]
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (explicit task type)                 -> 201
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (unknown task type)                  -> 422 task.invalid_task_type [{"field":"task_type_id","issue":"is not a task type in this workspace"}]
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (2 valid assignees)                  -> 201
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (unknown assignee)                   -> 422 task.invalid_assignee [{"field":"assignees","issue":"u-nope is not an active member of this workspace"}]
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (duplicate assignee)                 -> 201
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (valid tag)                          -> 201
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (unknown tag)                        -> 422 task.invalid_tag [{"field":"tags","issue":"tag-nope is not a tag in this workspace"}]
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (valid reviewer)                     -> 201
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (unknown reviewer)                   -> 500 internal
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (GUEST as reviewer)                  -> 201
+
+=== 3. DATES ===
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (valid range)                        -> 201
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (start AFTER due)                    -> 422 task.invalid_date_range [{"field":"start_date","issue":"must be on or before due_date"}]
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (same day)                           -> 201
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (due date in the past)               -> 201
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (malformed date)                     -> 422 validation.failed [{"field":"due_date","issue":"due_date must be a YYYY-MM-DD date"}]
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (Feb 30)                             -> 422 validation.failed [{"field":"due_date","issue":"due_date must be a YYYY-MM-DD date"}]
+
+=== 4. custom_id ===
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (explicit custom_id)                 -> 201
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (DUPLICATE custom_id)                -> 409 task.duplicate_custom_id
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (same custom_id, different case)     -> 409 task.duplicate_custom_id
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (no custom_id — auto-generated?)     -> 201
+     auto custom_id: null | task_number: 13
+
+=== 5. PRIORITY / MILESTONE / ESTIMATE ===
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (priority 1)                         -> 201
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (priority 4)                         -> 201
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (priority 0)                         -> 201
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (priority 5)                         -> 422 validation.failed [{"field":"priority","issue":"priority must be an integer 0–4"}]
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (priority as a word)                 -> 422 validation.failed [{"field":"priority","issue":"priority must be an integer 0–4"}]
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (is_milestone)                       -> 201
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (estimate 1h)                        -> 201
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (negative estimate)                  -> 422 validation.failed [{"field":"time_estimate_seconds","issue":"time_estimate_seconds must be a non-negative in
+
+=== 6. RECURRENCE (stored but no generator — known GAP) ===
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (weekly recurrence)                  -> 201
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (unsupported pattern)                -> 422 validation.failed [{"field":"recurrence_pattern","issue":"recurrence_pattern must be one of: none, daily, we
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (bad day name)                       -> 422 validation.failed [{"field":"recurrence_days[0]","issue":"recurrence_days members must be one of: sun, mon, 
+
+=== 7. ENGINEERING FIELDS (see ISS-039) ===
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (full engineering payload on a Bug)  -> 201
+     stored: {"story_points":8,"branch_name":"feat/p13","pr_status":"open","bug_severity":"S1","reporter_team":"cs","sla":"2026-07-31 07:49:43"}
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (invalid severity)                   -> 422 validation.failed [{"field":"bug_severity","issue":"bug_severity must be one of: S0, S1, S2, S3"}]
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (javascript: pr_url)                 -> 201
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (unknown reporter_team)              -> 422 validation.failed [{"field":"reporter_team","issue":"reporter_team must be one of: ops, cs, inventory, listi
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (huge story points)                  -> 422 validation.failed [{"field":"story_points","issue":"story_points must be an integer 0–255"}]
+
+=== 8. XSS / INJECTION payloads (stored — rendering is P38) ===
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (script tag in name)                 -> 201
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (SQL-ish name)                       -> 201
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (path traversal)                     -> 201
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (null byte)                          -> 201
+
+=== 9. SIDE EFFECTS of a create ===
+  {"primary_list_id":"l-239A3CkhP8onXQ8aSjjHYA","name":"TEST-p13   (create WITH an assignee)            -> 201
+     task_activity +2 | workspace_activity +0 | notifications +1
+     activity actions: task_created, assignee_added
+     newest notifications: [{"type":"assigned","user_id":"u-O_2loELtxZKyecnzH7KnGw"},{"type":"assigned","user_id":"u-O_2loELtxZKyecnzH7KnGw"},{"type":"assigned","user_id":"u-ia1-Y219W_rIcEXnXdK4cA"}]
+     auto-watchers on the new task: 1
+
+=== 10. BULK CREATE? (POST /tasks/bulk is a bulk PATCH — check) ===
+  bulk {ids,patch} -> 200 
+  bulk empty ids   -> 422 validation.failed
+  bulk unknown id  -> 404 task.not_found
+  bulk 1000 ids    -> 422 validation.failed
+  bulk no patch    -> 422 validation.failed
+
+=== CLEANUP ===
+  delete list: 204
+  orphan statuses 0 | tasks 51 (51) | lists 14 (14) | statuses 70 (70)

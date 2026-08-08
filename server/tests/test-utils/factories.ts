@@ -5,6 +5,7 @@ import {
 } from "../../src/rbac/bootstrap";
 import bcrypt from "bcrypt";
 import { getDb } from "../../src/db/client";
+import { addUtcDays, dhakaDayOffset, utcDate } from "./dates";
 import {
     workspaces,
     users,
@@ -256,6 +257,13 @@ export const makeSpace = async (input: MakeSpaceInput) => {
 export interface MakeTaskTypeInput {
     workspaceId: string;
     name?: string;
+    /**
+     * F29 (ISS-039): the git/planning task fields require a dev type now.
+     * Defaults to the schema's `false` — specs exercising branch/PR/story
+     * points must say `isDevType: true`, exactly as a real workspace's
+     * engineering types are flagged.
+     */
+    isDevType?: boolean;
 }
 
 /** Insert a workspace-scoped task type. `name` is UNIQUE per workspace. */
@@ -267,6 +275,7 @@ export const makeTaskType = async (input: MakeTaskTypeInput) => {
         id,
         workspaceId: input.workspaceId,
         name: input.name ?? `Type ${seq}`,
+        isDevType: input.isDevType ?? false,
     });
     return { id, workspaceId: input.workspaceId };
 };
@@ -391,17 +400,13 @@ export const makeSprint = async (input: MakeSprintInput) => {
     const seq = nextSeq();
     const name = input.name ?? `Sprint ${seq}`;
     const status = input.status ?? "planned";
-    const toLocalDate = (value: string): Date => {
-        const [y, m, d] = value.split("-").map(Number);
-        return new Date(y, m - 1, d);
-    };
     await db.insert(sprints).values({
         id,
         workspaceId: input.workspaceId,
         name,
         goal: input.goal ?? null,
-        startDate: toLocalDate(input.startDate ?? "2026-06-01"),
-        endDate: toLocalDate(input.endDate ?? "2026-06-14"),
+        startDate: utcDate(input.startDate ?? "2026-06-01"),
+        endDate: utcDate(input.endDate ?? "2026-06-14"),
         status,
         committedPoints: input.committedPoints ?? 0,
     });
@@ -435,18 +440,15 @@ export const makeOnCallShift = async (input: MakeOnCallShiftInput) => {
         (await makeUser({ workspaceId: input.workspaceId })).id;
     const createdBy = input.createdBy ?? engineerId;
 
-    const addDays = (base: Date, days: number): Date =>
-        new Date(base.getFullYear(), base.getMonth(), base.getDate() + days);
-
     let weekStart: Date;
     let weekEnd: Date;
     if (input.weekStart) {
         weekStart = input.weekStart;
-        weekEnd = addDays(input.weekStart, 6);
+        weekEnd = addUtcDays(input.weekStart, 6);
     } else {
-        const now = new Date();
-        weekStart = addDays(now, -3);
-        weekEnd = addDays(now, 3);
+        // A 7-day window centred on today, so "who is on call now?" always hits.
+        weekStart = dhakaDayOffset(-3);
+        weekEnd = dhakaDayOffset(3);
     }
 
     await db.insert(onCallShifts).values({

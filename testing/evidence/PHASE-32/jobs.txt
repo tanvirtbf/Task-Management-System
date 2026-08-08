@@ -1,0 +1,57 @@
+=== 1. AUTH — the token must fail closed ===
+  the correct token               -> 200  ok
+  a wrong token                   -> 401  "auth.unauthorized"
+  an empty token                  -> 401  "auth.unauthorized"
+  no header at all                -> 401  "auth.unauthorized"
+  the token minus its last char   -> 401  "auth.unauthorized"
+  the token plus a char           -> 401  "auth.unauthorized"
+  the token upper-cased           -> 401  "auth.unauthorized"
+  an unknown job slug             -> 404
+  GET instead of POST             -> 404
+
+=== 2. ALL SIX JOBS — dry run, then real, then real again ===
+  job                       dry_run=true                                  run 1                                         run 2
+  session-cleanup           {"dry_run":true,"processed":0,"wouldDelete":  {"dry_run":false,"processed":0,"deleted":0}   {"dry_run":false,"processed":0,"deleted":0}
+  attachment-janitor        {"dry_run":true,"processed":0,"wouldDelete":  {"dry_run":false,"processed":0,"deleted":0}   {"dry_run":false,"processed":0,"deleted":0}
+  r2-purge                  {"dry_run":true,"processed":0,"wouldPurge":0  {"dry_run":false,"processed":0,"purged":0,"r  {"dry_run":false,"processed":0,"purged":0,"r
+  snooze-wake               {"dry_run":true,"processed":0,"wouldWake":0}  {"dry_run":false,"processed":0,"woken":0}     {"dry_run":false,"processed":0,"woken":0}
+  form-submission-expiry    {"ok":false,"dry_run":true,"error":"Unknown   {"ok":false,"dry_run":false,"error":"Unknown  {"ok":false,"dry_run":false,"error":"Unknown
+  department-report         {"dry_run":true,"processed":8,"generated":7,  {"dry_run":false,"processed":8,"generated":7  {"dry_run":false,"processed":7,"generated":7
+
+  every response carries {ok, dry_run, ...}: yes
+  dry_run:true echoed only when asked: yes
+
+=== 3. session-cleanup — expired only ===
+  table: sessions | columns: id, user_id, token_hash, user_agent, ip_address, created_at, last_seen_at, expires_at, revoked_at
+  rows 440 -> 442 (2 fixtures) -> 442 after the job: {"ok":true,"dry_run":false,"processed":0,"deleted":0}
+  the LIVE session survived: yes | the EXPIRED one removed: *** kept ***
+
+=== 4. attachment-janitor — stale pending only ===
+  -> {"ok":true,"dry_run":false,"processed":1,"deleted":1}
+  3-day-old PENDING     REMOVED
+  fresh PENDING         kept
+  3-day-old COMPLETE    kept
+
+=== 5. snooze-wake — due only ===
+  -> {"ok":true,"dry_run":false,"processed":0,"woken":0}
+  a DUE snooze:     is_read=1 snoozed_until=kept *** not woken ***
+  a FUTURE snooze:  is_read=1 snoozed_until=kept left alone OK
+
+=== 6. r2-purge — the 7-day window ===
+  -> {"ok":true,"dry_run":false,"processed":1,"purged":1,"r2Errors":0}
+  deleted 8 days ago: PURGED
+  deleted 6 days ago: kept (inside the window)
+
+=== 7. FAILURE PATH — does a failing job return 200 {ok:false}? ===
+  (checked at the dispatcher: runJob owns the try/catch and returns {ok:false,error})
+  catch (err) { const message = err instanceof Error ? err.message : String(err); logger.error(`job.${name}.fail`, { requestId, dryRun, error: message, stack: err instanceof Error ? err.stack : undefined, }); return { ok: false, dry
+
+=== 8. run-job.sh behaviour ===
+  reads the token from .env: yes
+  sends ?dry_run=true: yes
+  inspects the body for ok=false: yes
+  exits non-zero on failure: yes
+  handles the API being down: curl flags present
+
+=== CLEANUP ===
+  attachments 1 (1) | notifications 101 (65) | tasks 51 (51)

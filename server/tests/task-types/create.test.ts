@@ -81,7 +81,7 @@ const signAccess = (
     jwt.sign(
         { sub: user.id, role: user.role, workspaceId: user.workspaceId },
         secret,
-        { algorithm: "HS256", ...opts },
+        { algorithm: "HS256", expiresIn: "15m", ...opts },
     );
 
 /** Workspace + an owner/admin actor (logged in), ready to create. */
@@ -392,23 +392,33 @@ describe("POST /api/v1/task-types", () => {
 
     // ─── h. Mass-assignment / security ────────────────────────────────────────
     describe("Mass assignment", () => {
-        it("ignores client-supplied id, is_system, and position", async () => {
+        it("refuses server-owned is_system/position; a stray id stays ignored (F23/ISS-040)", async () => {
+            // Pre-F23 this asserted the SILENT DROP: 201 with is_system
+            // quietly stored as 0. One rule per resource — PATCH refuses these
+            // fields, so create refuses them too, loudly.
             const { ws, client } = await setup();
             await seedAt(ws.id, "Existing", 3);
 
-            const res = await client.post(TASK_TYPES).send({
+            const refused = await client.post(TASK_TYPES).send({
                 name: "Crafted",
-                id: "tt-hacker",
                 is_system: true,
                 position: 99,
             });
+            expect(refused.status).toBe(422);
+            expect(JSON.stringify(refused.body)).toContain("server-owned");
 
+            // A stray unknown key (id) is still simply ignored — only the
+            // DOCUMENTED-but-server-owned fields get the loud refusal.
+            const res = await client.post(TASK_TYPES).send({
+                name: "Crafted",
+                id: "tt-hacker",
+            });
             expect(res.status).toBe(201);
             const body = res.body as WireTaskType;
             expect(body.id).toMatch(/^tt-/);
             expect(body.id).not.toBe("tt-hacker");
             expect(body.is_system).toBe(false);
-            expect(body.position).toBe(4); // max(3) + 1, not 99
+            expect(body.position).toBe(4); // max(3) + 1, server-assigned
         });
     });
 

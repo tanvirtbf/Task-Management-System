@@ -102,14 +102,22 @@ exports.SYSTEM_ROLES = [
     {
         key: "guest",
         name: "Guest",
-        description: "External collaborator. Same as a member today, except uploading files.",
+        description: "External collaborator. Reads the workspace, comments, and reports bugs.",
         color: "#94A3B8",
         rankOrder: 90,
     },
 ];
 /**
- * What ANY authenticated user can do today (verified against §0.4). Guests get
- * this list; members get it plus `attachment.upload`.
+ * What ANY authenticated user could do BEFORE RBAC was enforced (verified
+ * against §0.4). This is the **member** baseline: members get this list plus
+ * `attachment.upload`.
+ *
+ * ⚠️ Guests no longer receive it. Until F28 they did, and the role's own
+ * description said so — *"Same as a member today, except uploading files"*. That
+ * was a faithful copy of a product with no guest concept, and while the toggles
+ * were dormant it cost nothing. F7 made all 56 real, and the faithfulness became
+ * a hole: a guest could delete any task in the workspace and read every
+ * public-form submission. See `GUEST_GRANTS` and D12.1 in `fixing/DECISIONS.md`.
  */
 const EVERYONE = [
     // read the whole workspace
@@ -135,8 +143,31 @@ const EVERYONE = [
     "bug.report",
     "postmortem.manage",
 ];
-/** Member = everyone + file upload (the ONLY member/guest difference today). */
+/** Member = the pre-RBAC baseline + file upload. */
 const MEMBER_EXTRA = ["attachment.upload"];
+/**
+ * A guest is an **external collaborator**: read the workspace, join the
+ * conversation, report a bug. No writes to tasks, checklists, dependencies,
+ * custom-field values or templates; no engineering writes; and specifically
+ * **not** `form.view_submissions`, which returns the contact details customers
+ * typed into a public form.
+ *
+ * Deliberately **not** derived from `EVERYONE` by subtraction. A subset
+ * expressed as a filter re-widens silently the day somebody appends a key to the
+ * baseline — which is exactly how this role acquired nineteen grants. This list
+ * is the whole grant, and the snapshot test pins it. (D12.1)
+ */
+const GUEST_GRANTS = [
+    // read the workspace
+    "space.view",
+    "task.view",
+    "member.view",
+    "activity.view",
+    // take part
+    "comment.create",
+    "assistant.use",
+    "bug.report",
+];
 /** Everything the `canAccess([OWNER, ADMIN])` gates protect today. */
 const ADMIN_EXTRA = [
     // destructive / elevated task powers
@@ -204,7 +235,7 @@ exports.SYSTEM_ROLE_GRANTS = {
     owner: OWNER_GRANTS,
     admin: ADMIN_GRANTS,
     member: MEMBER_GRANTS,
-    guest: [...EVERYONE],
+    guest: [...GUEST_GRANTS],
 };
 // ─── 1. catalog sync ──────────────────────────────────────────────────────────
 /**

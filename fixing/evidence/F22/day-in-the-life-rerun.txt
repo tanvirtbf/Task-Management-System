@@ -1,0 +1,73 @@
+
+  === F7 — day-in-the-life re-run (P39 was 22/22 on the ungated build) ===
+
+  --- 1. CS: complaint by public form -> assigned -> resolved -> reviewed ---
+  OK    an admin publishes the complaint form (201)                   got 201
+  OK    adds two questions (201, 201)                                 201 201
+  OK    a CUSTOMER opens the public link (200, 2 fields)              200, 2 fields
+  OK    the customer submits -> a task is created (201)               201 task t-Ei6KUCkl7FBfdJDXPabheA
+  OK    CS head assigns it to Arif (204)                              got 204
+  OK    Arif comments (201)                                           got 201
+  OK    head replies with @arif -> Arif is notified                   201, notifications 1
+  OK    Arif attaches the customer's photo (201)                      got 201
+  OK    escalates the priority to 4 (200)                             got 200
+  OK    resolves it (200)                                             got 200
+  OK    CS head reviews and approves (201) + denorm/counters right    201 · approved · c=2 a=1
+
+  --- 2. O&F: checklist + subtask + cross-space dependency ---
+  OK    O&F head raises the order task (201)                          got 201
+  OK    adds a 3-step checklist via bulk (201)                        201 201
+  OK    creates a subtask (201)                                       got 201
+  OK    Inventory head raises a task in THEIR space (201)             got 201
+  OK    O&F links the order to the Inventory task (201)               got 201
+  OK    Inventory completes the blocker (200)                         got 200
+  OK    O&F completes the order task (200)                            got 200
+  OK    ticks a checklist step (200)                                  got 200
+
+  --- 3. Marketing: template -> campaign -> two assignees -> scheduled ---
+  OK    admin saves a campaign template (201)                         got 201 ""
+  OK    Marketing head applies it -> checklist materialises (201, 3 items)201, items 3
+  OK    assigns two people (204)                                      got 204
+  OK    schedules start + due next week (200)                         got 200
+
+  --- 4. Engineering: bug -> sprint -> on-call -> S0 auto-assign -> postmortem ---
+  OK    a CS person reports an S1 bug (201, SLA set)                  201, sla set
+  OK    eng head pulls it into the active sprint (204)                got 204
+  OK    engineer fills branch/PR/points (200)                         got 200
+  OK    an engineer is put on call for this week (200)                got 200
+  OK    an S0 arrives -> auto-assigned to the on-call engineer        201, assignees ["u-JWrHmvOfZLR1rKVtpDNmhA"]
+  OK    an incident is opened (201)                                   got 201
+  OK    postmortem while still open -> 409 incident.not_resolved      got 409 incident.not_resolved
+  OK    resolved, then the postmortem is filed (200)                  200 200
+
+  --- 5. Weekly management: generate -> head reads -> note -> ack -> outsider 403 ---
+  OK    owner generates the CS weekly report (200/201)                got 200 ""
+  OK    the CS head reads it (200)                                    got 200
+  OK    the head adds a note (200)                                    got 200
+  OK    owner acknowledges (200)                                      got 200
+  OK    an ordinary member is refused (403 report.forbidden)          got 403 report.forbidden
+
+  --- 6. New hire: invite -> cannot be assigned while invited ---
+  OK    owner invites a new member (201, invited state)               got 201
+  OK    assigning work to the invited user -> 422 task.invalid_assigneegot 422 task.invalid_assignee
+
+  --- 7. Department-only account: sees exactly one department ---
+  OK    spaces visible = exactly [Customer Service]                   ["Customer Service"]
+  OK    reading a Marketing task -> 404 (invisible, not forbidden)    got 404
+  OK    their Open Team Tasks KPI counts only CS open tasks           kpi 5 vs db 5
+  OK    Eng Home still opens (SCAN-M5 nav gap — logged, by design until F26)got 200
+
+  --- 8. Offboarding: deactivate -> sessions dead -> work retained ---
+  OK    owner deactivates the leaver (204)                            got 204
+  OK    status = deactivated                                          deactivated
+  OK    live sessions revoked (0 remaining)                           0 live
+  OK    their task assignments RETAINED                               1 assignment(s)
+  OK    they can no longer sign in                                    login refused
+
+  === CLEANUP ===
+  users 15 (15) | tasks 46 (46) | forms 0 (0) | on_call 1 (1) | reports 12 (12)
+  form_submissions cols 10 (8 — ISS-025 drift restored)
+
+  SCORE: 47 passed, 0 failed  (P39 baseline: 22/22)
+  PASS — nobody lost a job function.
+

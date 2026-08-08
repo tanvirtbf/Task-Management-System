@@ -1,0 +1,82 @@
+=== 1. CREATE — field validation ===
+  {"name":"TEST-p8-ok","icon":"folder","color":"#12345   (valid)                                -> 201
+  {"name":"TEST-p8-min"}                                 (name only — are icon/color required?) -> 201
+  {"name":""}                                            (empty name)                           -> 422 validation.failed
+  {"name":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx   (name too long)                        -> 422 validation.failed
+  {"name":"TEST-p8-dupe2","color":"red"}                 (non-hex colour)                       -> 422 validation.failed
+  {"name":"TEST-p8-dupe3","color":"#GGGGGG"}             (bad hex)                              -> 422 validation.failed
+  {"name":"TEST-p8-priv","is_private":true}              (is_private on create)                 -> 201
+  {"name":"Marketing"}                                   (DUPLICATE of an existing space name)  -> 201
+  {"name":"TEST-p8-xss","description":"<script>alert(1   (script in description)                -> 201
+  {"name":"TEST-p8-head","head_user_id":"u-nope"}        (unknown head on create)               -> 201
+  {}                                                     (empty body)                           -> 422 validation.failed
+
+=== 2. READ ===
+  GET /spaces/:id (owner)   -> 200
+  GET /spaces/:id (member)  -> 200
+  GET /spaces/:id (guest)   -> 200
+  GET /spaces/sp-nope       -> 404 space.not_found
+  single-space keys: id, name, description, icon, color, is_private, head_user_id, head, position, archived_at, created_by, created_at
+  fields in single-read but NOT in the list: (none — shapes match)
+
+=== 3. UPDATE ===
+  {"name":"TEST-p8-renamed"}                 (rename)                             -> 200
+  {"description":"hello"}                    (description)                        -> 200
+  {"color":"#abcdef"}                        (colour)                             -> 200
+  {"icon":"star"}                            (icon)                               -> 200
+  {"is_private":true}                        (is_private)                         -> 200
+  {"name":"Marketing"}                       (rename to an EXISTING space name)   -> 200
+  {"id":"sp-hacked"}                         (PK change)                          -> 200
+  {"workspace_id":"ws-other"}                (tenant change)                      -> 200
+  {"archived_at":null}                       (archive field via PATCH)            -> 200
+  after the PK/tenant attempts: id unchanged: true | workspace_id unchanged: true | is_private: 1
+
+=== 4. ARCHIVE / UNARCHIVE ===
+  archive                 -> 204
+  archive AGAIN           -> 204
+  archived space in GET /spaces? hidden ✓ (list has 14)
+  GET /spaces?include_archived=true -> included
+  direct GET of an archived space -> 200
+  PATCH an archived space         -> 200
+  create a list inside it         -> 409 space.archived
+  unarchive               -> 204
+  unarchive AGAIN         -> 204
+
+=== 5. DELETE GUARDS ===
+  delete an EMPTY space   -> 409 space.not_archived
+  delete a space WITH a list -> 409 space.not_archived
+  after removing the list    -> 409 space.not_archived
+  delete 'Marketing' (has 2 reports, 3 lists) -> 409 space.not_archived
+     Marketing still present: yes ✓
+
+=== 6. HEAD ASSIGNMENT ===
+  head = u-O_2loELtxZKyecnzH7KnGw     (an active member)        -> 200   DB head: u-O_2loELtxZKyecnzH7KnGw
+  head = u-76AuOtG-wzFTpMxhix2_qA     (a GUEST)                 -> 422 space.head_invalid   DB head: u-O_2loELtxZKyecnzH7KnGw
+  head = u-z6JkltIQ9k18-a0nnP6MHA     (an INVITED (not yet active) user)-> 422 space.head_invalid   DB head: u-O_2loELtxZKyecnzH7KnGw
+  head = u-does-not-exist             (unknown user)            -> 422 space.head_invalid   DB head: u-O_2loELtxZKyecnzH7KnGw
+  head = null                         (clear the head)          -> 200   DB head: null
+
+=== 7. REVIEW ENDPOINTS by role ===
+  owner        summary -> 200                      queue -> 200
+  admin        summary -> 200                      queue -> 200
+  CS head      summary -> 200                      queue -> 200
+  other head   summary -> 403 review.not_head      queue -> 403 review.not_head
+  member       summary -> 403 review.not_head      queue -> 403 review.not_head
+  guest        summary -> 403 review.not_head      queue -> 403 review.not_head
+
+=== CLEANUP ===
+  removed TEST-p8 spaces: 8
+┌─────────┬──────────────────────────┬─────────────────────────────┬──────────┐
+│ (index) │ name                     │ head                        │ archived │
+├─────────┼──────────────────────────┼─────────────────────────────┼──────────┤
+│ 0       │ 'Accounts'               │ '—'                         │ false    │
+│ 1       │ 'Complain Department'    │ '—'                         │ false    │
+│ 2       │ 'Customer Service'       │ 'rakib@beautybooth.com.bd'  │ false    │
+│ 3       │ 'Engineering'            │ 'tanvir@beautybooth.com.bd' │ false    │
+│ 4       │ 'Marketing'              │ 'nusrat@beautybooth.com.bd' │ false    │
+│ 5       │ 'Marketing'              │ '—'                         │ false    │
+│ 6       │ 'Orders & Fulfillment'   │ 'sadia@beautybooth.com.bd'  │ false    │
+│ 7       │ 'Politics'               │ '—'                         │ false    │
+│ 8       │ 'Product & Inventory'    │ 'imran@beautybooth.com.bd'  │ false    │
+│ 9       │ 'Social Media & Content' │ 'mitu@beautybooth.com.bd'   │ false    │
+└─────────┴──────────────────────────┴─────────────────────────────┴──────────┘

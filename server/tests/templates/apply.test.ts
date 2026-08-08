@@ -473,7 +473,11 @@ describe("POST /api/v1/templates/:id/apply", () => {
             expect(res.status).toBe(401);
         });
 
-        it("allows a guest (🔐 any authenticated member) to apply (201)", async () => {
+        // F28 (ISS-094, D12.1): this spec asserted 201 — the seeded Guest role
+        // held `template.apply`, i.e. an external collaborator could stamp a
+        // whole task tree into any list. Revoked; a member still can (covered
+        // by the happy-path specs above).
+        it("REFUSES a guest (403) — template.apply is no longer a guest grant", async () => {
             const ws = await makeWorkspace();
             const actor = await makeUser({ workspaceId: ws.id, role: "guest" });
             const client = await makeLoggedInClient(actor);
@@ -493,7 +497,7 @@ describe("POST /api/v1/templates/:id/apply", () => {
                 .post(applyUrl(tpl.id))
                 .send({ list_id: list.id });
 
-            expect(res.status).toBe(201);
+            expect(res.status).toBe(403);
         });
     });
 

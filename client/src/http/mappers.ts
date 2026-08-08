@@ -37,7 +37,6 @@ export interface WireWorkspace {
     workingDays: string[];
     businessHoursStart: string;
     businessHoursEnd: string;
-    fiscalYearStartMonth: number;
 }
 
 export const mapWorkspace = (w: WireWorkspace): Workspace => ({
@@ -53,7 +52,6 @@ export const mapWorkspace = (w: WireWorkspace): Workspace => ({
             start: w.businessHoursStart,
             end: w.businessHoursEnd,
         },
-        fiscalYearStartMonth: w.fiscalYearStartMonth,
     },
 });
 
@@ -82,8 +80,6 @@ export const workspaceToWire = (
             out.businessHoursStart = toHms(s.businessHours.start);
             out.businessHoursEnd = toHms(s.businessHours.end);
         }
-        if (s.fiscalYearStartMonth !== undefined)
-            out.fiscalYearStartMonth = s.fiscalYearStartMonth;
     }
     return out;
 };

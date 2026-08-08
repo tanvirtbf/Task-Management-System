@@ -1,0 +1,65 @@
+fixtures: list l-rFoKH_dW84rsVqBTtkitUA task t-At1rjbe3YSwnjDK84euGig
+
+=== 1. CREATE — all 6 types + rejects ===
+  TEST-p12-text / text           (text)                       -> 201
+  TEST-p12-phone / phone         (phone)                      -> 201
+  TEST-p12-money / money         (money)                      -> 201
+  TEST-p12-date / date           (date)                       -> 201
+  TEST-p12-drop / dropdown       (dropdown + options)         -> 201
+  TEST-p12-files / files         (files)                      -> 201
+  TEST-p12-bad / rating          (UNSUPPORTED type)           -> 422 custom_field.unsupported_type
+  TEST-p12-noscope / text        (no scope)                   -> 422 validation.failed
+  TEST-p12-badscope / text       (bogus scope_type)           -> 422 validation.failed
+  TEST-p12-list / text           (LIST scope)                 -> 201
+  TEST-p12-space / text          (SPACE scope)                -> 201
+  TEST-p12-badid / text          (list scope, unknown id)     -> 422 custom_field.invalid_scope
+  TEST-p12-wsid / text           (workspace scope WITH an id) -> 422 validation.failed
+  TEST-p12-hidden / text         (hidden_from_guests)         -> 201
+  TEST-p12-text / text           (DUPLICATE name)             -> 201
+
+=== 2. hidden_from_guests actually stored? ===
+  stored: {"name":"TEST-p12-hidden","hidden_from_guests":0}
+
+=== 3. LISTING by scope ===
+  GET /custom-fields            -> 200 count: 0
+  GET /lists/:id/custom-fields  -> count: 10 names: TEST-p12-hidden, TEST-p12-drop, TEST-p12-date, TEST-p12-text, TEST-p12-money, TEST-p12-fil
+
+=== 4. SET VALUES — per type ===
+  text:
+    {"text":"hello"}                           (valid)                    -> 200                     stored: {"text":"hello"}
+    {"text":123}                               (number for a text field)  -> 422 validation.failed   stored: {"text":"hello"}
+    {"text":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx   (very long)                -> 200                     stored: {"text":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    null                                       (null body)                -> 400 bad_request         stored: {"text":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  phone:
+    {"phone":"01712345678"}                    (valid BD mobile)          -> 422 validation.failed   stored: null
+    {"phone":"12345"}                          (not a BD mobile)          -> 422 validation.failed   stored: null
+    {"text":"01712345678"}                     (wrong key)                -> 200                     stored: {"text":"01712345678"}
+  money:
+    {"money":1500.5}                           (valid)                    -> 422 validation.failed   stored: null
+    {"money":-5}                               (negative)                 -> 422 validation.failed   stored: null
+    {"money":"abc"}                            (non-numeric)              -> 422 validation.failed   stored: null
+  date:
+    {"date":"2027-03-15"}                      (valid)                    -> 200                     stored: {"date":"2027-03-15","include_time":fals
+    {"date":"not-a-date"}                      (invalid)                  -> 422 validation.failed   stored: {"date":"2027-03-15","include_time":fals
+  dropdown:
+    options in DB: Low, High
+    {"option_id":"cfo-VpN7qJ0oMV5n-Ew8lfIhHQ   (valid option)             -> 200                     stored: {"option_id":"cfo-VpN7qJ0oMV5n-Ew8lfIhHQ
+    {"option_id":"opt-nope"}                   (unknown option)           -> 422 validation.failed   stored: {"option_id":"cfo-VpN7qJ0oMV5n-Ew8lfIhHQ
+    {"text":"Low"}                             (label instead of an option id)-> 422 validation.failed   stored: {"option_id":"cfo-VpN7qJ0oMV5n-Ew8lfIhHQ
+
+=== 5. GUEST REDACTION (deferred from P4) ===
+  owner sees: {"cf-CJzxZnF5imFv57zv-L3vHg":{"text":"SECRET-VALUE"},"cf-hXS_9ta0xddLpzzOXRwGpw":{"option_id":"cfo-VpN7qJ0oMV5n-Ew8lfIhHQ"},"cf-Mk4RMOOTK69pY6WVVLEiUQ":{"date":
+  guest sees: {"cf-CJzxZnF5imFv57zv-L3vHg":{"text":"SECRET-VALUE"},"cf-hXS_9ta0xddLpzzOXRwGpw":{"option_id":"cfo-VpN7qJ0oMV5n-Ew8lfIhHQ"},"cf-Mk4RMOOTK69pY6WVVLEiUQ":{"date":
+  SECRET-VALUE hidden from the guest? *** NO — LEAKED ***
+  VISIBLE-VALUE still shown to the guest? yes ✓
+  guest on /spaces/:id/review-queue -> 403 review.not_head (head-gated, so ISS-023 stays unreachable)
+
+=== 6. customfield.set_value ENFORCEMENT (deferred from P5) ===
+  Department Only holds customfield.set_value? NO
+
+=== 7. DELETE a definition that has values ===
+  field had 1 value(s) -> DELETE 204 -> values now 0 (cascaded)
+
+=== CLEANUP ===
+  delete list: 204
+  orphan statuses 0 | custom_fields 0 (0) | values 0 (0) | options 0 (0) | tasks 51 (51) | lists 14 (14) | statuses 70 (70)

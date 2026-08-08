@@ -1,0 +1,29 @@
+=== A. CONFIRM: change-password vs reset-password session revocation ===
+  3 devices signed in. live sessions = 4
+  device1 changes the password -> 204  live sessions now = 4
+  device2 can still REFRESH    -> 200 *** yes — still signed in ***
+  device3 access token works   -> 200
+
+  reset flow: 2 devices signed in. live = 6
+  password RESET -> 204  live sessions now = 0
+  a pre-reset device can refresh -> 401 revoked ✓
+
+=== 16. ROLE-CHANGE STALENESS ===
+  token role claim : member | DB role: member
+  owner sets role -> guest: 200 
+  DB role now      : guest
+  OLD token claims : member  <- stale until the 15-min TTL expires
+  GET /auth/me says: guest (DB-fresh ✓)
+  /me/permissions  : guest (DB-fresh ✓)
+  guest-forbidden upload w/ stale token -> 422 validation.failed
+
+=== 17. DEACTIVATION — live-token window ===
+  deactivate -> 204
+  DB status  : deactivated | live sessions: 0
+  their ACCESS token still works -> 200 *** YES (documented <=15-min window) ***
+  their REFRESH                  -> 401 rejected ✓
+  fresh login attempt            -> 401 (expect 401)
+
+=== CLEANUP ===
+  throwaway user removed: 1
+  users = 16 (baseline 16) | invitations = 1

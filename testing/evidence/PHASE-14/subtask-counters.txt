@@ -1,0 +1,12 @@
+subtask triggers present: trg_subtasks_after_insert/INSERT, trg_subtasks_after_update/UPDATE, trg_subtasks_after_delete/DELETE
+
+parent counters at start: {"sc":0,"sd":0}
+after adding child 1 : {"sc":0,"sd":0} (child created)
+after adding child 2 : {"sc":0,"sd":0}
+actual children in DB: 2
+
+move child 1 to Done -> 500 {"error":{"code":"internal","message":"Internal server error","request_id":"req_b92209cc-05af-49e2-a2d8-04aca4e8d222"}}
+after completing 1   : {"sc":0,"sd":0}
+hard-delete child 2  -> 500 counters: {"sc":0,"sd":0}
+
+cleanup: tasks 51 | lists 14

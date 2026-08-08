@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
+const allowQuery_1 = require("../middlewares/allowQuery");
 const ListController_1 = require("../controllers/ListController");
 const ListService_1 = require("../services/ListService");
 const TasksController_1 = require("../controllers/TasksController");
@@ -52,7 +53,9 @@ router.get("/spaces/:spaceId/lists", authenticate_1.default, lists_1.listBySpace
 // `/lists` path because this router mounts at the v1 root. Registered before the
 // deeper `/lists/:listId/...` routes for readability (the exact `/lists` path
 // cannot collide with them).
-router.get("/lists", authenticate_1.default, lists_1.listAllValidator, validate_1.validate, (req, res, next) => listController.listAll(req, res, next));
+router.get("/lists", authenticate_1.default, 
+// F23 (ISS-014): a mistyped filter is a 422, not the full set.
+(0, allowQuery_1.allowQuery)(["space_id", "include_archived", "limit", "cursor"]), lists_1.listAllValidator, validate_1.validate, (req, res, next) => listController.listAll(req, res, next));
 // ─── POST /api/v1/lists ───────────────────────────────────────────────────────
 // 👑 admin/owner only. Chain order encodes the spec's status precedence:
 // `authenticate` (401) → `requirePermission` (403) → validation (422). Creates a list in

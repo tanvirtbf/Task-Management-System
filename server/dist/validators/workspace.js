@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.workspaceUpdateValidator = void 0;
+exports.workspaceUpdateValidator = exports.isIanaTimezone = void 0;
 const express_validator_1 = require("express-validator");
 const _shared_1 = require("../db/schema/_shared");
 /**
@@ -28,6 +28,7 @@ const isIanaTimezone = (value) => {
         return false;
     }
 };
+exports.isIanaTimezone = isIanaTimezone;
 exports.workspaceUpdateValidator = (0, express_validator_1.checkSchema)({
     name: {
         in: ["body"],
@@ -71,7 +72,7 @@ exports.workspaceUpdateValidator = (0, express_validator_1.checkSchema)({
         },
         custom: {
             options: (value) => {
-                if (!isIanaTimezone(value)) {
+                if (!(0, exports.isIanaTimezone)(value)) {
                     throw new Error("timezone must be a valid IANA name");
                 }
                 return true;
@@ -122,15 +123,6 @@ exports.workspaceUpdateValidator = (0, express_validator_1.checkSchema)({
             options: TIME_RE,
             errorMessage: "business_hours_end must be HH:MM:SS",
         },
-    },
-    fiscal_year_start_month: {
-        in: ["body"],
-        optional: true,
-        isInt: {
-            options: { min: 1, max: 12 },
-            errorMessage: "fiscal_year_start_month must be an integer 1-12",
-        },
-        toInt: true,
     },
     // Not `optional`: the custom validator must run even when the field is
     // absent (returning true), and reject it whenever it is present.

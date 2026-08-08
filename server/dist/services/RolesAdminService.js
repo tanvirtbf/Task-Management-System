@@ -38,6 +38,11 @@ const slugify = (name) => name
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 50) || "role";
+/** mysql2 surfaces a unique-violation as `ER_DUP_ENTRY` / errno 1062. */
+const isDuplicateKeyError = (err) => {
+    const e = err;
+    return e?.code === "ER_DUP_ENTRY" || e?.errno === 1062;
+};
 class RolesAdminService {
     db;
     roles;
@@ -92,6 +97,12 @@ class RolesAdminService {
                 throw errors_1.AppError.conflict("role.key_taken", "Could not derive a unique role key from that name");
             }
         }
+        // F27 (ISS-027): the display NAME is unique now (the key always was,
+        // by silent suffixing — which is why `role.key_taken` never fired).
+        const existingName = await this.roles.findByNameInWorkspace(input.name, input.workspaceId);
+        if (existingName) {
+            throw errors_1.AppError.conflict("role.name_taken", `A role called "${input.name}" already exists`);
+        }
         const roleId = await this.roles.create(input.workspaceId, {
             roleKey: key,
             name: input.name,
@@ -119,13 +130,23 @@ class RolesAdminService {
     async update(input) {
         const role = await this.requireRole(input.workspaceId, input.roleId);
         this.assertEditable(role, "edit");
-        await this.roles.update(input.roleId, {
-            ...(input.name !== undefined ? { name: input.name } : {}),
-            ...(input.description !== undefined
-                ? { description: input.description }
-                : {}),
-            ...(input.color !== undefined ? { color: input.color } : {}),
-        });
+        this.assertRenamable(role, input.name);
+        try {
+            await this.roles.update(input.roleId, {
+                ...(input.name !== undefined ? { name: input.name } : {}),
+                ...(input.description !== undefined
+                    ? { description: input.description }
+                    : {}),
+                ...(input.color !== undefined ? { color: input.color } : {}),
+            });
+        }
+        catch (err) {
+            // F27 (ISS-027): the new uq_roles_workspace_name index.
+            if (isDuplicateKeyError(err)) {
+                throw errors_1.AppError.conflict("role.name_taken", `A role called "${input.name}" already exists`);
+            }
+            throw err;
+        }
         await this.roles.bumpPermissionsVersion(input.workspaceId);
         this.policy.clearCache();
         const updated = await this.requireRole(input.workspaceId, input.roleId);
@@ -260,6 +281,21 @@ class RolesAdminService {
     assertEditable(role, what) {
         if (role.isSystem && role.roleKey === "owner") {
             throw errors_1.AppError.forbidden("role.owner_immutable", `The Owner role cannot be ${what}ed — it is the account that can never be locked out`);
+        }
+    }
+    /**
+     * F27 (ISS-026): a system role's NAME is immutable, the way its existence
+     * already is. `DELETE` refused with `role.system_immutable` while
+     * `PATCH {name}` returned 200 — so "Admin" could be renamed to anything
+     * while every UI, every doc and the seeded grant matrix still called it
+     * Admin. Description and colour stay editable: they are cosmetic, the name
+     * is the identifier people navigate by.
+     */
+    assertRenamable(role, name) {
+        if (name === undefined || name === role.name)
+            return;
+        if (role.isSystem) {
+            throw errors_1.AppError.forbidden("role.system_immutable", "The built-in roles cannot be renamed");
         }
     }
     /** Reject unknown keys, unsupported scopes and duplicates. */

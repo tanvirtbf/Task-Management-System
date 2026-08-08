@@ -1,0 +1,36 @@
+F3 regression gate — full server jest sweep — started 2026-08-03T14:34:53+06:00
+clock frame: DB_TIMEZONE=+00:00, TZ=Asia/Dhaka
+
+auth               Test Suites: 9 passed, 9 total|Tests:       339 passed, 339 total|
+users              Test Suites: 1 failed, 7 passed, 8 total|Tests:       1 failed, 278 passed, 279 total|
+workspace          Test Suites: 2 passed, 2 total|Tests:       84 passed, 84 total|
+spaces             Test Suites: 7 passed, 7 total|Tests:       244 passed, 244 total|
+lists              Test Suites: 5 passed, 5 total|Tests:       171 passed, 171 total|
+statuses           Test Suites: 5 passed, 5 total|Tests:       209 passed, 209 total|
+taskTypes          Test Suites: 4 passed, 4 total|Tests:       184 passed, 184 total|
+tagsreview         Test Suites: 4 passed, 4 total|Tests:       149 passed, 149 total|
+customfields       Test Suites: 7 passed, 7 total|Tests:       90 passed, 90 total|
+tasks              Test Suites: 2 failed, 8 passed, 10 total|Tests:       4 failed, 355 passed, 359 total|
+tasks10            Test Suites: 2 failed, 8 passed, 10 total|Tests:       4 failed, 355 passed, 359 total|
+membership         Test Suites: 5 passed, 5 total|Tests:       97 passed, 97 total|
+taskdeps           Test Suites: 3 passed, 3 total|Tests:       67 passed, 67 total|
+home               Test Suites: 1 passed, 1 total|Tests:       23 passed, 23 total|
+workspaceActivity  Test Suites: 2 passed, 2 total|Tests:       41 passed, 41 total|
+collab             Test Suites: 2 passed, 2 total|Tests:       47 passed, 47 total|
+attachments        Test Suites: 6 passed, 6 total|Tests:       106 passed, 106 total|
+notifications      Test Suites: 7 passed, 7 total|Tests:       84 passed, 84 total|
+search             Test Suites: 1 passed, 1 total|Tests:       32 passed, 32 total|
+forms              Test Suites: 8 passed, 8 total|Tests:       85 passed, 85 total|
+templates          Test Suites: 6 passed, 6 total|Tests:       121 passed, 121 total|
+sprints            Test Suites: 9 passed, 9 total|Tests:       150 passed, 150 total|
+oncall             Test Suites: 4 passed, 4 total|Tests:       81 passed, 81 total|
+eng                Test Suites: 3 passed, 3 total|Tests:       78 passed, 78 total|
+sla                Test Suites: 2 passed, 2 total|Tests:       24 passed, 24 total|
+deptreview         Test Suites: 14 passed, 14 total|Tests:       122 passed, 122 total|
+jobs               Test Suites: 5 passed, 5 total|Tests:       31 passed, 31 total|
+rbac               Test Suites: 11 passed, 11 total|Tests:       286 passed, 286 total|
+health             Test Suites: 2 passed, 2 total|Tests:       14 passed, 14 total|
+sse                Test Suites: 1 passed, 1 total|Tests:       12 passed, 12 total|
+assistant          Test Suites: 8 passed, 8 total|Tests:       127 passed, 127 total|
+
+finished 2026-08-03T16:15:13+06:00

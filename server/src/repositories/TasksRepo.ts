@@ -10,6 +10,7 @@ import {
     isNotNull,
     isNull,
     like,
+    notInArray,
     or,
     sql,
 } from "drizzle-orm";
@@ -17,9 +18,11 @@ import { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../db/schema";
 import {
     customFields,
+    lists,
     statuses,
     taskAssignees,
     taskCustomFieldValues,
+    taskDependencies,
     taskTags,
     taskWatchers,
     tasks,
@@ -43,6 +46,8 @@ export interface TaskHeader {
     id: string;
     workspaceId: string;
     name: string;
+    /** Creator — F8's scope guard derives `own`-ness from it. */
+    createdBy: string;
     archivedAt: Date | null;
 }
 
@@ -74,6 +79,7 @@ export class TasksRepo {
                 id: tasks.id,
                 workspaceId: tasks.workspaceId,
                 name: tasks.name,
+                createdBy: tasks.createdBy,
                 archivedAt: tasks.archivedAt,
             })
             .from(tasks)
@@ -516,7 +522,208 @@ export class TasksRepo {
             .orderBy(asc(tasks.dueDate), asc(tasks.internalId));
     }
 
+    /**
+     * F22 (ISS-011): the OPEN blockers of a task — edges whose blocked end is
+     * this task and whose blocker sits on a not-done, not-closed status and is
+     * not archived. `task.cannot_complete_blocked` fires while this is > 0.
+     */
+    async openBlockerCount(
+        taskId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<number> {
+        const [row] = await exec
+            .select({ n: count() })
+            .from(taskDependencies)
+            .innerJoin(tasks, eq(tasks.id, taskDependencies.taskId))
+            .innerJoin(statuses, eq(statuses.id, tasks.statusId))
+            .where(
+                and(
+                    eq(taskDependencies.relatedTaskId, taskId),
+                    isNull(tasks.archivedAt),
+                    notInArray(statuses.statusGroup, ["done", "closed"]),
+                ),
+            );
+        return row?.n ?? 0;
+    }
+
+    /**
+     * F25 (ISS-066): resolve the `T-<n>` key the UI actually displays.
+     *
+     * `task_number` is unique PER LIST (`uq_tasks_list_number`), not per
+     * workspace — in the demo data alone, thirteen tasks are "T-1". So a
+     * `#T-<n>` reference is resolved inside the HOST TASK'S LIST, where the
+     * number is unique by construction and where the reference almost always
+     * means a sibling on the same board. A `T-<n>` from another list stays
+     * unresolved rather than guessing between thirteen candidates.
+     */
+    async findByTaskNumberInList(
+        listId: string,
+        taskNumber: number,
+        exec: DbExecutor = this.db,
+    ): Promise<{ id: string } | null> {
+        const [row] = await exec
+            .select({ id: tasks.id })
+            .from(tasks)
+            .where(
+                and(
+                    eq(tasks.primaryListId, listId),
+                    eq(tasks.taskNumber, taskNumber),
+                    await listScopeFilter(tasks.primaryListId, await taskOwnEscape()),
+                ),
+            )
+            .limit(1);
+        return row ?? null;
+    }
+
+    /**
+     * F16: every descendant id of a task — children, then grandchildren. Same
+     * two-level walk as `archiveDescendants` (nesting depth is capped at 2).
+     * The hard-delete path needs the whole subtree BEFORE the root row goes,
+     * because the FK cascade will take the descendants with it — and their
+     * notifications (ISS-073) and R2 keys (ISS-022) have no FK to follow.
+     */
+    async descendantIds(
+        rootId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<string[]> {
+        const kids = await exec
+            .select({ id: tasks.id })
+            .from(tasks)
+            .where(eq(tasks.parentTaskId, rootId));
+        const kidIds = kids.map((k) => k.id);
+        if (kidIds.length === 0) return [];
+        const grands = await exec
+            .select({ id: tasks.id })
+            .from(tasks)
+            .where(inArray(tasks.parentTaskId, kidIds));
+        return [...kidIds, ...grands.map((g) => g.id)];
+    }
+
+    /**
+     * F15 (ISS-046): recompute a parent's `subtasks_count` /
+     * `subtasks_completed` from the rows themselves.
+     *
+     * These two columns were maintained by NOTHING — every task reported 0/0 —
+     * and they cannot be triggers: MySQL forbids a trigger on `tasks` from
+     * modifying `tasks`, which is why the original `trg_subtasks_after_*`
+     * triggers were removed (they crashed every subtask status change with
+     * ER_CANT_UPDATE_USED_TABLE_IN_SF_OR_TRG). `schema.sql:1482-1488` records
+     * that decision and says the maintenance must be app-side. This is it.
+     *
+     * RECOMPUTE, not increment. The other two counter bugs in this phase
+     * (comments, submissions) were both increment-only rules that drifted the
+     * moment a write happened by a path their author had not pictured. An
+     * absolute recompute cannot drift: whatever the callers miss, the next call
+     * repairs. It is one indexed UPDATE against `idx_tasks_parent`, on a write
+     * path that is already inside a transaction.
+     *
+     * "Counts" = a live (non-archived) child, matching what
+     * `GET /tasks/:id/subtasks` returns, so the badge and the list agree.
+     * "Completed" = that child sits on a done/closed-group status.
+     */
+    async recomputeSubtaskCounters(
+        parentId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<void> {
+        // JOIN against a DERIVED table, not a correlated subquery: MySQL
+        // refuses `UPDATE tasks … (SELECT … FROM tasks …)` with error 1093,
+        // "You can't specify target table for update in FROM clause". A
+        // derived table is materialised first, so it is allowed — the same
+        // family of restriction that made the original subtask TRIGGERS
+        // impossible (schema.sql:1482-1488).
+        await exec.execute(sql`
+            UPDATE ${tasks} p
+              LEFT JOIN (
+                    SELECT c.parent_task_id AS pid,
+                           COUNT(*) AS cnt,
+                           SUM(s.status_group IN ('done', 'closed')) AS done_cnt
+                      FROM ${tasks} c
+                      JOIN ${statuses} s ON s.id = c.status_id
+                     WHERE c.parent_task_id = ${parentId}
+                       AND c.archived_at IS NULL
+                     GROUP BY c.parent_task_id
+                ) agg ON agg.pid = p.id
+               SET p.subtasks_count = COALESCE(agg.cnt, 0),
+                   p.subtasks_completed = COALESCE(agg.done_cnt, 0)
+             WHERE p.id = ${parentId}
+        `);
+    }
+
+    /**
+     * The space each task lives in (via its primary list), keyed by task id.
+     * F8's scope guard builds its `PermissionContext` from this — tasks carry
+     * no space column of their own, so the one-hop join lives here rather than
+     * being re-derived by every write service.
+     */
+    async spaceIdsByTask(taskIds: string[]): Promise<Map<string, string>> {
+        if (taskIds.length === 0) return new Map();
+        const rows = await this.db
+            .select({ taskId: tasks.id, spaceId: lists.spaceId })
+            .from(tasks)
+            .innerJoin(lists, eq(lists.id, tasks.primaryListId))
+            .where(inArray(tasks.id, taskIds));
+        return new Map(rows.map((r) => [r.taskId, r.spaceId]));
+    }
+
     /** Assignee user-ids for a page of tasks, grouped by task id. */
+    /**
+     * The overdue-alert job's scan (upgrades/014): open tasks in `workspaceId`
+     * whose `due_date` is strictly BEFORE `todayYmd` (the workspace's own
+     * calendar day — the caller computes it via `todayInZone`), not yet
+     * claimed, and having at least one assignee. Tasks with NO assignees are
+     * deliberately excluded rather than claimed, so someone assigned while
+     * the task is already overdue still gets alerted on the next tick.
+     * Served by `idx_tasks_overdue_scan`; `limit` bounds one tick's burst.
+     */
+    async findOverdueUnnotified(
+        workspaceId: string,
+        todayYmd: string,
+        limit: number,
+    ): Promise<
+        Array<{ id: string; name: string; dueDate: Date | null }>
+    > {
+        return this.db
+            .select({
+                id: tasks.id,
+                name: tasks.name,
+                dueDate: tasks.dueDate,
+            })
+            .from(tasks)
+            .where(
+                and(
+                    eq(tasks.workspaceId, workspaceId),
+                    isNotNull(tasks.dueDate),
+                    sql`${tasks.dueDate} < ${todayYmd}`,
+                    isNull(tasks.completedAt),
+                    isNull(tasks.archivedAt),
+                    isNull(tasks.overdueNotifiedAt),
+                    exists(
+                        this.db
+                            .select({ one: sql`1` })
+                            .from(taskAssignees)
+                            .where(eq(taskAssignees.taskId, tasks.id)),
+                    ),
+                ),
+            )
+            .orderBy(asc(tasks.dueDate))
+            .limit(limit);
+    }
+
+    /**
+     * The once-only claim: stamp `overdue_notified_at` on the alerted tasks.
+     * Called in the SAME transaction as the `overdue` notification inserts.
+     */
+    async markOverdueNotified(
+        taskIds: string[],
+        exec: DbExecutor = this.db,
+    ): Promise<void> {
+        if (taskIds.length === 0) return;
+        await exec
+            .update(tasks)
+            .set({ overdueNotifiedAt: new Date() })
+            .where(inArray(tasks.id, taskIds));
+    }
+
     async assigneesByTask(taskIds: string[]): Promise<Map<string, string[]>> {
         if (taskIds.length === 0) return new Map();
         const rows = await this.db

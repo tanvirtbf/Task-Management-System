@@ -225,8 +225,8 @@ describe("DELETE /api/v1/tasks/:id/tags/:tagId", () => {
         });
     });
 
-    describe("Authorization (🔐 any member — no role gate)", () => {
-        for (const role of ["owner", "admin", "member", "guest"] as const) {
+    describe("Authorization (task.edit — every internal role holds it)", () => {
+        for (const role of ["owner", "admin", "member"] as const) {
             it(`allows a ${role} to remove a tag (204)`, async () => {
                 const { u, t, tag } = await seedTaggedTask(role);
                 const client = await makeLoggedInClient(u);
@@ -235,6 +235,15 @@ describe("DELETE /api/v1/tasks/:id/tags/:tagId", () => {
                 expect(res.status).toBe(204);
             });
         }
+
+        // F34 (ISS-095): same gate as applying one — see tags.add.test.ts.
+        it("REFUSES a guest (403) — tagging rides task.edit now", async () => {
+            const { u, t, tag } = await seedTaggedTask("guest");
+            const client = await makeLoggedInClient(u);
+
+            const res = await client.delete(tagPath(t.id, tag.id));
+            expect(res.status).toBe(403);
+        });
     });
 
     describe("Resource lifecycle", () => {

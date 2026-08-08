@@ -3,6 +3,7 @@ import express, {
     type Request,
     type Response,
 } from "express";
+import { allowQuery } from "../middlewares/allowQuery";
 import { UserController } from "../controllers/UserController";
 import { UserService } from "../services/UserService";
 import { UsersRepo } from "../repositories/UsersRepo";
@@ -64,6 +65,9 @@ const userController = new UserController(userService, logger);
 router.get(
     "/",
     authenticate,
+    // F23 (ISS-014): a mistyped filter is a 422, not the full set.
+    allowQuery(["status","role","q","cursor","limit"]),
+    requirePermission("member.view"),
     listUsersValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -96,6 +100,7 @@ router.post(
 router.get(
     "/:id",
     authenticate,
+    requirePermission("member.view"),
     getUserValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>

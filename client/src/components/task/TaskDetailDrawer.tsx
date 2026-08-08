@@ -1,9 +1,11 @@
-import { Alert, Button, Drawer, Dropdown, App as AntApp } from "antd";
+import { Alert, Button, Drawer, Dropdown, Modal, App as AntApp } from "antd";
+import type { MenuProps } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
     X,
     Copy,
     Archive,
+    ArchiveRestore,
     Trash2,
     Maximize2,
     MoreHorizontal,
@@ -33,6 +35,7 @@ import { PostmortemChecklist } from "./PostmortemChecklist";
 import { SLABadge } from "./SLABadge";
 import { CustomFieldsList } from "../custom-field/CustomFieldsList";
 import { useUpdateTask } from "../../hooks/useTaskMutations";
+import { usePermissions } from "../../hooks/usePermissions";
 import { ReviewSection } from "./ReviewSection";
 import { tokens } from "../../theme";
 
@@ -50,6 +53,7 @@ export const TaskDetailDrawer = ({
     const navigate = useNavigate();
     const qc = useQueryClient();
     const { message } = AntApp.useApp();
+    const { holds } = usePermissions();
     const update = useUpdateTask(listId);
     const typeMap = useTaskTypeMap();
     const userMap = useUserMap();
@@ -100,6 +104,9 @@ export const TaskDetailDrawer = ({
         },
     });
 
+    // F26 (SCAN-M5): the destructive entries render only for people the
+    // server would actually let through — `task.delete` for archive/soft
+    // delete, `task.delete_hard` for the permanent one (owner/admin).
     const menuItems = [
         {
             key: "open",
@@ -130,39 +137,74 @@ export const TaskDetailDrawer = ({
             icon: <Copy size={13} strokeWidth={1.75} />,
             onClick: () => duplicate.mutate(),
         },
-        {
-            key: "archive",
-            label: "Archive",
-            icon: <Archive size={13} strokeWidth={1.75} />,
-            onClick: () => {
-                if (task)
-                    tasksApi.archive(task.id).then(() => {
-                        message.success("Task archived");
-                        qc.invalidateQueries({
-                            queryKey: ["tasks-by-list", listId],
-                        });
-                        onClose();
-                    });
-            },
-        },
-        { type: "divider" as const },
-        {
+        // F25 (ISS-050): Archive and Delete were TWO labels for ONE operation
+        // — `DELETE /tasks/:id` is a soft delete that just sets `archived_at`,
+        // so a user who clicked "Delete" believed the task was gone while it
+        // stayed fully readable to anyone with the id. And neither had a way
+        // back: `POST /tasks/:id/unarchive` works server-side and had zero
+        // callers here. Now: Archive toggles (Restore appears once archived),
+        // and Delete is the PERMANENT one, named as such and confirmed.
+        holds("task.delete") &&
+            (task?.archivedAt
+            ? {
+                  key: "unarchive",
+                  label: "Restore",
+                  icon: <ArchiveRestore size={13} strokeWidth={1.75} />,
+                  onClick: () => {
+                      if (task)
+                          tasksApi.unarchive(task.id).then(() => {
+                              message.success("Task restored");
+                              qc.invalidateQueries({
+                                  queryKey: ["tasks-by-list", listId],
+                              });
+                              qc.invalidateQueries({ queryKey: ["task", task.id] });
+                          });
+                  },
+              }
+            : {
+                  key: "archive",
+                  label: "Archive",
+                  icon: <Archive size={13} strokeWidth={1.75} />,
+                  onClick: () => {
+                      if (task)
+                          tasksApi.archive(task.id).then(() => {
+                              message.success(
+                                  "Task archived — reopen it to restore",
+                              );
+                              qc.invalidateQueries({
+                                  queryKey: ["tasks-by-list", listId],
+                              });
+                              onClose();
+                          });
+                  },
+              }),
+        holds("task.delete_hard") && { type: "divider" as const },
+        holds("task.delete_hard") && {
             key: "delete",
-            label: "Delete",
+            label: "Delete permanently",
             icon: <Trash2 size={13} strokeWidth={1.75} />,
             danger: true,
             onClick: () => {
-                if (task)
-                    tasksApi.delete(task.id).then(() => {
-                        message.success("Task deleted");
-                        qc.invalidateQueries({
-                            queryKey: ["tasks-by-list", listId],
-                        });
-                        onClose();
-                    });
+                if (!task) return;
+                Modal.confirm({
+                    title: "Delete this task permanently?",
+                    content:
+                        "This cannot be undone. Its comments, checklists and attachments go with it. To hide the task instead, use Archive — that can be restored.",
+                    okText: "Delete permanently",
+                    okButtonProps: { danger: true },
+                    cancelText: "Cancel",
+                    onOk: () =>
+                        tasksApi.delete(task.id, true).then(() => {
+                            message.success("Task permanently deleted");
+                            qc.invalidateQueries({
+                                queryKey: ["tasks-by-list", listId],
+                            });
+                            onClose();
+                        }),
+                });
             },
         },
-    ];
+    ].filter(Boolean) as NonNullable<MenuProps["items"]>;
 
     return (
         <Drawer
@@ -336,12 +378,7 @@ export const TaskDetailDrawer = ({
 
                         {isDev && <SubtasksSection task={task} />}
 
-                        {isDev && (
-                            <DependenciesSection
-                                taskId={task.id}
-                                listId={task.primaryListId}
-                            />
-                        )}
+                        {isDev && <DependenciesSection taskId={task.id} />}
 
                         <ChecklistsSection taskId={task.id} />
 

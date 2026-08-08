@@ -1,0 +1,4 @@
+  007_orphans_and_cascades.sql: 2 statements
+  taskmanagement        2/2 applied
+  007_orphans_and_cascades.sql: 2 statements
+  taskmanagement_qa     2/2 applied

@@ -10,8 +10,10 @@ import { users } from "../../src/db/schema";
  *
  * The caller re-proves the CURRENT password before it can be rotated, so a
  * stolen ≤15-min access token alone cannot change the credential. On success
- * the password hash is replaced (204) and the calling session is intentionally
- * left valid (V1 — no forced global sign-out).
+ * the password hash is replaced (204) and — since F10 / ISS-015 — every
+ * refresh session is revoked, mirroring the reset path (the old V1
+ * "leave sessions valid" choice meant a password change did not evict whoever
+ * prompted it).
  *
  * Patterns mirror the sibling auth suites: real DB writes via factories, an
  * authenticated `makeLoggedInClient`, and a stateless `oneOff()` for the

@@ -143,6 +143,14 @@ class TagService {
             if (!current) {
                 throw errors_1.AppError.notFound("tag.not_found", `Tag ${id} does not exist`);
             }
+            // F22 (ISS-011): an in-use tag can no longer be deleted out from
+            // under its tasks. The FK cascade made the delete SILENTLY strip
+            // the tag from every task that carried it — categorisation data
+            // lost with no warning. §32 promises 409 tag.in_use.
+            const inUse = await this.repo.countTaskLinks(id, tx);
+            if (inUse > 0) {
+                throw errors_1.AppError.conflict("tag.in_use", `This tag is on ${inUse} task(s) — remove it from them first`);
+            }
             await this.repo.delete(id, workspaceId, tx);
             await this.activity.record({
                 workspaceId,

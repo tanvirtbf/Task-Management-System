@@ -30,15 +30,28 @@ class SearchRepo {
      */
     async searchTasks(workspaceId, q, limit) {
         const pattern = `%${escapeLike(q)}%`;
+        const prefix = `${escapeLike(q)}%`;
         return this.db
             .select()
             .from(schema_1.tasks)
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId), (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt), (0, drizzle_orm_1.or)((0, drizzle_orm_1.like)(schema_1.tasks.name, pattern), (0, drizzle_orm_1.eq)(schema_1.tasks.customId, q)), 
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId), (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt), (0, drizzle_orm_1.or)((0, drizzle_orm_1.like)(schema_1.tasks.name, pattern), 
+        // F20 (ISS-074): the DESCRIPTION joins the predicate.
+        // For the ops teams it is where the order number and
+        // SKU live — and comments were already searched, so
+        // its absence was an inconsistency, not a policy.
+        (0, drizzle_orm_1.like)(schema_1.tasks.description, pattern), (0, drizzle_orm_1.eq)(schema_1.tasks.customId, q)), 
         // RBAC P18 — search was the single biggest leak in the
         // scan: task names, list names, space names and comment
         // bodies, workspace-wide, to anyone.
         await (0, context_1.listScopeFilter)(schema_1.tasks.primaryListId, await (0, ownEscape_1.taskOwnEscape)())))
-            .orderBy((0, drizzle_orm_1.asc)(schema_1.tasks.internalId))
+            // F20 (ISS-075): relevance ladder instead of oldest-first. An
+            // exact custom_id hit floats to the very top, then an exact name,
+            // then a name prefix, then any name substring (so a name match
+            // beats a description-only match), newest first within each band.
+            // Before this, `ORDER BY internal_id ASC` meant that at a few
+            // thousand tasks the limit filled with the OLDEST matches and the
+            // wanted task was never on the page.
+            .orderBy((0, drizzle_orm_1.desc)((0, drizzle_orm_1.sql) `(${schema_1.tasks.customId} = ${q})`), (0, drizzle_orm_1.desc)((0, drizzle_orm_1.sql) `(${schema_1.tasks.name} = ${q})`), (0, drizzle_orm_1.desc)((0, drizzle_orm_1.sql) `(${schema_1.tasks.name} LIKE ${prefix})`), (0, drizzle_orm_1.desc)((0, drizzle_orm_1.sql) `(${schema_1.tasks.name} LIKE ${pattern})`), (0, drizzle_orm_1.desc)(schema_1.tasks.internalId))
             .limit(limit);
     }
     /**
@@ -111,7 +124,9 @@ class SearchRepo {
         })
             .from(schema_1.users)
             .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.workspaceId, workspaceId), (0, drizzle_orm_1.or)((0, drizzle_orm_1.like)(schema_1.users.firstName, pattern), (0, drizzle_orm_1.like)(schema_1.users.lastName, pattern), (0, drizzle_orm_1.like)(schema_1.users.email, pattern))))
-            .orderBy((0, drizzle_orm_1.asc)(schema_1.users.id))
+            // F20 (ISS-075): a name/email PREFIX hit outranks a mid-string
+            // one; alphabetical inside each band (was: insertion order).
+            .orderBy((0, drizzle_orm_1.desc)((0, drizzle_orm_1.sql) `(${schema_1.users.firstName} LIKE ${`${escapeLike(q)}%`})`), (0, drizzle_orm_1.desc)((0, drizzle_orm_1.sql) `(${schema_1.users.email} LIKE ${`${escapeLike(q)}%`})`), (0, drizzle_orm_1.asc)(schema_1.users.firstName), (0, drizzle_orm_1.asc)(schema_1.users.id))
             .limit(limit);
     }
     /**

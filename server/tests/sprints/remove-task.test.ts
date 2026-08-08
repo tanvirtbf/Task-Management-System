@@ -162,8 +162,8 @@ describe("DELETE /api/v1/sprints/:id/tasks/:taskId", () => {
         });
     });
 
-    describe("authorization (🔐 any member)", () => {
-        it.each<Role>(["owner", "admin", "member", "guest"])(
+    describe("authorization (sprint.assign_tasks — internal roles)", () => {
+        it.each<Role>(["owner", "admin", "member"])(
             "allows a %s to detach (204)",
             async (role) => {
                 const { client, workspaceId } = await setup(role);
@@ -175,6 +175,17 @@ describe("DELETE /api/v1/sprints/:id/tasks/:taskId", () => {
                 expect(res.status).toBe(204);
             },
         );
+
+        // F28 (ISS-094, D12.1): same gate as attaching — revoked from Guest.
+        it("REFUSES a guest (403) — sprint.assign_tasks revoked", async () => {
+            const { client, workspaceId } = await setup("guest");
+            const s = await makeSprint({ workspaceId });
+            const taskId = await taskInSprint(workspaceId, s.id);
+            const res = await client.delete(
+                `/api/v1/sprints/${s.id}/tasks/${taskId}`,
+            );
+            expect(res.status).toBe(403);
+        });
     });
 
     describe("authentication", () => {

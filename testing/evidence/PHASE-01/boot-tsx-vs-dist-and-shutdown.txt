@@ -1,0 +1,19 @@
+════════════════════════════════════════════════════════════════════════════════════════
+BOOT A — tsx src/server.ts  (dev command)
+    2199  10:16:25 info Database connected successfully.
+    2206  10:16:25 info Permission catalog synced {"permissions":56}
+   16727  10:16:40 info Listening on port 5581
+   16768  >>> PORT OPEN <<<
+
+  --- SIGINT graceful-shutdown probe ---
+        (no shutdown output — Windows terminates without delivering the signal)
+  port still open after kill? true
+════════════════════════════════════════════════════════════════════════════════════════
+BOOT B — node dist/server.js  (prod command)
+     389  10:16:43 info Database connected successfully.
+     396  10:16:43 info Permission catalog synced {"permissions":56}
+    1151  10:16:44 info Listening on port 5582
+    1218  >>> PORT OPEN <<<
+
+  --- SIGTERM graceful-shutdown probe ---
+        (no shutdown output — SIGTERM is not deliverable on Windows)

@@ -1,0 +1,10 @@
+F7 gate — 8 modules, serial, FINAL code (post-dedupe) — 2026-08-04T13:08:27+06:00
+rbac               Test Suites: 11 passed, 11 total|Tests:       286 passed, 286 total|
+tasks              Test Suites: 1 failed, 9 passed, 10 total|Tests:       1 failed, 358 passed, 359 total|
+collab             Test Suites: 2 passed, 2 total|Tests:       47 passed, 47 total|
+attachments        Test Suites: 6 passed, 6 total|Tests:       106 passed, 106 total|
+taskdeps           Test Suites: 3 passed, 3 total|Tests:       67 passed, 67 total|
+workspaceActivity  Test Suites: 2 passed, 2 total|Tests:       41 passed, 41 total|
+eng                Test Suites: 3 passed, 3 total|Tests:       78 passed, 78 total|
+search             Test Suites: 1 passed, 1 total|Tests:       32 passed, 32 total|
+gate finished 2026-08-04T13:33:30+06:00

@@ -18,6 +18,7 @@ const ListsRepo_1 = require("../repositories/ListsRepo");
 const StatusesRepo_1 = require("../repositories/StatusesRepo");
 const TaskTypesRepo_1 = require("../repositories/TaskTypesRepo");
 const TasksRepo_1 = require("../repositories/TasksRepo");
+const AttachmentsRepo_1 = require("../repositories/AttachmentsRepo");
 const TaskMembershipRepo_1 = require("../repositories/TaskMembershipRepo");
 const UsersRepo_1 = require("../repositories/UsersRepo");
 const TagsRepo_1 = require("../repositories/TagsRepo");
@@ -25,6 +26,7 @@ const TaskActivityRepo_1 = require("../repositories/TaskActivityRepo");
 const NotificationsRepo_1 = require("../repositories/NotificationsRepo");
 const TasksService_1 = require("../services/TasksService");
 const TaskWriteService_1 = require("../services/TaskWriteService");
+const WorkspaceRepo_1 = require("../repositories/WorkspaceRepo");
 const FormsService_1 = require("../services/FormsService");
 const FormsController_1 = require("../controllers/FormsController");
 const forms_1 = require("../validators/forms");
@@ -55,7 +57,7 @@ const notificationsRepo = new NotificationsRepo_1.NotificationsRepo(db);
 // so it reuses the §10 TaskWriteService (own transaction, default status/type
 // resolution, activity + notifications).
 const tasksReadService = new TasksService_1.TasksService(listsRepo, tasksRepo);
-const taskWriteService = new TaskWriteService_1.TaskWriteService(db, listsRepo, statusesRepo, taskTypesRepo, tasksRepo, membershipRepo, usersRepo, tagsRepo, activityRepo, notificationsRepo, tasksReadService, logger_1.default);
+const taskWriteService = new TaskWriteService_1.TaskWriteService(db, listsRepo, statusesRepo, taskTypesRepo, tasksRepo, membershipRepo, usersRepo, tagsRepo, activityRepo, notificationsRepo, new AttachmentsRepo_1.AttachmentsRepo(db), new WorkspaceRepo_1.WorkspaceRepo(db), tasksReadService, logger_1.default);
 const formsService = new FormsService_1.FormsService(db, formsRepo, formFieldsRepo, formSubmissionsRepo, customFieldsRepo, listsRepo, taskWriteService, notificationsRepo, logger_1.default);
 const controller = new FormsController_1.FormsController(formsService, logger_1.default);
 const admin = (0, requirePermission_1.requirePermission)("form.manage");
@@ -80,7 +82,7 @@ router.patch("/forms/:id/fields/reorder", authenticate_1.default, admin, forms_1
 router.post("/forms/:id/fields", authenticate_1.default, admin, forms_1.addFieldValidator, validate_1.validate, (req, res, next) => controller.addField(req, res, next));
 // ─── #11 GET /api/v1/forms/:id/submissions ────────────────────────────────────
 // 🔐 Any member. Newest-first, cursor-paginated submissions for a form.
-router.get("/forms/:id/submissions", authenticate_1.default, forms_1.listSubmissionsValidator, validate_1.validate, (req, res, next) => controller.listSubmissions(req, res, next));
+router.get("/forms/:id/submissions", authenticate_1.default, (0, requirePermission_1.requirePermission)("form.view_submissions"), forms_1.listSubmissionsValidator, validate_1.validate, (req, res, next) => controller.listSubmissions(req, res, next));
 // ─── #3 GET /api/v1/forms/:id ─────────────────────────────────────────────────
 // 🔐 Any member. One form (admin view, fields inline). Catch-all `:id`, declared
 // after the more-specific `/forms/:id/...` routes above.

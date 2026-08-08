@@ -253,7 +253,21 @@ describe("P28 sweep — snapshot head vs current head (H-12, after a head change
 });
 
 describe("P28 sweep — deactivated head", () => {
-    it("deactivation clears the headship in-tx; the live access token keeps only non-head powers; admins keep the loop running headless", async () => {
+    /**
+     * ⚠️ Rewritten at F28's sweep — this spec pinned PRE-F22 behaviour and the
+     * module had not run since (absent from every F22–F27 gate).
+     *
+     * F22 (ISS-019): the headship SURVIVES deactivation — the old in-tx
+     * clearing silently orphaned the department. And the ≤15-min live access
+     * token behaves for head powers exactly as it does for everything else:
+     * `PolicyService` deliberately resolves a deactivated account's full
+     * permission set until the token dies ("status enforced at refresh, not
+     * here" — the documented auth-layer decision), so with the pointer intact
+     * the head gates keep answering yes for that window. Deactivation revokes
+     * every refresh session in the same transaction, which is what actually
+     * ends the account's access.
+     */
+    it("deactivation KEEPS the headship; the ≤15-min live token keeps head powers; snapshots stay honest", async () => {
         const s = await seedDept();
         const gen = await s.headClient
             .post("/api/v1/reports/generate")
@@ -266,36 +280,33 @@ describe("P28 sweep — deactivated head", () => {
         );
         expect([200, 204]).toContain(deact.status);
 
-        // Headship is gone from the space (same tx as the status flip).
+        // F22: the pointer survives the status flip.
         const [row] = await getDb()
             .select({ headUserId: spaces.headUserId })
             .from(spaces)
             .where(eq(spaces.id, s.sp.id));
-        expect(row.headUserId).toBeNull();
+        expect(row.headUserId).toBe(s.head.id);
 
-        // The ≤15-min live access token (API_DESIGN §2/§4: only refresh is
-        // revoked) no longer passes any CURRENT-headship gate.
+        // The ≤15-min live access token still passes the CURRENT-headship
+        // gates — the documented window, same as every other grant.
         const exSummary = await s.headClient.get(
             `/api/v1/spaces/${s.sp.id}/review-summary`,
         );
-        expect(exSummary.status).toBe(403);
-        expect(exSummary.body.error.code).toBe("review.not_head");
+        expect(exSummary.status).toBe(200);
         const exGen = await s.headClient
             .post("/api/v1/reports/generate")
             .send({ space_id: s.sp.id, week_start: WEEK_BEFORE });
-        expect(exGen.status).toBe(403);
+        expect(exGen.status).toBe(200);
+        // A fresh report snapshots the SURVIVING pointer — the department is
+        // never headless, which is the point of F22.
+        expect(exGen.body.head_user_id).toBe(s.head.id);
 
-        // HR continues headless: generate works, snapshot head is null…
-        const headless = await s.ownerClient
-            .post("/api/v1/reports/generate")
-            .send({ space_id: s.sp.id, week_start: WEEK_BEFORE });
-        expect(headless.status).toBe(200);
-        expect(headless.body.head_user_id).toBeNull();
+        // Admins keep the loop running regardless of the head's status…
+        const adminRead = await s.ownerClient.get(`/api/v1/reports/${repId}`);
+        expect(adminRead.status).toBe(200);
 
         // …and the OLD report's snapshot stays the deactivated user forever.
-        const oldRep = await s.ownerClient.get(`/api/v1/reports/${repId}`);
-        expect(oldRep.status).toBe(200);
-        expect(oldRep.body.head_user_id).toBe(s.head.id);
+        expect(adminRead.body.head_user_id).toBe(s.head.id);
     });
 });
 

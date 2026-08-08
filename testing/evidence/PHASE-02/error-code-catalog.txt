@@ -1,0 +1,100 @@
+CODES THROWN IN server/src : 140
+CODES LISTED IN API_DESIGN §32 : 37
+
+=== A. IN THE SPEC BUT NEVER THROWN ANYWHERE (spec promises a code the server cannot emit) ===
+  customer.duplicate_phone
+  customer.invalid_phone
+  health.dependency_down
+  list.has_open_tasks
+  sprint.overlap
+  tag.in_use
+  task.cannot_complete_blocked
+
+=== B. THROWN BUT NOT IN THE SPEC CATALOG (undocumented codes a client may receive) ===
+  count: 110
+  assignment.not_found              server/src/services/RolesAdminService.ts:315
+  assistant.empty_reply             server/src/services/AssistantService.ts:105
+  assistant.not_configured          server/src/routes/assistant.ts:53
+  assistant.rate_limited            server/src/services/AssistantService.ts:292
+  assistant.timeout                 server/src/services/AssistantService.ts:300
+  assistant.upstream_error          server/src/services/AssistantService.ts:307
+  attachment.empty                  server/src/controllers/AttachmentsController.ts:66
+  attachment.not_found              server/src/services/AttachmentsService.ts:361
+  attachment.scope_unsupported      server/src/services/AttachmentsService.ts:91
+  auth.incorrect_password           server/src/services/AuthService.ts:384
+  auth.invalid_token                middlewares/errorHandler.ts (express-jwt fallback)
+  auth.password_unchanged           server/src/services/AuthService.ts:390
+  auth.reset_token_invalid          server/src/services/AuthService.ts:351
+  auth.token_config_missing         server/src/services/TokenService.ts:16
+  auth.unauthorized                 middlewares/internalAuth.ts + AppError.unauthorized default
+  bad_request                       middlewares/errorHandler.ts inferHttpErrorCode
+  checklist.not_found               server/src/services/ChecklistsService.ts:316
+  checklist_item.invalid_assignee   server/src/services/ChecklistsService.ts:386
+  checklist_item.invalid_parent     server/src/services/ChecklistsService.ts:410
+  checklist_item.not_found          server/src/services/ChecklistsService.ts:344
+  comment.edit_window_expired       server/src/services/CommentsService.ts:172
+  comment.forbidden_delete          server/src/services/CommentsService.ts:192
+  comment.not_author                server/src/services/CommentsService.ts:166
+  comment.not_found                 server/src/services/CommentsService.ts:228
+  comment.parent_not_found          server/src/services/CommentsService.ts:77
+  comment.reply_to_reply            server/src/services/CommentsService.ts:83
+  conflict                          middlewares/errorHandler.ts inferHttpErrorCode
+  conversation.not_found            server/src/controllers/AssistantController.ts:250
+  custom_field.invalid_scope        server/src/services/CustomFieldsService.ts:484
+  custom_field.not_found            server/src/services/CustomFieldsService.ts:218
+  dep.duplicate                     server/src/services/TaskDependenciesService.ts:191
+  dep.not_found                     server/src/services/TaskDependenciesService.ts:253
+  eng.not_configured                server/src/services/EngineeringService.ts:179
+  form.encryption_unavailable       server/src/services/FormsService.ts:639
+  form.invalid_field_key            server/src/services/FormsService.ts:831
+  form.not_found                    server/src/services/FormsService.ts:383
+  form_field.duplicate              server/src/services/FormsService.ts:428
+  form_field.not_found              server/src/services/FormsService.ts:450
+  form_field.not_in_form            server/src/services/FormsService.ts:500
+  incident.not_incident             server/src/services/EngineeringService.ts:337
+  incident.not_resolved             server/src/services/EngineeringService.ts:343
+  internal                          middlewares/errorHandler.ts (unknown error)
+  invitation.already_accepted       server/src/services/AuthService.ts:582
+  invitation.expired                server/src/services/AuthService.ts:655
+  invitation.not_found              server/src/services/AuthService.ts:643
+  list.invalid_task_type            server/src/services/ListService.ts:146
+  list.not_archived                 server/src/services/ListService.ts:494
+  list.not_empty                    server/src/services/ListService.ts:502
+  not_found                         middlewares/errorHandler.ts inferHttpErrorCode
+  notification.not_found            server/src/services/NotificationsService.ts:203
+  on_call.invalid_engineer          server/src/services/OnCallService.ts:95
+  on_call.not_found                 server/src/services/OnCallService.ts:167
+  pagination.invalid_cursor         server/src/services/FormsService.ts:916
+  report.forbidden                  server/src/services/ReportsService.ts:320
+  report.invalid_week               server/src/services/ReportsService.ts:406
+  report.not_found                  server/src/services/ReportsService.ts:303
+  review.forbidden                  server/src/services/ReviewsService.ts:368
+  review.not_completed              server/src/services/ReviewsService.ts:225
+  review.not_head                   server/src/services/ReviewsService.ts:167
+  role.escalation_blocked           server/src/services/RolesAdminService.ts:453
+  role.key_taken                    server/src/services/RolesAdminService.ts:162
+  role.last_admin                   server/src/services/RolesAdminService.ts:493
+  role.not_found                    server/src/services/RolesAdminService.ts:395
+  role.owner_immutable              server/src/services/RolesAdminService.ts:402
+  role.system_immutable             server/src/services/RolesAdminService.ts:241
+  role.unknown_permission           server/src/services/RolesAdminService.ts:414
+  role.unsupported_scope            server/src/services/RolesAdminService.ts:421
+  route.not_found                   server/src/middlewares/notFound.ts:16
+  space.archived                    server/src/services/ListService.ts:129
+  space.has_reports                 server/src/services/SpacesService.ts:452
+  space.head_invalid                server/src/services/SpacesService.ts:223
+  space.not_archived                server/src/services/SpacesService.ts:440
+  space.not_empty                   server/src/services/SpacesService.ts:446
+  space.not_found                   server/src/services/ListService.ts:119
+  sprint.another_active             server/src/services/SprintsService.ts:328
+  sprint.duplicate                  server/src/services/SprintsService.ts:170
+  sprint.invalid_status             server/src/services/SprintsService.ts:316
+  sprint.not_found                  server/src/services/SprintsService.ts:121
+  sprint.task_not_in_sprint         server/src/services/SprintsService.ts:565
+  status.duplicate                  server/src/services/StatusesService.ts:151
+  status.last_in_group              server/src/services/StatusesService.ts:300
+  status.not_found                  server/src/services/StatusesService.ts:179
+  tag.duplicate                     server/src/services/TagService.ts:97
+  tag.not_found                     server/src/services/TagService.ts:131
+  task.duplicate_custom_id          server/src/services/TaskWriteService.ts:426
+  task.invalid_ass

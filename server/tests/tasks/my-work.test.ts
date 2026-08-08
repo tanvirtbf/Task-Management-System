@@ -14,6 +14,7 @@ import { getDb } from "../../src/db/client";
 import { tasks, taskAssignees } from "../../src/db/schema";
 import { Config } from "../../src/config";
 import type { Role } from "../../src/constants";
+import { dhakaDayOffset } from "../test-utils/dates";
 
 /**
  * Tests for `GET /api/v1/tasks/my-work` (§10 #11) — the caller's task dashboard.
@@ -34,16 +35,20 @@ const signAccess = (
     jwt.sign(
         { sub: user.id, role: user.role, workspaceId: user.workspaceId },
         secret,
-        { algorithm: "HS256", ...opts },
+        { algorithm: "HS256", expiresIn: "15m", ...opts },
     );
 
 const db = () => getDb();
-const dayOffset = (n: number): Date => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    d.setDate(d.getDate() + n);
-    return d;
-};
+/**
+ * A due-date `n` days from today, on the **Dhaka** calendar at UTC midnight.
+ *
+ * F3: this used `setHours(0,0,0,0)` on a local Date. That is local midnight,
+ * which a DATE column now stores as the *previous* day (the driver is pinned to
+ * `+00:00`), so a task seeded as "due today" arrived as "due yesterday" and
+ * landed in the overdue bucket. The service buckets against `dhakaToday()`, so
+ * the fixture has to name days on that same calendar. See `test-utils/dates.ts`.
+ */
+const dayOffset = dhakaDayOffset;
 const assign = async (taskId: string, userId: string) =>
     db().insert(taskAssignees).values({ taskId, userId });
 const setDue = async (taskId: string, due: Date | null) =>

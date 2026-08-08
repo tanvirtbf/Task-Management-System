@@ -11,6 +11,7 @@ import { TaskActivityController } from "../controllers/TaskActivityController";
 import { TaskActivityService } from "../services/TaskActivityService";
 import { UsersRepo } from "../repositories/UsersRepo";
 import { TasksRepo } from "../repositories/TasksRepo";
+import { AttachmentsRepo } from "../repositories/AttachmentsRepo";
 import { ListsRepo } from "../repositories/ListsRepo";
 import { TaskMembershipRepo } from "../repositories/TaskMembershipRepo";
 import { TaskActivityRepo } from "../repositories/TaskActivityRepo";
@@ -19,6 +20,7 @@ import { StatusesRepo } from "../repositories/StatusesRepo";
 import { TaskTypesRepo } from "../repositories/TaskTypesRepo";
 import { TagsRepo } from "../repositories/TagsRepo";
 import { TaskWriteService } from "../services/TaskWriteService";
+import { WorkspaceRepo } from "../repositories/WorkspaceRepo";
 import { TaskWriteController } from "../controllers/TaskWriteController";
 import { SpacesRepo } from "../repositories/SpacesRepo";
 import { ReviewsRepo } from "../repositories/ReviewsRepo";
@@ -50,6 +52,7 @@ import {
     watchSelfValidator,
 } from "../validators/tasks";
 import authenticate from "../middlewares/authenticate";
+import { requirePermission } from "../middlewares/requirePermission";
 import type { AuthRequest } from "../types";
 import type {
     AddAssigneesRequest,
@@ -128,6 +131,8 @@ const taskWriteService = new TaskWriteService(
     tagsRepo,
     activityRepo,
     notificationsRepo,
+    new AttachmentsRepo(db),
+    new WorkspaceRepo(db),
     tasksService,
     logger,
 );
@@ -143,6 +148,7 @@ const taskWriteController = new TaskWriteController(taskWriteService, logger);
 router.post(
     "/",
     authenticate,
+    requirePermission("task.create"),
     createTaskValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -156,6 +162,7 @@ router.post(
 router.post(
     "/bulk",
     authenticate,
+    requirePermission("task.edit"),
     bulkTasksValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -169,6 +176,7 @@ router.post(
 router.post(
     "/:id/assignees",
     authenticate,
+    requirePermission("task.assign"),
     addAssigneesValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -187,6 +195,7 @@ router.post(
 router.delete(
     "/:id/assignees/:userId",
     authenticate,
+    requirePermission("task.assign"),
     deleteAssigneeValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -224,12 +233,23 @@ router.delete(
 );
 
 // ─── POST /api/v1/tasks/:id/tags ──────────────────────────────────────────────
-// 🔐 Any workspace member. Applies one or more tags (idempotent), validating
-// each belongs to the caller's workspace. Writes a `tag_added` task_activity row
+// 🔐 `task.edit`. Applies one or more tags (idempotent), validating each
+// belongs to the caller's workspace. Writes a `tag_added` task_activity row
 // and bumps the task ETag. No notification. Returns 204.
+//
+// F34 (ISS-095): these two routes carried NO permission gate at all — tagging
+// never had its own catalog key, so F7's sweep had nothing to attach, and
+// after D12.1 a guest could still re-tag every task in the workspace (found
+// because the guest-revocation fallout mapped onto every revoked key EXCEPT
+// these two routes). A tag is task metadata, so the gate is `task.edit` —
+// exactly the issue's prescription: every internal role already holds it, the
+// guest does not, zero grant changes. (The neighbouring `/watchers/self`
+// routes stay ungated ON PURPOSE: a personal subscribe is correct for a
+// read persona.)
 router.post(
     "/:id/tags",
     authenticate,
+    requirePermission("task.edit"),
     addTagsValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -237,12 +257,13 @@ router.post(
 );
 
 // ─── DELETE /api/v1/tasks/:id/tags/:tagId ─────────────────────────────────────
-// 🔐 Any workspace member. Removes one tag (idempotent — a no-op for a tag not
-// applied/absent), writes a `tag_removed` task_activity row, and bumps the task
-// ETag. No notification. Returns 204.
+// 🔐 `task.edit` (F34 / ISS-095 — see the POST above). Removes one tag
+// (idempotent — a no-op for a tag not applied/absent), writes a `tag_removed`
+// task_activity row, and bumps the task ETag. No notification. Returns 204.
 router.delete(
     "/:id/tags/:tagId",
     authenticate,
+    requirePermission("task.edit"),
     removeTagValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -346,6 +367,7 @@ router.get(
 router.patch(
     "/:id",
     authenticate,
+    requirePermission("task.edit"),
     updateTaskValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -357,6 +379,7 @@ router.patch(
 router.post(
     "/:id/archive",
     authenticate,
+    requirePermission("task.archive"),
     getTaskValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -368,6 +391,7 @@ router.post(
 router.post(
     "/:id/unarchive",
     authenticate,
+    requirePermission("task.archive"),
     getTaskValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>
@@ -380,6 +404,7 @@ router.post(
 router.delete(
     "/:id",
     authenticate,
+    requirePermission("task.delete"),
     getTaskValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>

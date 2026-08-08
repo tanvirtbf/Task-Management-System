@@ -27,3 +27,29 @@
 | `002_task_reviews.sql` | ✅ 2026-07-22 | ✅ 2026-07-22 | ⏳ pending (no prod yet) |
 | `003_department_reports.sql` | ✅ 2026-07-22 | ✅ 2026-07-22 | ⏳ pending (no prod yet) |
 | `004_rbac.sql` | ✅ 2026-07-25 | ✅ 2026-07-25 | ⏳ pending (no prod yet) |
+| `005_clock_views.sql` | ✅ 2026-08-03 | ✅ 2026-08-03 | ⏳ pending (no prod yet) |
+| `006_counters.sql` | ✅ 2026-08-05 | ✅ 2026-08-05 | ⏳ pending (no prod yet) |
+| `007_orphans_and_cascades.sql` | ✅ 2026-08-06 | ✅ 2026-08-06 | ⏳ pending (no prod yet) |
+| `008_form_submission_retention.sql` | ✅ 2026-08-06 | ✅ 2026-08-06 | ⏳ pending (no prod yet) |
+| `009_notification_types.sql` | ✅ 2026-08-06 | ✅ 2026-08-06 | ⏳ pending (no prod yet) |
+| `010_name_uniqueness.sql` | ✅ 2026-08-06 | ✅ 2026-08-06 ⚠️ after renaming 6 dupes | ⏳ pending (no prod yet) |
+| `011_guest_role_tightening.sql` | ✅ 2026-08-06 | ✅ 2026-08-06 | ⏳ pending (no prod yet) |
+| `012_drop_fiscal_year.sql` | ✅ 2026-08-06 | ✅ 2026-08-06 | ⏳ pending (no prod yet) |
+| `013_perf_indexes.sql` | ✅ 2026-08-06 | ✅ 2026-08-06 | ⏳ pending (no prod yet) |
+| `014_overdue_alerts.sql` | ✅ 2026-08-08 | ✅ 2026-08-08 | ⏳ pending (no prod yet) |
+
+> `005` ships with the F3 clock fix and is only correct alongside it. If you apply
+> `005`, the app's `DB_TIMEZONE` **must** be `+00:00` (see `server/.env.example`).
+>
+> `011` + `012` ship with F28. `011` rewrites the seeded **Guest** role's grants (19 → 7,
+> read-and-comment) and its description; `012` drops `fiscal_year_start_month` and its CHECK.
+> Both are information_schema-gated and re-runnable. Order within the pair does not matter,
+> but both must land with the F28 server build — the seeded-role specs and the workspace
+> serializer assume them.
+>
+> `014` ships with the assignment/overdue-email build (2026-08-08): the Drizzle schema
+> reads `tasks.overdue_notified_at` and the `overdue-alert` job writes `overdue`-typed
+> notifications, so apply `014` **before or with** that server build. It re-adds the
+> `overdue` ENUM value that `009` removed — legitimately this time, because the job is
+> its producer. Gated + re-runnable. Remember the new cron line
+> (`deploy/cron/bbtasks-jobs`: `*/10` overdue-alert) when rolling prod.

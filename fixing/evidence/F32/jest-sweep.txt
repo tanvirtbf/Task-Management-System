@@ -1,0 +1,270 @@
+F32 full sweep — Fri Aug  7 00:18:40 BST 2026 — every module solo, --runInBand
+=== assistant ===
+PASS tests/assistant/chat.test.ts (25.101 s)
+PASS tests/assistant/scoping.test.ts (10.358 s)
+PASS tests/assistant/permission.test.ts (6.337 s)
+PASS tests/assistant/route-parity.test.ts
+PASS tests/assistant/tool-roundtrip.test.ts (5.416 s)
+PASS tests/assistant/disabled.test.ts
+PASS tests/assistant/openai-client.test.ts
+PASS tests/assistant/kb-coverage.test.ts
+Test Suites: 8 passed, 8 total
+Tests:       127 passed, 127 total
+=== attachments ===
+PASS tests/attachments/finalize.test.ts (29.76 s)
+PASS tests/attachments/sign.test.ts (10.012 s)
+PASS tests/attachments/list.test.ts (9.308 s)
+PASS tests/attachments/download.test.ts (8.233 s)
+PASS tests/attachments/delete.test.ts (9.611 s)
+PASS tests/attachments/r2-service.unit.test.ts
+Test Suites: 6 passed, 6 total
+Tests:       106 passed, 106 total
+=== auth ===
+PASS tests/auth/refresh.test.ts (70.479 s)
+PASS tests/auth/reset-password.test.ts (45.42 s)
+PASS tests/auth/logout.test.ts (59.714 s)
+PASS tests/auth/me.test.ts (61.262 s)
+PASS tests/auth/logout-all.test.ts (44.162 s)
+PASS tests/auth/login.test.ts (41.565 s)
+PASS tests/auth/forgot-password.test.ts (34.267 s)
+PASS tests/auth/accept-invitation.test.ts (21.282 s)
+PASS tests/auth/change-password.test.ts (17.375 s)
+Test Suites: 9 passed, 9 total
+Tests:       339 passed, 339 total
+=== collab ===
+PASS tests/checklists/checklists.test.ts (51.942 s)
+PASS tests/comments/comments.test.ts (49.804 s)
+Test Suites: 2 passed, 2 total
+Tests:       49 passed, 49 total
+=== customfields ===
+PASS tests/custom-fields/list.test.ts (20.578 s)
+PASS tests/custom-fields/clear-value.test.ts
+PASS tests/custom-fields/create.test.ts
+PASS tests/custom-fields/delete.test.ts (5.716 s)
+
+──────── PART 2 (resumed Sat Aug  8 10:26:20 BST 2026 — part 1 died mid-customfields) ────────
+=== customfields ===
+FAIL tests/custom-fields/list.test.ts (59.047 s)
+  ● GET /api/v1/custom-fields › Happy path › returns the workspace's fields as a bare array in the exact wire shape
+PASS tests/custom-fields/clear-value.test.ts
+PASS tests/custom-fields/create.test.ts (5.072 s)
+PASS tests/custom-fields/delete.test.ts
+PASS tests/custom-fields/update.test.ts (18.054 s)
+PASS tests/custom-fields/list-for-list.test.ts (13.724 s)
+PASS tests/custom-fields/set-value.test.ts (19.124 s)
+Test Suites: 1 failed, 6 passed, 7 total
+Tests:       1 failed, 101 passed, 102 total
+=== deptreview ===
+FAIL tests/dept-review/head-assignment.test.ts (71.546 s)
+  ● PATCH /api/v1/spaces/:id — head_user_id (Dept Review V1) › Happy path › owner assigns an active member as head; response carries head_user_id + hydrated head
+PASS tests/dept-review/permissions-isolation.test.ts (27.265 s)
+PASS tests/dept-review/review-write.test.ts (18.668 s)
+PASS tests/dept-review/queue-summary.test.ts (18.51 s)
+PASS tests/dept-review/notifications-ux.test.ts (10.699 s)
+PASS tests/dept-review/review-reads.test.ts (18.929 s)
+PASS tests/dept-review/review-reset.test.ts (15.11 s)
+PASS tests/dept-review/report-stats.test.ts (14.378 s)
+FAIL tests/dept-review/reports-actions.test.ts (71.961 s)
+  ● POST /api/v1/reports/generate (A-8) › head generates the default (last completed) week; fanout fires once; regenerate refreshes without re-notifying
+PASS tests/dept-review/reports-persistence.test.ts (37.431 s)
+PASS tests/dept-review/report-generation.test.ts (14.033 s)
+PASS tests/dept-review/guard.test.ts (12.952 s)
+PASS tests/dept-review/wire-sync.test.ts (10.521 s)
+PASS tests/dept-review/harness.smoke.test.ts (10.96 s)
+Test Suites: 2 failed, 12 passed, 14 total
+Tests:       2 failed, 120 passed, 122 total
+=== eng ===
+PASS tests/eng/report-bug.test.ts (58.944 s)
+PASS tests/eng/postmortem.test.ts (18.941 s)
+PASS tests/eng/home.test.ts (16.999 s)
+Test Suites: 3 passed, 3 total
+Tests:       79 passed, 79 total
+=== forms ===
+PASS tests/forms/fields.test.ts (107.088 s)
+PASS tests/forms/update-delete.test.ts (34.1 s)
+PASS tests/forms/create.test.ts (31.97 s)
+PASS tests/forms/public-submit.test.ts (28.83 s)
+PASS tests/forms/list.test.ts (22.222 s)
+PASS tests/forms/submissions.test.ts (15.311 s)
+PASS tests/forms/public-submit-validation.test.ts (14.182 s)
+PASS tests/forms/public-view.test.ts (7.673 s)
+Test Suites: 8 passed, 8 total
+Tests:       85 passed, 85 total
+=== health ===
+PASS tests/health/security-headers.test.ts (28.793 s)
+PASS tests/health/health.test.ts
+Test Suites: 2 passed, 2 total
+Tests:       14 passed, 14 total
+=== home ===
+PASS tests/home/home.test.ts (24.354 s)
+Test Suites: 1 passed, 1 total
+Tests:       23 passed, 23 total
+=== jobs ===
+PASS tests/jobs/attachment-janitor.test.ts (62.455 s)
+PASS tests/jobs/session-cleanup.test.ts (20.263 s)
+PASS tests/jobs/r2-purge.test.ts (17.09 s)
+PASS tests/jobs/snooze-wake.test.ts (19.57 s)
+PASS tests/jobs/form-submission-expiry-route.test.ts
+Test Suites: 5 passed, 5 total
+Tests:       32 passed, 32 total
+=== lists ===
+FAIL tests/lists/create.test.ts (93.051 s)
+  ● POST /api/v1/lists › Happy path › creates a list and returns 201 with the bare wire List
+PASS tests/lists/delete.test.ts (20.74 s)
+PASS tests/lists/update.test.ts (25.326 s)
+PASS tests/lists/archive.test.ts (22.758 s)
+PASS tests/lists/unarchive.test.ts (22.504 s)
+Test Suites: 1 failed, 4 passed, 5 total
+Tests:       1 failed, 186 passed, 187 total
+=== membership ===
+FAIL tests/membership/assignees.remove.test.ts (88.384 s)
+  ● DELETE /api/v1/tasks/:id/assignees/:userId › Happy path › removes an assignee, returns 204, writes an assignee_removed activity row and bumps updated_at
+PASS tests/membership/tags.add.test.ts (29.157 s)
+PASS tests/membership/tags.remove.test.ts (21.698 s)
+PASS tests/membership/watchers.add.test.ts (24.004 s)
+PASS tests/membership/watchers.remove.test.ts (24.473 s)
+Test Suites: 1 failed, 4 passed, 5 total
+Tests:       1 failed, 96 passed, 97 total
+=== notifications ===
+FAIL tests/notifications/preferences.test.ts (83.42 s)
+  ● GET /api/v1/notifications/preferences › returns every notification type defaulted to in-app on (200)
+PASS tests/notifications/feed.test.ts (24.779 s)
+PASS tests/notifications/read-unread.test.ts (19.275 s)
+PASS tests/notifications/snooze.test.ts (17.777 s)
+PASS tests/notifications/delete.test.ts (17.911 s)
+PASS tests/notifications/unread-count.test.ts (14.04 s)
+PASS tests/notifications/mark-all-read.test.ts (13.637 s)
+Test Suites: 1 failed, 6 passed, 7 total
+Tests:       1 failed, 85 passed, 86 total
+=== oncall ===
+PASS tests/on-call/set.test.ts (66.086 s)
+PASS tests/on-call/schedule.test.ts (19.595 s)
+PASS tests/on-call/delete.test.ts (18.337 s)
+PASS tests/on-call/current.test.ts (17.535 s)
+Test Suites: 4 passed, 4 total
+Tests:       81 passed, 81 total
+=== rbac ===
+FAIL tests/rbac/can.test.ts (66.233 s)
+  ● against the database — the whole chain › a space-scoped role reaches its own space and nowhere else
+PASS tests/rbac/scope.test.ts (18.639 s)
+PASS tests/rbac/policy-resolve.test.ts (20.591 s)
+PASS tests/rbac/principals.test.ts (17.565 s)
+PASS tests/rbac/roles-api.test.ts (22.697 s)
+PASS tests/rbac/repos.test.ts (17.004 s)
+PASS tests/rbac/harness.smoke.test.ts (17.738 s)
+PASS tests/rbac/me-permissions.test.ts (18.254 s)
+PASS tests/rbac/catalog.test.ts
+PASS tests/rbac/system-roles.test.ts
+PASS tests/rbac/schema.test.ts
+Test Suites: 1 failed, 10 passed, 11 total
+Tests:       1 failed, 288 passed, 289 total
+=== search ===
+PASS tests/search/search.test.ts (69.113 s)
+Test Suites: 1 passed, 1 total
+Tests:       32 passed, 32 total
+=== sla ===
+FAIL tests/sla/breached.test.ts (68.337 s)
+  ● GET /api/v1/sla/breached › Auth › 401 without a token
+PASS tests/sla/override.test.ts (17.809 s)
+Test Suites: 1 failed, 1 passed, 2 total
+Tests:       1 failed, 23 passed, 24 total
+=== spaces ===
+FAIL tests/spaces/create.test.ts (78.036 s)
+  ● POST /api/v1/spaces › Happy path › returns 201 with the bare wire Space for an admin
+PASS tests/spaces/list.test.ts (34.535 s)
+PASS tests/spaces/update.test.ts (25.253 s)
+PASS tests/spaces/get.test.ts (25.111 s)
+PASS tests/spaces/archive.test.ts (21.055 s)
+PASS tests/spaces/delete.test.ts (21.655 s)
+PASS tests/spaces/unarchive.test.ts (21.987 s)
+Test Suites: 1 failed, 6 passed, 7 total
+Tests:       1 failed, 245 passed, 246 total
+=== sprints ===
+PASS tests/sprints/add-tasks.test.ts (93.144 s)
+PASS tests/sprints/create.test.ts (57.975 s)
+PASS tests/sprints/update.test.ts (49.86 s)
+PASS tests/sprints/close.test.ts (41.055 s)
+PASS tests/sprints/remove-task.test.ts (25.857 s)
+PASS tests/sprints/list.test.ts (38.895 s)
+PASS tests/sprints/start.test.ts (35.052 s)
+PASS tests/sprints/get-by-id.test.ts (20.275 s)
+PASS tests/sprints/delete.test.ts (19.723 s)
+PASS tests/sprints/active.test.ts (13.063 s)
+Test Suites: 10 passed, 10 total
+Tests:       164 passed, 164 total
+=== sse ===
+PASS tests/sse/stream-inbox.test.ts (35.562 s)
+Test Suites: 1 passed, 1 total
+Tests:       12 passed, 12 total
+=== statuses ===
+PASS tests/statuses/reorder.test.ts (31.491 s)
+PASS tests/statuses/list.test.ts (12.243 s)
+PASS tests/statuses/create.test.ts (13.29 s)
+PASS tests/statuses/update.test.ts (11.196 s)
+PASS tests/statuses/delete.test.ts (9.641 s)
+Test Suites: 5 passed, 5 total
+Tests:       209 passed, 209 total
+=== tagsreview ===
+PASS tests/tags/list.test.ts (56.123 s)
+PASS tests/tags/update.test.ts (31.348 s)
+PASS tests/tags/create.test.ts (33.493 s)
+PASS tests/tags/delete.test.ts (24.215 s)
+Test Suites: 4 passed, 4 total
+Tests:       149 passed, 149 total
+=== taskTypes ===
+PASS tests/task-types/list.test.ts (33.464 s)
+PASS tests/task-types/update.test.ts (13.153 s)
+PASS tests/task-types/create.test.ts (11.307 s)
+PASS tests/task-types/delete.test.ts (10.333 s)
+Test Suites: 4 passed, 4 total
+Tests:       184 passed, 184 total
+=== taskdeps ===
+PASS tests/task-dependencies/create.test.ts (68.095 s)
+PASS tests/task-dependencies/get.test.ts (58.301 s)
+PASS tests/task-dependencies/delete.test.ts (38.52 s)
+Test Suites: 3 passed, 3 total
+Tests:       67 passed, 67 total
+=== tasks ===
+PASS tests/tasks/list-by-list.test.ts (246.018 s)
+PASS tests/tasks/assignees.add.test.ts (205.294 s)
+PASS tests/tasks/activity.test.ts (150.948 s)
+PASS tests/tasks/create.test.ts (154.952 s)
+PASS tests/tasks/update.test.ts (81.757 s)
+PASS tests/tasks/get-by-id.test.ts (64.389 s)
+PASS tests/tasks/lifecycle.test.ts (65.217 s)
+PASS tests/tasks/bulk.test.ts (55.292 s)
+PASS tests/tasks/subtasks.test.ts (53.714 s)
+PASS tests/tasks/my-work.test.ts (33.117 s)
+Test Suites: 10 passed, 10 total
+Tests:       374 passed, 374 total
+=== templates ===
+PASS tests/templates/apply.test.ts (26.373 s)
+PASS tests/templates/list.test.ts (8.303 s)
+PASS tests/templates/update.test.ts (8.063 s)
+PASS tests/templates/delete.test.ts (7.31 s)
+PASS tests/templates/create.test.ts (10.899 s)
+PASS tests/templates/get.test.ts
+Test Suites: 6 passed, 6 total
+Tests:       123 passed, 123 total
+=== users ===
+PASS tests/users/list.test.ts (72.592 s)
+PASS tests/users/update.test.ts (41.385 s)
+PASS tests/users/invite.test.ts (38.474 s)
+PASS tests/users/change-role.test.ts (29.029 s)
+PASS tests/users/get-by-id.test.ts (21.946 s)
+PASS tests/users/deactivate.test.ts (21.233 s)
+PASS tests/users/reset-password.test.ts (20.423 s)
+PASS tests/users/reactivate.test.ts (20.223 s)
+Test Suites: 8 passed, 8 total
+Tests:       282 passed, 282 total
+=== workspace ===
+PASS tests/workspace/patch-workspace.test.ts (61.405 s)
+PASS tests/workspace/get-workspace.test.ts (37.353 s)
+Test Suites: 2 passed, 2 total
+Tests:       83 passed, 83 total
+=== workspaceActivity ===
+PASS tests/workspace-activity/feed.test.ts (13.851 s)
+PASS tests/workspace-activity/recent.test.ts
+Test Suites: 2 passed, 2 total
+Tests:       41 passed, 41 total
+=== F32 SWEEP COMPLETE ===

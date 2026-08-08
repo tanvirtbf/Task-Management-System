@@ -1,0 +1,14 @@
+
+  === F11 concurrency ramp — AFTER (DB_POOL_QUEUE_LIMIT=0) ===
+  target: GET /lists/l-0cmjaf1cibcc65vp/tasks?limit=50  (125 tasks in the list)
+  conc  ok    failed  statuses                  p50 ms   max ms   verdict
+  5     5     0       200×5                         343      357  OK
+  10    10    0       200×10                        350      378  OK
+  15    15    0       200×15                        358      404  OK
+  20    20    0       200×20                        414      503  OK
+  30    30    0       200×30                        545      649  OK
+  50    50    0       200×50                        797     1057  OK
+  50 seq50    0       (the P40 control)                           OK
+
+  PASS — every level fully served.
+

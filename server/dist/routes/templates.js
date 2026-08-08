@@ -58,5 +58,5 @@ router.delete("/:id", authenticate_1.default, (0, requirePermission_1.requirePer
 // ─── POST /api/v1/templates/:id/apply ────────────────────────────────────────
 // 🔐 Any authenticated member may apply a template — it spawns a task +
 // checklist in their workspace. Workspace scoping comes from `req.auth`.
-router.post("/:id/apply", authenticate_1.default, templates_1.applyTemplateValidator, validate_1.validate, (req, res, next) => templatesController.apply(req, res, next));
+router.post("/:id/apply", authenticate_1.default, (0, requirePermission_1.requirePermission)("template.apply"), templates_1.applyTemplateValidator, validate_1.validate, (req, res, next) => templatesController.apply(req, res, next));
 exports.default = router;

@@ -1,0 +1,13 @@
+
+=== F30 EXPLAIN — taskmanagement_perf — after ===
+  query                   type    key used                                rows    Extra
+  list tasks              ref     idx_tasks_list_internal                 125     Using where
+  task comments           ref     idx_comments_task_created_internal      4       
+  task activity           ref     idx_task_activity_task_internal         10      Backward index scan
+  workspace activity      ref     idx_workspace_activity_ws_internal      1       Backward index scan
+  my open tasks           ref     idx_task_assignees_user                 125     Using index
+  search tasks (LIKE)     ref     uq_tasks_custom_id                      2226    Using where
+  overdue count           ref     uq_tasks_custom_id                      2226    Using where
+  volume: comments=20034  task_activity=47218  tasks=4452  workspace_activity=0
+
+  PASS — zero filesorts on the four ISS-088 queries; all four sit on their new index

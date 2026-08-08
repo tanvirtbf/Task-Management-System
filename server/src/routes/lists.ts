@@ -3,6 +3,7 @@ import express, {
     type Request,
     type Response,
 } from "express";
+import { allowQuery } from "../middlewares/allowQuery";
 import { ListController } from "../controllers/ListController";
 import { ListService } from "../services/ListService";
 import { TasksController } from "../controllers/TasksController";
@@ -91,6 +92,8 @@ router.get(
 router.get(
     "/lists",
     authenticate,
+    // F23 (ISS-014): a mistyped filter is a 422, not the full set.
+    allowQuery(["space_id","include_archived","limit","cursor"]),
     listAllValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>

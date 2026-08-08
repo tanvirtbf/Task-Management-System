@@ -299,7 +299,21 @@ describe("PATCH /api/v1/spaces/:id — head_user_id (Dept Review V1)", () => {
     });
 
     describe("Deactivation hook", () => {
-        it("deactivating the head nulls the headship; reactivation does NOT restore it", async () => {
+        /**
+         * ⚠️ F22 (ISS-019) INVERTED this behaviour, and these two specs were
+         * stale until F28's full sweep — deptreview had not run since (it was
+         * in none of the F22–F27 gates, verified against
+         * `fixing/evidence/F23/gate-final2.txt`).
+         *
+         * The old `clearHeadships` call silently orphaned the department: the
+         * weekly HR report generated headless, /dept access vanished, nobody
+         * was told, and reactivation did NOT give the headship back. F22
+         * removed it — a deactivated head cannot log in anyway (deactivation
+         * revokes every session), so keeping the pointer costs nothing and a
+         * returning head finds their department intact. Replacing them stays a
+         * one-PATCH admin act.
+         */
+        it("deactivating the head KEEPS the headship; reactivation finds it intact (F22)", async () => {
             const { owner, space, client } = await seed();
             const member = await makeUser({
                 workspaceId: owner.workspaceId,
@@ -313,20 +327,20 @@ describe("PATCH /api/v1/spaces/:id — head_user_id (Dept Review V1)", () => {
                 `/api/v1/users/${member.id}/deactivate`,
             );
             expect(deact.status).toBeLessThan(300);
-            expect(await fetchHeadColumn(space.id)).toBeNull();
+            expect(await fetchHeadColumn(space.id)).toBe(member.id);
 
             const react = await client.post(
                 `/api/v1/users/${member.id}/reactivate`,
             );
             expect(react.status).toBeLessThan(300);
-            expect(await fetchHeadColumn(space.id)).toBeNull();
+            expect(await fetchHeadColumn(space.id)).toBe(member.id);
 
             const res = await client.get(spacePath(space.id));
-            expect(res.body.head_user_id).toBeNull();
-            expect(res.body.head).toBeNull();
+            expect(res.body.head_user_id).toBe(member.id);
+            expect(res.body.head?.id).toBe(member.id);
         });
 
-        it("deactivating a multi-space head clears every headship in one go", async () => {
+        it("a multi-space head keeps EVERY headship across deactivation (F22)", async () => {
             const { owner, space, client } = await seed();
             const other = await makeSpace({
                 workspaceId: owner.workspaceId,
@@ -342,8 +356,8 @@ describe("PATCH /api/v1/spaces/:id — head_user_id (Dept Review V1)", () => {
 
             await client.post(`/api/v1/users/${member.id}/deactivate`);
 
-            expect(await fetchHeadColumn(space.id)).toBeNull();
-            expect(await fetchHeadColumn(other.id)).toBeNull();
+            expect(await fetchHeadColumn(space.id)).toBe(member.id);
+            expect(await fetchHeadColumn(other.id)).toBe(member.id);
         });
     });
 });

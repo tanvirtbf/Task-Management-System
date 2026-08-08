@@ -13,6 +13,7 @@ import { getDb } from "../../src/db/client";
 import { taskAssignees, tasks } from "../../src/db/schema";
 import { Config } from "../../src/config";
 import type { Role } from "../../src/constants";
+import { utcDate } from "../test-utils/dates";
 
 /**
  * Tests for §25 Home: `GET /api/v1/home/kpis` and `GET /api/v1/home/agenda`.
@@ -28,23 +29,20 @@ const AGENDA = "/api/v1/home/agenda";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ymd = (d: Date): string =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-const toLocalDate = (s: string): Date => {
-    const [y, m, d] = s.split("-").map(Number);
-    return new Date(y, m - 1, d);
-};
+/** DATE fixtures must be UTC midnight — see `test-utils/dates.ts` (F3). */
+const toLocalDate = utcDate;
 const todayStr = (): string => ymd(new Date());
 const daysAgoStr = (n: number): string => ymd(new Date(Date.now() - n * DAY_MS));
 
 type StatusGroup = "not_started" | "active" | "done" | "closed";
 
+/** F24 (ISS-057): a KPI is a label and a number. `trend`/`trendDirection`/
+ *  `isPositive` were hardcoded to 0/flat/false and rendered as a permanent
+ *  "— 0.0%"; `sparkline` plotted `DATE(created_at)`, not the metric. */
 interface HomeKpi {
     label: string;
     value: number;
     valueDisplay: string;
-    trend: number;
-    trendDirection: string;
-    isPositive: boolean;
-    sparkline: number[];
 }
 interface HomeKpiSet {
     myTasks: HomeKpi;
@@ -71,6 +69,8 @@ interface SeedOpts {
     slaDueAt?: Date | null;
     completedAt?: Date | null;
     reviewerId?: string | null;
+    /** F24 (ISS-059): the tile keys off this now, not `pr_status`. */
+    reviewStatus?: "approved" | "flagged" | null;
     prStatus?: "open" | "merged" | "closed" | "draft" | null;
     /** user id to assign (inserts a task_assignees row). */
     assignTo?: string | null;
@@ -103,6 +103,7 @@ const seedTask = async (f: Fixture, opts: SeedOpts = {}): Promise<string> => {
     if (opts.slaDueAt !== undefined) patch.slaDueAt = opts.slaDueAt;
     if (opts.completedAt !== undefined) patch.completedAt = opts.completedAt;
     if (opts.reviewerId !== undefined) patch.reviewerId = opts.reviewerId;
+    if (opts.reviewStatus !== undefined) patch.reviewStatus = opts.reviewStatus;
     if (opts.prStatus !== undefined) patch.prStatus = opts.prStatus;
     if (Object.keys(patch).length > 0) {
         await getDb().update(tasks).set(patch).where(eq(tasks.id, t.id));
@@ -123,7 +124,7 @@ const signAccess = (
     jwt.sign(
         { sub: user.id, role: user.role, workspaceId: user.workspaceId },
         secret,
-        { algorithm: "HS256", ...opts },
+        { algorithm: "HS256", expiresIn: "15m", ...opts },
     );
 
 const sum = (a: number[]): number => a.reduce((s, n) => s + n, 0);
@@ -147,19 +148,12 @@ describe("GET /api/v1/home/kpis", () => {
             ]);
             for (const key of Object.keys(body) as (keyof HomeKpiSet)[]) {
                 const tile = body[key];
+                // F24 (ISS-057): three keys, and none of them invented.
                 expect(Object.keys(tile).sort()).toEqual([
-                    "isPositive",
                     "label",
-                    "sparkline",
-                    "trend",
-                    "trendDirection",
                     "value",
                     "valueDisplay",
                 ]);
-                expect(tile.sparkline).toHaveLength(7);
-                expect(tile.trend).toBe(0);
-                expect(tile.trendDirection).toBe("flat");
-                expect(tile.isPositive).toBe(false);
                 expect(tile.valueDisplay).toBe(String(tile.value));
             }
             expect(body.myTasks.label).toBe("My Open Tasks");
@@ -171,7 +165,6 @@ describe("GET /api/v1/home/kpis", () => {
             const body = (await client.get(KPIS)).body as HomeKpiSet;
             for (const key of Object.keys(body) as (keyof HomeKpiSet)[]) {
                 expect(body[key].value).toBe(0);
-                expect(body[key].sparkline).toEqual([0, 0, 0, 0, 0, 0, 0]);
             }
         });
     });
@@ -192,8 +185,6 @@ describe("GET /api/v1/home/kpis", () => {
 
             const body = (await f.client.get(KPIS)).body as HomeKpiSet;
             expect(body.myTasks.value).toBe(2);
-            // all seeded today → today's bucket holds the whole value
-            expect(sum(body.myTasks.sparkline)).toBe(2);
         });
     });
 
@@ -225,15 +216,31 @@ describe("GET /api/v1/home/kpis", () => {
 
     // ─── awaitingReview ───────────────────────────────────────────────────────
     describe("awaitingReview", () => {
-        it("counts tasks where I am the reviewer and the PR is open", async () => {
+        it("counts COMPLETED, unreviewed tasks waiting on me (F24/ISS-059)", async () => {
+            // This spec used to assert `pr_status='open'` — the GitHub
+            // pull-request field, NULL on every task in the live database, so
+            // the tile read 0 for everyone forever while the dept-head review
+            // queue had real work. The metric now counts what a head would
+            // expect: completed + not yet reviewed + waiting on ME.
             const f = await fixture();
             const other = await makeUser({ workspaceId: f.ws.id });
-            await seedTask(f, { reviewerId: f.actor.id, prStatus: "open" });
-            await seedTask(f, { reviewerId: f.actor.id, prStatus: "merged" }); // not open
-            await seedTask(f, { reviewerId: other.id, prStatus: "open" }); // not me
             await seedTask(f, {
                 reviewerId: f.actor.id,
-                prStatus: "open",
+                statusGroup: "done",
+            }); // mine, completed, unreviewed → counts
+            await seedTask(f, {
+                reviewerId: f.actor.id,
+                statusGroup: "active",
+            }); // not completed yet
+            await seedTask(f, {
+                reviewerId: f.actor.id,
+                statusGroup: "done",
+                reviewStatus: "approved",
+            }); // already reviewed
+            await seedTask(f, { reviewerId: other.id, statusGroup: "done" }); // not me
+            await seedTask(f, {
+                reviewerId: f.actor.id,
+                statusGroup: "done",
                 archived: true,
             }); // archived
 

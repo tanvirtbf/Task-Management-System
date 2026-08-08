@@ -1,7 +1,7 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, count, eq, inArray } from "drizzle-orm";
 import { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../db/schema";
-import { tags } from "../db/schema";
+import { tags, taskTags } from "../db/schema";
 import { fakeId } from "../utils";
 import type { DbExecutor } from "./types";
 
@@ -146,6 +146,18 @@ export class TagsRepo {
      * soft-delete. Pass `exec` to run inside the delete tx (so the paired
      * `workspace_activity` write is atomic with this delete).
      */
+    /** F22 (ISS-011): how many tasks still carry this tag. */
+    async countTaskLinks(
+        tagId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<number> {
+        const [row] = await exec
+            .select({ n: count() })
+            .from(taskTags)
+            .where(eq(taskTags.tagId, tagId));
+        return row?.n ?? 0;
+    }
+
     async delete(
         id: string,
         workspaceId: string,

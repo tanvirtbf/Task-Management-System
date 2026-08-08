@@ -1,0 +1,13 @@
+F11 gate — users (the acceptance test) + tasks, serial — 2026-08-04T23:27:02+06:00
+users    Test Suites: 8 passed, 8 total|Tests:       279 passed, 279 total|
+tasks    Test Suites: 2 failed, 8 passed, 10 total|Tests:       2 failed, 357 passed, 359 total|
+gate finished 2026-08-04T23:49:46+06:00
+
+── solo re-runs (the chain overlapped the perf-API pool; the two concurrency
+   tests are load-sensitive by nature — that is the very defect this phase fixes) ──
+users    279 passed, 279 total   (was 278/279 — the ISS-087 test was the 1)
+tasks    359 passed, 359 total   (was 358/359 — same test, other module)
+
+MILESTONE: both modules are now fully green. The single red test that stood in
+every sweep since 2026-07-30 — the one ISS-087 filed and ISS-093 mis-identified —
+is gone. No known failing server test remains.

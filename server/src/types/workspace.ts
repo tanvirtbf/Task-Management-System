@@ -15,7 +15,6 @@ export interface WorkspaceUpdateBody {
     working_days?: string[];
     business_hours_start?: string;
     business_hours_end?: string;
-    fiscal_year_start_month?: number;
 }
 
 /** Decorated request after `authenticate` + `workspaceUpdateValidator`. */

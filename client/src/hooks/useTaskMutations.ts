@@ -107,14 +107,34 @@ export const useArchiveTask = (listId?: string) => {
     });
 };
 
+/** F25 (ISS-050): the inverse of archive — the client had no caller for it. */
+export const useUnarchiveTask = (listId?: string) => {
+    const qc = useQueryClient();
+    const { message } = AntApp.useApp();
+    return useMutation({
+        mutationFn: (id: string) => tasksApi.unarchive(id),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ["tasks-by-list", listId] });
+            message.success("Task restored");
+        },
+    });
+};
+
+/**
+ * F25 (ISS-050): PERMANENT delete (`?hard=true`). The plain
+ * `DELETE /tasks/:id` is a soft delete — identical to archive — so offering
+ * it as a second "Delete" button told the user their task was gone when it was
+ * merely hidden and still readable by anyone with the id. Admin/owner only
+ * server-side; a member gets a 403 the caller surfaces.
+ */
 export const useDeleteTask = (listId?: string) => {
     const qc = useQueryClient();
     const { message } = AntApp.useApp();
     return useMutation({
-        mutationFn: (id: string) => tasksApi.delete(id),
+        mutationFn: (id: string) => tasksApi.delete(id, true),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["tasks-by-list", listId] });
-            message.success("Task deleted");
+            message.success("Task permanently deleted");
         },
     });
 };

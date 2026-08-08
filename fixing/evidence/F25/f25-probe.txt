@@ -1,0 +1,41 @@
+
+  === F25 — Task UI gaps ===
+
+  --- ISS-050: archive is reversible; delete means delete ---
+  OK    archive sets archived_at (204)                                
+  OK    unarchive CLEARS it — the way back exists (204)               
+  OK    the client api now HAS tasksApi.unarchive (it had none)       
+  OK    plain DELETE is still a SOFT delete server-side (the row survives)row present: true
+  OK    the drawer labels the destructive one "Delete permanently"    
+  OK    …sends ?hard=true and confirms first                          
+  OK    …and offers Restore once a task is archived                   
+  OK    the bulk toolbar does the same (hard delete + honest labels)  
+  OK    …and ?hard=true really removes the row                        
+
+  --- ISS-054: the 'Blocked by' direction is reachable ---
+  OK    a reversed edge makes A 'blocked_by' B on the wire            blocked_by 1
+  OK    the section has TWO buttons now, not one hardcoded 'blocks'   
+  OK    …and the mutation READS the direction (it never did)          
+
+  --- ISS-055: the picker can reach the whole workspace ---
+  OK    a task in ANOTHER space is findable by the picker's source    1 hits
+  OK    a cross-space dependency is accepted (201) — it always was    got 201
+  OK    the client picker now searches instead of listing one list    
+
+  --- ISS-066: #T-<n> resolves ---
+  OK    #T-<n> on a SAME-LIST task now resolves (was: ignored)        referenced rows 1
+  OK    a T-<n> from ANOTHER list stays unresolved — no guessing      T-3 exists on 12 tasks workspace-wide
+  OK    #CUSTOM-ID still resolves (unchanged)                         referenced rows 2
+
+  --- ISS-069: checklist nesting ---
+  OK    the server accepts parent_item_id (it always did)             got 201
+  OK    …and returns parent_item_id on the wire                       parent set
+  OK    the client BUILDS the tree now (it rendered a flat list)      
+  OK    …and offers an add-sub-item control (there was none)          
+  OK    …and the api wrapper forwards parent_item_id                  
+
+  === CLEANUP ===
+  tasks 46 (46) | task_dependencies 0 (0) | comments 7 (7)
+
+  PASS — archive is undoable, both directions reachable, T-<n> resolves, checklists nest.
+

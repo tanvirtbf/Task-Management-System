@@ -7,6 +7,8 @@ import { TaskMembershipRepo } from "../repositories/TaskMembershipRepo";
 import { TaskActivityRepo } from "../repositories/TaskActivityRepo";
 import { NotificationsRepo } from "../repositories/NotificationsRepo";
 import { TagsRepo } from "../repositories/TagsRepo";
+import { assertScoped, hasFullReach } from "../rbac/scopeGuard";
+import { taskEmails } from "./TaskEmailService";
 
 export interface AddAssigneesInput {
     taskId: string;
@@ -99,6 +101,20 @@ export class TaskMembershipService {
      * eligibility checks run before the transaction, so an invalid request
      * never produces a partial assignment.
      */
+    /** F8 (ISS-047): the `task.assign` grant's scope must reach this task. */
+    private async assertAssignScope(task: { id: string; createdBy: string }): Promise<void> {
+        if (await hasFullReach("task.assign")) return;
+        const [spaceIds, assignees] = await Promise.all([
+            this.tasks.spaceIdsByTask([task.id]),
+            this.tasks.assigneesByTask([task.id]),
+        ]);
+        await assertScoped("task.assign", {
+            spaceId: spaceIds.get(task.id) ?? null,
+            createdBy: task.createdBy,
+            assigneeIds: assignees.get(task.id) ?? [],
+        });
+    }
+
     async addAssignees(input: AddAssigneesInput): Promise<AddAssigneesResult> {
         const { taskId, workspaceId, actorId, userIds } = input;
 
@@ -119,6 +135,8 @@ export class TaskMembershipService {
                 "Cannot modify an archived task",
             );
         }
+
+        await this.assertAssignScope(task); // F8
 
         // 3. Every candidate must be an ACTIVE member of THIS workspace.
         //    Reject the whole request if any id is invalid — no partial writes,
@@ -146,7 +164,7 @@ export class TaskMembershipService {
         //    lets us recompute the "not already assigned" diff race-free, so a
         //    concurrent re-add writes nothing (exactly-once side effects).
         //    All writes are one transaction: all-or-nothing.
-        return this.db.transaction(async (tx) => {
+        const outcome = await this.db.transaction(async (tx) => {
             await this.tasks.lockById(taskId, tx);
 
             const existing = new Set(
@@ -154,7 +172,7 @@ export class TaskMembershipService {
             );
             const newIds = userIds.filter((id) => !existing.has(id));
             if (newIds.length === 0) {
-                return { added: 0 };
+                return { added: 0, recipients: [] as string[] };
             }
 
             await this.membership.addAssignees(taskId, newIds, actorId, tx);
@@ -183,8 +201,23 @@ export class TaskMembershipService {
             );
             await this.tasks.touchUpdatedAt(taskId, tx);
 
-            return { added: newIds.length };
+            return { added: newIds.length, recipients };
         });
+
+        // Email the same recipients the in-app fanout reached — AFTER the
+        // commit, fire-and-forget: the 204 never waits on SMTP and a mail
+        // failure never fails the assignment (2026-08-08 email feature).
+        if (outcome.recipients.length > 0) {
+            void taskEmails().taskAssigned({
+                workspaceId,
+                taskId,
+                taskName: task.name,
+                recipientIds: outcome.recipients,
+                actorId,
+            });
+        }
+
+        return { added: outcome.added };
     }
 
     /**
@@ -219,6 +252,8 @@ export class TaskMembershipService {
                 "Cannot modify an archived task",
             );
         }
+
+        await this.assertAssignScope(task); // F8
 
         // 3. Critical section. Take the task lock FIRST — the same order every
         //    membership writer uses — so a concurrent add/remove on the SAME
@@ -332,6 +367,27 @@ export class TaskMembershipService {
      * full transactional template (lock → diff → junction write → `tag_added`
      * activity → ETag bump). No notification — there is no `tagged` type.
      */
+    /**
+     * F34 (ISS-095): the service half of the tag gate, mirroring
+     * `assertAssignScope` — the route proved the `task.edit` verb; this proves
+     * the grant's REACH covers the resolved task (F8's two-layer pattern).
+     */
+    private async assertTagScope(task: {
+        id: string;
+        createdBy: string;
+    }): Promise<void> {
+        if (await hasFullReach("task.edit")) return;
+        const [spaceIds, assignees] = await Promise.all([
+            this.tasks.spaceIdsByTask([task.id]),
+            this.tasks.assigneesByTask([task.id]),
+        ]);
+        await assertScoped("task.edit", {
+            spaceId: spaceIds.get(task.id) ?? null,
+            createdBy: task.createdBy,
+            assigneeIds: assignees.get(task.id) ?? [],
+        });
+    }
+
     async addTags(input: AddTagsInput): Promise<AddTagsResult> {
         const { taskId, workspaceId, actorId, tagIds } = input;
 
@@ -348,6 +404,7 @@ export class TaskMembershipService {
                 "Cannot modify an archived task",
             );
         }
+        await this.assertTagScope(task);
 
         const validIds = await this.tags.findIdsInWorkspace(
             tagIds,
@@ -418,6 +475,8 @@ export class TaskMembershipService {
                 "Cannot modify an archived task",
             );
         }
+        // F34 (ISS-095): same gate as applying one.
+        await this.assertTagScope(task);
 
         return this.db.transaction(async (tx) => {
             await this.tasks.lockById(taskId, tx);

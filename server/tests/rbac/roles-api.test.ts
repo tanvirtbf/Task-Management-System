@@ -102,13 +102,30 @@ describe("POST /roles + PUT /roles/:id/permissions", () => {
         ]);
     });
 
-    it("derives a unique key when two roles share a name", async () => {
+    it("refuses a second role with the same NAME (F27/ISS-027)", async () => {
+        // This spec used to send the same name twice and assert the SUFFIXED
+        // key — which is exactly why `role.key_taken` existed and never fired
+        // while two roles could look identical in the grid. The name is unique
+        // now; the key's suffixing still exists for genuinely different names
+        // that slugify the same (next spec).
         const ws = await rbacWorkspace();
         const owner = await userWithSystemRole(ws, "owner");
         const a = await owner.client.post(ROLES).send({ name: "Reviewer" });
         const b = await owner.client.post(ROLES).send({ name: "Reviewer" });
+        expect(a.status).toBe(201);
         expect(a.body.key).toBe("reviewer");
-        expect(b.body.key).toBe("reviewer-2");
+        expect(b.status).toBe(409);
+        expect(b.body.error.code).toBe("role.name_taken");
+    });
+
+    it("still derives a unique key for DIFFERENT names that slugify alike", async () => {
+        const ws = await rbacWorkspace();
+        const owner = await userWithSystemRole(ws, "owner");
+        const a = await owner.client.post(ROLES).send({ name: "Deal Desk" });
+        const b = await owner.client.post(ROLES).send({ name: "Deal  Desk" });
+        expect(a.body.key).toBe("deal-desk");
+        expect(b.status).toBe(201);
+        expect(b.body.key).toBe("deal-desk-2");
     });
 
     it("rejects an unknown permission key", async () => {

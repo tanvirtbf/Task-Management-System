@@ -11,6 +11,7 @@ const UsersRepo_1 = require("../repositories/UsersRepo");
 const client_1 = require("../db/client");
 const logger_1 = __importDefault(require("../config/logger"));
 const authenticate_1 = __importDefault(require("../middlewares/authenticate"));
+const requirePermission_1 = require("../middlewares/requirePermission");
 const validate_1 = require("../middlewares/validate");
 const workspaceActivity_1 = require("../validators/workspaceActivity");
 const router = express_1.default.Router();
@@ -27,7 +28,7 @@ const controller = new WorkspaceActivityController_1.WorkspaceActivityController
 // ─── GET /api/v1/activity/recent ─────────────────────────────────────────────
 // Authenticated — any workspace member may read the workspace's activity feed
 // (no role gate per the spec). Workspace scope comes from `req.auth.workspaceId`.
-router.get("/recent", authenticate_1.default, workspaceActivity_1.recentActivityValidator, validate_1.validate, (req, res, next) => controller.recent(req, res, next));
+router.get("/recent", authenticate_1.default, (0, requirePermission_1.requirePermission)("activity.view"), workspaceActivity_1.recentActivityValidator, validate_1.validate, (req, res, next) => controller.recent(req, res, next));
 // ─── GET /api/v1/activity ────────────────────────────────────────────────────
-router.get("/", authenticate_1.default, workspaceActivity_1.activityFeedValidator, validate_1.validate, (req, res, next) => controller.feed(req, res, next));
+router.get("/", authenticate_1.default, (0, requirePermission_1.requirePermission)("activity.view"), workspaceActivity_1.activityFeedValidator, validate_1.validate, (req, res, next) => controller.feed(req, res, next));
 exports.default = router;

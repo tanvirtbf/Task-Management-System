@@ -1,0 +1,23 @@
+=== two paths to 'completed': toggle vs PATCH ===
+  POST /toggle          -> {"c":1,"ca":"2026-07-30 08:51:41","cb":"u-ohsNaae2ShvNIZpMlJHVRQ"}
+  PATCH {is_completed}  -> 200      {"c":0,"ca":null,"cb":null}
+  -> PATCH did not change is_completed at all
+
+=== unknown fields on a checklist item ===
+  {"due_date":"2026-09-01"}                 -> 200
+  {"is_completed":true,"bogus_field":1}     -> 200
+  {"position":99}                           -> 200
+  {"checklist_id":"ch-other"}               -> 200
+  {"completed_by":"u-x"}                    -> 200
+  after all that, the row is: {"c":0,"ca":null,"cb":null}
+  position/checklist_id now: {"position":99,"checklist_id":"ch-4TB-vS54C5-_B-1J0MCnnw"}
+
+=== nesting depth: how deep can items go? ===
+  reached depth 8 (no limit found in 8 levels — tasks cap at 2)
+  GET returns items as: a FLAT array of 11
+  does any item carry a nested children array? no — parent_item_id only
+
+=== bulk cap ===
+  5000 items in one request -> 201      items on the checklist now: 5011
+
+CLEANUP: orphans 0/0 | tasks 51 (51) | checklists 5 (5) | items 23 (23)

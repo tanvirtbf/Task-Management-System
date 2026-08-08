@@ -1,0 +1,36 @@
+=== 13. CORS ===
+  http://localhost:5173          configured FRONTEND_URL  want=allow status=200 ACAO=http://localhost:5173    creds=true  as expected ✓
+  http://127.0.0.1:5173          loopback                 want=allow status=200 ACAO=http://127.0.0.1:5173    creds=true  as expected ✓
+  http://192.168.1.50:5173       RFC1918 LAN              want=allow status=200 ACAO=http://192.168.1.50:5173 creds=true  as expected ✓
+  http://10.0.0.5:3000           RFC1918 LAN              want=allow status=200 ACAO=http://10.0.0.5:3000     creds=true  as expected ✓
+  http://172.16.4.4:80           RFC1918 LAN              want=allow status=200 ACAO=http://172.16.4.4:80     creds=true  as expected ✓
+  http://172.32.0.1:80           OUTSIDE 172.16-31 range  want=DENY  status=500 ACAO=null                     creds=null  as expected ✓
+  https://evil.example.com       hostile                  want=DENY  status=500 ACAO=null                     creds=null  as expected ✓
+  http://localhost.evil.com      prefix-trick             want=DENY  status=500 ACAO=null                     creds=null  as expected ✓
+  http://evil.com#localhost      fragment-trick           want=DENY  status=500 ACAO=null                     creds=null  as expected ✓
+  null                           null origin              want=DENY  status=500 ACAO=null                     creds=null  as expected ✓
+
+  no Origin header (curl/server-to-server):
+    status=200 ACAO=null
+
+  exposed headers (X-Conversation-Id must be readable cross-origin):
+    access-control-expose-headers = X-Conversation-Id
+
+  OPTIONS preflight:
+    status=204 allow-methods=GET,HEAD,PUT,PATCH,POST,DELETE allow-headers=authorization,content-type
+
+=== 14. request_id <-> server log correlation ===
+node:fs:441
+    return binding.readFileUtf8(path, stringToFlags(options.flag));
+                   ^
+
+Error: ENOENT: no such file or directory, open 'E:\tmp\p2_server.log'
+    at Object.readFileSync (node:fs:441:20)
+    at C:\Users\Tanvir\AppData\Local\Temp\p2_cors.cjs:45:16 {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'E:\\tmp\\p2_server.log'
+}
+
+Node.js v22.21.1

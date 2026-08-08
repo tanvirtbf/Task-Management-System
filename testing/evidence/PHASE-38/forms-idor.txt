@@ -1,0 +1,9 @@
+=== a form in POLITICS, read by a user scoped to MARKETING ===
+  GET /forms/:id -> 200 *** LEAKED: "TEST-p38c POLITICS confidential intake" list_id=l-QWcmcQjoBTyDoujtkw6pgQ ***
+  GET /forms (collection) -> 200 rows: 2 | titles: ["TEST-p38c POLITICS confidential intake","Order intake form"]
+  does the collection include the Politics form? *** YES — LEAKED ***
+  GET /lists/:id/forms on a Politics list -> 404 "list.not_found"
+  guest GET /forms/:id -> 200
+  marketing.only can EDIT it? 403
+
+CLEANUP: lists 14 (14) | forms 1 (1) | statuses 70 (70)

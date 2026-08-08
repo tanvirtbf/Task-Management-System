@@ -47,7 +47,7 @@ const signAccess = (
     jwt.sign(
         { sub: user.id, role: user.role, workspaceId: user.workspaceId },
         secret,
-        { algorithm: "HS256", ...opts },
+        { algorithm: "HS256", expiresIn: "15m", ...opts },
     );
 
 /** An owner + client + two tasks (a, b) in their workspace. */
@@ -185,9 +185,9 @@ describe("POST /api/v1/task-dependencies", () => {
         });
     });
 
-    // ─── d. Authorization (🔐 any role) ─────────────────────────────────────
+    // ─── d. Authorization (dependency.manage — internal roles) ──────────────
     describe("Authorization", () => {
-        for (const role of ["owner", "admin", "member", "guest"] as Role[]) {
+        for (const role of ["owner", "admin", "member"] as Role[]) {
             it(`allows a ${role} to add a dependency (201)`, async () => {
                 const { a, b, client } = await setup({ role });
 
@@ -198,6 +198,18 @@ describe("POST /api/v1/task-dependencies", () => {
                 expect(res.status).toBe(201);
             });
         }
+
+        // F28 (ISS-094, D12.1): `dependency.manage` left the seeded Guest role —
+        // wiring the workspace's task graph is not a read-and-comment capability.
+        it("REFUSES a guest (403) — dependency.manage revoked", async () => {
+            const { a, b, client } = await setup({ role: "guest" });
+
+            const res = await client
+                .post(URL)
+                .send({ task_id: a.id, related_task_id: b.id });
+
+            expect(res.status).toBe(403);
+        });
     });
 
     // ─── e. Self-loop (422 dep.self) ────────────────────────────────────────

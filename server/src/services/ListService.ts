@@ -62,6 +62,11 @@ export interface UpdateListInput {
     color?: string;
     /** A task-type id, `null` to clear, or `undefined` to leave unchanged. */
     defaultTaskTypeId?: string | null;
+    /**
+     * F28 (ISS-036, D12.7) — move the list into another space. `undefined`
+     * leaves it where it is; the space is never nullable.
+     */
+    spaceId?: string;
     /** Wire field names actually supplied — recorded in the activity context. */
     fields: string[];
 }
@@ -70,6 +75,12 @@ export interface UpdateListInput {
  * §6 Lists domain logic. Controllers translate HTTP; this service owns the
  * read flow and the workspace-isolation guard.
  */
+/** mysql2 surfaces a unique-violation as `ER_DUP_ENTRY` / errno 1062. */
+const isDuplicateKeyError = (err: unknown): boolean => {
+    const e = err as { code?: string; errno?: number } | null;
+    return e?.code === "ER_DUP_ENTRY" || e?.errno === 1062;
+};
+
 export class ListService {
     constructor(
         private db: MySql2Database<typeof schema>,
@@ -106,7 +117,32 @@ export class ListService {
      * by `id` at read time. The just-inserted row is re-read inside the tx so the
      * response carries the authoritative DB `created_at`, identical to a later GET.
      */
+    /**
+     * F27 (ISS-035): translate the new `uq_lists_space_name` violation into
+     * the spec's 409. Two lists with the same name inside one space rendered
+     * as identical children in the sidebar tree with nothing to tell them
+     * apart — the same trap as ISS-033, one level deeper. The INDEX is what
+     * makes this race-free; this only names the error.
+     */
+    private async withDuplicateName<T>(
+        name: string | undefined,
+        run: () => Promise<T>,
+    ): Promise<T> {
+        try {
+            return await run();
+        } catch (err) {
+            if (isDuplicateKeyError(err)) {
+                throw AppError.conflict(
+                    "list.duplicate",
+                    `A list called "${name}" already exists in this space`,
+                );
+            }
+            throw err;
+        }
+    }
+
     async create(input: CreateListInput): Promise<ListRecord> {
+        const nameForConflict = input.name;
         const space = await this.spaces.findByIdInWorkspace(
             input.spaceId,
             input.workspaceId,
@@ -132,7 +168,8 @@ export class ListService {
             );
         }
 
-        return this.db.transaction(async (tx) => {
+        return this.withDuplicateName(nameForConflict, () =>
+            this.db.transaction(async (tx) => {
             // Resolve `default_task_type_id` within the tx so a concurrent
             // task-type delete cannot slip between the check and the insert and
             // turn the FK into a 500.
@@ -197,7 +234,8 @@ export class ListService {
                 throw AppError.internal();
             }
             return list;
-        });
+            }),
+        );
     }
 
     /**
@@ -280,6 +318,7 @@ export class ListService {
      * `name` has no unique constraint, so a rename never 409s.
      */
     async update(input: UpdateListInput): Promise<ListRecord> {
+        const nameForConflict = input.name;
         const existing = await this.lists.findRecordByIdInWorkspace(
             input.listId,
             input.workspaceId,
@@ -305,7 +344,8 @@ export class ListService {
             );
         }
 
-        return this.db.transaction(async (tx) => {
+        return this.withDuplicateName(nameForConflict, () =>
+            this.db.transaction(async (tx) => {
             if (
                 input.defaultTaskTypeId !== undefined &&
                 input.defaultTaskTypeId !== null
@@ -329,6 +369,65 @@ export class ListService {
                 }
             }
 
+            /**
+             * F28 (ISS-036, decision D12.7) — the MOVE.
+             *
+             * Guards, in the order a caller meets them:
+             *   404 `space.not_found` — unknown, or in another workspace (the
+             *       same non-oracle shape `create` uses)
+             *   409 `space.archived`  — a live list may not land in an archived
+             *       space; it would vanish from the tree
+             *   409 `list.duplicate`  — F27 added `uq_lists_space_name`, so the
+             *       target space may already hold this name. Checked here for a
+             *       clear message; `withDuplicateName` around the transaction is
+             *       still the race-safe arbiter.
+             *
+             * A move to the space the list is already in is a no-op, not an
+             * error — re-sending the current value is how PATCH clients behave.
+             *
+             * ⚠️ VISIBILITY MOVES WITH IT. Reach in this product is space-scoped
+             * (`rbac/scope.ts`), so relocating a list changes WHO CAN SEE ITS
+             * TASKS. That is the feature rather than a side effect, but it is
+             * the kind of thing that surprises someone, so it is documented on
+             * the endpoint and recorded in the activity context below.
+             */
+            if (
+                input.spaceId !== undefined &&
+                input.spaceId !== existing.spaceId
+            ) {
+                const target = await this.spaces.findByIdInWorkspace(
+                    input.spaceId,
+                    input.workspaceId,
+                    tx,
+                );
+                if (!target) {
+                    throw AppError.notFound(
+                        "space.not_found",
+                        `Space ${input.spaceId} does not exist`,
+                    );
+                }
+                if (target.archivedAt) {
+                    throw AppError.conflict(
+                        "space.archived",
+                        "Cannot move a list into an archived space",
+                    );
+                }
+
+                const clash = await this.lists.findByNameInSpace(
+                    input.spaceId,
+                    input.name ?? existing.name,
+                    tx,
+                );
+                if (clash && clash.id !== input.listId) {
+                    throw AppError.conflict(
+                        "list.duplicate",
+                        `That space already has a list named "${
+                            input.name ?? existing.name
+                        }"`,
+                    );
+                }
+            }
+
             await this.lists.update(
                 input.listId,
                 {
@@ -337,6 +436,7 @@ export class ListService {
                     icon: input.icon,
                     color: input.color,
                     defaultTaskTypeId: input.defaultTaskTypeId,
+                    spaceId: input.spaceId,
                 },
                 tx,
             );
@@ -365,7 +465,8 @@ export class ListService {
                 );
             }
             return updated;
-        });
+            }),
+        );
     }
 
     /**

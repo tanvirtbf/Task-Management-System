@@ -1,4 +1,5 @@
 import type { NextFunction, Response } from "express";
+import { paginateArray } from "../utils/pagination";
 import type { Logger } from "winston";
 import { TaskTypeService } from "../services/TaskTypeService";
 import type { AuthRequest } from "../types";
@@ -78,14 +79,11 @@ export class TaskTypeController {
                 count: rows.length,
             });
 
-            res.status(200).json({
-                data: rows.map(toWireTaskType),
-                pagination: {
-                    next_cursor: null,
-                    has_more: false,
-                    total_estimate: rows.length,
-                },
-            });
+            res.status(200).json(
+                    // F23 (ISS-007): a real limit + a working cursor —
+                    // this envelope used to say has_more:false no matter what.
+                    paginateArray(rows.map(toWireTaskType), req.query.limit, req.query.cursor),
+                );
         } catch (err) {
             next(err);
         }

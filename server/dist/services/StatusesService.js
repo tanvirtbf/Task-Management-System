@@ -245,6 +245,30 @@ class StatusesService {
                     throw errors_1.AppError.notFound("status.not_found", `Status ${item.id} is not part of list ${input.listId}`);
                 }
             }
+            // F18 (ISS-037): the batch must be a valid PERMUTATION. A partial
+            // payload left collisions (Closed@0 AND To Do@0 after moving one
+            // item), and all-positions-0 was accepted outright — the board's
+            // column order silently stopped matching what anyone asked for,
+            // and no further reorder could express intent. Duplicate IDS are
+            // already refused above, so equal length ⇒ every status named
+            // exactly once.
+            if (input.items.length !== owned.size) {
+                throw errors_1.AppError.validationFailed([
+                    {
+                        field: "body",
+                        issue: `Reorder must name every status of the list exactly once (got ${input.items.length} of ${owned.size})`,
+                    },
+                ]);
+            }
+            const positions = new Set(input.items.map((i) => i.position));
+            if (positions.size !== input.items.length) {
+                throw errors_1.AppError.validationFailed([
+                    {
+                        field: "body",
+                        issue: "Positions must be distinct — duplicate positions make the order ambiguous",
+                    },
+                ]);
+            }
             for (const item of input.items) {
                 await this.statuses.updatePosition(item.id, item.position, tx);
             }
