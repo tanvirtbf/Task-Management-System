@@ -3,6 +3,7 @@ import { devtools, persist } from "zustand/middleware";
 import type { AuthState } from "../types";
 import { authApi } from "../http/api";
 import { queryClient } from "../lib/queryClient";
+import { teardownPushSubscription } from "../lib/push";
 import { useChatStore } from "./chat";
 import { usePermissionsStore } from "./permissions";
 import { useUiStore } from "./ui";
@@ -39,6 +40,12 @@ export const useAuthStore = create<AuthState>()(
                 logout: (opts) => {
                     if (opts?.revoke !== false)
                         authApi.logout().catch(() => undefined);
+                    // §29c — drop this DEVICE's push subscription before the
+                    // token is purged (the DELETE is authenticated), so a
+                    // shared computer never keeps pushing the previous
+                    // account's tasks at the next person. Fire-and-forget:
+                    // sign-out must not wait on it or fail with it.
+                    void teardownPushSubscription();
                     set({
                         user: null,
                         accessToken: null,

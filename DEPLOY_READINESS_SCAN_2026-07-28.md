@@ -277,10 +277,12 @@ should be chosen, not inherited.
 2. Deploy the repo so **`database/` sits next to `server/`** — `db/setup.ts:22` resolves
    `../../../database/schema.sql`.
 3. `cd server && npm run db:setup` → creates the DB and applies `database/schema.sql` in full:
-   **42 tables, 9 triggers, 5 views** *(F33 re-verified 2026-08-07 — was 41/7/5 when this scan was
-   written; the fixing campaign folded `r2_purge_queue` (F16) and the `trg_comments_after_update` +
-   `trg_form_submissions_after_delete` counter triggers (F15) into schema.sql per rule X4).*
-   Dept-review and RBAC are already folded in — `database/upgrades/001–013` are **not** needed on a
+   **43 tables, 9 triggers, 5 views** *(F33 re-verified 42/9/5 on 2026-08-07 — was 41/7/5 when this
+   scan was written; the fixing campaign folded `r2_purge_queue` (F16) and the
+   `trg_comments_after_update` + `trg_form_submissions_after_delete` counter triggers (F15) into
+   schema.sql per rule X4. The 43rd table is `push_subscriptions`, added 2026-08-08 with the Web
+   Push build — `database/upgrades/015`.)*
+   Dept-review and RBAC are already folded in — `database/upgrades/001–015` are **not** needed on a
    fresh DB (they are the upgrade path for already-provisioned ones).
 4. `npm run db:seed` → workspace + owner login + starter task types + Engineering/Bug-Triage list +
    RBAC catalog and system roles. **Run exactly once** (it is additive, not idempotent).
@@ -304,6 +306,12 @@ FROM_ADDRESS/FROM_NAME` (real sender, not Mailtrap) · all four `CLOUDFLARE_R2_*
 `OPENAI_API_KEY` · `TZ` (per your MEDIUM-2 decision — settled by F3: the app is session-UTC
 regardless, so `TZ` is cosmetic for logs) · `GIT_SHA` (from the pipeline).
 
+**Web Push (2026-08-08, optional but expected):** `VAPID_PUBLIC_KEY` · `VAPID_PRIVATE_KEY` ·
+`VAPID_SUBJECT`. Generate ONCE per environment (`cd server && npx web-push generate-vapid-keys`)
+and never rotate casually — a new keypair invalidates every stored subscription and every user has
+to grant permission again. Leaving them unset turns Web Push off cleanly (`503
+push.not_configured`); in-app + email notifications are unaffected.
+
 **Read but ignored by the code — don't rely on them:** `ACCESS_TOKEN_TTL`, `REFRESH_TOKEN_TTL`
 (TTLs are hardcoded 15m/30d), `DB_POOL_MAX`, `DB_POOL_QUEUE_LIMIT`, `API_URL`,
 `CLOUDFLARE_R2_PUBLIC_URL`, `R2_SIGNED_URL_TTL`, `SECRET_KEY`, `CLIENT_URL`, `REDIS_URL`.
@@ -315,6 +323,12 @@ regardless, so `TZ` is cosmetic for logs) · `GIT_SHA` (from the pipeline).
 - Reverse-proxy `/api/v1/*` → Express, **ordered before** the SPA fallback.
 - For `/api/v1/assistant/chat`: **proxy buffering OFF, no compression, read timeout ≥ 120 s** (SSE
   streaming — the server already sends `X-Accel-Buffering: no`).
+- For `/api/v1/stream/inbox` (2026-08-08): same buffering/compression rules, but a **1-hour read
+  timeout** — this stream is meant to stay open for the whole session, not for one answer. Both
+  blocks already exist in `deploy/nginx/tasks.beautybooth.com.bd.conf`.
+- Serve `/sw.js` and `/manifest.webmanifest` with **`Cache-Control: no-store`** — neither is
+  content-hashed, and a cached service worker would pin an old push contract on every device that
+  already registered it.
 - Raise the body-size limit for `POST /api/v1/tasks/:id/attachments` (raw bytes, up to 30 MB).
 - Block `/metrics` and `/health/ready` from the public internet (HIGH 1–2).
 - Cache `/assets/*` immutable, `index.html` no-cache.

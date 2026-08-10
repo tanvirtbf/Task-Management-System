@@ -37,6 +37,7 @@
         "@types/node": "^20.12.7",
         "@types/nodemailer": "^8.0.0",
         "@types/supertest": "^6.0.2",
+        "@types/web-push": "^3.6.4",
         "@typescript-eslint/eslint-plugin": "^7.7.0",
         "@typescript-eslint/parser": "^7.7.0",
         "cross-env": "^7.0.3",
@@ -69,6 +70,7 @@
         "mysql2": "^3.10.0",
         "nodemailer": "^8.0.10",
         "openai": "^6.39.1",
+        "web-push": "^3.6.7",
         "winston": "^3.13.0"
     }
 }

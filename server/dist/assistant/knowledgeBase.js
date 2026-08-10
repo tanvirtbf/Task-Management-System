@@ -111,6 +111,11 @@ To open a task: find it in a List (from the **Sidebar**), on [Home](/) under you
 - Filter by All, Unread, @Mentions, or Assigned to me.
 - For each one you can mark read/unread, snooze it (1 hour, 4 hours or 1 day), or archive it. Click a notification to jump to the task.
 - You are notified when you are assigned a task, mentioned in a comment, when a task you watch changes, when something is due or overdue, when a form is submitted, for engineering events, when your **Head reviews one of your tasks** (approves or flags it), and when a **weekly department report is ready** (for Owners/Admins and the Head).
+- Notifications reach you in three ways at once: the **Inbox** (updates live, no refresh needed), **email**, and **desktop or phone notifications**.
+- **Email** is automatic — no setting to turn on. You get one when someone assigns you a task, and one when a task assigned to you passes its due date.
+- **Desktop / phone notifications** need your permission once per device. The app asks the first time you sign in on that device; choose **Enable** and allow it in the browser. After that you are alerted even when the app tab is closed.
+- If you missed that question or said "Not now", turn it on any time from [**Settings → Profile**](/settings/profile), under **Notifications**. If you had earlier chosen **Block** in the browser, you must allow it again in the browser's own site settings for this site, then reload the page.
+- On an **iPhone or iPad**, first open the site in Safari, tap **Share**, then **Add to Home Screen**, and open the app from that icon — Apple only delivers notifications to a site added this way.
 
 ## Search
 - Open [**Search**](/search) from the left Sidebar, or click the **Search box** in the Topbar.

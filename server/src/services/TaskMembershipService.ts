@@ -9,6 +9,7 @@ import { NotificationsRepo } from "../repositories/NotificationsRepo";
 import { TagsRepo } from "../repositories/TagsRepo";
 import { assertScoped, hasFullReach } from "../rbac/scopeGuard";
 import { taskEmails } from "./TaskEmailService";
+import { pushSvc } from "./PushService";
 
 export interface AddAssigneesInput {
     taskId: string;
@@ -204,11 +205,20 @@ export class TaskMembershipService {
             return { added: newIds.length, recipients };
         });
 
-        // Email the same recipients the in-app fanout reached — AFTER the
-        // commit, fire-and-forget: the 204 never waits on SMTP and a mail
-        // failure never fails the assignment (2026-08-08 email feature).
+        // Reach the same recipients the in-app fanout did on the out-of-app
+        // channels — email AND Web Push. AFTER the commit, fire-and-forget:
+        // the 204 never waits on SMTP or a push service, and a delivery
+        // failure never fails the assignment (2026-08-08 notification
+        // delivery).
         if (outcome.recipients.length > 0) {
             void taskEmails().taskAssigned({
+                workspaceId,
+                taskId,
+                taskName: task.name,
+                recipientIds: outcome.recipients,
+                actorId,
+            });
+            void pushSvc().taskAssigned({
                 workspaceId,
                 taskId,
                 taskName: task.name,

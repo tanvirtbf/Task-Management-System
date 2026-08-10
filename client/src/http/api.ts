@@ -999,6 +999,25 @@ export const notificationsApi = {
         ).data,
 };
 
+// ─── Web Push (§29c) ─ device subscriptions; JWT-scoped, 204 on write ────────
+// `subscribe` sends exactly what `PushSubscription.toJSON()` produces. A 503
+// `push.not_configured` from `publicKey()` means the server has no VAPID keys:
+// callers treat that as "feature off" and stay silent — never an error toast.
+export const pushApi = {
+    publicKey: async (): Promise<string> =>
+        (await api.get<{ publicKey: string }>("/push/public-key")).data
+            .publicKey,
+    subscribe: async (sub: {
+        endpoint: string;
+        keys: { p256dh: string; auth: string };
+    }): Promise<void> => {
+        await api.post("/push/subscriptions", sub);
+    },
+    unsubscribe: async (endpoint: string): Promise<void> => {
+        await api.delete("/push/subscriptions", { data: { endpoint } });
+    },
+};
+
 // ─── SLA (§29) ─ bare SlaBreach[]; no pagination envelope (the §29 contract) ──
 /**
  * F28 (ISS-082, decision D12.4). `GET /sla/breached` had no client caller at

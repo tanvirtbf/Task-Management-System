@@ -99,7 +99,13 @@ The seed creates only the **workspace + owner** — your workspace starts empty.
 
 - **Both `npm run dev` and `npm run build` work cleanly** (client + server type-check with 0 errors). The legacy mock-data layer (`src/lib/mock-api.ts` + `src/mocks/*`) is no longer imported by any live screen and is excluded from the build — you can delete that folder whenever you like; nothing depends on it.
 - **Attachments** require the Cloudflare R2 credentials in `.env` to be valid. They are filled in; if an upload fails, R2 is the place to check.
-- **Real-time notifications** refresh by 60-second polling (live SSE push is deferred — it needs a token-in-query change to work with our in-memory-token auth model).
+- ~~**Real-time notifications** refresh by 60-second polling~~ **(now live, 2026-08-08.)** Three delivery channels run together:
+  1. **In-app, live** — the app holds an SSE stream on `GET /api/v1/stream/inbox`, so the bell badge and Inbox update in about a second. (The "token in a query param" blocker never applied: the client streams with `fetch`, which *can* send `Authorization`.)
+  2. **Email** — assignment + overdue mail (see §9's `overdue-alert` job).
+  3. **Web Push** — desktop/phone OS notifications, working even with the app tab closed. The app asks for browser permission once per device on first sign-in; `Settings → Profile → Notifications` re-opens that door.
+     - Needs `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` in `server/.env` (`cd server && npx web-push generate-vapid-keys` — already filled in locally). Leave them empty and the feature turns itself off cleanly.
+     - Needs a **secure context**: `http://localhost:5173` is fine, but opening the app over a plain-http **LAN IP** cannot register a service worker, so push silently stays off there (SSE + email still work).
+     - **iPhone:** Safari delivers push only after *Share → Add to Home Screen* (iOS 16.4+). Android/desktop need nothing extra.
 - **Public intake forms** (`/public/forms/:slug`, anonymous): `task_attr` fields (name, description, etc.) work fully; custom-field inputs render as plain text boxes and submit with the `{text}` envelope, so rich custom types (dropdown / money / date / files) on *public* forms are limited in V1. Inside the authenticated app, all custom-field types work.
 - ~~Invitation accept-link page is a placeholder~~ **(now built, 2026-06-27).** The full invite→accept flow works end-to-end: an admin invites a teammate (creates the account + emails an `/invitation/<token>` link via Mailtrap), the invitee opens the link, sees the workspace/email, sets a password, and is **auto-logged-in** to the app. Backend: `GET /api/v1/auth/invitation/:token` + `POST /api/v1/auth/accept-invitation`. To test the accept page without reading the Mailtrap email, seed a known-token invitation directly in the dev DB.
 - **Sprint board** populates from a list whose id must exist in your data (a sprint’s tasks span lists; the cross-list “tasks by sprint” view is a follow-up). The sprint selector itself is live.
@@ -116,6 +122,8 @@ The seed creates only the **workspace + owner** — your workspace starts empty.
 | Stuck logged-out / 401 loop | Clear cookies for `localhost`, hard-refresh. |
 | Port 5501 already in use | Stop the other process, or change `PORT` in `server/.env` **and** `VITE_BACKEND_API_URL` in `client/.env` to match. |
 | Want a clean DB | `npm run db:setup:fresh` (drops + recreates), then `npm run db:seed`. |
+| No browser notification appears | Is the browser permission granted (`Settings → Profile → Notifications`)? Are `VAPID_*` set in `server/.env`? Are you on `localhost` rather than a LAN IP (service workers need a secure context)? On iPhone the site must be added to the Home Screen first. |
+| Notification arrives twice | Shouldn't happen — push and the in-tab path share a collapse `tag`. If it does, an old `/sw.js` is still registered: DevTools → Application → Service Workers → Unregister, then reload. |
 
 ---
 

@@ -4,6 +4,7 @@ exports.TaskMembershipService = void 0;
 const errors_1 = require("../errors");
 const scopeGuard_1 = require("../rbac/scopeGuard");
 const TaskEmailService_1 = require("./TaskEmailService");
+const PushService_1 = require("./PushService");
 const NOTIFICATION_TITLE_MAX = 300; // notifications.title VARCHAR(300)
 const ASSIGNED_TITLE_PREFIX = "You were assigned to ";
 class TaskMembershipService {
@@ -104,11 +105,20 @@ class TaskMembershipService {
             await this.tasks.touchUpdatedAt(taskId, tx);
             return { added: newIds.length, recipients };
         });
-        // Email the same recipients the in-app fanout reached — AFTER the
-        // commit, fire-and-forget: the 204 never waits on SMTP and a mail
-        // failure never fails the assignment (2026-08-08 email feature).
+        // Reach the same recipients the in-app fanout did on the out-of-app
+        // channels — email AND Web Push. AFTER the commit, fire-and-forget:
+        // the 204 never waits on SMTP or a push service, and a delivery
+        // failure never fails the assignment (2026-08-08 notification
+        // delivery).
         if (outcome.recipients.length > 0) {
             void (0, TaskEmailService_1.taskEmails)().taskAssigned({
+                workspaceId,
+                taskId,
+                taskName: task.name,
+                recipientIds: outcome.recipients,
+                actorId,
+            });
+            void (0, PushService_1.pushSvc)().taskAssigned({
                 workspaceId,
                 taskId,
                 taskName: task.name,

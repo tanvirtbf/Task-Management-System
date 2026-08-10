@@ -41,6 +41,7 @@ const search_1 = __importDefault(require("./routes/search"));
 const workspaceActivity_1 = __importDefault(require("./routes/workspaceActivity"));
 const home_1 = __importDefault(require("./routes/home"));
 const sse_1 = __importDefault(require("./routes/sse"));
+const push_1 = __importDefault(require("./routes/push"));
 const jobs_1 = __importDefault(require("./routes/jobs"));
 const sla_1 = __importDefault(require("./routes/sla"));
 const health_1 = __importDefault(require("./routes/health"));
@@ -228,6 +229,10 @@ v1.use("/assistant", assistant_1.default);
 // the clean `/stream` prefix (GET /stream/inbox); no shared path segments, so
 // mount order is irrelevant. Cookie-authenticated, user-scoped.
 v1.use("/stream", sse_1.default);
+// §29c Web Push — device-subscription lifecycle under the clean `/push` prefix
+// (`/push/public-key`, `/push/subscriptions`); no shared path segments, so
+// mount order is irrelevant. Authenticated + user-scoped, like §19.
+v1.use("/push", push_1.default);
 // §28 Background jobs — internal cron-triggered endpoints under the clean
 // `/jobs` prefix, guarded per-route by the `internalAuth` (X-Internal-Token)
 // middleware rather than the user JWT. Mount order irrelevant.

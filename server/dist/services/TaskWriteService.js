@@ -40,6 +40,7 @@ const errors_1 = require("../errors");
 const utils_1 = require("../utils");
 const constants_1 = require("../constants");
 const TaskEmailService_1 = require("./TaskEmailService");
+const PushService_1 = require("./PushService");
 const taskSerializer_1 = require("../serializers/taskSerializer");
 const dhakaTime_1 = require("../utils/dhakaTime");
 const can_1 = require("../rbac/can");
@@ -571,10 +572,11 @@ class TaskWriteService {
                 throw err;
             }
         }
-        // 8. Email the initial assignees (minus the actor) — AFTER the commit,
-        //    fire-and-forget: the request never waits on SMTP and a mail
+        // 8. Notify the initial assignees (minus the actor) on the out-of-app
+        //    channels — email AND Web Push. AFTER the commit, fire-and-forget:
+        //    the request never waits on SMTP or a push service, and a delivery
         //    failure never fails the create. Same recipient set as the in-app
-        //    `assigned` fanout in step 7 (2026-08-08 email feature).
+        //    `assigned` fanout in step 7 (2026-08-08 notification delivery).
         const emailRecipients = assignees.filter((id) => id !== input.actorId);
         if (emailRecipients.length > 0) {
             void (0, TaskEmailService_1.taskEmails)().taskAssigned({
@@ -584,6 +586,13 @@ class TaskWriteService {
                 recipientIds: emailRecipients,
                 actorId: input.actorId,
                 dueYmd: input.dueDate ?? null,
+            });
+            void (0, PushService_1.pushSvc)().taskAssigned({
+                workspaceId: input.workspaceId,
+                taskId,
+                taskName: input.name,
+                recipientIds: emailRecipients,
+                actorId: input.actorId,
             });
         }
         // 9. Hydrate + serialize via the read path (identical to a GET).

@@ -18,6 +18,7 @@ import type { TaskActivityRepo } from "../repositories/TaskActivityRepo";
 import type { NotificationsRepo } from "../repositories/NotificationsRepo";
 import type { TasksService } from "./TasksService";
 import { taskEmails } from "./TaskEmailService";
+import { pushSvc } from "./PushService";
 import { toWireTask, type WireTask } from "../serializers/taskSerializer";
 import {
     addBusinessDays,
@@ -861,10 +862,11 @@ export class TaskWriteService {
             }
         }
 
-        // 8. Email the initial assignees (minus the actor) — AFTER the commit,
-        //    fire-and-forget: the request never waits on SMTP and a mail
+        // 8. Notify the initial assignees (minus the actor) on the out-of-app
+        //    channels — email AND Web Push. AFTER the commit, fire-and-forget:
+        //    the request never waits on SMTP or a push service, and a delivery
         //    failure never fails the create. Same recipient set as the in-app
-        //    `assigned` fanout in step 7 (2026-08-08 email feature).
+        //    `assigned` fanout in step 7 (2026-08-08 notification delivery).
         const emailRecipients = assignees.filter((id) => id !== input.actorId);
         if (emailRecipients.length > 0) {
             void taskEmails().taskAssigned({
@@ -874,6 +876,13 @@ export class TaskWriteService {
                 recipientIds: emailRecipients,
                 actorId: input.actorId,
                 dueYmd: input.dueDate ?? null,
+            });
+            void pushSvc().taskAssigned({
+                workspaceId: input.workspaceId,
+                taskId,
+                taskName: input.name,
+                recipientIds: emailRecipients,
+                actorId: input.actorId,
             });
         }
 

@@ -28,7 +28,10 @@ CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_R2_ACCESS_KEY, CLOUDFLARE_R2_SECRET_KEY, CLOUD
 // OpenAI — powers the in-app AI Help Assistant (server-side only).
 OPENAI_API_KEY, OPENAI_MODEL, OPENAI_MAX_OUTPUT_TOKENS, 
 // Encryption — for PII at rest (form submissions, etc.)
-ENCRYPTION_KEY, } = process.env;
+ENCRYPTION_KEY, 
+// Web Push (§29c) — VAPID keypair identifying this server to the browser
+// push services. Consumed only by PushService.
+VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT, } = process.env;
 exports.Config = {
     PORT,
     NODE_ENV,
@@ -94,4 +97,13 @@ exports.Config = {
     OPENAI_MAX_OUTPUT_TOKENS: OPENAI_MAX_OUTPUT_TOKENS ?? "800",
     // Encryption key (256-bit hex) for at-rest PII encryption
     ENCRYPTION_KEY: ENCRYPTION_KEY ?? "",
+    // Web Push (§29c). The PUBLIC key ships to every browser (it is the
+    // `applicationServerKey`); the PRIVATE key is a server-only secret. Both
+    // unset ⇒ push is DISABLED — `GET /push/public-key` answers 503
+    // `push.not_configured` and every dispatch is a no-op. Same null-safe
+    // posture as the OpenAI client; `.env.test` leaves them unset on purpose so
+    // the suite never reaches a real push service.
+    VAPID_PUBLIC_KEY,
+    VAPID_PRIVATE_KEY,
+    VAPID_SUBJECT: VAPID_SUBJECT ?? "mailto:no-reply@beautybooth.com.bd",
 };

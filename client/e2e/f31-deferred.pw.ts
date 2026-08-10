@@ -135,8 +135,11 @@ test("calendar: dragging an unscheduled task onto a day sets its due date", asyn
         .toBe("15");
 });
 
-// ─── 3. cross-context propagation (no live push BY DESIGN — SSE was dropped
-//        from the D12 batch; propagation is refetch-on-open) ─────────────────
+// ─── 3. cross-context propagation. The live SSE stream (§29c Level 1, added
+//        2026-08-08) pushes NOTIFICATIONS, not task content: a comment posted
+//        elsewhere still surfaces on refetch, which is what this asserts. The
+//        actor here is the same owner account, so no notification is produced
+//        for them either way. ────────────────────────────────────────────────
 test("two contexts: a comment posted elsewhere appears when the drawer reopens", async ({ browser }) => {
     const token = await apiLogin();
     const ctxB = await browser.newContext();

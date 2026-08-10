@@ -37,6 +37,7 @@ import searchRouter from "./routes/search";
 import workspaceActivityRouter from "./routes/workspaceActivity";
 import homeRouter from "./routes/home";
 import sseRouter from "./routes/sse";
+import pushRouter from "./routes/push";
 import jobsRouter from "./routes/jobs";
 import slaRouter from "./routes/sla";
 import healthRouter from "./routes/health";
@@ -242,6 +243,10 @@ v1.use("/assistant", assistantRouter);
 // the clean `/stream` prefix (GET /stream/inbox); no shared path segments, so
 // mount order is irrelevant. Cookie-authenticated, user-scoped.
 v1.use("/stream", sseRouter);
+// §29c Web Push — device-subscription lifecycle under the clean `/push` prefix
+// (`/push/public-key`, `/push/subscriptions`); no shared path segments, so
+// mount order is irrelevant. Authenticated + user-scoped, like §19.
+v1.use("/push", pushRouter);
 // §28 Background jobs — internal cron-triggered endpoints under the clean
 // `/jobs` prefix, guarded per-route by the `internalAuth` (X-Internal-Token)
 // middleware rather than the user JWT. Mount order irrelevant.

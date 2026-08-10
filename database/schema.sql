@@ -1075,6 +1075,41 @@ CREATE TABLE user_notification_prefs (
 
 
 -- =============================================================================
+-- 29c. push_subscriptions  (§29c Web Push devices — upgrades/015, 2026-08-08)
+-- One row per (user, browser/device): "this browser agreed to receive pushes
+-- for this user". Written once the device grants the browser Notification
+-- permission; deleted on sign-out, or by PushService when the push service
+-- answers 404/410 (the browser revoked/expired the subscription).
+--
+-- `endpoint` (the push-service URL) is too long for a utf8mb4 unique index, so
+-- uniqueness rides on endpoint_hash = SHA-256 hex of the endpoint. A device
+-- that re-subscribes under a DIFFERENT user (shared computer) is REASSIGNED by
+-- the upsert — it delivers to whoever is signed in, never the previous user.
+-- =============================================================================
+CREATE TABLE push_subscriptions (
+    id             VARCHAR(64)   NOT NULL,
+    user_id        VARCHAR(64)   NOT NULL,
+    endpoint_hash  CHAR(64)      NOT NULL,
+    endpoint       VARCHAR(1000) NOT NULL,
+    -- Browser-generated encryption material (base64url).
+    p256dh         VARCHAR(255)  NOT NULL,
+    auth           VARCHAR(191)  NOT NULL,
+    -- Device label, for answering "which browser is this?" in support.
+    user_agent     VARCHAR(255)  NULL,
+    created_at     TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at     TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP
+                                     ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_push_subscriptions_endpoint (endpoint_hash),
+    CONSTRAINT fk_push_subscriptions_user FOREIGN KEY (user_id)
+        REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    -- The fan-out read: every device of a set of recipients.
+    INDEX idx_push_subscriptions_user (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
+
+
+-- =============================================================================
 -- 30. on_call_shifts
 -- One row per week per engineer on call. These are Dhaka business days. The
 -- current engineer is found by `WHERE week_start <= :today AND week_end >=

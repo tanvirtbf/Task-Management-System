@@ -14,7 +14,8 @@
 //   custom-fields.ts   — custom_fields, custom_field_options,
 //                        task_custom_field_values
 //   forms.ts           — forms, form_fields, form_submissions
-//   notifications.ts   — notifications
+//   notifications.ts   — notifications, user_notification_prefs,
+//                        push_subscriptions (§29c Web Push devices)
 //   audit.ts           — workspace_activity
 //   templates.ts       — templates (reusable task structures)
 //   reviews.ts         — task_reviews (Dept Review V1 — head-verdict ledger)

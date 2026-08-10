@@ -12,6 +12,12 @@
       content="Internal task management for BeautyBooth — orders, complaints, listings, campaigns, and inventory in one place."
     />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <!-- Required for Web Push on iOS: Apple delivers push only to a site the
+         user has installed via Share → Add to Home Screen (iOS 16.4+), and
+         "installable" means a manifest with a standalone display mode. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="BB Tasks" />
     <title>BeautyBooth Tasks</title>
   </head>
   <body>

@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Button, Input, Select, Modal, App as AntApp } from "antd";
-import { Save, KeyRound } from "lucide-react";
+import { Button, Input, Select, Modal, Space, App as AntApp } from "antd";
+import { Save, KeyRound, BellRing } from "lucide-react";
 import { authApi, usersApi } from "../../http/api";
 import { useAuthStore } from "../../stores/auth";
+import { isPushSupported, requestPushPermission } from "../../lib/push";
 import {
     SettingsHeader,
     SettingsSection,
@@ -88,6 +89,43 @@ const ProfileSettings = () => {
 
     const pwValid =
         currentPw.length > 0 && newPw.length >= 8 && newPw === confirmPw;
+
+    // §29c — the deliberate second door for Web Push: the sign-in prompt asks
+    // once per device, so without this a stray "Not now" would be permanent.
+    // Permission is device state, not account state, so it is read from the
+    // browser rather than the server.
+    const [pushState, setPushState] = useState<
+        "granted" | "denied" | "default" | "unsupported"
+    >(() =>
+        isPushSupported()
+            ? (Notification.permission as "granted" | "denied" | "default")
+            : "unsupported",
+    );
+    const [pushBusy, setPushBusy] = useState(false);
+
+    const enablePush = async () => {
+        setPushBusy(true);
+        try {
+            const result = await requestPushPermission();
+            if (result === "granted") {
+                setPushState("granted");
+                message.success("Notifications enabled on this device");
+            } else if (result === "denied") {
+                setPushState("denied");
+                message.info(
+                    "Blocked in this browser — allow notifications for this site in its site settings, then reload.",
+                );
+            } else if (result === "unsupported") {
+                setPushState("unsupported");
+            } else {
+                message.warning(
+                    "Permission granted, but the device could not register. It will retry on the next sign-in.",
+                );
+            }
+        } finally {
+            setPushBusy(false);
+        }
+    };
 
     if (!user) return <div>Not signed in</div>;
 
@@ -201,6 +239,40 @@ const ProfileSettings = () => {
                         options={TIMEZONES.map((t) => ({ value: t, label: t }))}
                     />
                 </SettingsFieldRow>
+            </SettingsSection>
+
+            <SettingsSection
+                title="Notifications"
+                description="Get a desktop or phone alert the moment a task is assigned to you or passes its due date — even when this tab is closed. Asked for once per device; this is where you change your mind."
+            >
+                <Space align="center" size={12} wrap>
+                    <Button
+                        icon={<BellRing size={14} strokeWidth={1.75} />}
+                        disabled={
+                            pushState === "unsupported" ||
+                            pushState === "denied" ||
+                            pushState === "granted"
+                        }
+                        loading={pushBusy}
+                        onClick={() => void enablePush()}
+                    >
+                        {pushState === "granted"
+                            ? "Notifications on"
+                            : "Enable notifications"}
+                    </Button>
+                    <span
+                        style={{ fontSize: 12, color: tokens.colors.textMuted }}
+                    >
+                        {pushState === "granted" &&
+                            "This device is registered."}
+                        {pushState === "default" &&
+                            "Not enabled on this device yet."}
+                        {pushState === "denied" &&
+                            "Blocked in this browser — allow notifications for this site in its site settings, then reload."}
+                        {pushState === "unsupported" &&
+                            "This browser can't receive them. On iPhone, add the site to your Home Screen first."}
+                    </span>
+                </Space>
             </SettingsSection>
 
             <SettingsSection

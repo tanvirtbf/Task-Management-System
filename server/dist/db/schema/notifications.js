@@ -1,9 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.userNotificationPrefs = exports.notifications = void 0;
+exports.pushSubscriptions = exports.userNotificationPrefs = exports.notifications = void 0;
 // =============================================================================
-// Notifications — per-user inbox (1 table)
-//   Mirrors `database/schema.sql §29`.
+// Notifications — per-user inbox + delivery prefs + Web Push devices (3 tables)
+//   Mirrors `database/schema.sql §29 / §29b / §29c`.
 // =============================================================================
 const mysql_core_1 = require("drizzle-orm/mysql-core");
 const _shared_1 = require("./_shared");
@@ -66,4 +66,41 @@ exports.userNotificationPrefs = (0, mysql_core_1.mysqlTable)("user_notification_
     updatedAt: (0, mysql_core_1.timestamp)("updated_at").notNull().defaultNow().onUpdateNow(),
 }, (t) => ({
     pk: (0, mysql_core_1.primaryKey)({ columns: [t.userId, t.type] }),
+}));
+/**
+ * Web Push subscriptions — one row per (user, browser/device) pair
+ * (§29c, upgrades/015, 2026-08-08). A row is a standing permission slip: "this
+ * browser agreed to receive pushes for this user". Written by
+ * `POST /push/subscriptions` once the device grants the browser Notification
+ * permission, deleted on sign-out (`DELETE /push/subscriptions`) or when the
+ * push service answers 404/410 — the browser revoked or expired it, and
+ * `PushService` prunes the row inline so dead devices never accumulate.
+ *
+ * `endpoint` is the push-service URL and is far too long for a utf8mb4 unique
+ * index, so uniqueness rides on `endpoint_hash` = SHA-256 hex of the endpoint.
+ * An endpoint that re-subscribes under a DIFFERENT user (a shared computer) is
+ * REASSIGNED by the upsert: a device always delivers to whoever is signed in
+ * on it, never to the previous occupant.
+ */
+exports.pushSubscriptions = (0, mysql_core_1.mysqlTable)("push_subscriptions", {
+    id: (0, mysql_core_1.varchar)("id", { length: _shared_1.ID_LENGTH }).primaryKey(),
+    userId: (0, mysql_core_1.varchar)("user_id", { length: _shared_1.ID_LENGTH })
+        .notNull()
+        .references(() => auth_1.users.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+    }),
+    endpointHash: (0, mysql_core_1.char)("endpoint_hash", { length: 64 }).notNull(),
+    endpoint: (0, mysql_core_1.varchar)("endpoint", { length: 1000 }).notNull(),
+    // Browser-generated encryption material (base64url): P-256 public key
+    // + auth secret. Required by the Web Push message encryption.
+    p256dh: (0, mysql_core_1.varchar)("p256dh", { length: 255 }).notNull(),
+    auth: (0, mysql_core_1.varchar)("auth", { length: 191 }).notNull(),
+    // Device label, for answering "which browser is this?" in support.
+    userAgent: (0, mysql_core_1.varchar)("user_agent", { length: 255 }),
+    createdAt: (0, mysql_core_1.timestamp)("created_at").notNull().defaultNow(),
+    updatedAt: (0, mysql_core_1.timestamp)("updated_at").notNull().defaultNow().onUpdateNow(),
+}, (t) => ({
+    endpointUq: (0, mysql_core_1.uniqueIndex)("uq_push_subscriptions_endpoint").on(t.endpointHash),
+    userIdx: (0, mysql_core_1.index)("idx_push_subscriptions_user").on(t.userId),
 }));

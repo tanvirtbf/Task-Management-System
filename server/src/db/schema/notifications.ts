@@ -1,10 +1,11 @@
 // =============================================================================
-// Notifications — per-user inbox (1 table)
-//   Mirrors `database/schema.sql §29`.
+// Notifications — per-user inbox + delivery prefs + Web Push devices (3 tables)
+//   Mirrors `database/schema.sql §29 / §29b / §29c`.
 // =============================================================================
 import {
     bigint,
     boolean,
+    char,
     foreignKey,
     index,
     mysqlEnum,
@@ -102,3 +103,50 @@ export const userNotificationPrefs = mysqlTable(
 export type UserNotificationPref = typeof userNotificationPrefs.$inferSelect;
 export type NewUserNotificationPref =
     typeof userNotificationPrefs.$inferInsert;
+
+/**
+ * Web Push subscriptions — one row per (user, browser/device) pair
+ * (§29c, upgrades/015, 2026-08-08). A row is a standing permission slip: "this
+ * browser agreed to receive pushes for this user". Written by
+ * `POST /push/subscriptions` once the device grants the browser Notification
+ * permission, deleted on sign-out (`DELETE /push/subscriptions`) or when the
+ * push service answers 404/410 — the browser revoked or expired it, and
+ * `PushService` prunes the row inline so dead devices never accumulate.
+ *
+ * `endpoint` is the push-service URL and is far too long for a utf8mb4 unique
+ * index, so uniqueness rides on `endpoint_hash` = SHA-256 hex of the endpoint.
+ * An endpoint that re-subscribes under a DIFFERENT user (a shared computer) is
+ * REASSIGNED by the upsert: a device always delivers to whoever is signed in
+ * on it, never to the previous occupant.
+ */
+export const pushSubscriptions = mysqlTable(
+    "push_subscriptions",
+    {
+        id: varchar("id", { length: ID_LENGTH }).primaryKey(),
+        userId: varchar("user_id", { length: ID_LENGTH })
+            .notNull()
+            .references(() => users.id, {
+                onDelete: "cascade",
+                onUpdate: "cascade",
+            }),
+        endpointHash: char("endpoint_hash", { length: 64 }).notNull(),
+        endpoint: varchar("endpoint", { length: 1000 }).notNull(),
+        // Browser-generated encryption material (base64url): P-256 public key
+        // + auth secret. Required by the Web Push message encryption.
+        p256dh: varchar("p256dh", { length: 255 }).notNull(),
+        auth: varchar("auth", { length: 191 }).notNull(),
+        // Device label, for answering "which browser is this?" in support.
+        userAgent: varchar("user_agent", { length: 255 }),
+        createdAt: timestamp("created_at").notNull().defaultNow(),
+        updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
+    },
+    (t) => ({
+        endpointUq: uniqueIndex("uq_push_subscriptions_endpoint").on(
+            t.endpointHash,
+        ),
+        userIdx: index("idx_push_subscriptions_user").on(t.userId),
+    }),
+);
+
+export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;
+export type NewPushSubscription = typeof pushSubscriptions.$inferInsert;

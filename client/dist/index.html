@@ -12,13 +12,19 @@
       content="Internal task management for BeautyBooth — orders, complaints, listings, campaigns, and inventory in one place."
     />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <!-- Required for Web Push on iOS: Apple delivers push only to a site the
+         user has installed via Share → Add to Home Screen (iOS 16.4+), and
+         "installable" means a manifest with a standalone display mode. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="BB Tasks" />
     <title>BeautyBooth Tasks</title>
-    <script type="module" crossorigin src="/assets/index-BqOGQYuQ.js"></script>
+    <script type="module" crossorigin src="/assets/index-CXZa67-c.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/react-Cyd7RrNT.js">
-    <link rel="modulepreload" crossorigin href="/assets/icons-C3CGlMp5.js">
+    <link rel="modulepreload" crossorigin href="/assets/icons-C09VnVwK.js">
     <link rel="stylesheet" crossorigin href="/assets/index-C2RkEtqJ.css">
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"></div>
   </body>
 </html>

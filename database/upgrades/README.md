@@ -37,6 +37,7 @@
 | `012_drop_fiscal_year.sql` | ✅ 2026-08-06 | ✅ 2026-08-06 | ⏳ pending (no prod yet) |
 | `013_perf_indexes.sql` | ✅ 2026-08-06 | ✅ 2026-08-06 | ⏳ pending (no prod yet) |
 | `014_overdue_alerts.sql` | ✅ 2026-08-08 | ✅ 2026-08-08 | ⏳ pending (no prod yet) |
+| `015_push_subscriptions.sql` | ✅ 2026-08-08 | ✅ 2026-08-08 | ⏳ pending (no prod yet) |
 
 > `005` ships with the F3 clock fix and is only correct alongside it. If you apply
 > `005`, the app's `DB_TIMEZONE` **must** be `+00:00` (see `server/.env.example`).
@@ -46,6 +47,12 @@
 > Both are information_schema-gated and re-runnable. Order within the pair does not matter,
 > but both must land with the F28 server build — the seeded-role specs and the workspace
 > serializer assume them.
+>
+> `015` ships with the Web Push build (2026-08-08) — the same day as `014`, applied
+> after it. It only ADDS the `push_subscriptions` table, so it is safe to apply
+> ahead of the server build and safe to apply without VAPID keys (the feature
+> stays off until they exist). Fresh `db:setup` is now **43 tables / 5 views /
+> 9 triggers** (was 42/5/9 since F33).
 >
 > `014` ships with the assignment/overdue-email build (2026-08-08): the Drizzle schema
 > reads `tasks.overdue_notified_at` and the `overdue-alert` job writes `overdue`-typed

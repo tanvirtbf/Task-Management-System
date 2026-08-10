@@ -1334,21 +1334,55 @@ Query: `?actor_id=…&entity_type=task,list&action=created,archived&from=…&to=
 ## 27. Server-Sent Events (real-time inbox) <a id="29-sse-realtime"></a>
 
 ### GET `/api/v1/stream/inbox`
-**Authenticated** (token via `?access_token=` query param since EventSource can't set headers).
-Server emits one event per new notification + per task update relevant to the user.
+**Authenticated.** As built the endpoint accepts the normal `Authorization: Bearer` header (the client streams it with `fetch` + a `ReadableStream`, not `EventSource`, precisely so the standard Bearer + refresh-once flow applies) or the `accessToken` cookie. There is no `?access_token=` query param — a token in a URL lands in access logs.
+
+Three event types are emitted; each `notification` frame carries the §19 wire `Notification` and an `id:` line holding its `internal_id` (the resume token). Heartbeats deliberately carry no `id`, so they never move the cursor.
 
 ```
-event: notification.new
-data: { "id": "ntfy-001", "type": "mentioned", "task_id": "t-90042", "title": "…" }
+event: connected
+data: { "now": "2026-08-08T09:12:00Z" }
 
-event: task.updated
-data: { "id": "t-90042", "patch": { "status_id": "s-packed" } }
+event: notification
+data: { "id":"ntfy-001","type":"assigned","entity_type":"task","entity_id":"t-90042","title":"You were assigned to …","is_read":false,"created_at":"…" }
+id: 4412
 
 event: heartbeat
-data: { "now": "2026-05-28T09:12:00Z" }
+data: { "now": "2026-08-08T09:12:30Z" }
 ```
 
-Heartbeat every 30 s prevents proxy disconnect. Client reconnects with `Last-Event-Id` for resume.
+A fresh connect goes LIVE (only notifications created after it opens); reconnecting with `Last-Event-ID` replays everything missed since that id, ascending. Heartbeat every 30 s keeps proxies from dropping the connection — `deploy/nginx` gives this exact path `proxy_buffering off` and a 1-hour read timeout. Cadence knobs: `SSE_POLL_MS` (3 s), `SSE_HEARTBEAT_MS` (30 s).
+
+**Client (since 2026-08-08):** `hooks/useInboxStream.ts` holds one stream per signed-in app instance. Each frame invalidates the `["notifications", …]` query family — the bell badge and Inbox update in about a second instead of on the 60 s poll — and, when the tab is hidden and Web Push is NOT handling it, raises an OS notification with the same collapse `tag` the push payload uses, so one event can never produce two bubbles.
+
+---
+
+## 29c. Web Push (browser / desktop / phone notifications) <a id="29c-web-push"></a>
+
+Level 2 of notification delivery: the operating system shows the notification even when the app tab is **closed**. Desktop Chrome/Edge/Firefox and Android work in a normal browser; iOS delivers only to a site the user installed via *Share → Add to Home Screen* (iOS 16.4+, Apple's rule). Requires a secure context — `https://` in production, `http://localhost` in development.
+
+Delivery is server-side via VAPID (`web-push`). Producers are the same two the in-app `assigned` notification and the assignment email already have — task create with initial assignees, and `POST /tasks/:id/assignees` — plus the `overdue-alert` job. All three dispatch **after commit, fire-and-forget**: a push failure never fails the request or the job.
+
+These routes are **authenticated and user-scoped only** (no RBAC permission, exactly like §19): a caller manages their own devices and nothing else.
+
+### GET `/api/v1/push/public-key`
+The VAPID `applicationServerKey` the browser subscribes with.
+**200 OK** — `{ "public_key": "B…" }`
+**503** `push.not_configured` — the server has no VAPID keypair; the feature is off and the client silently skips it.
+
+### POST `/api/v1/push/subscriptions`
+Register (or refresh) the calling browser. Body is verbatim `PushSubscription.toJSON()`:
+```json
+{ "endpoint": "https://fcm.googleapis.com/fcm/send/…",
+  "keys": { "p256dh": "B…", "auth": "…" } }
+```
+**204 No Content.** Idempotent — the same endpoint upserts. A device that re-subscribes under a **different** user (shared computer) is REASSIGNED, so it always delivers to whoever is signed in.
+**422** `validation.failed` — the endpoint must be an `https://` URL ≤1000 chars and both keys base64url.
+
+### DELETE `/api/v1/push/subscriptions`
+Drop this browser's subscription (sign-out / opt-out). Body `{ "endpoint": "…" }`.
+**204 No Content.** Idempotent and scoped to the caller — an unknown endpoint is a silent no-op, never an existence oracle.
+
+**Lifecycle:** rows live in `push_subscriptions` (`database/upgrades/015`), keyed by `SHA-256(endpoint)`. `PushService` deletes a row the moment the push service answers **404/410** (the browser revoked or expired it), so dead devices never accumulate. Payload shape: `{ title, body, url, tag }` — `url` is the SPA path the service worker opens on click, `tag` the collapse key shared with the Level 1 in-tab path.
 
 ---
 

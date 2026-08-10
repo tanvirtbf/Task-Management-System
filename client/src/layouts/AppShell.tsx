@@ -3,7 +3,9 @@ import { Outlet, useNavigate } from "react-router-dom";
 import { Sidebar } from "../components/shared/Sidebar";
 import { Topbar } from "../components/shared/Topbar";
 import { OfflineIndicator } from "../components/shared/OfflineIndicator";
+import { PushPrompt } from "../components/shared/PushPrompt";
 import { AssistantWidget } from "../components/assistant/AssistantWidget";
+import { useInboxStream } from "../hooks/useInboxStream";
 import { tokens } from "../theme";
 
 /**
@@ -47,6 +49,9 @@ const useSearchShortcut = () => {
  */
 const AppShell = () => {
     useSearchShortcut();
+    // §29c Level 1 — one live inbox stream per signed-in app instance, so the
+    // bell badge and Inbox react in ~a second instead of on the 60s poll.
+    useInboxStream();
     return (
     <div
         style={{
@@ -77,6 +82,8 @@ const AppShell = () => {
             </main>
         </div>
         <OfflineIndicator />
+        {/* §29c Level 2 — the once-per-device ask for browser notifications. */}
+        <PushPrompt />
         <AssistantWidget />
     </div>
     );

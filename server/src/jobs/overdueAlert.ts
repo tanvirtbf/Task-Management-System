@@ -5,6 +5,7 @@ import { TasksRepo } from "../repositories/TasksRepo";
 import { UsersRepo } from "../repositories/UsersRepo";
 import { WorkspaceRepo } from "../repositories/WorkspaceRepo";
 import { MailService } from "../services/MailService";
+import { pushSvc } from "../services/PushService";
 import { taskUrlOf } from "../services/TaskEmailService";
 import { todayInZone } from "../utils/dhakaTime";
 import type { JobContext, JobOutcome } from "./types";
@@ -29,9 +30,10 @@ import type { JobContext, JobOutcome } from "./types";
  *   - Only OPEN work alerts: completed / archived tasks are excluded, and so
  *     are tasks with NO assignees — but those stay UNCLAIMED on purpose, so a
  *     task assigned while already overdue alerts on the next tick.
- *   - Emails go out AFTER the claim commits, best-effort, one failure never
- *     blocks the rest (`emailErrors` counts them). In-app rows are the source
- *     of truth; `createMany` also applies per-user type preferences.
+ *   - Emails AND Web Push go out AFTER the claim commits, best-effort, one
+ *     failure never blocks the rest (`emailErrors` counts the mail ones;
+ *     `PushService` swallows and logs its own). In-app rows are the source of
+ *     truth; `createMany` also applies per-user type preferences.
  */
 
 /** Per-workspace per-run cap — bounds one tick's mail burst (SMTP quota). */
@@ -133,6 +135,15 @@ export const overdueAlert = async ({
                     dueYmd,
                 });
             }
+            // Web Push to the same recipients' devices (§29c). A no-op when
+            // push is unconfigured, and it never throws — a push failure must
+            // not abort the run or unwind the claim above.
+            await pushSvc().taskOverdue({
+                taskId: task.id,
+                taskName: task.name,
+                dueYmd,
+                recipientIds: recipients.map((u) => u.id),
+            });
         }
 
         for (const m of outbox) {
