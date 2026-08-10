@@ -4,7 +4,8 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Lock, ArrowLeft } from "lucide-react";
 import { FormCard } from "../../components/ui/FormCard";
-import { PasswordStrengthMeter } from "../../components/ui/PasswordStrengthMeter";
+import { PasswordRequirements } from "../../components/ui/PasswordRequirements";
+import { passwordError } from "../../lib/passwordPolicy";
 import { authApi } from "../../http/api";
 import { getApiErrorMessage } from "../../http/client";
 import { useAuthStore } from "../../stores/auth";
@@ -128,9 +129,16 @@ export const AcceptInvitationPage = () => {
                                     required: true,
                                     message: "Password is required",
                                 },
+                                // The SAME four rules the API enforces, so the
+                                // form can never accept what the server will
+                                // refuse (or the reverse).
                                 {
-                                    min: 8,
-                                    message: "Must be at least 8 characters",
+                                    validator: (_, value: string) => {
+                                        const err = passwordError(value ?? "");
+                                        return err
+                                            ? Promise.reject(new Error(err))
+                                            : Promise.resolve();
+                                    },
                                 },
                             ]}
                         >
@@ -155,7 +163,7 @@ export const AcceptInvitationPage = () => {
                                 marginBottom: tokens.spacing[4],
                             }}
                         >
-                            <PasswordStrengthMeter password={password} />
+                            <PasswordRequirements password={password} />
                         </div>
 
                         <Form.Item

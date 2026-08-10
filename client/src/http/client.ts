@@ -220,13 +220,20 @@ api.interceptors.response.use(
 export const unwrapData = <T>(res: AxiosResponse<{ data: T }>): T =>
     res.data.data;
 
+export interface ApiErrorDetail {
+    field?: string;
+    issue: string;
+}
+
 export interface ApiErrorShape {
     code: string;
     message: string;
     requestId?: string;
+    /** Per-field reasons on a 422 — the part that says WHY. */
+    details?: ApiErrorDetail[];
 }
 
-/** Read the backend `{error:{code,message,request_id}}` envelope, if present. */
+/** Read the backend `{error:{code,message,request_id,details}}` envelope. */
 export const getApiError = (err: unknown): ApiErrorShape | null => {
     if (err instanceof AxiosError) {
         const env = (
@@ -236,22 +243,58 @@ export const getApiError = (err: unknown): ApiErrorShape | null => {
                           code?: string;
                           message?: string;
                           request_id?: string;
+                          details?: Array<{ field?: string; issue?: string }>;
                       };
                   }
                 | undefined
         )?.error;
         if (env) {
+            const details = (env.details ?? [])
+                .filter((d): d is { field?: string; issue: string } =>
+                    Boolean(d?.issue),
+                )
+                .map((d) => ({ field: d.field, issue: d.issue }));
             return {
                 code: env.code ?? "unknown",
                 message: env.message ?? "Request failed",
                 requestId: env.request_id,
+                details: details.length > 0 ? details : undefined,
             };
         }
     }
     return null;
 };
 
-/** Friendly message for the UI — falls back to the raw Error message. */
-export const getApiErrorMessage = (err: unknown): string =>
-    getApiError(err)?.message ??
-    (err instanceof Error ? err.message : "Something went wrong. Try again.");
+/** How many field reasons to surface before it stops being readable. */
+const MAX_SHOWN_DETAILS = 3;
+
+/**
+ * Friendly message for the UI — falls back to the raw Error message.
+ *
+ * A 422 arrives as the generic envelope message "One or more fields failed
+ * validation", with the ACTUAL reasons in `details[]`. Showing only the
+ * envelope is how a person ends up staring at a form that refuses them and
+ * says nothing — the invitation-accept page did exactly that. So when details
+ * are present they ARE the message; the envelope line is dropped, because
+ * "One or more fields failed validation. Password must contain a number." is
+ * just the useful half with noise in front of it.
+ */
+export const getApiErrorMessage = (err: unknown): string => {
+    const api = getApiError(err);
+    if (api?.details?.length) {
+        const shown = api.details.slice(0, MAX_SHOWN_DETAILS).map((d) => {
+            const issue = d.issue.trim();
+            return /[.!?]$/.test(issue) ? issue : `${issue}.`;
+        });
+        const extra = api.details.length - shown.length;
+        return extra > 0
+            ? `${shown.join(" ")} (+${extra} more)`
+            : shown.join(" ");
+    }
+    return (
+        api?.message ??
+        (err instanceof Error
+            ? err.message
+            : "Something went wrong. Try again.")
+    );
+};

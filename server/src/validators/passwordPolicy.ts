@@ -1,33 +1,51 @@
 // =============================================================================
-// PASSWORD POLICY (F12 / ISS-083)
+// PASSWORD POLICY
 //
-// Before this, the entire rule for a new password was
-// `isLength({ min: 8, max: 200 })` — so `password`, `12345678`, `PASSWORD`,
-// `aaaaaaaa` and `alllowercase` were all accepted by every password-setting
-// endpoint. For a system holding a company's HR reviews and encrypted customer
-// PII, reachable from the public internet, "eight of anything" is not a policy.
+// FOUR rules, and nothing else:
+//   1. at least 8 characters
+//   2. at least one uppercase letter  (A–Z)
+//   3. at least one number            (0–9)
+//   4. at least one special character (anything not a letter or a digit)
 //
-// ── WHAT THIS CHECKS, AND WHY IT IS SHAPED THIS WAY ─────────────────────────
-// NIST SP 800-63B's modern guidance is that a *blocklist* of known-bad choices
-// does far more good than composition rules, and that mandating symbols mostly
-// produces `Password1!`. So this does both, weighted accordingly:
+// ── WHY IT LOOKS LIKE THIS (rewritten 2026-08-10) ───────────────────────────
+// F12 (ISS-083) replaced a length-only rule with a NIST-flavoured policy: a
+// common-password blocklist, a no-repeated-character rule, a no-keyboard-run
+// rule, and "at least three of {lower, upper, digit, symbol}" with exemptions
+// for long passphrases and for non-ASCII scripts. Each part was defensible on
+// its own. Together they were unpredictable, and the UI never showed them.
 //
-//   1. a blocklist of the most-chosen passwords — checked on a normalised form
-//      (lowercased, and again with trailing digits/punctuation stripped) so
-//      `Password1!` and `password123` are caught alongside `password`;
-//   2. no single repeated character (`aaaaaaaa`);
-//   3. no straight run off the keyboard or alphabet (`12345678`, `abcdefgh`);
-//   4. at least THREE of {lower, upper, digit, other} — but a passphrase of
-//      16+ characters is exempt, because length is the stronger signal and
-//      forcing symbols onto a long passphrase is exactly the counterproductive
-//      rule the guidance warns about.
+// The failure people actually hit: the blocklist matched a NORMALISED form of
+// the candidate — lowercased, then with trailing digits and punctuation
+// stripped — so `Dhaka@1234`, `Welcome@123`, `Admin@123` and `Password1!` all
+// collapsed onto a blocklisted word and were refused. Those are the first
+// things a new colleague in Dhaka types on an invitation page. The client
+// meanwhile showed a strength BAR reading "Strong" in green, and the API
+// answered with the generic envelope message "One or more fields failed
+// validation" — so the person saw green, got refused, and was told nothing.
+// The result was people who simply could not finish accepting an invitation.
 //
-// The minimum length stays 8. Raising it was considered and rejected: it would
-// have been a bigger behaviour change than the defect warrants (the seeded
-// accounts and ~24 existing test fixtures sit at 9–10 characters), and rules
-// 1–4 already refuse every example ISS-083 recorded. `bcrypt` cost 10 and the
-// no-trim rule (whitespace is a legitimate part of a secret) are unchanged —
-// P38 verified both as correct.
+// So the policy is now exactly the four rules above: composition rules only,
+// no dictionary, no hidden normalisation, no exemptions. Every one of them is
+// mechanically checkable in the browser, which is the point — the same four
+// rules render as a live checklist next to the field
+// (`client/src/lib/passwordPolicy.ts` mirrors this file), so "all ticks" and
+// "the server accepts it" are now the same statement.
+//
+// What this trades away, deliberately and with the decision recorded here:
+// `Password1!` and `Dhaka@1234` are now ACCEPTED. A blocklist would refuse
+// them, but a blocklist a user cannot see is exactly what broke this feature.
+// If the blocklist is ever wanted back, it has to come back VISIBLY — shown in
+// the checklist and explained in the error — not as a silent extra gate.
+//
+// Consequence worth knowing: rule 2 asks for `A–Z`, which scripts without
+// letter case (Bangla, CJK) cannot satisfy, so a purely Bangla password is no
+// longer accepted. That is the honest reading of the rule as specified; the
+// previous non-ASCII exemption was invisible to the user in the same way the
+// blocklist was.
+//
+// Unchanged: the 200-character ceiling, and the no-trim rule (leading and
+// trailing whitespace is a legitimate part of a secret). `bcrypt` cost 10 is
+// unrelated and untouched.
 // =============================================================================
 
 import type { ParamSchema } from "express-validator";
@@ -36,115 +54,79 @@ import type { ParamSchema } from "express-validator";
 export const PASSWORD_MIN = 8;
 export const PASSWORD_MAX = 200;
 
-/** Length at which a passphrase is exempt from the character-class rule. */
-const PASSPHRASE_LENGTH = 16;
-
-/**
- * The most-chosen passwords, plus the ones this product would attract.
- * Lowercase; matched against the normalised candidate, never as a substring
- * (so `passwordA-distinct` is fine — it is not `password`).
- */
-const COMMON_PASSWORDS: ReadonlySet<string> = new Set([
-    "password", "passw0rd", "pass", "passwd", "p@ssword", "p@ssw0rd",
-    "123456", "1234567", "12345678", "123456789", "1234567890", "12345",
-    "111111", "000000", "654321", "123123", "121212", "abc123", "a1b2c3",
-    "qwerty", "qwertyui", "qwerty123", "qwe123", "asdfgh", "zxcvbn", "qazwsx",
-    "1q2w3e4r", "1qaz2wsx", "iloveyou", "admin", "administrator", "root",
-    "letmein", "welcome", "monkey", "dragon", "sunshine", "princess",
-    "football", "baseball", "shadow", "master", "superman", "trustno1",
-    "michael", "jordan", "harley", "hunter", "ranger", "buster", "batman",
-    "login", "guest", "test", "testing", "changeme", "secret", "default",
-    "starwars", "whatever", "freedom", "computer", "internet", "samsung",
-    "google", "facebook", "photoshop", "office", "company", "corporate",
-    // this product / this company
-    "beautybooth", "beauty", "taskmanager", "clickup", "bangladesh", "dhaka",
-]);
-
-/** Ascending runs a lazy password walks along. Checked in both directions. */
-const SEQUENCES = [
-    "abcdefghijklmnopqrstuvwxyz",
-    "0123456789",
-    "qwertyuiop",
-    "asdfghjkl",
-    "zxcvbnm",
-];
-
-/** Lowercased, with trailing digits/punctuation stripped (`Password1!` → `password`). */
-const normalise = (value: string): string[] => {
-    const lower = value.toLowerCase();
-    const stripped = lower.replace(/[^a-z]+$/u, "");
-    return stripped && stripped !== lower ? [lower, stripped] : [lower];
-};
-
-const isSingleRepeatedChar = (value: string): boolean =>
-    value.length > 0 && [...value].every((c) => c === value[0]);
-
-/** True when the whole password is one straight run along a known sequence. */
-const isStraightRun = (value: string): boolean => {
-    const lower = value.toLowerCase();
-    if (lower.length < 4) return false;
-    return SEQUENCES.some((seq) => {
-        const rev = [...seq].reverse().join("");
-        return seq.includes(lower) || rev.includes(lower);
-    });
-};
-
-const classCount = (value: string): number =>
-    [/[a-z]/u, /[A-Z]/u, /\d/u, /[^a-zA-Z0-9]/u].filter((re) => re.test(value))
-        .length;
-
-/**
- * Anything outside printable ASCII — Bangla, emoji, accented Latin, CJK.
- *
- * Such a password is exempt from the character-class rule, for the same reason
- * a long passphrase is: the rule exists to stop short, dictionary-ish ASCII
- * choices, and a non-ASCII password is categorically not one — it appears in no
- * common wordlist and on no keyboard walk. Without this the policy would refuse
- * `পাসওয়ার্ড🔥1` (a strong password) while accepting `Abcd123!`, and in a
- * Bangladeshi company that is not a rounding error: it would quietly push
- * people off their own script and onto weaker ASCII. The repo's own
- * reset-password test caught exactly this.
- */
-const hasNonAscii = (value: string): boolean => /[^\x20-\x7E]/u.test(value);
-
 /** Length in CODE POINTS, so an emoji counts once rather than twice. */
 const codePointLength = (value: string): number => [...value].length;
 
 /**
- * The single reason this password is refused, or `null` when it is acceptable.
+ * One checkable requirement.
  *
- * Returns a message the person can act on — "must not be a commonly-used
- * password" tells them what to do; "invalid password" does not. It never
- * echoes the candidate back.
+ * `label` is the affirmative form for a UI checklist ("At least 8
+ * characters"); `missing` is the fragment used to build the API error, so the
+ * message names only what is actually absent.
+ */
+export interface PasswordRule {
+    id: "length" | "uppercase" | "number" | "symbol";
+    label: string;
+    missing: string;
+    test: (value: string) => boolean;
+}
+
+export const PASSWORD_RULES: readonly PasswordRule[] = [
+    {
+        id: "length",
+        label: `At least ${PASSWORD_MIN} characters`,
+        missing: `be at least ${PASSWORD_MIN} characters long`,
+        test: (v) => codePointLength(v) >= PASSWORD_MIN,
+    },
+    {
+        id: "uppercase",
+        label: "At least one uppercase letter (A–Z)",
+        missing: "contain an uppercase letter (A–Z)",
+        test: (v) => /[A-Z]/.test(v),
+    },
+    {
+        id: "number",
+        label: "At least one number (0–9)",
+        missing: "contain a number (0–9)",
+        test: (v) => /\d/.test(v),
+    },
+    {
+        id: "symbol",
+        label: "At least one special character (e.g. ! @ # $)",
+        missing: "contain a special character (e.g. ! @ # $)",
+        test: (v) => /[^A-Za-z0-9]/.test(v),
+    },
+] as const;
+
+/** Join fragments as "a, b, and c" — the error has to read like a sentence. */
+const joinList = (parts: string[]): string => {
+    if (parts.length === 1) return parts[0];
+    if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
+    return `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
+};
+
+/** The ids of every rule this value fails, in checklist order. */
+export const passwordRuleFailures = (value: string): PasswordRule["id"][] =>
+    PASSWORD_RULES.filter((rule) => !rule.test(value)).map((rule) => rule.id);
+
+/**
+ * Why this password is refused, or `null` when it is acceptable.
+ *
+ * Names EVERY missing requirement in one sentence, so a person fixes the
+ * password in one attempt instead of discovering the rules one refusal at a
+ * time. It never echoes the candidate back.
  */
 export const passwordPolicyError = (value: unknown): string | null => {
     if (typeof value !== "string") return "New password must be a string";
-    if (
-        codePointLength(value) < PASSWORD_MIN ||
-        codePointLength(value) > PASSWORD_MAX
-    ) {
-        return `New password must be between ${PASSWORD_MIN} and ${PASSWORD_MAX} characters`;
+
+    if (codePointLength(value) > PASSWORD_MAX) {
+        return `New password must be at most ${PASSWORD_MAX} characters`;
     }
-    if (isSingleRepeatedChar(value)) {
-        return "New password must not be the same character repeated";
-    }
-    if (isStraightRun(value)) {
-        return "New password must not be a straight run of letters or digits";
-    }
-    if (normalise(value).some((n) => COMMON_PASSWORDS.has(n))) {
-        return "New password must not be a commonly-used password";
-    }
-    if (
-        !hasNonAscii(value) &&
-        codePointLength(value) < PASSPHRASE_LENGTH &&
-        classCount(value) < 3
-    ) {
-        return (
-            "New password must combine at least three of: lowercase, uppercase, " +
-            `digits, symbols — or be at least ${PASSPHRASE_LENGTH} characters long`
-        );
-    }
-    return null;
+
+    const missing = PASSWORD_RULES.filter((rule) => !rule.test(value));
+    if (missing.length === 0) return null;
+
+    return `Password must ${joinList(missing.map((rule) => rule.missing))}.`;
 };
 
 /**

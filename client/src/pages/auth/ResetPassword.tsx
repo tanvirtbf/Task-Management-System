@@ -5,7 +5,8 @@ import { useMutation } from "@tanstack/react-query";
 import { App as AntApp } from "antd";
 import { Lock, ArrowLeft } from "lucide-react";
 import { FormCard } from "../../components/ui/FormCard";
-import { PasswordStrengthMeter } from "../../components/ui/PasswordStrengthMeter";
+import { PasswordRequirements } from "../../components/ui/PasswordRequirements";
+import { passwordError } from "../../lib/passwordPolicy";
 import { authApi } from "../../http/api";
 import { tokens } from "../../theme";
 
@@ -58,7 +59,15 @@ export const ResetPasswordPage = () => {
                     label="New password"
                     rules={[
                         { required: true, message: "Password is required" },
-                        { min: 8, message: "Must be at least 8 characters" },
+                        // The SAME four rules the API enforces.
+                        {
+                            validator: (_, value: string) => {
+                                const err = passwordError(value ?? "");
+                                return err
+                                    ? Promise.reject(new Error(err))
+                                    : Promise.resolve();
+                            },
+                        },
                     ]}
                 >
                     <Input.Password
@@ -71,7 +80,7 @@ export const ResetPasswordPage = () => {
                 </Form.Item>
 
                 <div style={{ marginTop: -tokens.spacing[3], marginBottom: tokens.spacing[4] }}>
-                    <PasswordStrengthMeter password={password} />
+                    <PasswordRequirements password={password} />
                 </div>
 
                 <Form.Item

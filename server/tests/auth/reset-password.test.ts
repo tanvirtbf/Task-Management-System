@@ -384,7 +384,11 @@ describe("POST /api/v1/auth/reset-password", () => {
         it("preserves whitespace in the password (not trimmed)", async () => {
             const u = await makeUser();
             const { rawToken } = await makeResetToken(u.id);
-            const pw = "  spaced secret  ";
+            // Padded on both sides ON PURPOSE — the point is that the API
+            // stores the secret verbatim. The capital and the digit are there
+            // only to satisfy the 2026-08-10 policy rewrite (the old rule
+            // needed neither); the surrounding spaces are what this asserts.
+            const pw = "  Spaced secret 1  ";
 
             await post({ token: rawToken, new_password: pw });
 
@@ -409,12 +413,54 @@ describe("POST /api/v1/auth/reset-password", () => {
         it("handles a unicode password (emoji + Bangla) end to end", async () => {
             const u = await makeUser();
             const { rawToken } = await makeResetToken(u.id);
-            const pw = "পাসওয়ার্ড🔥1";
+            // Non-ASCII round-trips byte-for-byte through hashing and login.
+            // The `B` and the `1` are load-bearing since the 2026-08-10 policy
+            // rewrite: the rules now ask for an uppercase letter and a digit
+            // with NO script-based exemption, so a purely Bangla password no
+            // longer qualifies (recorded in validators/passwordPolicy.ts). The
+            // emoji satisfies the special-character rule.
+            const pw = "Bপাসওয়ার্ড🔥1";
 
             const res = await post({ token: rawToken, new_password: pw });
 
             expect(res.status).toBe(204);
             expect((await login(u.email, pw)).status).toBe(200);
+        });
+
+        it("names EVERY missing rule at once, so it can be fixed in one go", async () => {
+            const u = await makeUser();
+            const { rawToken } = await makeResetToken(u.id);
+
+            // Lowercase only: fails uppercase + number + symbol together.
+            const res = await post({
+                token: rawToken,
+                new_password: "onlylowercase",
+            });
+
+            expect(res.status).toBe(422);
+            expect(res.body.error.code).toBe("validation.failed");
+            const issue = res.body.error.details
+                .map((d: { issue: string }) => d.issue)
+                .join(" ");
+            expect(issue).toContain("uppercase");
+            expect(issue).toContain("number");
+            expect(issue).toContain("special character");
+        });
+
+        it("accepts an ordinary password that the old hidden blocklist refused", async () => {
+            // `Dhaka@1234` normalised to `dhaka` under the pre-2026-08-10
+            // policy and was rejected while the UI showed all-green — the
+            // defect that prompted the rewrite. It satisfies all four rules.
+            const u = await makeUser();
+            const { rawToken } = await makeResetToken(u.id);
+
+            const res = await post({
+                token: rawToken,
+                new_password: "Dhaka@1234",
+            });
+
+            expect(res.status).toBe(204);
+            expect((await login(u.email, "Dhaka@1234")).status).toBe(200);
         });
     });
 

@@ -70,8 +70,8 @@ exports.resetPasswordValidator = (0, express_validator_1.checkSchema)({
             errorMessage: "Reset token is too long (max 512 chars)",
         },
     },
-    // F12 (ISS-083): the shared policy — complexity + a common-password
-    // denylist. See validators/passwordPolicy.ts for the reasoning.
+    // The shared policy: 8+ chars, an uppercase letter, a number, a special
+    // character — and nothing hidden. See validators/passwordPolicy.ts.
     new_password: passwordPolicy_1.newPasswordSchema,
 });
 /**
@@ -90,7 +90,7 @@ exports.changePasswordValidator = (0, express_validator_1.checkSchema)({
             errorMessage: "Current password must be between 1 and 200 characters",
         },
     },
-    // F12 (ISS-083): the shared policy.
+    // The shared policy — see validators/passwordPolicy.ts.
     new_password: passwordPolicy_1.newPasswordSchema,
 });
 /**

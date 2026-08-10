@@ -5,6 +5,8 @@ import { Save, KeyRound, BellRing } from "lucide-react";
 import { authApi, usersApi } from "../../http/api";
 import { useAuthStore } from "../../stores/auth";
 import { isPushSupported, requestPushPermission } from "../../lib/push";
+import { isPasswordValid } from "../../lib/passwordPolicy";
+import { PasswordRequirements } from "../../components/ui/PasswordRequirements";
 import {
     SettingsHeader,
     SettingsSection,
@@ -87,8 +89,10 @@ const ProfileSettings = () => {
             ),
     });
 
+    // The full policy, not just a length check — otherwise the button enables
+    // on a password the API will refuse (`lib/passwordPolicy.ts`).
     const pwValid =
-        currentPw.length > 0 && newPw.length >= 8 && newPw === confirmPw;
+        currentPw.length > 0 && isPasswordValid(newPw) && newPw === confirmPw;
 
     // §29c — the deliberate second door for Web Push: the sign-in prompt asks
     // once per device, so without this a stray "Not now" would be permanent.
@@ -324,8 +328,15 @@ const ProfileSettings = () => {
                         <Input.Password
                             value={newPw}
                             onChange={(e) => setNewPw(e.target.value)}
-                            placeholder="At least 8 characters"
+                            placeholder="Create a new password"
                         />
+                        {/* Same live checklist as the invitation and reset
+                            pages — the Update button unlocks when all four
+                            tick, so the API can never refuse what this shows
+                            as ready. */}
+                        <div style={{ marginTop: 8 }}>
+                            <PasswordRequirements password={newPw} />
+                        </div>
                     </div>
                     <div>
                         <label style={{ fontSize: 13, fontWeight: 500 }}>
