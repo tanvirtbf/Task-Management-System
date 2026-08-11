@@ -41,6 +41,7 @@
 | `016_team_membership.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 | ⏳ pending (no prod yet) |
 | `017_task_audit.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 | ⏳ pending (no prod yet) |
 | `018_space_visibility_grants.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 | ⏳ pending (no prod yet) |
+| `019_visibility_switch.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 (first) | ⏳ pending (no prod yet) |
 
 > `005` ships with the F3 clock fix and is only correct alongside it. If you apply
 > `005`, the app's `DB_TIMEZONE` **must** be `+00:00` (see `server/.env.example`).
@@ -63,6 +64,12 @@
 > `overdue` ENUM value that `009` removed — legitimately this time, because the job is
 > its producer. Gated + re-runnable. Remember the new cron line
 > (`deploy/cron/bbtasks-jobs`: `*/10` overdue-alert) when rolling prod.
+>
+> `019` is **THE SWITCH** (team-access P6, 2026-08-11): flips the seeded Member+Guest
+> grants — `space.view` → `space`, `task.view` → `own` (B1). Pure DATA, no code ships
+> with it; **rollback = one UPDATE back to `all` + a version bump (documented in-file,
+> instant, no data loss)**. ⚠️ `db:seed`/`db:seed:demo` re-assert the OPEN seeds —
+> re-apply 019 after ever re-running them. Applied to qa FIRST, then dev, per the plan.
 >
 > `018` ships with team-access Phase 4 (2026-08-11): the `space_visibility_grants`
 > table — "team A can also SEE team B", consumed at the PolicyService actor fold.

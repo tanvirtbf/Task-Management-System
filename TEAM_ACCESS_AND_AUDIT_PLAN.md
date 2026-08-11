@@ -412,7 +412,26 @@ contradiction and no leak. This is the phase that earns the right to do P6.
 
 ---
 
-## PHASE 6 — THE SWITCH (R1.3)
+## PHASE 6 — THE SWITCH (R1.3) ✅ THROWN 2026-08-11
+
+> **Status: LIVE on dev + qa.** Upgrade `019_visibility_switch.sql` — pure DATA (no code
+> shipped): seeded Member+Guest `space.view`→`space`, `task.view`→`own` (B1) + version bump;
+> **rollback = one UPDATE + bump, in-file**. Seed SPECS deliberately unchanged (fresh installs
+> stay open "until an admin tightens"; the upgrade IS the tightening; prod's chain replays it;
+> the test suites stay meaningful). ⚠️ `db:seed`/`db:seed:demo` re-assert open grants — re-apply
+> 019 after them; server BOOT does NOT re-seed (verified: bootstrapRbac callers = the two seed
+> scripts only). Pre-flight: all heads members ✓ · only teamless = guest@ (Q9) + QA scratch
+> accounts ✓ · P5 closed ✓ · **B1 loop passed** ✓ · cs.only/marketing.only unchanged ✓.
+> Proof: `tests/rbac/p6-switch-matrix.test.ts` (5 tests, byte-faithful flip in a
+> production-shaped workspace): member=own team only + Home tile agrees + search scoped; head=own
+> dept + review surface; **B1 loop: cross-team assignee opens/reads history/comments/COMPLETES**;
+> P4 grant on/off; teamless guest sees nothing, admin unaffected. rbac module 324/324.
+> **Live department walk on dev (real member list):** nusrat=Marketing · sadia=Orders ·
+> mitu=Social Media · imran=Product · rakib=CS · sumaiya=BOTH her teams · tanvir=all (he is an
+> ADMIN — Q4, correct) · owner=all · guest@=nothing (Q9 — assign via Settings→Teams) ·
+> marketing.only unchanged. Live B1 on real data: 404 → assign → open+history 200 → unassign →
+> 404. Walk-script gotcha for next time: a rate-limited login left the PREVIOUS user's token in
+> the shell variable — always fail-fast per login (or DISABLE_RATE_LIMIT=1).
 
 **Goal:** a member sees only their own team, plus teams granted to their team.
 
