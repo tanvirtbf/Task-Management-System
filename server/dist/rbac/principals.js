@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.elevateToSpaces = exports.elevate = exports.elevationReasons = exports.bugIntakePrincipal = exports.bugIntakeActor = exports.isPublic = exports.publicFormPrincipal = exports.publicFormActor = exports.isSystem = exports.systemPrincipal = exports.systemActor = exports.SYSTEM_USER_ID = void 0;
+exports.elevateToSpaces = exports.elevate = exports.elevationReasons = exports.negotiationAnswerPrincipal = exports.negotiationAnswerActor = exports.bugIntakePrincipal = exports.bugIntakeActor = exports.isPublic = exports.publicFormPrincipal = exports.publicFormActor = exports.isSystem = exports.systemPrincipal = exports.systemActor = exports.SYSTEM_USER_ID = void 0;
 const scope_1 = require("./scope");
 /** The `user_id` recorded for job-driven work. Not a real row. */
 exports.SYSTEM_USER_ID = "system";
@@ -110,6 +110,44 @@ const bugIntakePrincipal = (input) => ({
     scope: (0, scope_1.makeScope)([input.spaceId], [input.listId]),
 });
 exports.bugIntakePrincipal = bugIntakePrincipal;
+// ─── 2c. the assignment-query answer (team-access P8, fix B2) ────────────────
+/**
+ * Team-access P8 — answering a `query` on a cross-team assignment request.
+ *
+ * The plan's self-review (B2) caught the deadlock this exists to prevent:
+ * after upgrade 020, the REQUESTER of a pending request typically holds no
+ * `task.edit` on the task (they are neither assignee nor that team's head), so
+ * the receiver's "I need 2 more days" could be raised and never answered. The
+ * answer endpoint authorises as *"you are the requester of this pending
+ * request"* (AssignmentRequestsService.answer), then routes the date change
+ * through the NORMAL `TaskWriteService.update` under this principal — so
+ * validation, the `task_updated` audit diff, the ETag bump and the
+ * overdue-alert re-arm all fire exactly as a real edit would.
+ *
+ * Same shape and narrowing as the bug-report intake above: the actor carries
+ * ONLY `task.edit`, only inside the task's own space, and the scope covers
+ * that one list — a defect that handed this principal to a listing query could
+ * only ever surface the list the task already lives in. Attribution stays the
+ * real requester (`userId` + the service input's `actorId`).
+ */
+const negotiationAnswerActor = (input) => ({
+    kind: "intake",
+    userId: input.requesterId,
+    workspaceId: input.workspaceId,
+    isOwner: false,
+    legacyRole: "member",
+    version: 0,
+    perms: new Map([
+        ["task.edit", spaceOnly(input.spaceId)],
+    ]),
+});
+exports.negotiationAnswerActor = negotiationAnswerActor;
+/** The principal the assignment-requests router installs around the update. */
+const negotiationAnswerPrincipal = (input) => ({
+    actor: (0, exports.negotiationAnswerActor)(input),
+    scope: (0, scope_1.makeScope)([input.spaceId], [input.listId]),
+});
+exports.negotiationAnswerPrincipal = negotiationAnswerPrincipal;
 const ELEVATION_REASONS = [
     "job",
     "dept_review_stats",

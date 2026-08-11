@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.runJob = exports.isJobName = exports.JOB_NAMES = void 0;
 const logger_1 = __importDefault(require("../config/logger"));
+const assignmentRequestExpiry_1 = require("./assignmentRequestExpiry");
 const attachmentJanitor_1 = require("./attachmentJanitor");
 const departmentReport_1 = require("./departmentReport");
 const overdueAlert_1 = require("./overdueAlert");
@@ -25,6 +26,7 @@ const JOBS = {
     "form-submission-expiry": formSubmissionExpiry_1.formSubmissionExpiry,
     "department-report": departmentReport_1.departmentReport,
     "overdue-alert": overdueAlert_1.overdueAlert,
+    "assignment-request-expiry": assignmentRequestExpiry_1.assignmentRequestExpiry,
 };
 exports.JOB_NAMES = Object.keys(JOBS);
 const isJobName = (s) => Object.prototype.hasOwnProperty.call(JOBS, s);

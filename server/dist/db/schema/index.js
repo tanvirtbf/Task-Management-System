@@ -23,6 +23,8 @@
 //   reports.ts         — department_reports (Dept Review V1 — weekly HR reports)
 //   rbac.ts            — permissions, roles, role_permissions, user_roles
 //                        (Dynamic RBAC — RBAC_DYNAMIC_PLAN.md)
+//   assignment-requests.ts — task_assignment_requests + its events ledger
+//                        (team-access P8 — cross-team assignment approval)
 //   views.ts           — v_open_tasks, v_open_bugs, v_active_sprint,
 //                        v_current_on_call, v_breached_sla
 //   relations.ts       — relations() for the Drizzle query API
@@ -60,5 +62,6 @@ __exportStar(require("./chat"), exports);
 __exportStar(require("./reviews"), exports);
 __exportStar(require("./reports"), exports);
 __exportStar(require("./rbac"), exports);
+__exportStar(require("./assignment-requests"), exports);
 __exportStar(require("./views"), exports);
 __exportStar(require("./relations"), exports);

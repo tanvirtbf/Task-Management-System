@@ -176,6 +176,56 @@ export const bugIntakePrincipal = (input: {
     scope: makeScope([input.spaceId], [input.listId]),
 });
 
+// ─── 2c. the assignment-query answer (team-access P8, fix B2) ────────────────
+
+/**
+ * Team-access P8 — answering a `query` on a cross-team assignment request.
+ *
+ * The plan's self-review (B2) caught the deadlock this exists to prevent:
+ * after upgrade 020, the REQUESTER of a pending request typically holds no
+ * `task.edit` on the task (they are neither assignee nor that team's head), so
+ * the receiver's "I need 2 more days" could be raised and never answered. The
+ * answer endpoint authorises as *"you are the requester of this pending
+ * request"* (AssignmentRequestsService.answer), then routes the date change
+ * through the NORMAL `TaskWriteService.update` under this principal — so
+ * validation, the `task_updated` audit diff, the ETag bump and the
+ * overdue-alert re-arm all fire exactly as a real edit would.
+ *
+ * Same shape and narrowing as the bug-report intake above: the actor carries
+ * ONLY `task.edit`, only inside the task's own space, and the scope covers
+ * that one list — a defect that handed this principal to a listing query could
+ * only ever surface the list the task already lives in. Attribution stays the
+ * real requester (`userId` + the service input's `actorId`).
+ */
+export const negotiationAnswerActor = (input: {
+    workspaceId: string;
+    /** The space owning the negotiated task — the only place this reaches. */
+    spaceId: string;
+    /** The requester answering the query; kept as the acting identity. */
+    requesterId: string;
+}): ActorPermissions => ({
+    kind: "intake",
+    userId: input.requesterId,
+    workspaceId: input.workspaceId,
+    isOwner: false,
+    legacyRole: "member",
+    version: 0,
+    perms: new Map<string, PermissionEntry>([
+        ["task.edit", spaceOnly(input.spaceId)],
+    ]),
+});
+
+/** The principal the assignment-requests router installs around the update. */
+export const negotiationAnswerPrincipal = (input: {
+    workspaceId: string;
+    spaceId: string;
+    listId: string;
+    requesterId: string;
+}): Principal => ({
+    actor: negotiationAnswerActor(input),
+    scope: makeScope([input.spaceId], [input.listId]),
+});
+
 // ─── 3. deliberate elevation (L1, L4) ────────────────────────────────────────
 
 /**

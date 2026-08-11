@@ -245,6 +245,10 @@ export class EngineeringService {
                     bugSeverity: severity, // null → create() defaults a Bug to S2
                     reporterTeam: input.reporterTeam,
                     assignees,
+                    // Team-access P8, Q7: the S0/S1 on-call page must never
+                    // wait for a cross-team accept — a page that waits for an
+                    // approval is not a page.
+                    exemptAssignmentApproval: true,
                 }),
         );
 

@@ -1,4 +1,5 @@
 import logger from "../config/logger";
+import { assignmentRequestExpiry } from "./assignmentRequestExpiry";
 import { attachmentJanitor } from "./attachmentJanitor";
 import { departmentReport } from "./departmentReport";
 import { overdueAlert } from "./overdueAlert";
@@ -21,6 +22,7 @@ const JOBS = {
     "form-submission-expiry": formSubmissionExpiry,
     "department-report": departmentReport,
     "overdue-alert": overdueAlert,
+    "assignment-request-expiry": assignmentRequestExpiry,
 } as const;
 
 export type JobName = keyof typeof JOBS;

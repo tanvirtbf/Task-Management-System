@@ -376,10 +376,12 @@ export interface DeptReport extends Omit<DeptReportListItem, "totals"> {
 // ============================================================
 
 /**
- * Mirrors the server's `notifications.type` ENUM exactly (12 values as of
- * Dept Review V1). The pre-existing drift is fixed here: `pr_review` /
- * `incident_alert` were missing, and the phantom `reminder_due` (removed
- * server-side long ago) is gone.
+ * Mirrors the server's `notifications.type` ENUM exactly (plus a few legacy
+ * client-only values the runtime fallback tolerates). The pre-existing drift
+ * is fixed here: `pr_review` / `incident_alert` were missing, and the phantom
+ * `reminder_due` (removed server-side long ago) is gone. The three
+ * `assignment_*` values arrived with upgrades/021 (team-access P8 — the
+ * cross-team assignment approval flow).
  */
 export type NotificationType =
     | "assigned"
@@ -393,7 +395,10 @@ export type NotificationType =
     | "pr_review"
     | "incident_alert"
     | "task_reviewed"
-    | "report_ready";
+    | "report_ready"
+    | "assignment_request"
+    | "assignment_request_decided"
+    | "assignment_query";
 
 export interface Notification {
     id: string;

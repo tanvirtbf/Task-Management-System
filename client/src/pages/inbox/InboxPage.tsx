@@ -26,6 +26,8 @@ import {
     Siren,
     ClipboardCheck,
     BarChart3,
+    UserCheck,
+    HelpCircle,
 } from "lucide-react";
 import { notificationsApi } from "../../http/api";
 import { useAuthStore } from "../../stores/auth";
@@ -52,6 +54,10 @@ const TYPE_ICONS: Record<NotificationType, TypeMeta> = {
     incident_alert: { icon: Siren, color: "#E11D48" },
     task_reviewed: { icon: ClipboardCheck, color: "#10B981" },
     report_ready: { icon: BarChart3, color: "#8B5CF6" },
+    // Team-access P8 — the cross-team assignment approval flow (upgrades/021).
+    assignment_request: { icon: UserCheck, color: "#F59E0B" },
+    assignment_request_decided: { icon: UserCheck, color: "#10B981" },
+    assignment_query: { icon: HelpCircle, color: "#06B6D4" },
 };
 
 /**

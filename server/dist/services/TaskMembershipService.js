@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.TaskMembershipService = void 0;
 const errors_1 = require("../errors");
 const scopeGuard_1 = require("../rbac/scopeGuard");
+const AssignmentRequestsService_1 = require("./AssignmentRequestsService");
 const TaskEmailService_1 = require("./TaskEmailService");
 const PushService_1 = require("./PushService");
 const NOTIFICATION_TITLE_MAX = 300; // notifications.title VARCHAR(300)
@@ -62,6 +63,23 @@ class TaskMembershipService {
             }));
             throw errors_1.AppError.unprocessable("task.invalid_assignee", "One or more assignees are not active members of this workspace", details);
         }
+        // 3b. Team-access P8 (Q11): who may be assigned DIRECTLY, and who
+        //     needs the receiving side's approval first? Read-only split,
+        //     BEFORE the transaction (policy fold + membership probes must
+        //     not run under the row lock). Dormant while every target's
+        //     task.view reach is `all` (the open seeds) — everyone is direct.
+        const spaceInfo = await this.tasks.spaceInfoByTask([taskId]);
+        const split = await (0, AssignmentRequestsService_1.assignmentGate)().splitByApproval({
+            workspaceId,
+            requesterId: actorId,
+            pairs: userIds.map((targetUserId) => ({
+                taskId,
+                spaceId: spaceInfo.get(taskId)?.spaceId ?? "",
+                targetUserId,
+                taskName: task.name,
+            })),
+        });
+        const directIds = split.directByTask.get(taskId) ?? [];
         // 4. Critical section. Lock the task row so concurrent assigns to the
         //    SAME task serialize — this removes the InnoDB deadlock between each
         //    writer's child-row inserts and the shared `updated_at` bump, and
@@ -71,7 +89,18 @@ class TaskMembershipService {
         const outcome = await this.db.transaction(async (tx) => {
             await this.tasks.lockById(taskId, tx);
             const existing = new Set(await this.membership.getAssigneeIds(taskId, tx));
-            const newIds = userIds.filter((id) => !existing.has(id));
+            // P8: pending requests for the gated pairs — inside the SAME tx
+            // (assignment call = one atomic outcome), under the same task-first
+            // lock order the accept path uses. Already-assigned targets need no
+            // request; a racing duplicate pending is skipped by the unique key.
+            const gatedFresh = split.gated.filter((p) => !existing.has(p.targetUserId));
+            await (0, AssignmentRequestsService_1.assignmentGate)().createRequestsInTx(tx, {
+                workspaceId,
+                requesterId: actorId,
+                split: { ...split, gated: gatedFresh },
+                now: new Date(),
+            });
+            const newIds = directIds.filter((id) => !existing.has(id));
             if (newIds.length === 0) {
                 return { added: 0, recipients: [] };
             }

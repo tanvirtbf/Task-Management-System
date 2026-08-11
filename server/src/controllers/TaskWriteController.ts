@@ -375,9 +375,16 @@ export class TaskWriteController {
                 workspaceId: req.auth.workspaceId,
                 actorId: req.auth.sub,
                 updated: result.updated,
+                pendingApproval: result.pendingApproval,
             });
 
-            res.status(200).json(result);
+            // P8 (Q8): `pending_approval` rides the response so the toolbar
+            // can say "N assigned, M pending approval" (snake_case wire).
+            res.status(200).json({
+                updated: result.updated,
+                tasks: result.tasks,
+                pending_approval: result.pendingApproval,
+            });
         } catch (err) {
             next(err);
         }

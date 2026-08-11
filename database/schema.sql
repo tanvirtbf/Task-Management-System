@@ -1033,7 +1033,10 @@ CREATE TABLE notifications (
                         -- Dept Review V1 (appended at END — ENUM order parity)
                         'task_reviewed','report_ready',
                         -- upgrades/014 — produced by the overdue-alert job
-                        'overdue') NOT NULL,
+                        'overdue',
+                        -- team-access P8 (upgrades/021) — assignment approval
+                        'assignment_request','assignment_request_decided',
+                        'assignment_query') NOT NULL,
     entity_type    ENUM('task','comment','form','automation',
                         'incident','report') NOT NULL,
     entity_id      VARCHAR(64)  NOT NULL,
@@ -1077,7 +1080,10 @@ CREATE TABLE user_notification_prefs (
                         -- Dept Review V1 (must mirror notifications.type)
                         'task_reviewed','report_ready',
                         -- upgrades/014 (must mirror notifications.type)
-                        'overdue') NOT NULL,
+                        'overdue',
+                        -- upgrades/021 (must mirror notifications.type)
+                        'assignment_request','assignment_request_decided',
+                        'assignment_query') NOT NULL,
     in_app_enabled  BOOLEAN     NOT NULL DEFAULT TRUE,
     updated_at      TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
                                     ON UPDATE CURRENT_TIMESTAMP,
@@ -1534,6 +1540,113 @@ CREATE TABLE space_visibility_grants (
         REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,
     INDEX idx_svg_workspace (workspace_id),
     INDEX idx_svg_target (target_space_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
+
+
+-- =============================================================================
+-- 43. task_assignment_requests  (team-access P8, upgrades/021)
+-- Cross-team assignment approval (R1.4): when the person being assigned is NOT
+-- a member of the space that owns the task (Q11 — membership decides, not home
+-- team), the assignment paths create a PENDING request here instead of an
+-- assignee row. The target user, any Head of a team the target belongs to, or
+-- an admin accepts (atomic claim) / declines / raises a `query` ("I need 2 more
+-- days" + proposed date); the requester answers via its own endpoint (fix B2 —
+-- after P7 the requester holds no task.edit on the task). Same-team assignment
+-- never lands here (Q5), nor does the S0/S1 on-call auto-assign (Q7), nor a
+-- target whose `task.view` reach is `all` — which keeps this table EMPTY and
+-- the gate dormant while the open seeded grants are in force.
+--
+-- `space_id` is the owning space AT REQUEST TIME (snapshot annotation, the
+-- task_reviews convention); live derivation is always primary_list_id →
+-- lists.space_id. `request_note`/`query_note`/`proposed_due_date` mirror the
+-- LATEST negotiation state; the full history lives in the events ledger (§44).
+-- `pending_flag` is a VIRTUAL generated column used ONLY by the unique key:
+-- NULL for decided rows (NULLs are distinct, so history stacks freely), 1 for
+-- pending — at most ONE live request per (task, person). VIRTUAL, not STORED,
+-- per the user_roles `scope_key` precedent (and never modelled in Drizzle).
+-- `expires_at`/`created_at`/`updated_at`/`decided_at` are app-written UTC
+-- (bound params) — deliberately NO DB defaults (the task_reviews clock rule).
+-- =============================================================================
+CREATE TABLE task_assignment_requests (
+    id                VARCHAR(64) NOT NULL,
+    internal_id       BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    workspace_id      VARCHAR(64) NOT NULL,
+    space_id          VARCHAR(64) NOT NULL,
+    task_id           VARCHAR(64) NOT NULL,
+    -- The person whose consent is being asked for.
+    target_user_id    VARCHAR(64) NOT NULL,
+    requested_by      VARCHAR(64) NOT NULL,
+    status            ENUM('pending','accepted','declined','expired','cancelled')
+                          NOT NULL DEFAULT 'pending',
+    -- The requester's message at creation.
+    request_note      VARCHAR(500) NULL,
+    -- The receiver side's LATEST query ("I need 2 more days").
+    query_note        VARCHAR(500) NULL,
+    -- The latest proposed new due date riding on that query (DATE — the same
+    -- calendar-day domain as tasks.due_date).
+    proposed_due_date DATE NULL,
+    decided_by        VARCHAR(64) NULL,
+    decided_at        TIMESTAMP NULL,
+    expires_at        TIMESTAMP NOT NULL,
+    created_at        TIMESTAMP NOT NULL,
+    updated_at        TIMESTAMP NOT NULL,
+    pending_flag      TINYINT GENERATED ALWAYS AS
+                          (IF(status = 'pending', 1, NULL)) VIRTUAL,
+
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_tar_internal_id (internal_id),
+    -- At most one PENDING request per (task, person); decided history is free.
+    UNIQUE KEY uq_tar_one_pending (task_id, target_user_id, pending_flag),
+    CONSTRAINT fk_tar_ws FOREIGN KEY (workspace_id)
+        REFERENCES workspaces(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_tar_space FOREIGN KEY (space_id)
+        REFERENCES spaces(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_tar_task FOREIGN KEY (task_id)
+        REFERENCES tasks(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    -- CASCADE (not RESTRICT): a negotiation is meaningless without its people,
+    -- and users are soft-deactivated in practice anyway (F16 clean-cascade rule).
+    CONSTRAINT fk_tar_target FOREIGN KEY (target_user_id)
+        REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_tar_requested_by FOREIGN KEY (requested_by)
+        REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_tar_decided_by FOREIGN KEY (decided_by)
+        REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,
+    -- Received inbox / sent list / drawer history / janitor scan.
+    INDEX idx_tar_target (target_user_id, status, internal_id),
+    INDEX idx_tar_requester (requested_by, status, internal_id),
+    INDEX idx_tar_task_time (task_id, internal_id),
+    INDEX idx_tar_expiry (status, expires_at),
+    INDEX idx_tar_workspace (workspace_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
+
+
+-- =============================================================================
+-- 44. task_assignment_request_events  (team-access P8, upgrades/021)
+-- Append-only ledger of the whole negotiation (the task_reviews shape): one row
+-- per ACTION — created / accepted / declined / queried / answered / cancelled /
+-- expired — so the P9 drawer panel can show the back-and-forth verbatim.
+-- `actor_id` NULL = the system (the expiry janitor). `created_at` app-written
+-- UTC, no DB default.
+-- =============================================================================
+CREATE TABLE task_assignment_request_events (
+    id                VARCHAR(64) NOT NULL,
+    internal_id       BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    request_id        VARCHAR(64) NOT NULL,
+    actor_id          VARCHAR(64) NULL,
+    action            ENUM('created','accepted','declined','queried','answered',
+                           'cancelled','expired') NOT NULL,
+    note              VARCHAR(500) NULL,
+    -- For 'queried': the proposal. For 'answered': the date actually applied.
+    proposed_due_date DATE NULL,
+    created_at        TIMESTAMP NOT NULL,
+
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_tare_internal_id (internal_id),
+    CONSTRAINT fk_tare_request FOREIGN KEY (request_id)
+        REFERENCES task_assignment_requests(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_tare_actor FOREIGN KEY (actor_id)
+        REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,
+    INDEX idx_tare_request_time (request_id, internal_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
 
 

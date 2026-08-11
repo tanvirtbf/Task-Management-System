@@ -26,6 +26,7 @@ const statuses_1 = __importDefault(require("./routes/statuses"));
 const tags_1 = __importDefault(require("./routes/tags"));
 const lists_1 = __importDefault(require("./routes/lists"));
 const tasks_1 = __importDefault(require("./routes/tasks"));
+const assignmentRequests_1 = __importDefault(require("./routes/assignmentRequests"));
 const taskDependencies_1 = __importDefault(require("./routes/taskDependencies"));
 const customFields_1 = __importDefault(require("./routes/customFields"));
 const forms_1 = __importDefault(require("./routes/forms"));
@@ -180,6 +181,10 @@ v1.use(forms_1.default);
 // root BEFORE `/tasks` (its 2-segment `GET /tasks/:id/attachments` resolves
 // ahead of the tasks router's `/:id` routes).
 v1.use(attachments_1.default);
+// Team-access P8 — assignment approval. Declares full paths spanning
+// `/assignment-requests/*` and `GET /tasks/:id/assignment-requests`, so it
+// mounts at the v1 root BEFORE `/tasks` (same reasoning as attachments).
+v1.use(assignmentRequests_1.default);
 // §20 Sprints — declares full paths spanning `/sprints`, `/sprints/active`,
 // `/sprints/:id`, `/sprints/:id/start|close|tasks`, and
 // `/sprints/:id/tasks/:taskId`, so it mounts at the v1 root (Engineering-only;

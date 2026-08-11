@@ -22,6 +22,7 @@ import statusesRouter from "./routes/statuses";
 import tagsRouter from "./routes/tags";
 import listsRouter from "./routes/lists";
 import tasksRouter from "./routes/tasks";
+import assignmentRequestsRouter from "./routes/assignmentRequests";
 import taskDependenciesRouter from "./routes/taskDependencies";
 import customFieldsRouter from "./routes/customFields";
 import formsRouter from "./routes/forms";
@@ -193,6 +194,10 @@ v1.use(formsRouter);
 // root BEFORE `/tasks` (its 2-segment `GET /tasks/:id/attachments` resolves
 // ahead of the tasks router's `/:id` routes).
 v1.use(attachmentsRouter);
+// Team-access P8 — assignment approval. Declares full paths spanning
+// `/assignment-requests/*` and `GET /tasks/:id/assignment-requests`, so it
+// mounts at the v1 root BEFORE `/tasks` (same reasoning as attachments).
+v1.use(assignmentRequestsRouter);
 // §20 Sprints — declares full paths spanning `/sprints`, `/sprints/active`,
 // `/sprints/:id`, `/sprints/:id/start|close|tasks`, and
 // `/sprints/:id/tasks/:taskId`, so it mounts at the v1 root (Engineering-only;

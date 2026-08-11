@@ -121,6 +121,28 @@ export const notificationTypes = [
     "report_ready",
     // upgrades/014 — produced by the overdue-alert job. Append-only.
     "overdue",
+    // upgrades/021 (team-access P8) — the assignment-approval flow. Append-only.
+    "assignment_request",
+    "assignment_request_decided",
+    "assignment_query",
+] as const;
+
+// Team-access P8 (upgrades/021) — cross-team assignment approval.
+export const assignmentRequestStatuses = [
+    "pending",
+    "accepted",
+    "declined",
+    "expired",
+    "cancelled",
+] as const;
+export const assignmentRequestEventActions = [
+    "created",
+    "accepted",
+    "declined",
+    "queried",
+    "answered",
+    "cancelled",
+    "expired",
 ] as const;
 export const notificationEntityTypes = [
     "task",

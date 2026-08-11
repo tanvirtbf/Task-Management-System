@@ -501,7 +501,47 @@ path.
 
 ---
 
-## PHASE 8 — Cross-team approval + query, backend (R1.4, R1.5)
+## PHASE 8 — Cross-team approval + query, backend (R1.4, R1.5) ✅ SHIPPED 2026-08-11 (LIVE on dev + qa)
+
+> **Status: DONE.** Upgrade `021_assignment_approval.sql` (dev + qa, re-apply proven; **46
+> tables** now): `task_assignment_requests` (current state; `pending_flag` VIRTUAL generated
+> column + `uq_tar_one_pending` = at most ONE live request per (task, person), decided history
+> stacks — proven on live MySQL 8) + `task_assignment_request_events` (append-only ledger, the
+> task_reviews shape) + 3 notification types END-appended to BOTH enums (`assignment_request`,
+> `assignment_request_decided`, `assignment_query`). **THE GATE (Q11)** — `assignmentGate()`
+> singleton (`AssignmentRequestsService.splitByApproval`) classifies every (task, person) pair in
+> ALL THREE assignment paths (addAssignees, create-with-assignees, bulk): approval needed exactly
+> when the target is NOT a member of the owning space. Carve-outs: requester === target (self-
+> assign = consent), target's `task.view` reach `all` (**the dormancy switch** — open seeds =
+> everyone instant, so the whole jest suite runs unchanged; admins stay instant per Q4), and
+> `CreateTaskInput.exemptAssignmentApproval` set ONLY by `reportBug` (Q7 — an S0/S1 page that
+> waits for an accept is not a page). Bulk answers honestly: `{ updated, tasks,
+> pending_approval }` (Q8). **THE NEGOTIATION** — deciders = target ∪ heads of the target's teams
+> ∪ admins (Q2; B6 head-less team = target alone), NEVER the requester (asking is not consenting,
+> admin or not); accept = atomic claim (`WHERE status='pending' AND expires_at > now`, task-first
+> lock order = no deadlock with direct assigns) then the REAL assignment side-effect set
+> (assignee row, auto-watch, `assignee_added` audit row w/ `via_request`, `assigned` bell +
+> email/push post-commit); decline/cancel = claim + ledger + counterpart notification; query =
+> note + proposed date on the still-pending row. **Fix B2** — `answer` is its own endpoint,
+> authorised as "you are the requester of this pending request", and the date change runs through
+> `TaskWriteService.update` under the narrow `negotiationAnswerPrincipal` (principals.ts §2c) so
+> validation, the `task_updated` diff row, the ETag bump AND the overdue-alert re-arm all fire.
+> Q6: `expires_at` = +7 days; every mutation refuses a lapsed request even before the new hourly
+> `assignment-request-expiry` job (registry + route + cron line) formalises it and tells the
+> requester. Endpoints: `GET /assignment-requests?box=received|sent|team` (team = the Q2 head
+> view; the receiver sees a deliberate workspace-pinned task SNAPSHOT — the consent window),
+> `GET /tasks/:id/assignment-requests` (task.view + scoped resolve), POST
+> accept/decline/query/answer/cancel (relationship-authorised in the service; outsiders get the
+> same 404 a wrong id gets). Client (P8 slice): the 3 types in the inbox icon map + type union —
+> full approval UI is P9. Proof: `tests/rbac/p8-approval.test.ts` — 12 scenarios green (gate
+> split + idempotent re-ask, create/bulk gating + honest counts, boxes + consent snapshot +
+> drawer scoping, accept side-effects + B1 open-after-accept, decider matrix, decline/cancel,
+> **the full B2 round-trip** (query → answer moves the REAL due date + re-arms overdue + audit
+> diff → accept), double-accept race = exactly one winner, expiry sweep idempotent + notifies,
+> archived/deactivated 409s, full dormancy under open seeds, Q7 exempt). ⚠️ Build fix caught by
+> the matrix: mysql2's CLIENT_FOUND_ROWS makes `affectedRows` ambiguous on a no-op
+> `ON DUPLICATE KEY UPDATE` — duplicate detection now = a pre-SELECT under the task lock
+> (race-safe; the unique key stays as the loud backstop).
 
 **Goal:** cross-team assignment becomes a request; the receiver can accept, decline, or query.
 

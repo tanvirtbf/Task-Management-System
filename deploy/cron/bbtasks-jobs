@@ -1,10 +1,11 @@
 # /etc/cron.d/bbtasks-jobs
 #
-# The seven background jobs. There is NO in-process scheduler — without this
+# The eight background jobs. There is NO in-process scheduler — without this
 # file nothing ever runs: sessions never expire, pending attachments and 90-day
 # encrypted form PII accumulate forever, snoozed notifications never wake,
-# overdue tasks never alert their assignees, and the weekly HR department
-# report is never generated.
+# overdue tasks never alert their assignees, unanswered cross-team assignment
+# requests never expire, and the weekly HR department report is never
+# generated.
 #
 # Install:
 #   cp deploy/cron/bbtasks-jobs /etc/cron.d/bbtasks-jobs
@@ -40,6 +41,11 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
 # Purge form submissions past their 90-day retention. 02:40 UTC = 08:40 Dhaka
 40 2 * * * root /var/www/html/tasks-beautybooth/deploy/cron/run-job.sh form-submission-expiry >>/var/log/bbtasks/cron.log 2>&1
+
+# Expire cross-team assignment requests unanswered for 7 days + tell the
+# requester (team-access P8, Q6). Lapsed requests are already refused by the
+# API between runs, so hourly only bounds how promptly the requester hears.
+50 * * * * root /var/www/html/tasks-beautybooth/deploy/cron/run-job.sh assignment-request-expiry >>/var/log/bbtasks/cron.log 2>&1
 
 # Weekly per-department HR report + report_ready notifications.
 # Monday 03:00 UTC = MONDAY 09:00 DHAKA, which is the documented schedule.

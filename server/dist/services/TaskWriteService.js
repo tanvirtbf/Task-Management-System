@@ -41,6 +41,7 @@ const utils_1 = require("../utils");
 const constants_1 = require("../constants");
 const TaskEmailService_1 = require("./TaskEmailService");
 const PushService_1 = require("./PushService");
+const AssignmentRequestsService_1 = require("./AssignmentRequestsService");
 const taskSerializer_1 = require("../serializers/taskSerializer");
 const dhakaTime_1 = require("../utils/dhakaTime");
 const can_1 = require("../rbac/can");
@@ -486,6 +487,27 @@ class TaskWriteService {
             : null);
         const completedAt = DONE_GROUPS.has(status.statusGroup) ? now : null;
         const taskId = (0, utils_1.fakeId)("t");
+        // 6b. Team-access P8 (Q11): split the initial assignees into DIRECT
+        //     (same-team / self / full-reach / the Q7 on-call exemption) and
+        //     approval-GATED — the latter become pending requests riding the
+        //     same transaction as the task insert. Read-only, so it runs
+        //     before the tx; dormant while every target folds to `all` reach.
+        let directAssignees = assignees;
+        let approvalSplit = null;
+        if (assignees.length > 0) {
+            approvalSplit = await (0, AssignmentRequestsService_1.assignmentGate)().splitByApproval({
+                workspaceId: input.workspaceId,
+                requesterId: input.actorId,
+                exempt: input.exemptAssignmentApproval,
+                pairs: assignees.map((targetUserId) => ({
+                    taskId,
+                    spaceId: list.spaceId,
+                    targetUserId,
+                    taskName: input.name,
+                })),
+            });
+            directAssignees = approvalSplit.directByTask.get(taskId) ?? [];
+        }
         // 7. Atomic create, retrying only on a per-list task_number collision.
         for (let attempt = 1;; attempt += 1) {
             const taskNumber = await this.tasks.nextTaskNumber(input.primaryListId);
@@ -535,9 +557,20 @@ class TaskWriteService {
                     if (input.parentTaskId) {
                         await this.tasks.setParent(taskId, input.parentTaskId, nestingDepth, tx);
                     }
-                    if (assignees.length > 0) {
-                        await this.membership.addAssignees(taskId, assignees, input.actorId, tx);
-                        await this.membership.addWatchers(taskId, assignees, tx);
+                    if (directAssignees.length > 0) {
+                        await this.membership.addAssignees(taskId, directAssignees, input.actorId, tx);
+                        await this.membership.addWatchers(taskId, directAssignees, tx);
+                    }
+                    // P8: the gated assignees become pending requests in the
+                    // SAME tx (task row exists now; task-first lock order is
+                    // moot here — the row is invisible until commit).
+                    if (approvalSplit && approvalSplit.gated.length > 0) {
+                        await (0, AssignmentRequestsService_1.assignmentGate)().createRequestsInTx(tx, {
+                            workspaceId: input.workspaceId,
+                            requesterId: input.actorId,
+                            split: approvalSplit,
+                            now,
+                        });
                     }
                     if (tagIds.length > 0) {
                         await this.membership.addTags(taskId, tagIds, tx);
@@ -552,14 +585,14 @@ class TaskWriteService {
                                 list_id: input.primaryListId,
                             },
                         },
-                        ...assignees.map((userId) => ({
+                        ...directAssignees.map((userId) => ({
                             taskId,
                             actorId: input.actorId,
                             action: "assignee_added",
                             context: { user_id: userId },
                         })),
                     ], tx);
-                    const recipients = assignees.filter((id) => id !== input.actorId);
+                    const recipients = directAssignees.filter((id) => id !== input.actorId);
                     await this.notifications.createMany(recipients.map((userId) => ({
                         userId,
                         type: "assigned",
@@ -600,7 +633,10 @@ class TaskWriteService {
         //    the request never waits on SMTP or a push service, and a delivery
         //    failure never fails the create. Same recipient set as the in-app
         //    `assigned` fanout in step 7 (2026-08-08 notification delivery).
-        const emailRecipients = assignees.filter((id) => id !== input.actorId);
+        //    P8: DIRECT assignees only — a gated target gets the
+        //    `assignment_request` bell instead, and the assigned email fires
+        //    on accept.
+        const emailRecipients = directAssignees.filter((id) => id !== input.actorId);
         if (emailRecipients.length > 0) {
             void (0, TaskEmailService_1.taskEmails)().taskAssigned({
                 workspaceId: input.workspaceId,
@@ -1299,6 +1335,25 @@ class TaskWriteService {
         }
         const assigneeRemove = dedupe(p.assigneeRemove);
         const tagRemove = dedupe(p.tagRemove);
+        // 2b. Team-access P8 (Q8/Q11): classify every (task, added-user) pair
+        //     — the SAME user can be same-team for one target and cross-team
+        //     for another, so the split is per pair, and the response reports
+        //     "N assigned, M pending approval" instead of silently succeeding.
+        //     Read-only, before the tx; dormant while targets fold to `all`.
+        let bulkSplit = null;
+        if (assigneeAdd.length > 0) {
+            const spaceInfoForGate = await this.tasks.spaceInfoByTask(ids);
+            bulkSplit = await (0, AssignmentRequestsService_1.assignmentGate)().splitByApproval({
+                workspaceId: input.workspaceId,
+                requesterId: input.actorId,
+                pairs: found.flatMap((t) => assigneeAdd.map((targetUserId) => ({
+                    taskId: t.id,
+                    spaceId: spaceInfoForGate.get(t.id)?.spaceId ?? "",
+                    targetUserId,
+                    taskName: t.name,
+                }))),
+            });
+        }
         // 3. Build the uniform scalar patch (`updated_at` always, so the ETag
         //    bumps even on a membership-only bulk).
         const dbPatch = { updatedAt: now };
@@ -1362,6 +1417,7 @@ class TaskWriteService {
             ])
             : new Map();
         // 4. Atomic write (batched: bulk operations instead of per-task loop).
+        let pendingApproval = 0; // P8/Q8 — requests created instead of assigns
         try {
             await this.db.transaction(async (tx) => {
                 await this.tasks.updateMany(ids, dbPatch, tx);
@@ -1381,14 +1437,30 @@ class TaskWriteService {
                     }
                 }
                 const bulkRows = [];
-                if (assigneeAdd.length > 0) {
-                    await this.membership.addAssigneesBulk(ids, assigneeAdd, input.actorId, tx);
-                    await this.membership.addWatchersBulk(ids, assigneeAdd, tx);
+                if (assigneeAdd.length > 0 && bulkSplit) {
+                    // P8: only the DIRECT pairs are assigned; identical
+                    // direct-sets are grouped so a homogeneous bulk stays the
+                    // two batched INSERTs it always was.
+                    const groups = new Map();
+                    for (const t of found) {
+                        const userIds = bulkSplit.directByTask.get(t.id) ?? [];
+                        if (userIds.length === 0)
+                            continue;
+                        const key = [...userIds].sort().join(",");
+                        const g = groups.get(key) ?? { taskIds: [], userIds };
+                        g.taskIds.push(t.id);
+                        groups.set(key, g);
+                    }
+                    for (const g of groups.values()) {
+                        await this.membership.addAssigneesBulk(g.taskIds, g.userIds, input.actorId, tx);
+                        await this.membership.addWatchersBulk(g.taskIds, g.userIds, tx);
+                    }
                     // Team-access P3: same shape as the single-target path —
                     // one row per (task, user) that ACTUALLY gained them.
                     for (const t of found) {
                         const had = new Set(preAssignees.get(t.id) ?? []);
-                        for (const userId of assigneeAdd) {
+                        for (const userId of bulkSplit.directByTask.get(t.id) ??
+                            []) {
                             if (had.has(userId))
                                 continue;
                             bulkRows.push({
@@ -1399,6 +1471,19 @@ class TaskWriteService {
                             });
                         }
                     }
+                    // P8: the gated pairs become pending requests in the SAME
+                    // tx. A target already assigned to that specific task
+                    // needs no request; duplicate pendings are skipped by the
+                    // unique key. Honest counts ride the response (Q8).
+                    const gatedFresh = bulkSplit.gated.filter((pair) => !(preAssignees.get(pair.taskId) ?? []).includes(pair.targetUserId));
+                    const { created } = await (0, AssignmentRequestsService_1.assignmentGate)()
+                        .createRequestsInTx(tx, {
+                        workspaceId: input.workspaceId,
+                        requesterId: input.actorId,
+                        split: { ...bulkSplit, gated: gatedFresh },
+                        now,
+                    });
+                    pendingApproval = created;
                 }
                 if (assigneeRemove.length > 0) {
                     await this.membership.removeAssigneesBulk(ids, assigneeRemove, tx);
@@ -1539,7 +1624,7 @@ class TaskWriteService {
             tags: tags.get(t.id) ?? [],
             customFieldValues: customFieldValues.get(t.id) ?? {},
         }));
-        return { updated: ids.length, tasks: wireTasks };
+        return { updated: ids.length, tasks: wireTasks, pendingApproval };
     }
 }
 exports.TaskWriteService = TaskWriteService;

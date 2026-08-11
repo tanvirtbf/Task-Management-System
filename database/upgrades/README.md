@@ -43,6 +43,7 @@
 | `018_space_visibility_grants.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 | ⏳ pending (no prod yet) |
 | `019_visibility_switch.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 (first) | ⏳ pending (no prod yet) |
 | `020_edit_rights.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 (first) | ⏳ pending (no prod yet) |
+| `021_assignment_approval.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 (first, re-apply proven) | ⏳ pending (no prod yet) |
 
 > `005` ships with the F3 clock fix and is only correct alongside it. If you apply
 > `005`, the app's `DB_TIMEZONE` **must** be `+00:00` (see `server/.env.example`).
@@ -65,6 +66,18 @@
 > `overdue` ENUM value that `009` removed — legitimately this time, because the job is
 > its producer. Gated + re-runnable. Remember the new cron line
 > (`deploy/cron/bbtasks-jobs`: `*/10` overdue-alert) when rolling prod.
+>
+> `021` = cross-team assignment approval (team-access P8, 2026-08-11): the
+> `task_assignment_requests` + `task_assignment_request_events` tables and three
+> notification types appended at the END of both ENUMs (`assignment_request`,
+> `assignment_request_decided`, `assignment_query`). Fresh `db:setup` is now
+> **46 tables / 5 views / 9 triggers**. CREATE IF NOT EXISTS + same-definition
+> MODIFY — idempotent (re-apply proven on qa); safe ahead of the P8 server build,
+> required with it. DORMANT until 019 is live (the gate first asks whether the
+> target's `task.view` reach is `all`). Remember the new cron line
+> (`deploy/cron/bbtasks-jobs`: hourly `assignment-request-expiry`) when rolling
+> prod — a lapsed request is refused by the API even between runs, so the job
+> only bounds how promptly the requester is told.
 >
 > `020` = edit rights (team-access P7, 2026-08-11): Member `task.edit`/`archive`/`delete`
 > → `own`. Ships WITH the P7 server build (the head allow-path + the adjacent-surface

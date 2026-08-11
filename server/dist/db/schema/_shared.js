@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.TIMEZONE_LENGTH = exports.IP_LENGTH = exports.TOKEN_HASH_LENGTH = exports.EMAIL_LENGTH = exports.URL_LENGTH = exports.SHORT_NAME_LENGTH = exports.NAME_LENGTH = exports.HEX_COLOR_LENGTH = exports.ID_LENGTH = exports.formFieldKinds = exports.weekDays = exports.workspaceActivityEntityTypes = exports.notificationEntityTypes = exports.notificationTypes = exports.roleScopeTypes = exports.permissionScopes = exports.reviewStatuses = exports.templateTypes = exports.dependencyTypes = exports.recurrencePatterns = exports.reporterTeams = exports.bugEnvironments = exports.bugReproducibilities = exports.bugSeverities = exports.prStatuses = exports.sprintStatuses = exports.uploadStatuses = exports.customFieldTypes = exports.customFieldScopeTypes = exports.scopeTypes = exports.DONE_STATUS_GROUPS = exports.statusGroups = exports.invitationRoles = exports.userStatuses = exports.userRoles = exports.mysqlSet = void 0;
+exports.TIMEZONE_LENGTH = exports.IP_LENGTH = exports.TOKEN_HASH_LENGTH = exports.EMAIL_LENGTH = exports.URL_LENGTH = exports.SHORT_NAME_LENGTH = exports.NAME_LENGTH = exports.HEX_COLOR_LENGTH = exports.ID_LENGTH = exports.formFieldKinds = exports.weekDays = exports.workspaceActivityEntityTypes = exports.notificationEntityTypes = exports.assignmentRequestEventActions = exports.assignmentRequestStatuses = exports.notificationTypes = exports.roleScopeTypes = exports.permissionScopes = exports.reviewStatuses = exports.templateTypes = exports.dependencyTypes = exports.recurrencePatterns = exports.reporterTeams = exports.bugEnvironments = exports.bugReproducibilities = exports.bugSeverities = exports.prStatuses = exports.sprintStatuses = exports.uploadStatuses = exports.customFieldTypes = exports.customFieldScopeTypes = exports.scopeTypes = exports.DONE_STATUS_GROUPS = exports.statusGroups = exports.invitationRoles = exports.userStatuses = exports.userRoles = exports.mysqlSet = void 0;
 // =============================================================================
 // Shared helpers for the Drizzle schema.
 //
@@ -111,6 +111,27 @@ exports.notificationTypes = [
     "report_ready",
     // upgrades/014 — produced by the overdue-alert job. Append-only.
     "overdue",
+    // upgrades/021 (team-access P8) — the assignment-approval flow. Append-only.
+    "assignment_request",
+    "assignment_request_decided",
+    "assignment_query",
+];
+// Team-access P8 (upgrades/021) — cross-team assignment approval.
+exports.assignmentRequestStatuses = [
+    "pending",
+    "accepted",
+    "declined",
+    "expired",
+    "cancelled",
+];
+exports.assignmentRequestEventActions = [
+    "created",
+    "accepted",
+    "declined",
+    "queried",
+    "answered",
+    "cancelled",
+    "expired",
 ];
 exports.notificationEntityTypes = [
     "task",

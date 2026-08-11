@@ -188,11 +188,38 @@ describe("P6 — the switch, in the production shape", () => {
                 .status,
         ).toBe(404);
 
-        // Engineering assigns the Marketing member.
+        // Engineering assigns the Marketing member. Since P8 this is no longer
+        // a direct assignee row: the target is not a member of the owning
+        // space, so the gate (Q11) parks it as a PENDING approval request.
         const assign = await s.admin.client
             .post(`/api/v1/tasks/${s.engTask.id}/assignees`)
             .send({ user_ids: [s.mktMember.id] });
         expect(assign.status).toBe(204);
+        expect(
+            (await s.mktMember.client.get(`/api/v1/tasks/${s.engTask.id}`))
+                .status,
+        ).toBe(404); // still invisible while the ask is pending
+        const [pending] = await db()
+            .select()
+            .from(schema.taskAssignmentRequests)
+            .where(
+                and(
+                    eq(schema.taskAssignmentRequests.taskId, s.engTask.id),
+                    eq(
+                        schema.taskAssignmentRequests.targetUserId,
+                        s.mktMember.id,
+                    ),
+                ),
+            );
+        expect(pending.status).toBe("pending");
+        // The receiver consents (R1.4) — and only then becomes the assignee.
+        expect(
+            (
+                await s.mktMember.client
+                    .post(`/api/v1/assignment-requests/${pending.id}/accept`)
+                    .send({})
+            ).status,
+        ).toBe(200);
 
         // OPEN
         const open = await s.mktMember.client.get(

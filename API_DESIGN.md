@@ -1392,12 +1392,13 @@ Drop this browser's subscription (sign-out / opt-out). Body `{ "endpoint": "…"
 
 Internal — invoked by cron, not by clients. Documented for ops visibility.
 
-The SEVEN built jobs (cron cadences per `deploy/cron/bbtasks-jobs`):
+The EIGHT built jobs (cron cadences per `deploy/cron/bbtasks-jobs`):
 
 | Endpoint | Schedule | What it does |
 |---|---|---|
 | `POST /jobs/snooze-wake` | every 5 min | Marks snoozed notifications back as unread when their snooze elapses |
 | `POST /jobs/overdue-alert` | every 10 min | The moment a task's `due_date` has passed on the WORKSPACE's calendar (`workspaces.timezone` decides "today"), every assignee gets an `overdue` in-app notification + an email. Exactly once per task per deadline: `tasks.overdue_notified_at` is claimed in the same tx as the fanout, and any `due_date` change re-arms it. Tasks with no assignees stay unclaimed so a late assignee still alerts on the next tick |
+| `POST /jobs/assignment-request-expiry` | hourly :50 | Expires cross-team assignment requests unanswered for 7 days (team-access P8, Q6): atomic per-row claim (a racing accept wins), `expired` ledger row, `assignment_request_decided` bell to the requester. The API refuses lapsed requests even between runs, so cadence only bounds how promptly the requester hears |
 | `POST /jobs/session-cleanup` | daily 02:10 UTC | Hard-deletes `sessions` past `expires_at + 30 d`, and revoked ones past 7 d (F10) |
 | `POST /jobs/attachment-janitor` | daily 02:20 UTC | Hard-deletes attachments whose upload never finalised after 1 h (R2 object first) |
 | `POST /jobs/r2-purge` | daily 02:30 UTC | Hard-deletes R2 objects soft-deleted > 7 days ago + drains `r2_purge_queue` (F16) |
@@ -2140,6 +2141,21 @@ Remove from the team: EVERY role the person holds scoped to that space; a home t
 ### Visibility-leak closures (P5 — dormant until the switch)
 Every side-door resolve now applies the SAME visibility predicate the task reads use (undefined for unrestricted viewers, so today's SQL is unchanged): `GET /sla/breached` + the Home `sla_breaches` tile share one predicate (scope + own-escape — they can never disagree); `PATCH/DELETE /statuses/:id`, `PATCH/DELETE /form-fields/:id`, `GET /attachments/:id/download` + finalize + delete, `DELETE /task-dependencies/:id`, and sprint task add/remove all answer **404** for objects whose parent space/task the caller cannot see. **@mentions** notify only people who can see the task (creator/assignee/watcher or `space.view` reach) — an out-of-sight name match is silently dropped. Deliberately open: sprint close/rollover re-targets the sprint's OWN tasks wherever they live; background jobs run unrestricted; reviews/reports stay boundary-gated space-pinned aggregates (heads see their whole department by design).
 
+### Cross-team assignment approval (P8, upgrade `021` — LIVE; UI lands in P9)
+**Assigning a person who is NOT a member of the space that owns the task creates a PENDING request instead of an assignee row** (Q11 — membership decides, not home team). All three assignment paths are gated (`POST /tasks/:id/assignees`, create-with-`assignees`, bulk `assignee_add`). Instant (never a request): same-team targets (Q5), self-assignment (asking = consenting), any target whose `task.view` reach is `all` (Admin/Owner — and EVERY seeded role until upgrade `019` is applied, which is what keeps the gate dormant on open installs), and the S0/S1 on-call auto-assign (Q7, internal exemption in `reportBug`). At most ONE live request per (task, person) — re-asking is an idempotent no-op; decided history stacks. Requests expire after **7 days** (Q6): a lapsed request refuses every action even before the hourly `assignment-request-expiry` job (§28) formalises it and notifies the requester. Bulk answers honestly: its 200 body now carries **`pending_approval`** beside `updated`/`tasks` (Q8). The request's creation notifies the target AND every Head of the target's teams (Q2) — type `assignment_request`; decisions notify the counterpart (`assignment_request_decided`); the query dialogue uses `assignment_query` (all three END-appended to both notification enums).
+
+**Deciders** = the target, any Head of a team the target belongs to, or an admin — **never the requester** (asking is not consenting, admin or not; a head-less team simply leaves the target as the only voice, B6). Accept is an **atomic claim**: `pending → accepted` flips only once (double-click / two tabs / racing janitor safe), then the REAL assignment runs in the same transaction — assignee row, auto-watch, `assignee_added` audit row (context gains `via_request: true`), the `assigned` bell for the target when a head/admin accepted for them, ETag bump, and the assignment email + Web Push post-commit. The new assignee can then open the task anywhere via the own-escape (B1).
+
+- **GET `/api/v1/assignment-requests?box=received|sent|team&status=pending|all`** — 🔐 relationship-scoped (no permission key): `received` (default) = addressed to me, `sent` = raised by me, `team` = targeting members of teams I head. `{ data: [AssignmentRequest] }`, newest first, cap 100. Each entry carries a server-hydrated **task snapshot** `{id, name, custom_id, list_id, list_name, space_id, space_name, due_date, priority, archived}` — the deliberate, workspace-pinned consent window: the receiver must see WHAT they are being asked to take on even though the task itself stays outside their visibility until they accept.
+- **GET `/api/v1/tasks/:id/assignment-requests`** — 🔐 `task.view` + the scoped resolve (readable exactly where the task is; out-of-scope = 404). The drawer panel feed: the task's whole negotiation history.
+- **POST `/api/v1/assignment-requests/:id/accept`** — decider only. Body `{ note? }`. 200 `{ data }`.
+- **POST `/api/v1/assignment-requests/:id/decline`** — decider only. Body `{ note? }`. Task untouched.
+- **POST `/api/v1/assignment-requests/:id/query`** — decider only: *"I need 2 more days"*. Body `{ note (required), proposed_due_date? }`. The request STAYS pending (the receiver still owns the final accept); the requester is notified.
+- **POST `/api/v1/assignment-requests/:id/answer`** — **the requester only** (fix B2: after upgrade `020` the requester typically holds NO `task.edit` on the task — this endpoint is authorised as *"you are the requester of this pending request"*). Body `{ note?, due_date? }` (at least one). A supplied `due_date` is applied through the NORMAL task-update path under the narrow negotiation principal, so validation, the `task_updated` audit diff, the ETag bump and the **overdue-alert re-arm** all fire. Still pending afterwards — the receiver decides.
+- **POST `/api/v1/assignment-requests/:id/cancel`** — the requester (or an admin) withdraws; the target is told.
+
+`AssignmentRequest` wire: `{ id, status: pending|accepted|declined|expired|cancelled, task: snapshot|null, target_user: User|null, requested_by: User|null, decided_by: User|null, request_note, query_note, proposed_due_date, decided_at, expires_at, created_at, updated_at, events: [{id, action: created|accepted|declined|queried|answered|cancelled|expired, actor: User|null, note, proposed_due_date, created_at}] }` (events oldest-first; actor `null` = the system janitor). Non-parties get the same **404** a wrong id gets — never an existence oracle. New codes: `request.not_found` 404, `request.not_decider` 403, `request.not_requester` 403, `request.already_decided` 409, `request.expired` 409, `request.task_archived` 409, `request.user_inactive` 409.
+
 ---
 
 ## Appendix A — Type reference (TypeScript shapes)
@@ -2419,10 +2435,12 @@ interface FormSubmission {
 
 // Notifications ───────────────────────────────────────────────────
 // The live ENUM (upgrades/009 cut the producerless types; upgrades/014
-// re-added `overdue` WITH its producer, the overdue-alert job).
+// re-added `overdue` WITH its producer, the overdue-alert job; upgrades/021
+// added the three assignment-approval types, team-access P8).
 type NotificationType = "assigned" | "mentioned" | "comment" | "status_change"
                       | "form_submitted" | "task_reviewed" | "report_ready"
-                      | "overdue";
+                      | "overdue" | "assignment_request"
+                      | "assignment_request_decided" | "assignment_query";
 
 interface Notification {
   id: string;

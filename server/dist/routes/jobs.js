@@ -28,6 +28,9 @@ router.post("/form-submission-expiry", internalAuth_1.default, controller.run("f
 // 2026-08-08: alert assignees of newly past-due tasks (email + in-app),
 // exactly once per task per deadline. Cron: */10 (deploy/cron/bbtasks-jobs).
 router.post("/overdue-alert", internalAuth_1.default, controller.run("overdue-alert"));
+// Team-access P8 (Q6): expire cross-team assignment requests nobody answered
+// within 7 days + notify the requester. Cron: hourly (deploy/cron/bbtasks-jobs).
+router.post("/assignment-request-expiry", internalAuth_1.default, controller.run("assignment-request-expiry"));
 // recurrence-spawn and email-digest routes are registered here as each job is
 // built (sla-breach-scan in its spec form is superseded — see API_DESIGN §28).
 exports.default = router;
