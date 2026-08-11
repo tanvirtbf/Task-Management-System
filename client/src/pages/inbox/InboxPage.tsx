@@ -32,9 +32,15 @@ import {
 import { notificationsApi } from "../../http/api";
 import { useAuthStore } from "../../stores/auth";
 import { useUserMap } from "../../hooks/useReferenceData";
+import { useMyAssignmentRequests } from "../../hooks/useAssignmentRequests";
+import { AssignmentRequestCard } from "../../components/task/AssignmentRequestCard";
 import { LoadingState } from "../../components/shared/LoadingState";
 import { tokens } from "../../theme";
-import type { Notification, NotificationType } from "../../types";
+import type {
+    AssignmentRequest,
+    Notification,
+    NotificationType,
+} from "../../types";
 
 interface TypeMeta {
     icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
@@ -72,7 +78,7 @@ const typeMetaOf = (type: string): TypeMeta =>
         color: "#94A3B8",
     };
 
-type FilterKey = "all" | "unread" | "mentions" | "assigned";
+type FilterKey = "all" | "unread" | "mentions" | "assigned" | "requests";
 
 const formatTime = (iso: string): string => {
     const diff = Date.now() - new Date(iso).getTime();
@@ -122,6 +128,21 @@ const InboxPage = () => {
         enabled: !!user,
     });
 
+    // Team-access P9 — the "Requests" tab: everything I can ACT on (addressed
+    // to me + targeting people I head) plus my own pending asks (answer /
+    // withdraw). Merged + deduped — a head who is also the target sees one
+    // card, not three.
+    const { data: received = [] } = useMyAssignmentRequests("received");
+    const { data: team = [] } = useMyAssignmentRequests("team");
+    const { data: sent = [] } = useMyAssignmentRequests("sent");
+    const requests = useMemo(() => {
+        const byId = new Map<string, AssignmentRequest>();
+        for (const r of [...received, ...team, ...sent]) byId.set(r.id, r);
+        return [...byId.values()].sort((a, b) =>
+            b.createdAt.localeCompare(a.createdAt),
+        );
+    }, [received, team, sent]);
+
     const filtered = useMemo(() => {
         return notifications.filter((n) => {
             if (filter === "unread" && n.isRead) return false;
@@ -139,8 +160,9 @@ const InboxPage = () => {
             unread: notifications.filter((n) => !n.isRead).length,
             mentions: notifications.filter((n) => n.type === "mentioned").length,
             assigned: notifications.filter((n) => n.type === "assigned").length,
+            requests: requests.length,
         };
-    }, [notifications]);
+    }, [notifications, requests]);
 
     const markAsRead = useMutation({
         mutationFn: (id: string) => notificationsApi.markRead(id),
@@ -293,6 +315,7 @@ const InboxPage = () => {
                         ["unread", "Unread", counts.unread],
                         ["mentions", "@Mentions", counts.mentions],
                         ["assigned", "Assigned to me", counts.assigned],
+                        ["requests", "Requests", counts.requests],
                     ] as const
                 ).map(([key, label, count]) => {
                     const active = filter === key;
@@ -340,7 +363,39 @@ const InboxPage = () => {
                 })}
             </div>
 
-            {isLoading ? (
+            {filter === "requests" ? (
+                // Team-access P9 — PENDING cross-team assignment approvals,
+                // actioned inline (accept / decline / query / answer /
+                // withdraw). Decided history lives on each task's drawer.
+                requests.length === 0 ? (
+                    <Empty
+                        image={
+                            <UserCheck
+                                size={48}
+                                strokeWidth={1.25}
+                                color={tokens.colors.textMuted}
+                            />
+                        }
+                        description="No assignment requests need you right now."
+                    />
+                ) : (
+                    <div
+                        style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 8,
+                        }}
+                    >
+                        {requests.map((r) => (
+                            <AssignmentRequestCard
+                                key={r.id}
+                                request={r}
+                                showTask
+                            />
+                        ))}
+                    </div>
+                )
+            ) : isLoading ? (
                 <LoadingState />
             ) : groups.length === 0 ? (
                 <Empty

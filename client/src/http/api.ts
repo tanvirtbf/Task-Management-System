@@ -1,4 +1,5 @@
 import type {
+    AssignmentRequest,
     Credentials,
     SlaBreach,
     Folder,
@@ -381,6 +382,82 @@ export interface TeamDirectory {
     unassigned: User[];
 }
 
+// ─── Cross-team assignment approval (team-access P8/P9) ──────────────────────
+// Relationship-authorised server-side (requester / target / target's Head /
+// admin). `{data}` envelopes; the response camelizer produces the client
+// `AssignmentRequest` shapes; the request decamelizer turns `proposedDueDate`
+// → `proposed_due_date` on the way out.
+export const assignmentRequestsApi = {
+    /** box=received (default) | sent | team (requests targeting people I head). */
+    list: async (
+        box: "received" | "sent" | "team" = "received",
+        status: "pending" | "all" = "pending",
+    ): Promise<AssignmentRequest[]> =>
+        (
+            await api.get<{ data: AssignmentRequest[] }>(
+                "/assignment-requests",
+                { params: { box, status } },
+            )
+        ).data.data,
+    /** The task's whole negotiation history (drawer panel; task.view-gated). */
+    listForTask: async (taskId: string): Promise<AssignmentRequest[]> =>
+        (
+            await api.get<{ data: AssignmentRequest[] }>(
+                `/tasks/${taskId}/assignment-requests`,
+            )
+        ).data.data,
+    accept: async (id: string, note?: string): Promise<AssignmentRequest> =>
+        (
+            await api.post<{ data: AssignmentRequest }>(
+                `/assignment-requests/${id}/accept`,
+                note ? { note } : {},
+            )
+        ).data.data,
+    decline: async (id: string, note?: string): Promise<AssignmentRequest> =>
+        (
+            await api.post<{ data: AssignmentRequest }>(
+                `/assignment-requests/${id}/decline`,
+                note ? { note } : {},
+            )
+        ).data.data,
+    /** The receiver's "I need 2 more days" — note required, date optional. */
+    query: async (
+        id: string,
+        note: string,
+        proposedDueDate?: string | null,
+    ): Promise<AssignmentRequest> =>
+        (
+            await api.post<{ data: AssignmentRequest }>(
+                `/assignment-requests/${id}/query`,
+                {
+                    note,
+                    ...(proposedDueDate ? { proposedDueDate } : {}),
+                },
+            )
+        ).data.data,
+    /** The requester's reply (fix B2) — a note and/or a real due-date move. */
+    answer: async (
+        id: string,
+        input: { note?: string; dueDate?: string },
+    ): Promise<AssignmentRequest> =>
+        (
+            await api.post<{ data: AssignmentRequest }>(
+                `/assignment-requests/${id}/answer`,
+                {
+                    ...(input.note ? { note: input.note } : {}),
+                    ...(input.dueDate ? { dueDate: input.dueDate } : {}),
+                },
+            )
+        ).data.data,
+    cancel: async (id: string): Promise<AssignmentRequest> =>
+        (
+            await api.post<{ data: AssignmentRequest }>(
+                `/assignment-requests/${id}/cancel`,
+                {},
+            )
+        ).data.data,
+};
+
 export const teamsApi = {
     directory: async (): Promise<TeamDirectory> => {
         const body = (
@@ -642,13 +719,19 @@ export const tasksApi = {
     // membership (`assignee_add`/`tag_add`… — bulk PATCH has no absolute
     // assignees/tags). Extra keys ride beside the normal task patch and the
     // request decamelizer turns assigneeAdd → assignee_add.
+    // P9 (Q8): the response now carries `pending_approval` — how many
+    // (task, person) assignments became approval requests instead of
+    // assignee rows — so the toolbar can report honestly.
     bulkUpdate: async (
         ids: string[],
         patch: BulkTaskPatch,
-    ): Promise<Task[]> => {
+    ): Promise<{ tasks: Task[]; pendingApproval: number }> => {
         const { assigneeAdd, assigneeRemove, tagAdd, tagRemove, ...core } =
             patch;
-        const res = await api.post<{ tasks: WireTask[] }>("/tasks/bulk", {
+        const res = await api.post<{
+            tasks: WireTask[];
+            pendingApproval?: number;
+        }>("/tasks/bulk", {
             ids,
             patch: {
                 ...taskToWire(core),
@@ -658,7 +741,10 @@ export const tasksApi = {
                 ...(tagRemove ? { tagRemove } : {}),
             },
         });
-        return (res.data.tasks ?? []).map(mapTask);
+        return {
+            tasks: (res.data.tasks ?? []).map(mapTask),
+            pendingApproval: res.data.pendingApproval ?? 0,
+        };
     },
     archive: async (id: string): Promise<void> => {
         await api.post(`/tasks/${id}/archive`);

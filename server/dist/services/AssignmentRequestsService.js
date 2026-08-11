@@ -171,7 +171,7 @@ class AssignmentRequestsService {
     async createRequestsInTx(tx, input) {
         const { split, now } = input;
         if (split.gated.length === 0)
-            return { created: 0 };
+            return { created: 0, deliveries: [] };
         // "Someone already asked" is this domain's idempotent no-op. The
         // read-then-insert is race-safe because every assignment path holds
         // the task row lock before calling in; `uq_tar_one_pending` stays as
@@ -179,7 +179,7 @@ class AssignmentRequestsService {
         const alreadyPending = await this.repo.pendingPairs(split.gated, tx);
         const fresh = split.gated.filter((p) => !alreadyPending.has(`${p.taskId}|${p.targetUserId}`));
         if (fresh.length === 0)
-            return { created: 0 };
+            return { created: 0, deliveries: [] };
         const expiresAt = new Date(now.getTime() + REQUEST_TTL_MS);
         const created = fresh;
         const createdIds = fresh.map(() => (0, utils_1.fakeId)("areq"));
@@ -205,12 +205,19 @@ class AssignmentRequestsService {
             createdAt: now,
         })), tx);
         // Q2: the target AND their Head(s) are notified; never the requester.
-        const rows = created.flatMap((pair) => {
+        const deliveries = [];
+        const rows = created.flatMap((pair, i) => {
             const recipients = new Set([
                 pair.targetUserId,
                 ...(split.headsByTarget.get(pair.targetUserId) ?? []),
             ]);
             recipients.delete(input.requesterId);
+            deliveries.push({
+                requestId: createdIds[i],
+                taskId: pair.taskId,
+                taskName: pair.taskName,
+                recipientIds: [...recipients],
+            });
             return [...recipients].map((userId) => ({
                 userId,
                 type: "assignment_request",
@@ -226,7 +233,35 @@ class AssignmentRequestsService {
             requesterId: input.requesterId,
             count: created.length,
         });
-        return { created: created.length };
+        return { created: created.length, deliveries };
+    }
+    /**
+     * P9: the out-of-app half of request creation — the SAME recipients the
+     * bell reached, on email + Web Push. Called by the assignment paths AFTER
+     * their transaction commits, fire-and-forget (the delivery-layer rule).
+     */
+    deliverCreated(input) {
+        for (const d of input.deliveries) {
+            void (0, TaskEmailService_1.taskEmails)().assignmentRequest({
+                workspaceId: input.workspaceId,
+                taskId: d.taskId,
+                taskName: d.taskName,
+                kind: "received",
+                recipientIds: d.recipientIds,
+                actorId: input.requesterId,
+                note: input.note ?? null,
+            });
+            void (0, PushService_1.pushSvc)().assignmentRequest({
+                workspaceId: input.workspaceId,
+                requestId: d.requestId,
+                taskId: d.taskId,
+                taskName: d.taskName,
+                kind: "received",
+                recipientIds: d.recipientIds,
+                actorId: input.requesterId,
+                note: input.note ?? null,
+            });
+        }
     }
     // ─── listing ─────────────────────────────────────────────────────────────
     /** The caller's requests, by box: received / sent / team (Q2 head view). */
@@ -394,7 +429,33 @@ class AssignmentRequestsService {
                 actorId: input.actorId,
             });
         }
+        // P9: tell the requester out-of-app too (the bell already did).
+        this.deliverDecision(r, input, "accepted", snapshot.name, input.note);
         return this.reload(r.id, input.workspaceId);
+    }
+    /** P9: email + push for a decision moment, to the requester (not self). */
+    deliverDecision(r, input, kind, taskName, note) {
+        if (r.requestedBy === input.actorId)
+            return;
+        void (0, TaskEmailService_1.taskEmails)().assignmentRequest({
+            workspaceId: input.workspaceId,
+            taskId: r.taskId,
+            taskName,
+            kind,
+            recipientIds: [r.requestedBy],
+            actorId: input.actorId,
+            note: note ?? null,
+        });
+        void (0, PushService_1.pushSvc)().assignmentRequest({
+            workspaceId: input.workspaceId,
+            requestId: r.id,
+            taskId: r.taskId,
+            taskName,
+            kind,
+            recipientIds: [r.requestedBy],
+            actorId: input.actorId,
+            note: note ?? null,
+        });
     }
     /** Decline: the claim + the ledger + "declined" to the requester. */
     async decline(input) {
@@ -433,6 +494,8 @@ class AssignmentRequestsService {
                 ], tx);
             }
         });
+        // P9: the requester hears out-of-app too.
+        this.deliverDecision(r, input, "declined", snapshot.name, input.note);
         return this.reload(r.id, input.workspaceId);
     }
     /**
@@ -478,6 +541,29 @@ class AssignmentRequestsService {
                 ], tx);
             }
         });
+        // P9: the query reaches the requester's mailbox + devices too.
+        if (r.requestedBy !== input.actorId) {
+            void (0, TaskEmailService_1.taskEmails)().assignmentRequest({
+                workspaceId: input.workspaceId,
+                taskId: r.taskId,
+                taskName: snapshot.name,
+                kind: "query",
+                recipientIds: [r.requestedBy],
+                actorId: input.actorId,
+                note: input.note,
+                proposedYmd: input.proposedDueDate ?? null,
+            });
+            void (0, PushService_1.pushSvc)().assignmentRequest({
+                workspaceId: input.workspaceId,
+                requestId: r.id,
+                taskId: r.taskId,
+                taskName: snapshot.name,
+                kind: "query",
+                recipientIds: [r.requestedBy],
+                actorId: input.actorId,
+                note: input.note,
+            });
+        }
         return this.reload(r.id, input.workspaceId);
     }
     // ─── the requester side: answer / cancel ─────────────────────────────────
@@ -549,6 +635,34 @@ class AssignmentRequestsService {
                 title: notifTitle("Query answered: ", snapshot.name),
             })), tx);
         });
+        // P9: the receiver side hears out-of-app — inbox-linked (they still
+        // cannot open the task until they accept).
+        const answerRecipients = new Set([r.targetUserId]);
+        if (lastQueryActor)
+            answerRecipients.add(lastQueryActor);
+        answerRecipients.delete(input.actorId);
+        if (answerRecipients.size > 0) {
+            void (0, TaskEmailService_1.taskEmails)().assignmentRequest({
+                workspaceId: input.workspaceId,
+                taskId: r.taskId,
+                taskName: snapshot.name,
+                kind: "answer",
+                recipientIds: [...answerRecipients],
+                actorId: input.actorId,
+                note: input.note ?? null,
+                proposedYmd: input.dueDate ?? null,
+            });
+            void (0, PushService_1.pushSvc)().assignmentRequest({
+                workspaceId: input.workspaceId,
+                requestId: r.id,
+                taskId: r.taskId,
+                taskName: snapshot.name,
+                kind: "answer",
+                recipientIds: [...answerRecipients],
+                actorId: input.actorId,
+                note: input.note ?? null,
+            });
+        }
         return this.reload(r.id, input.workspaceId);
     }
     /** Withdraw (requester or an admin) — claim to `cancelled`, tell the target. */

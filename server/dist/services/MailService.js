@@ -110,6 +110,34 @@ class MailService {
                 `আপনার কাজের নির্ধারিত সময় পার হয়ে গেছে — দয়া করে যত দ্রুত সম্ভব কাজটি শেষ করুন।\n\n${p.taskUrl}`,
         });
     }
+    /**
+     * The five assignment-approval moments (team-access P9, R1.6): request
+     * received (→ the target + their Heads), accepted / declined / query
+     * raised (→ the requester), query answered (→ the receiver side). Fired
+     * by `TaskEmailService.assignmentRequest` post-commit for exactly the
+     * recipients the in-app bell reached. `p.url` is kind-aware upstream:
+     * receiver-facing mails link the INBOX (the task itself answers 404
+     * until they accept — B5), requester-facing mails link the task.
+     */
+    async sendAssignmentRequestEmail(to, p) {
+        this.logger.debug("mail.assignment_request.sending", {
+            to,
+            kind: p.kind,
+            url: p.url,
+        });
+        const t = ASSIGNMENT_MAIL[p.kind];
+        const noteLine = p.note ? `\nNote: "${p.note}"` : "";
+        const dateLine = p.proposedYmd
+            ? `\n${t.dateLabel}: ${p.proposedYmd}`
+            : "";
+        await this.send({
+            to,
+            subject: `${t.subject}: ${subjectName(p.taskName)}`,
+            html: assignmentRequestHtml(p),
+            text: `${t.text(p.actorName, p.taskName)}${noteLine}${dateLine}\n` +
+                `${t.bangla}\n\n${p.url}`,
+        });
+    }
     async send(msg) {
         if (!this.transporter) {
             // Log transport — no SMTP configured / test env. No network call.
@@ -176,3 +204,68 @@ const taskAssignedHtml = (p) => shell("You have a new task", `<strong>${escapeHt
 const taskOverdueHtml = (p) => shell("Your task is overdue", `Your task <strong>"${escapeHtml(p.taskName)}"</strong> passed its due date ` +
     `(<strong>${escapeHtml(p.dueYmd)}</strong>) and is still open.<br><br>` +
     "আপনার কাজের নির্ধারিত সময় পার হয়ে গেছে — দয়া করে যত দ্রুত সম্ভব কাজটি শেষ করুন।", { url: p.taskUrl, label: "Open task" });
+// ─── Assignment-approval mails (team-access P9) ──────────────────────────────
+// One template family; the KIND picks subject/heading/copy/CTA. Actor names,
+// task names and notes are USER input — always through escapeHtml.
+const ASSIGNMENT_MAIL = {
+    received: {
+        subject: "Approval needed",
+        heading: "An assignment needs your approval",
+        text: (actor, task) => `${actor} wants to assign "${task}" — the approval is yours (or your team member's) to give. Accept, decline, or ask a question.`,
+        bangla: "আপনার সম্মতি প্রয়োজন — অনুরোধটি দেখে সিদ্ধান্ত দিন।",
+        cta: "Review requests",
+        dateLabel: "Proposed due date",
+    },
+    accepted: {
+        subject: "Assignment accepted",
+        heading: "Your assignment request was accepted",
+        text: (actor, task) => `${actor} accepted the assignment for "${task}".`,
+        bangla: "আপনার অনুরোধ গৃহীত হয়েছে।",
+        cta: "Open task",
+        dateLabel: "Proposed due date",
+    },
+    declined: {
+        subject: "Assignment declined",
+        heading: "Your assignment request was declined",
+        text: (actor, task) => `${actor} declined the assignment for "${task}".`,
+        bangla: "আপনার অনুরোধ প্রত্যাখ্যাত হয়েছে।",
+        cta: "Open task",
+        dateLabel: "Proposed due date",
+    },
+    query: {
+        subject: "Query on your request",
+        heading: "A question about your assignment request",
+        text: (actor, task) => `${actor} raised a query on your request for "${task}".`,
+        bangla: "আপনার অনুরোধে একটি প্রশ্ন এসেছে — উত্তর দিন।",
+        cta: "Open task",
+        dateLabel: "Proposed due date",
+    },
+    answer: {
+        subject: "Query answered",
+        heading: "Your query was answered",
+        text: (actor, task) => `${actor} replied on the assignment request for "${task}".`,
+        bangla: "আপনার প্রশ্নের উত্তর এসেছে — এখন সিদ্ধান্ত দিন।",
+        cta: "Review requests",
+        dateLabel: "New due date",
+    },
+};
+const assignmentRequestHtml = (p) => {
+    const t = ASSIGNMENT_MAIL[p.kind];
+    // Bold the actor + task inside the escaped sentence via control-char
+    // sentinels: they survive escapeHtml untouched, can never occur in user
+    // input (names and notes are printable strings), and each replace lands
+    // exactly once - user text itself never meets HTML unescaped.
+    const A = "\u0001";
+    const T = "\u0002";
+    const sentence = escapeHtml(t.text(A, T))
+        .replace(A, `<strong>${escapeHtml(p.actorName)}</strong>`)
+        .replace(`&quot;${T}&quot;`, `<strong>&quot;${escapeHtml(p.taskName)}&quot;</strong>`)
+        .replace(T, escapeHtml(p.taskName));
+    const noteHtml = p.note
+        ? `<br>Note: <em>"${escapeHtml(p.note)}"</em>`
+        : "";
+    const dateHtml = p.proposedYmd
+        ? `<br>${t.dateLabel}: <strong>${escapeHtml(p.proposedYmd)}</strong>`
+        : "";
+    return shell(t.heading, `${sentence}${noteHtml}${dateHtml}<br><br>${t.bangla}`, { url: p.url, label: t.cta });
+};

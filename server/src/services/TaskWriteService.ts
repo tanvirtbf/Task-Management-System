@@ -19,7 +19,11 @@ import type { NotificationsRepo } from "../repositories/NotificationsRepo";
 import type { TasksService } from "./TasksService";
 import { taskEmails } from "./TaskEmailService";
 import { pushSvc } from "./PushService";
-import { assignmentGate, type GateSplit } from "./AssignmentRequestsService";
+import {
+    assignmentGate,
+    type GateSplit,
+    type RequestCreatedDelivery,
+} from "./AssignmentRequestsService";
 import { toWireTask, type WireTask } from "../serializers/taskSerializer";
 import {
     addBusinessDays,
@@ -762,6 +766,9 @@ export class TaskWriteService {
         const completedAt = DONE_GROUPS.has(status.statusGroup) ? now : null;
 
         const taskId = fakeId("t");
+        // P9: filled inside the tx when the gate parks assignees as requests;
+        // fired AFTER the commit (the delivery-layer rule).
+        let requestDeliveries: RequestCreatedDelivery[] = [];
 
         // 6b. Team-access P8 (Q11): split the initial assignees into DIRECT
         //     (same-team / self / full-reach / the Q7 on-call exemption) and
@@ -863,12 +870,14 @@ export class TaskWriteService {
                     // SAME tx (task row exists now; task-first lock order is
                     // moot here — the row is invisible until commit).
                     if (approvalSplit && approvalSplit.gated.length > 0) {
-                        await assignmentGate().createRequestsInTx(tx, {
-                            workspaceId: input.workspaceId,
-                            requesterId: input.actorId,
-                            split: approvalSplit,
-                            now,
-                        });
+                        const { deliveries } =
+                            await assignmentGate().createRequestsInTx(tx, {
+                                workspaceId: input.workspaceId,
+                                requesterId: input.actorId,
+                                split: approvalSplit,
+                                now,
+                            });
+                        requestDeliveries = deliveries;
                     }
                     if (tagIds.length > 0) {
                         await this.membership.addTags(taskId, tagIds, tx);
@@ -970,6 +979,14 @@ export class TaskWriteService {
                 taskName: input.name,
                 recipientIds: emailRecipients,
                 actorId: input.actorId,
+            });
+        }
+        // P9: "approval needed" to each gated target + their Heads.
+        if (requestDeliveries.length > 0) {
+            assignmentGate().deliverCreated({
+                workspaceId: input.workspaceId,
+                requesterId: input.actorId,
+                deliveries: requestDeliveries,
             });
         }
 
@@ -1955,6 +1972,13 @@ export class TaskWriteService {
 
         // 4. Atomic write (batched: bulk operations instead of per-task loop).
         let pendingApproval = 0; // P8/Q8 — requests created instead of assigns
+        // P9: post-commit fan-outs collected inside the tx.
+        let bulkRequestDeliveries: RequestCreatedDelivery[] = [];
+        const bulkAssignedOutbox: {
+            taskId: string;
+            taskName: string;
+            recipientIds: string[];
+        }[] = [];
         try {
             await this.db.transaction(async (tx) => {
                 await this.tasks.updateMany(ids, dbPatch, tx);
@@ -2014,16 +2038,43 @@ export class TaskWriteService {
                     }
                     // Team-access P3: same shape as the single-target path —
                     // one row per (task, user) that ACTUALLY gained them.
+                    // P9 (G15): bulk assignment used to be completely silent —
+                    // the same loop now also fans out the `assigned` bell and
+                    // collects the email/push outbox, exactly the single-add
+                    // side-effect set.
                     for (const t of found) {
                         const had = new Set(preAssignees.get(t.id) ?? []);
+                        const gained: string[] = [];
                         for (const userId of bulkSplit.directByTask.get(t.id) ??
                             []) {
                             if (had.has(userId)) continue;
+                            gained.push(userId);
                             bulkRows.push({
                                 taskId: t.id,
                                 actorId: input.actorId,
                                 action: "assignee_added",
                                 context: { user_id: userId, bulk: true },
+                            });
+                        }
+                        const recipients = gained.filter(
+                            (id) => id !== input.actorId,
+                        );
+                        if (recipients.length > 0) {
+                            await this.notifications.createMany(
+                                recipients.map((userId) => ({
+                                    userId,
+                                    type: "assigned" as const,
+                                    entityType: "task" as const,
+                                    entityId: t.id,
+                                    actorId: input.actorId,
+                                    title: assignedTitle(t.name),
+                                })),
+                                tx,
+                            );
+                            bulkAssignedOutbox.push({
+                                taskId: t.id,
+                                taskName: t.name,
+                                recipientIds: recipients,
                             });
                         }
                     }
@@ -2037,7 +2088,7 @@ export class TaskWriteService {
                                 pair.targetUserId,
                             ),
                     );
-                    const { created } = await assignmentGate()
+                    const { created, deliveries } = await assignmentGate()
                         .createRequestsInTx(tx, {
                             workspaceId: input.workspaceId,
                             requesterId: input.actorId,
@@ -2045,6 +2096,7 @@ export class TaskWriteService {
                             now,
                         });
                     pendingApproval = created;
+                    bulkRequestDeliveries = deliveries;
                 }
                 if (assigneeRemove.length > 0) {
                     await this.membership.removeAssigneesBulk(
@@ -2176,6 +2228,33 @@ export class TaskWriteService {
                 );
             }
             throw err;
+        }
+
+        // 4b. P9 post-commit fan-outs, fire-and-forget: the G15 assigned
+        // emails/pushes for the direct adds, and "approval needed" for the
+        // gated pairs — the same channels the single-target paths use.
+        for (const o of bulkAssignedOutbox) {
+            void taskEmails().taskAssigned({
+                workspaceId: input.workspaceId,
+                taskId: o.taskId,
+                taskName: o.taskName,
+                recipientIds: o.recipientIds,
+                actorId: input.actorId,
+            });
+            void pushSvc().taskAssigned({
+                workspaceId: input.workspaceId,
+                taskId: o.taskId,
+                taskName: o.taskName,
+                recipientIds: o.recipientIds,
+                actorId: input.actorId,
+            });
+        }
+        if (bulkRequestDeliveries.length > 0) {
+            assignmentGate().deliverCreated({
+                workspaceId: input.workspaceId,
+                requesterId: input.actorId,
+                deliveries: bulkRequestDeliveries,
+            });
         }
 
         // 5. Re-read + batch-hydrate the affected tasks.

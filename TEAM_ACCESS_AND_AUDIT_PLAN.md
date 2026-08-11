@@ -573,7 +573,38 @@ requester withdraws, assignee deactivated mid-request.
 
 ---
 
-## PHASE 9 — Approval + query, UI and delivery (R1.4–R1.6)
+## PHASE 9 — Approval + query, UI and delivery (R1.4–R1.6) ✅ SHIPPED 2026-08-11
+
+> **Status: DONE.** No schema change — pure delivery + UI on P8's backend.
+> **Delivery (server):** `MailService.sendAssignmentRequestEmail` (one bilingual template
+> family; kind picks subject/copy/CTA; user input always escaped) + `TaskEmailService
+> .assignmentRequest` + `PushService.assignmentRequest` — the FIVE moments fire post-commit,
+> fire-and-forget, to exactly the bell's recipients: request created → target + their Heads
+> (link = INBOX — the task is still 404 for them, B5), accepted / declined / query → the
+> requester (link = task), answered → the receiver side (link = inbox). `createRequestsInTx`
+> returns `deliveries` and the three assignment paths fire `deliverCreated` after their tx
+> commits (an SMTP round-trip never sits inside a transaction). **G15 bonus fixed:** bulk
+> assignment was completely silent — the direct adds now get the same `assigned` bell (in-tx)
+> + email/push (post-commit) the single-target path always had, per (task, person) actually
+> gained; a re-run stays a no-op. **UI (client):** `AssignmentRequestCard` — ONE card shared by
+> the task drawer's new self-gating "Assignment approval" section and the Inbox's new
+> **Requests** filter chip (received + team + sent, merged/deduped, actioned inline: Accept /
+> Decline / Query… / Answer… / Withdraw, modals with note + antd DatePicker). Decider buttons
+> mirror the server rule via `useCanDecideRequest` (target / head-of-target's-team via the
+> cached `["teams"]` directory / admin — never the requester); the server stays the authority
+> and refused clicks surface its message. **Assignee picker** (`InlineAssigneeEdit`): every
+> option shows the person's team chip, and a cross-team pick warns "*will need <their team>'s
+> approval*" BEFORE commit (suppressed for admin/owner targets — never gated). **Bulk toolbar**
+> reports honestly: "Updated N tasks — M assignments waiting for approval" (`pending_approval`
+> now surfaced through `tasksApi.bulkUpdate`). **Boundary UX:** the drawer's 404 and the
+> `/t/:id` deep-link both say "*you don't have access — accept the request in your Inbox
+> first*" instead of a raw not-found, and `/t/:id` no longer DEAD-ENDS a cross-team assignee
+> whose list is outside their sidebar (B5): the drawer opens right there. Proof:
+> `tests/rbac/p9-delivery.test.ts` 3/3 (received→target+head & never requester · the four
+> counterpart kinds incl. head-accept = accepted-to-requester + assigned-to-target · G15 bulk
+> bells+mails per task, idempotent re-run) via the established MailService prototype spy seam
+> (Web Push VAPID-withheld under test by design); client tsc + vitest 44/44. Playwright E2E of
+> the round-trip = P10 per the plan.
 
 **Goal:** the flow feels smooth, which is the stated requirement.
 

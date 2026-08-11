@@ -95,6 +95,7 @@ export const TaskPropertiesPanel = ({ task }: { task: Task }) => {
             <PropValue>
                 <InlineAssigneeEdit
                     assigneeIds={task.assignees}
+                    taskSpaceId={list?.spaceId ?? null}
                     onChange={(assignees) => setAssignees.mutate(assignees)}
                 />
             </PropValue>

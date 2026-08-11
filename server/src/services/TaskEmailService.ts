@@ -30,6 +30,13 @@ import { MailService } from "./MailService";
 const taskUrlOf = (taskId: string): string =>
     `${Config.FRONTEND_URL ?? ""}/t/${taskId}`;
 
+/**
+ * The inbox — where the Requests tab lives (team-access P9). Receiver-facing
+ * assignment mails link HERE, not the task: until they accept, the task
+ * answers 404 for them (B5 — the boundary is the point).
+ */
+const inboxUrlOf = (): string => `${Config.FRONTEND_URL ?? ""}/inbox`;
+
 export interface TaskAssignedEmailInput {
     workspaceId: string;
     taskId: string;
@@ -39,6 +46,19 @@ export interface TaskAssignedEmailInput {
     actorId: string;
     /** Canonical YYYY-MM-DD when the task has a due date (create path). */
     dueYmd?: string | null;
+}
+
+export interface AssignmentRequestEmailInput {
+    workspaceId: string;
+    taskId: string;
+    taskName: string;
+    /** Which of the five approval moments this is (picks copy AND link). */
+    kind: "received" | "accepted" | "declined" | "query" | "answer";
+    /** Already minus the actor — the same set the in-app bell reached. */
+    recipientIds: string[];
+    actorId: string;
+    note?: string | null;
+    proposedYmd?: string | null;
 }
 
 export class TaskEmailService {
@@ -86,6 +106,65 @@ export class TaskEmailService {
         } catch (err) {
             this.log.warn("mail.task_assigned.fail", {
                 taskId: input.taskId,
+                error: err instanceof Error ? err.message : String(err),
+            });
+        }
+    }
+
+    /**
+     * Team-access P9 (R1.6): one of the five assignment-approval moments, to
+     * exactly the recipients the in-app bell reached. Same rules as
+     * `taskAssigned`: fire-and-forget post-commit, re-resolve recipients at
+     * send time, per-recipient isolation, never throws. Receiver-facing kinds
+     * (`received`, `answer`) link the INBOX; requester-facing kinds link the
+     * task.
+     */
+    async assignmentRequest(
+        input: AssignmentRequestEmailInput,
+    ): Promise<void> {
+        try {
+            if (input.recipientIds.length === 0) return;
+            const ids = [...new Set([...input.recipientIds, input.actorId])];
+            const rows = await this.users.findManyByIdsInWorkspace(
+                ids,
+                input.workspaceId,
+            );
+            const byId = new Map(rows.map((r) => [r.id, r]));
+            const actor = byId.get(input.actorId);
+            const actorName = actor
+                ? `${actor.firstName} ${actor.lastName}`.trim() || "A teammate"
+                : "A teammate";
+            const url =
+                input.kind === "received" || input.kind === "answer"
+                    ? inboxUrlOf()
+                    : taskUrlOf(input.taskId);
+
+            for (const id of input.recipientIds) {
+                const u = byId.get(id);
+                if (!u || u.status !== "active" || !u.email) continue;
+                try {
+                    await this.mail.sendAssignmentRequestEmail(u.email, {
+                        kind: input.kind,
+                        taskName: input.taskName,
+                        url,
+                        actorName,
+                        note: input.note ?? null,
+                        proposedYmd: input.proposedYmd ?? null,
+                    });
+                } catch (err) {
+                    this.log.warn("mail.assignment_request.fail", {
+                        taskId: input.taskId,
+                        kind: input.kind,
+                        userId: id,
+                        error:
+                            err instanceof Error ? err.message : String(err),
+                    });
+                }
+            }
+        } catch (err) {
+            this.log.warn("mail.assignment_request.fail", {
+                taskId: input.taskId,
+                kind: input.kind,
                 error: err instanceof Error ? err.message : String(err),
             });
         }

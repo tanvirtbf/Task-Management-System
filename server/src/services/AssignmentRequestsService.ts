@@ -101,9 +101,24 @@ export interface GateSplit {
     headsByTarget: Map<string, string[]>;
 }
 
+/**
+ * One created request's out-of-app delivery, returned to the CALLER: the
+ * gate runs inside the caller's transaction, so only the caller knows when
+ * the commit lands — it fires `deliverCreated` post-commit (P9).
+ */
+export interface RequestCreatedDelivery {
+    requestId: string;
+    taskId: string;
+    taskName: string;
+    /** Target + their Heads minus the requester (the bell's exact set). */
+    recipientIds: string[];
+}
+
 export interface CreateRequestsResult {
     /** Requests actually created (a racing duplicate pending is skipped). */
     created: number;
+    /** Email/push fan-out for the caller to fire AFTER its tx commits. */
+    deliveries: RequestCreatedDelivery[];
 }
 
 /** What the router wires so `answer()` can move the real due date (fix B2). */
@@ -255,7 +270,7 @@ export class AssignmentRequestsService {
         },
     ): Promise<CreateRequestsResult> {
         const { split, now } = input;
-        if (split.gated.length === 0) return { created: 0 };
+        if (split.gated.length === 0) return { created: 0, deliveries: [] };
 
         // "Someone already asked" is this domain's idempotent no-op. The
         // read-then-insert is race-safe because every assignment path holds
@@ -265,7 +280,7 @@ export class AssignmentRequestsService {
         const fresh = split.gated.filter(
             (p) => !alreadyPending.has(`${p.taskId}|${p.targetUserId}`),
         );
-        if (fresh.length === 0) return { created: 0 };
+        if (fresh.length === 0) return { created: 0, deliveries: [] };
 
         const expiresAt = new Date(now.getTime() + REQUEST_TTL_MS);
         const created: GatePair[] = fresh;
@@ -300,12 +315,19 @@ export class AssignmentRequestsService {
         );
 
         // Q2: the target AND their Head(s) are notified; never the requester.
-        const rows = created.flatMap((pair) => {
+        const deliveries: RequestCreatedDelivery[] = [];
+        const rows = created.flatMap((pair, i) => {
             const recipients = new Set<string>([
                 pair.targetUserId,
                 ...(split.headsByTarget.get(pair.targetUserId) ?? []),
             ]);
             recipients.delete(input.requesterId);
+            deliveries.push({
+                requestId: createdIds[i],
+                taskId: pair.taskId,
+                taskName: pair.taskName,
+                recipientIds: [...recipients],
+            });
             return [...recipients].map((userId) => ({
                 userId,
                 type: "assignment_request" as const,
@@ -322,7 +344,41 @@ export class AssignmentRequestsService {
             requesterId: input.requesterId,
             count: created.length,
         });
-        return { created: created.length };
+        return { created: created.length, deliveries };
+    }
+
+    /**
+     * P9: the out-of-app half of request creation — the SAME recipients the
+     * bell reached, on email + Web Push. Called by the assignment paths AFTER
+     * their transaction commits, fire-and-forget (the delivery-layer rule).
+     */
+    deliverCreated(input: {
+        workspaceId: string;
+        requesterId: string;
+        note?: string | null;
+        deliveries: RequestCreatedDelivery[];
+    }): void {
+        for (const d of input.deliveries) {
+            void taskEmails().assignmentRequest({
+                workspaceId: input.workspaceId,
+                taskId: d.taskId,
+                taskName: d.taskName,
+                kind: "received",
+                recipientIds: d.recipientIds,
+                actorId: input.requesterId,
+                note: input.note ?? null,
+            });
+            void pushSvc().assignmentRequest({
+                workspaceId: input.workspaceId,
+                requestId: d.requestId,
+                taskId: d.taskId,
+                taskName: d.taskName,
+                kind: "received",
+                recipientIds: d.recipientIds,
+                actorId: input.requesterId,
+                note: input.note ?? null,
+            });
+        }
     }
 
     // ─── listing ─────────────────────────────────────────────────────────────
@@ -570,7 +626,39 @@ export class AssignmentRequestsService {
                 actorId: input.actorId,
             });
         }
+        // P9: tell the requester out-of-app too (the bell already did).
+        this.deliverDecision(r, input, "accepted", snapshot.name, input.note);
         return this.reload(r.id, input.workspaceId);
+    }
+
+    /** P9: email + push for a decision moment, to the requester (not self). */
+    private deliverDecision(
+        r: AssignmentRequestRow,
+        input: ActorInput,
+        kind: "accepted" | "declined",
+        taskName: string,
+        note?: string | null,
+    ): void {
+        if (r.requestedBy === input.actorId) return;
+        void taskEmails().assignmentRequest({
+            workspaceId: input.workspaceId,
+            taskId: r.taskId,
+            taskName,
+            kind,
+            recipientIds: [r.requestedBy],
+            actorId: input.actorId,
+            note: note ?? null,
+        });
+        void pushSvc().assignmentRequest({
+            workspaceId: input.workspaceId,
+            requestId: r.id,
+            taskId: r.taskId,
+            taskName,
+            kind,
+            recipientIds: [r.requestedBy],
+            actorId: input.actorId,
+            note: note ?? null,
+        });
     }
 
     /** Decline: the claim + the ledger + "declined" to the requester. */
@@ -622,6 +710,8 @@ export class AssignmentRequestsService {
                 );
             }
         });
+        // P9: the requester hears out-of-app too.
+        this.deliverDecision(r, input, "declined", snapshot.name, input.note);
         return this.reload(r.id, input.workspaceId);
     }
 
@@ -687,6 +777,29 @@ export class AssignmentRequestsService {
                 );
             }
         });
+        // P9: the query reaches the requester's mailbox + devices too.
+        if (r.requestedBy !== input.actorId) {
+            void taskEmails().assignmentRequest({
+                workspaceId: input.workspaceId,
+                taskId: r.taskId,
+                taskName: snapshot.name,
+                kind: "query",
+                recipientIds: [r.requestedBy],
+                actorId: input.actorId,
+                note: input.note,
+                proposedYmd: input.proposedDueDate ?? null,
+            });
+            void pushSvc().assignmentRequest({
+                workspaceId: input.workspaceId,
+                requestId: r.id,
+                taskId: r.taskId,
+                taskName: snapshot.name,
+                kind: "query",
+                recipientIds: [r.requestedBy],
+                actorId: input.actorId,
+                note: input.note,
+            });
+        }
         return this.reload(r.id, input.workspaceId);
     }
 
@@ -786,6 +899,33 @@ export class AssignmentRequestsService {
                 tx,
             );
         });
+        // P9: the receiver side hears out-of-app — inbox-linked (they still
+        // cannot open the task until they accept).
+        const answerRecipients = new Set<string>([r.targetUserId]);
+        if (lastQueryActor) answerRecipients.add(lastQueryActor);
+        answerRecipients.delete(input.actorId);
+        if (answerRecipients.size > 0) {
+            void taskEmails().assignmentRequest({
+                workspaceId: input.workspaceId,
+                taskId: r.taskId,
+                taskName: snapshot.name,
+                kind: "answer",
+                recipientIds: [...answerRecipients],
+                actorId: input.actorId,
+                note: input.note ?? null,
+                proposedYmd: input.dueDate ?? null,
+            });
+            void pushSvc().assignmentRequest({
+                workspaceId: input.workspaceId,
+                requestId: r.id,
+                taskId: r.taskId,
+                taskName: snapshot.name,
+                kind: "answer",
+                recipientIds: [...answerRecipients],
+                actorId: input.actorId,
+                note: input.note ?? null,
+            });
+        }
         return this.reload(r.id, input.workspaceId);
     }
 

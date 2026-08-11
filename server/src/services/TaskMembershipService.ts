@@ -193,16 +193,19 @@ export class TaskMembershipService {
             const gatedFresh = split.gated.filter(
                 (p) => !existing.has(p.targetUserId),
             );
-            await assignmentGate().createRequestsInTx(tx, {
-                workspaceId,
-                requesterId: actorId,
-                split: { ...split, gated: gatedFresh },
-                now: new Date(),
-            });
+            const { deliveries } = await assignmentGate().createRequestsInTx(
+                tx,
+                {
+                    workspaceId,
+                    requesterId: actorId,
+                    split: { ...split, gated: gatedFresh },
+                    now: new Date(),
+                },
+            );
 
             const newIds = directIds.filter((id) => !existing.has(id));
             if (newIds.length === 0) {
-                return { added: 0, recipients: [] as string[] };
+                return { added: 0, recipients: [] as string[], deliveries };
             }
 
             await this.membership.addAssignees(taskId, newIds, actorId, tx);
@@ -231,7 +234,7 @@ export class TaskMembershipService {
             );
             await this.tasks.touchUpdatedAt(taskId, tx);
 
-            return { added: newIds.length, recipients };
+            return { added: newIds.length, recipients, deliveries };
         });
 
         // Reach the same recipients the in-app fanout did on the out-of-app
@@ -253,6 +256,14 @@ export class TaskMembershipService {
                 taskName: task.name,
                 recipientIds: outcome.recipients,
                 actorId,
+            });
+        }
+        // P9: the gated half — "approval needed" to the target + their Heads.
+        if (outcome.deliveries.length > 0) {
+            assignmentGate().deliverCreated({
+                workspaceId,
+                requesterId: actorId,
+                deliveries: outcome.deliveries,
             });
         }
 

@@ -400,6 +400,70 @@ export type NotificationType =
     | "assignment_request_decided"
     | "assignment_query";
 
+// ─── Cross-team assignment approval (team-access P8/P9) ─────────────────────
+
+export type AssignmentRequestStatus =
+    | "pending"
+    | "accepted"
+    | "declined"
+    | "expired"
+    | "cancelled";
+
+export type AssignmentRequestAction =
+    | "created"
+    | "accepted"
+    | "declined"
+    | "queried"
+    | "answered"
+    | "cancelled"
+    | "expired";
+
+/**
+ * The server-hydrated task SNAPSHOT riding on a request — the receiver's
+ * consent window: they may not be able to open the task itself until they
+ * accept, but they always see WHAT they are being asked to take on.
+ */
+export interface AssignmentRequestTask {
+    id: string;
+    name: string;
+    customId: string | null;
+    listId: string;
+    listName: string;
+    spaceId: string;
+    spaceName: string;
+    dueDate: string | null;
+    priority: number;
+    archived: boolean;
+}
+
+export interface AssignmentRequestEvent {
+    id: string;
+    action: AssignmentRequestAction;
+    /** null = the system (the 7-day expiry janitor). */
+    actor: User | null;
+    note: string | null;
+    proposedDueDate: string | null;
+    createdAt: string;
+}
+
+export interface AssignmentRequest {
+    id: string;
+    status: AssignmentRequestStatus;
+    task: AssignmentRequestTask | null;
+    targetUser: User | null;
+    requestedBy: User | null;
+    decidedBy: User | null;
+    requestNote: string | null;
+    queryNote: string | null;
+    proposedDueDate: string | null;
+    decidedAt: string | null;
+    expiresAt: string;
+    createdAt: string;
+    updatedAt: string;
+    /** Oldest-first ledger of the whole negotiation. */
+    events: AssignmentRequestEvent[];
+}
+
 export interface Notification {
     id: string;
     userId: string;

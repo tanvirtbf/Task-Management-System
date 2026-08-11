@@ -114,6 +114,55 @@ export class PushService {
         });
     }
 
+    /**
+     * Team-access P9: one of the five assignment-approval moments — same
+     * recipients as the in-app bell, kind-aware copy AND link (receiver-facing
+     * kinds land on the inbox Requests tab; the task itself is still 404 for
+     * them until they accept).
+     */
+    async assignmentRequest(input: {
+        workspaceId: string;
+        requestId: string;
+        taskId: string;
+        taskName: string;
+        kind: "received" | "accepted" | "declined" | "query" | "answer";
+        recipientIds: string[];
+        actorId: string;
+        note?: string | null;
+    }): Promise<void> {
+        if (!this.vapidPublicKey || input.recipientIds.length === 0) return;
+        let actorName = "A teammate";
+        try {
+            const [actor] = await this.users.findManyByIdsInWorkspace(
+                [input.actorId],
+                input.workspaceId,
+            );
+            if (actor) {
+                const name = `${actor.firstName} ${actor.lastName}`.trim();
+                if (name) actorName = name;
+            }
+        } catch {
+            /* the name is cosmetic — never block the push on it */
+        }
+        const TITLES: Record<typeof input.kind, string> = {
+            received: `${actorName} needs your approval`,
+            accepted: `${actorName} accepted your assignment`,
+            declined: `${actorName} declined your assignment`,
+            query: `${actorName} has a question on your request`,
+            answer: `${actorName} answered your query`,
+        };
+        const note = input.note ? ` — "${input.note.slice(0, 120)}"` : "";
+        await this.fanout(input.recipientIds, {
+            title: TITLES[input.kind],
+            body: `${input.taskName}${note}`,
+            url:
+                input.kind === "received" || input.kind === "answer"
+                    ? "/inbox"
+                    : `/t/${input.taskId}`,
+            tag: `bb-areq-${input.requestId}-${input.kind}`,
+        });
+    }
+
     /** "Your task is overdue" → every device of every assignee. */
     async taskOverdue(input: {
         taskId: string;

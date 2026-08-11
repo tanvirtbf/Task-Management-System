@@ -94,7 +94,7 @@ class TaskMembershipService {
             // lock order the accept path uses. Already-assigned targets need no
             // request; a racing duplicate pending is skipped by the unique key.
             const gatedFresh = split.gated.filter((p) => !existing.has(p.targetUserId));
-            await (0, AssignmentRequestsService_1.assignmentGate)().createRequestsInTx(tx, {
+            const { deliveries } = await (0, AssignmentRequestsService_1.assignmentGate)().createRequestsInTx(tx, {
                 workspaceId,
                 requesterId: actorId,
                 split: { ...split, gated: gatedFresh },
@@ -102,7 +102,7 @@ class TaskMembershipService {
             });
             const newIds = directIds.filter((id) => !existing.has(id));
             if (newIds.length === 0) {
-                return { added: 0, recipients: [] };
+                return { added: 0, recipients: [], deliveries };
             }
             await this.membership.addAssignees(taskId, newIds, actorId, tx);
             await this.membership.addWatchers(taskId, newIds, tx);
@@ -123,7 +123,7 @@ class TaskMembershipService {
                 title: this.assignedTitle(task.name),
             })), tx);
             await this.tasks.touchUpdatedAt(taskId, tx);
-            return { added: newIds.length, recipients };
+            return { added: newIds.length, recipients, deliveries };
         });
         // Reach the same recipients the in-app fanout did on the out-of-app
         // channels — email AND Web Push. AFTER the commit, fire-and-forget:
@@ -144,6 +144,14 @@ class TaskMembershipService {
                 taskName: task.name,
                 recipientIds: outcome.recipients,
                 actorId,
+            });
+        }
+        // P9: the gated half — "approval needed" to the target + their Heads.
+        if (outcome.deliveries.length > 0) {
+            (0, AssignmentRequestsService_1.assignmentGate)().deliverCreated({
+                workspaceId,
+                requesterId: actorId,
+                deliveries: outcome.deliveries,
             });
         }
         return { added: outcome.added };

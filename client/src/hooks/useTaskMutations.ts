@@ -111,9 +111,20 @@ export const useBulkUpdateTasks = (listId?: string) => {
             ids: string[];
             patch: BulkTaskPatch;
         }) => tasksApi.bulkUpdate(ids, patch),
-        onSuccess: (updated) => {
+        onSuccess: ({ tasks, pendingApproval }) => {
             qc.invalidateQueries({ queryKey: ["tasks-by-list", listId] });
-            message.success(`Updated ${updated.length} tasks`);
+            // P9 (Q8): report honestly — a cross-team pick did NOT assign,
+            // it opened an approval request.
+            if (pendingApproval > 0) {
+                qc.invalidateQueries({ queryKey: ["assignment-requests"] });
+                message.info(
+                    `Updated ${tasks.length} tasks — ${pendingApproval} assignment${
+                        pendingApproval === 1 ? "" : "s"
+                    } waiting for approval`,
+                );
+            } else {
+                message.success(`Updated ${tasks.length} tasks`);
+            }
         },
         onError: () => message.error("Bulk update failed"),
     });
@@ -202,7 +213,13 @@ export const useTaskMembership = (task: Task) => {
             if (added.length) await tasksApi.addAssignees(task.id, added);
             for (const id of removed) await tasksApi.removeAssignee(task.id, id);
         },
-        onSuccess: invalidate,
+        onSuccess: () => {
+            invalidate();
+            // P9: a cross-team pick lands as a PENDING request, not an
+            // assignee — refetch so the drawer's approval panel appears
+            // immediately (the honest feedback for the gate).
+            qc.invalidateQueries({ queryKey: ["assignment-requests"] });
+        },
         onError: () => message.error("Could not update assignees"),
     });
     const setTags = useMutation({

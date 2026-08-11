@@ -29,6 +29,7 @@ import { AttachmentsSection } from "./AttachmentsSection";
 import { SubtasksSection } from "./SubtasksSection";
 import { DependenciesSection } from "./DependenciesSection";
 import { TaskActivitySection } from "./TaskActivitySection";
+import { AssignmentRequestsSection } from "./AssignmentRequestsSection";
 import { BugFieldsSection } from "./BugFieldsSection";
 import { GitIntegrationPanel } from "./GitIntegrationPanel";
 import { PostmortemChecklist } from "./PostmortemChecklist";
@@ -64,6 +65,7 @@ export const TaskDetailDrawer = ({
         data: task,
         isLoading,
         isError: taskError,
+        error: taskErrObj,
         refetch: refetchTask,
     } = useQuery({
         queryKey: ["task", taskId],
@@ -71,6 +73,13 @@ export const TaskDetailDrawer = ({
             taskId ? tasksApi.getById(taskId) : Promise.resolve(null),
         enabled: !!taskId,
     });
+    // Team-access P9: a 404 here usually means the TEAM BOUNDARY, not a bug —
+    // e.g. a notification deep-link to a task you were queried about but
+    // haven't accepted, or one you were unassigned from. Say so instead of
+    // implying deletion.
+    const taskGone =
+        (taskErrObj as { response?: { status?: number } } | null)?.response
+            ?.status === 404;
 
     const taskType = task ? typeMap.get(task.taskTypeId) : null;
     const creator = task ? userMap.get(task.createdBy) : null;
@@ -228,19 +237,30 @@ export const TaskDetailDrawer = ({
         >
             {taskError ? (
                 // M9: a failed fetch used to spin "Loading task…" forever.
+                // P9: a 404 is worded as the team boundary it usually is.
                 <div style={{ padding: 24 }}>
                     <Alert
-                        type="error"
+                        type={taskGone ? "warning" : "error"}
                         showIcon
-                        message="Couldn't load this task"
-                        description="It may have been deleted, or the connection dropped."
+                        message={
+                            taskGone
+                                ? "You don't have access to this task"
+                                : "Couldn't load this task"
+                        }
+                        description={
+                            taskGone
+                                ? "It belongs to another team, or you no longer have access — it may also have been deleted. If someone requested to assign you, accept the request in your Inbox first."
+                                : "It may have been deleted, or the connection dropped."
+                        }
                         action={
-                            <Button
-                                size="small"
-                                onClick={() => void refetchTask()}
-                            >
-                                Retry
-                            </Button>
+                            taskGone ? undefined : (
+                                <Button
+                                    size="small"
+                                    onClick={() => void refetchTask()}
+                                >
+                                    Retry
+                                </Button>
+                            )
                         }
                     />
                 </div>
@@ -374,6 +394,11 @@ export const TaskDetailDrawer = ({
                             history (self-gating; renders nothing for viewers
                             with no stake and no verdict). */}
                         <ReviewSection task={task} listId={listId} />
+
+                        {/* Team-access P9 — cross-team assignment approval:
+                            pending requests + the negotiation, inline accept /
+                            decline / query / answer. Self-gating. */}
+                        <AssignmentRequestsSection taskId={task.id} />
 
                         {isBug && <BugFieldsSection task={task} />}
 
