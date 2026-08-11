@@ -40,6 +40,8 @@ class AttachmentsService {
         if (!task) {
             throw errors_1.AppError.notFound("task.not_found", `Task ${input.scopeId} does not exist`);
         }
+        // Team-access P7: attaching a file is editing the task's content.
+        await (0, scopeGuard_1.assertTaskScoped)("task.edit", task, this.tasksRepo);
         if ((await (0, scopeGuard_1.liveLegacyRole)(input.role)) === constants_1.Roles.GUEST) {
             throw errors_1.AppError.forbidden("auth.forbidden", "Guests cannot upload attachments");
         }
@@ -83,6 +85,8 @@ class AttachmentsService {
         if (!task) {
             throw errors_1.AppError.notFound("task.not_found", `Task ${input.taskId} does not exist`);
         }
+        // Team-access P7: attaching a file is editing the task's content.
+        await (0, scopeGuard_1.assertTaskScoped)("task.edit", task, this.tasksRepo);
         if ((await (0, scopeGuard_1.liveLegacyRole)(input.role)) === constants_1.Roles.GUEST) {
             throw errors_1.AppError.forbidden("auth.forbidden", "Guests cannot upload attachments");
         }
@@ -139,6 +143,13 @@ class AttachmentsService {
      */
     async finalize(input) {
         const att = await this.resolveLive(input.id, input.workspaceId);
+        // Team-access P7: completing an upload is editing the task's content.
+        // The task resolves through the SCOPED repo (P5) — visible by
+        // construction here — so this only enforces the edit reach.
+        const parentTask = await this.tasksRepo.findByIdInWorkspace(att.taskId, input.workspaceId);
+        if (parentTask) {
+            await (0, scopeGuard_1.assertTaskScoped)("task.edit", parentTask, this.tasksRepo);
+        }
         if (input.storageKey && input.storageKey !== att.storageKey) {
             throw errors_1.AppError.validationFailed([
                 {

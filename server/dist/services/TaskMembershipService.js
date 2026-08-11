@@ -32,19 +32,10 @@ class TaskMembershipService {
      * eligibility checks run before the transaction, so an invalid request
      * never produces a partial assignment.
      */
-    /** F8 (ISS-047): the `task.assign` grant's scope must reach this task. */
+    /** F8 (ISS-047): the `task.assign` grant's scope must reach this task.
+     *  P7: via the unified guard — the space's head may manage their dept. */
     async assertAssignScope(task) {
-        if (await (0, scopeGuard_1.hasFullReach)("task.assign"))
-            return;
-        const [spaceIds, assignees] = await Promise.all([
-            this.tasks.spaceIdsByTask([task.id]),
-            this.tasks.assigneesByTask([task.id]),
-        ]);
-        await (0, scopeGuard_1.assertScoped)("task.assign", {
-            spaceId: spaceIds.get(task.id) ?? null,
-            createdBy: task.createdBy,
-            assigneeIds: assignees.get(task.id) ?? [],
-        });
+        return (0, scopeGuard_1.assertTaskScoped)("task.assign", task, this.tasks);
     }
     async addAssignees(input) {
         const { taskId, workspaceId, actorId, userIds } = input;
@@ -241,17 +232,8 @@ class TaskMembershipService {
      * the grant's REACH covers the resolved task (F8's two-layer pattern).
      */
     async assertTagScope(task) {
-        if (await (0, scopeGuard_1.hasFullReach)("task.edit"))
-            return;
-        const [spaceIds, assignees] = await Promise.all([
-            this.tasks.spaceIdsByTask([task.id]),
-            this.tasks.assigneesByTask([task.id]),
-        ]);
-        await (0, scopeGuard_1.assertScoped)("task.edit", {
-            spaceId: spaceIds.get(task.id) ?? null,
-            createdBy: task.createdBy,
-            assigneeIds: assignees.get(task.id) ?? [],
-        });
+        // P7: via the unified guard — includes the head allow-path.
+        return (0, scopeGuard_1.assertTaskScoped)("task.edit", task, this.tasks);
     }
     async addTags(input) {
         const { taskId, workspaceId, actorId, tagIds } = input;

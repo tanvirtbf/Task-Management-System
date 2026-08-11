@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SlaService = void 0;
 const errors_1 = require("../errors");
+const scopeGuard_1 = require("../rbac/scopeGuard");
 const userSerializer_1 = require("../serializers/userSerializer");
 /**
  * §29 SLA management — domain logic.
@@ -70,6 +71,9 @@ class SlaService {
         if (current.archivedAt) {
             throw errors_1.AppError.conflict("task.archived", "Cannot update an archived task; unarchive it first");
         }
+        // Team-access P7: uniform task-content rule (admins hold `all`, so
+        // the fast-path makes this free on the 👑 route this serves).
+        await (0, scopeGuard_1.assertTaskScoped)("task.edit", current, this.tasks);
         let newDueAt = null;
         if (input.slaDueAt !== null) {
             newDueAt = new Date(input.slaDueAt);

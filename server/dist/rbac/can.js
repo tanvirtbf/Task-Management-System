@@ -88,6 +88,16 @@ const decide = (actor, permissionKey, ctx) => {
     }
     if (entry.all)
         return ALLOWED;
+    // Team-access P7 (G4): the head-of-owning-space allow-path, beside the
+    // owner floor in spirit but ctx-scoped in mechanics — it exists only when
+    // the caller resolved the space's head and handed it in (task-scope
+    // checks do; nothing else does). Placed AFTER the no_grant return: a head
+    // stripped of the verb entirely is still refused.
+    if (actor &&
+        ctx?.spaceHeadUserId &&
+        ctx.spaceHeadUserId === actor.userId) {
+        return ALLOWED;
+    }
     const spaceId = ctx?.spaceId ?? null;
     if (spaceId && entry.spaceIds.has(spaceId))
         return ALLOWED;

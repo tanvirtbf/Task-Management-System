@@ -53,6 +53,16 @@ export interface PermissionContext {
      * a notification's recipient. Wins over `createdBy` / `assigneeIds`.
      */
     isOwn?: boolean;
+    /**
+     * Team-access P7 (G4): the HEAD of the space this resource lives in. When
+     * supplied AND it names the actor, the decision allows even where the
+     * actor's own reach would not — a department head edits their
+     * department's work without being assigned to each task (R2.2). Only the
+     * task-scope guard supplies it (`assertTaskScoped`), so the branch never
+     * fires for non-task domains. The actor must still HOLD the key somewhere
+     * (`no_grant` wins) — head-ness widens reach, it never conjures a verb.
+     */
+    spaceHeadUserId?: string | null;
 }
 
 /**
@@ -131,6 +141,19 @@ export const decide = (
     }
 
     if (entry.all) return ALLOWED;
+
+    // Team-access P7 (G4): the head-of-owning-space allow-path, beside the
+    // owner floor in spirit but ctx-scoped in mechanics — it exists only when
+    // the caller resolved the space's head and handed it in (task-scope
+    // checks do; nothing else does). Placed AFTER the no_grant return: a head
+    // stripped of the verb entirely is still refused.
+    if (
+        actor &&
+        ctx?.spaceHeadUserId &&
+        ctx.spaceHeadUserId === actor.userId
+    ) {
+        return ALLOWED;
+    }
 
     const spaceId = ctx?.spaceId ?? null;
     if (spaceId && entry.spaceIds.has(spaceId)) return ALLOWED;

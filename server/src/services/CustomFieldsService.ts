@@ -1,4 +1,5 @@
 import { MySql2Database } from "drizzle-orm/mysql2";
+import { assertTaskScoped } from "../rbac/scopeGuard";
 import { and, eq } from "drizzle-orm";
 import * as schema from "../db/schema";
 import { AppError, type ErrorDetail } from "../errors";
@@ -377,6 +378,10 @@ export class CustomFieldsService {
             }
         }
 
+        // Team-access P7: a custom-field value is task CONTENT — setting it
+        // requires `task.edit` reach (assignee / creator / head).
+        await assertTaskScoped("task.edit", task, this.tasksRepo);
+
         // Validate the value envelope against the field's type (incl. dropdown
         // option existence + files attachment ownership). Throws 422 on mismatch.
         const normalized = await this.normalizeValue(
@@ -471,6 +476,9 @@ export class CustomFieldsService {
                 );
             }
         }
+
+        // Team-access P7: clearing a value is editing the task's content too.
+        await assertTaskScoped("task.edit", task, this.tasksRepo);
 
         await this.db.transaction(async (tx) => {
             await this.tasksRepo.lockById(task.id, tx);

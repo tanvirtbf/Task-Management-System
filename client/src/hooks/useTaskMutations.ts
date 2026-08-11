@@ -2,16 +2,25 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { App as AntApp } from "antd";
 import type { Task } from "../types";
 import { tasksApi, type BulkTaskPatch } from "../http/api";
+import { getApiErrorMessage } from "../http/client";
 import { useTaskTypes } from "./useReferenceData";
+import { EDIT_DENIED_HINT, useCanEditTask } from "./useCanEditTask";
 
 /**
  * Centralised mutation hooks for tasks.
  * Optimistic updates so the UI feels instant.
+ *
+ * Team-access P7: the edit-shaped hooks pre-check `useCanEditTask` against
+ * the cached task and answer with a friendly hint instead of firing a request
+ * that can only 403 — one guard here covers the drawer, list rows, board and
+ * calendar at once. When the task is not in cache, the request goes through
+ * and the server (the real judge) answers.
  */
 export const useUpdateTask = (listId?: string) => {
     const qc = useQueryClient();
     const { message } = AntApp.useApp();
-    return useMutation({
+    const canEditTask = useCanEditTask();
+    const mutation = useMutation({
         mutationFn: ({ id, patch }: { id: string; patch: Partial<Task> }) =>
             tasksApi.update(id, patch),
         onMutate: async ({ id, patch }) => {
@@ -33,14 +42,14 @@ export const useUpdateTask = (listId?: string) => {
             );
             return { prev, prevTask, id };
         },
-        onError: (_err, _input, ctx) => {
+        onError: (err, _input, ctx) => {
             if (ctx?.prev) {
                 qc.setQueryData(["tasks-by-list", listId], ctx.prev);
             }
             if (ctx?.prevTask !== undefined) {
                 qc.setQueryData(["task", ctx.id], ctx.prevTask);
             }
-            message.error("Could not update task");
+            message.error(getApiErrorMessage(err));
         },
         onSettled: (_data, _err, vars) => {
             qc.invalidateQueries({ queryKey: ["tasks-by-list", listId] });
@@ -48,6 +57,21 @@ export const useUpdateTask = (listId?: string) => {
             qc.invalidateQueries({ queryKey: ["my-work"] });
         },
     });
+
+    // P7: the pre-flight courtesy check (see the file header).
+    const guardedMutate: typeof mutation.mutate = (vars, opts) => {
+        const cached =
+            qc.getQueryData<Task>(["task", vars.id]) ??
+            qc
+                .getQueryData<Task[]>(["tasks-by-list", listId])
+                ?.find((t) => t.id === vars.id);
+        if (cached && !canEditTask(cached)) {
+            message.info(EDIT_DENIED_HINT);
+            return;
+        }
+        mutation.mutate(vars, opts);
+    };
+    return { ...mutation, mutate: guardedMutate };
 };
 
 export const useCreateTask = (_listId?: string) => {
@@ -98,13 +122,29 @@ export const useBulkUpdateTasks = (listId?: string) => {
 export const useArchiveTask = (listId?: string) => {
     const qc = useQueryClient();
     const { message } = AntApp.useApp();
-    return useMutation({
+    const canEditTask = useCanEditTask();
+    const mutation = useMutation({
         mutationFn: (id: string) => tasksApi.archive(id),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["tasks-by-list", listId] });
             message.success("Task archived");
         },
+        onError: (err) => message.error(getApiErrorMessage(err)),
     });
+    // P7: archiving is an edit of the strongest kind — same courtesy check.
+    const guardedMutate: typeof mutation.mutate = (id, opts) => {
+        const cached =
+            qc.getQueryData<Task>(["task", id]) ??
+            qc
+                .getQueryData<Task[]>(["tasks-by-list", listId])
+                ?.find((t) => t.id === id);
+        if (cached && !canEditTask(cached)) {
+            message.info(EDIT_DENIED_HINT);
+            return;
+        }
+        mutation.mutate(id, opts);
+    };
+    return { ...mutation, mutate: guardedMutate };
 };
 
 /** F25 (ISS-050): the inverse of archive — the client had no caller for it. */
@@ -174,7 +214,20 @@ export const useTaskMembership = (task: Task) => {
             for (const id of removed) await tasksApi.removeTag(task.id, id);
         },
         onSuccess: invalidate,
-        onError: () => message.error("Could not update tags"),
+        onError: (err) => message.error(getApiErrorMessage(err)),
     });
-    return { setAssignees, setTags };
+    // P7: tags follow the task-edit rule; assignees stay open until the P8
+    // approval flow gates them.
+    const canEditTask = useCanEditTask();
+    const guardedSetTags: typeof setTags.mutate = (next, opts) => {
+        if (!canEditTask(task)) {
+            message.info(EDIT_DENIED_HINT);
+            return;
+        }
+        setTags.mutate(next, opts);
+    };
+    return {
+        setAssignees,
+        setTags: { ...setTags, mutate: guardedSetTags },
+    };
 };

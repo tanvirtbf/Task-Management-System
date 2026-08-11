@@ -35,6 +35,7 @@ import { PostmortemChecklist } from "./PostmortemChecklist";
 import { SLABadge } from "./SLABadge";
 import { CustomFieldsList } from "../custom-field/CustomFieldsList";
 import { useUpdateTask } from "../../hooks/useTaskMutations";
+import { useCanEditTask } from "../../hooks/useCanEditTask";
 import { usePermissions } from "../../hooks/usePermissions";
 import { ReviewSection } from "./ReviewSection";
 import { tokens } from "../../theme";
@@ -73,6 +74,11 @@ export const TaskDetailDrawer = ({
 
     const taskType = task ? typeMap.get(task.taskTypeId) : null;
     const creator = task ? userMap.get(task.createdBy) : null;
+    // Team-access P7 (R2.2): view-only notice for people who cannot edit —
+    // the mutation hooks answer every attempt with the same friendly hint,
+    // so a 403 is never the first feedback.
+    const canEditTask = useCanEditTask();
+    const canEdit = task ? canEditTask(task) : true;
     const isDev = taskType?.isDevType ?? false;
     const isBug = taskType?.name.toLowerCase() === "bug";
     const isIncident = taskType?.name.toLowerCase() === "incident";
@@ -329,6 +335,20 @@ export const TaskDetailDrawer = ({
 
                     {/* Body */}
                     <div style={{ flex: 1, overflowY: "auto" }}>
+                        {!canEdit && (
+                            <div
+                                style={{
+                                    padding: `6px ${tokens.spacing[5]}px`,
+                                    background: tokens.colors.bgPage,
+                                    borderBottom: `1px solid ${tokens.colors.borderSubtle}`,
+                                    fontSize: 12,
+                                    color: tokens.colors.textMuted,
+                                }}
+                            >
+                                🔒 View only — only assignees, the creator or
+                                the team head can edit this task.
+                            </div>
+                        )}
                         {/* Task name */}
                         <div
                             style={{

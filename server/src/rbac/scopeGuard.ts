@@ -47,6 +47,48 @@ export const hasFullReach = async (key: PermissionKey): Promise<boolean> => {
     return entryFor(actor, key).all;
 };
 
+/** The two lookups `assertTaskScoped` composes — `TasksRepo` satisfies it. */
+export interface TaskScopeSource {
+    spaceInfoByTask(
+        taskIds: string[],
+    ): Promise<Map<string, { spaceId: string; headUserId: string | null }>>;
+    assigneesByTask(taskIds: string[]): Promise<Map<string, string[]>>;
+}
+
+/**
+ * Team-access P7 — THE task-scope guard, unified (G4). Enforce `key`'s reach
+ * against one resolved task, with the full context the decision needs:
+ *
+ *   · the task's SPACE            (space-scoped grants),
+ *   · its creator + assignees     ("own" grants — R2.2's assignee rule),
+ *   · its space's HEAD            (the head-of-owning-space allow-path: a
+ *                                  department head edits their department's
+ *                                  work without being assigned to each task).
+ *
+ * Full-reach grants skip both lookups (every unrestricted role — today's hot
+ * path pays nothing). Task-adjacent services (checklists, attachments,
+ * custom-field values, dependencies, SLA) call this with `task.edit`:
+ * mutating a task's CONTENT is editing the task, whatever the route's verb.
+ */
+export const assertTaskScoped = async (
+    key: PermissionKey,
+    task: { id: string; createdBy: string },
+    source: TaskScopeSource,
+): Promise<void> => {
+    if (await hasFullReach(key)) return;
+    const [info, assignees] = await Promise.all([
+        source.spaceInfoByTask([task.id]),
+        source.assigneesByTask([task.id]),
+    ]);
+    const spaceInfo = info.get(task.id);
+    await assertScoped(key, {
+        spaceId: spaceInfo?.spaceId ?? null,
+        spaceHeadUserId: spaceInfo?.headUserId ?? null,
+        createdBy: task.createdBy,
+        assigneeIds: assignees.get(task.id) ?? [],
+    });
+};
+
 /**
  * F10 (ISS-021, D4 = live check): the caller's legacy role AS OF THIS REQUEST.
  *

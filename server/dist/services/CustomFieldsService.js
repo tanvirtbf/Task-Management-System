@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CustomFieldsService = void 0;
+const scopeGuard_1 = require("../rbac/scopeGuard");
 const drizzle_orm_1 = require("drizzle-orm");
 const errors_1 = require("../errors");
 const schema_1 = require("../db/schema");
@@ -213,6 +214,9 @@ class CustomFieldsService {
                 throw errors_1.AppError.notFound("custom_field.not_found", `Custom field ${input.fieldId} is not applicable to this task`);
             }
         }
+        // Team-access P7: a custom-field value is task CONTENT — setting it
+        // requires `task.edit` reach (assignee / creator / head).
+        await (0, scopeGuard_1.assertTaskScoped)("task.edit", task, this.tasksRepo);
         // Validate the value envelope against the field's type (incl. dropdown
         // option existence + files attachment ownership). Throws 422 on mismatch.
         const normalized = await this.normalizeValue(field, input.value, input.workspaceId);
@@ -266,6 +270,8 @@ class CustomFieldsService {
                 throw errors_1.AppError.notFound("custom_field.not_found", `Custom field ${input.fieldId} is not applicable to this task`);
             }
         }
+        // Team-access P7: clearing a value is editing the task's content too.
+        await (0, scopeGuard_1.assertTaskScoped)("task.edit", task, this.tasksRepo);
         await this.db.transaction(async (tx) => {
             await this.tasksRepo.lockById(task.id, tx);
             const removed = await this.fields.deleteValue(task.id, field.id, tx);

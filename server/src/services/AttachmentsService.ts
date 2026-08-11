@@ -3,7 +3,7 @@ import * as schema from "../db/schema";
 import { AppError } from "../errors";
 import { Roles, type Role } from "../constants";
 import { holds } from "../rbac/can";
-import { liveLegacyRole } from "../rbac/scopeGuard";
+import { assertTaskScoped, liveLegacyRole } from "../rbac/scopeGuard";
 import { currentActor } from "../rbac/context";
 import { fakeId } from "../utils";
 import { TasksRepo } from "../repositories/TasksRepo";
@@ -118,6 +118,8 @@ export class AttachmentsService {
                 `Task ${input.scopeId} does not exist`,
             );
         }
+        // Team-access P7: attaching a file is editing the task's content.
+        await assertTaskScoped("task.edit", task, this.tasksRepo);
 
         if ((await liveLegacyRole(input.role)) === Roles.GUEST) {
             throw AppError.forbidden(
@@ -197,6 +199,8 @@ export class AttachmentsService {
                 `Task ${input.taskId} does not exist`,
             );
         }
+        // Team-access P7: attaching a file is editing the task's content.
+        await assertTaskScoped("task.edit", task, this.tasksRepo);
         if ((await liveLegacyRole(input.role)) === Roles.GUEST) {
             throw AppError.forbidden(
                 "auth.forbidden",
@@ -282,6 +286,16 @@ export class AttachmentsService {
      */
     async finalize(input: FinalizeInput): Promise<WireAttachment> {
         const att = await this.resolveLive(input.id, input.workspaceId);
+        // Team-access P7: completing an upload is editing the task's content.
+        // The task resolves through the SCOPED repo (P5) — visible by
+        // construction here — so this only enforces the edit reach.
+        const parentTask = await this.tasksRepo.findByIdInWorkspace(
+            att.taskId,
+            input.workspaceId,
+        );
+        if (parentTask) {
+            await assertTaskScoped("task.edit", parentTask, this.tasksRepo);
+        }
 
         if (input.storageKey && input.storageKey !== att.storageKey) {
             throw AppError.validationFailed([

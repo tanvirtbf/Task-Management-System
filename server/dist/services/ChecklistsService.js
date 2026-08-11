@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ChecklistsService = void 0;
+const scopeGuard_1 = require("../rbac/scopeGuard");
 const errors_1 = require("../errors");
 const checklistSerializer_1 = require("../serializers/checklistSerializer");
 class ChecklistsService {
@@ -26,6 +27,9 @@ class ChecklistsService {
     /** POST — create an empty checklist, appended after the task's existing ones. */
     async createChecklist(input) {
         const task = await this.requireTask(input.idOrKey, input.workspaceId);
+        // Team-access P7: a checklist is task CONTENT — mutating it requires
+        // `task.edit` reach (assignee / creator / head of the owning space).
+        await (0, scopeGuard_1.assertTaskScoped)("task.edit", task, this.tasks);
         const created = await this.db.transaction(async (tx) => {
             const position = await this.checklists.nextChecklistPosition(task.id, tx);
             const row = await this.checklists.insertChecklist({ taskId: task.id, name: input.name, position }, tx);
@@ -47,7 +51,8 @@ class ChecklistsService {
     }
     /** PATCH — rename / reposition a checklist. */
     async updateChecklist(input) {
-        const checklist = await this.requireChecklist(input.id, input.workspaceId);
+        const { checklist, task } = await this.requireChecklist(input.id, input.workspaceId);
+        await (0, scopeGuard_1.assertTaskScoped)("task.edit", task, this.tasks); // P7
         const patch = {};
         if (input.name !== undefined)
             patch.name = input.name;
@@ -82,7 +87,8 @@ class ChecklistsService {
     }
     /** DELETE — drop a checklist (items cascade). */
     async deleteChecklist(input) {
-        const checklist = await this.requireChecklist(input.id, input.workspaceId);
+        const { checklist, task } = await this.requireChecklist(input.id, input.workspaceId);
+        await (0, scopeGuard_1.assertTaskScoped)("task.edit", task, this.tasks); // P7
         await this.db.transaction(async (tx) => {
             await this.checklists.deleteChecklist(checklist.id, tx);
             // F21 (ISS-062): the delete records WHAT was deleted (the name —
@@ -102,7 +108,8 @@ class ChecklistsService {
     }
     /** POST — add a single item, appended after the checklist's existing items. */
     async addItem(input) {
-        const checklist = await this.requireChecklist(input.checklistId, input.workspaceId);
+        const { checklist, task } = await this.requireChecklist(input.checklistId, input.workspaceId);
+        await (0, scopeGuard_1.assertTaskScoped)("task.edit", task, this.tasks); // P7
         // Validate the optional assignee (active workspace member) + parent (an
         // item in THIS checklist) BEFORE the insert, so an invalid id is a clean
         // 422 rather than an unhandled FK 500 / a cross-tenant write.
@@ -140,7 +147,8 @@ class ChecklistsService {
     }
     /** POST bulk — insert many items atomically (the §23 template workhorse). */
     async bulkAddItems(input) {
-        const checklist = await this.requireChecklist(input.checklistId, input.workspaceId);
+        const { checklist, task } = await this.requireChecklist(input.checklistId, input.workspaceId);
+        await (0, scopeGuard_1.assertTaskScoped)("task.edit", task, this.tasks); // P7
         const created = await this.db.transaction(async (tx) => {
             const base = await this.checklists.nextItemPosition(checklist.id, tx);
             const rows = await this.checklists.insertItems(input.texts.map((text, i) => ({
@@ -167,7 +175,8 @@ class ChecklistsService {
     }
     /** PATCH item — edit text / assignee / position; logs `task_activity`. */
     async updateItem(input) {
-        const { item, checklist } = await this.requireItem(input.id, input.workspaceId);
+        const { item, checklist, task } = await this.requireItem(input.id, input.workspaceId);
+        await (0, scopeGuard_1.assertTaskScoped)("task.edit", task, this.tasks); // P7
         // A non-null assignee must be an active workspace member (a null clears
         // it). Validated before the write → 422, never a cross-tenant assign.
         if (input.assigneeId != null) {
@@ -215,7 +224,8 @@ class ChecklistsService {
     }
     /** POST toggle — flip is_completed, stamp completed_by/at; logs activity. */
     async toggleItem(input) {
-        const { item, checklist } = await this.requireItem(input.id, input.workspaceId);
+        const { item, checklist, task } = await this.requireItem(input.id, input.workspaceId);
+        await (0, scopeGuard_1.assertTaskScoped)("task.edit", task, this.tasks); // P7
         const isCompleted = !item.isCompleted;
         const now = new Date();
         const completedAt = isCompleted ? now : null;
@@ -239,7 +249,8 @@ class ChecklistsService {
     }
     /** DELETE item. */
     async deleteItem(input) {
-        const { item, checklist } = await this.requireItem(input.id, input.workspaceId);
+        const { item, checklist, task } = await this.requireItem(input.id, input.workspaceId);
+        await (0, scopeGuard_1.assertTaskScoped)("task.edit", task, this.tasks); // P7
         await this.db.transaction(async (tx) => {
             await this.checklists.deleteItem(item.id, tx);
             await this.activity.recordMany([
@@ -268,6 +279,9 @@ class ChecklistsService {
     /**
      * A checklist whose task is in the caller's workspace, or
      * `404 checklist.not_found` (missing + cross-tenant collapse to one 404).
+     * Team-access P7: mutating a checklist is editing its TASK — the resolved
+     * task rides back so callers can enforce the `task.edit` reach
+     * (assignee / creator / head of the owning space).
      */
     async requireChecklist(id, workspaceId) {
         const checklist = await this.checklists.findChecklistById(id);
@@ -278,7 +292,7 @@ class ChecklistsService {
         if (!task) {
             throw errors_1.AppError.notFound("checklist.not_found", `Checklist ${id} does not exist`);
         }
-        return checklist;
+        return { checklist, task };
     }
     /**
      * An item + its checklist, both reachable in the caller's workspace, or
@@ -297,7 +311,7 @@ class ChecklistsService {
         if (!task) {
             throw errors_1.AppError.notFound("checklist_item.not_found", `Checklist item ${id} does not exist`);
         }
-        return { item, checklist };
+        return { item, checklist, task };
     }
     /**
      * 422 `checklist_item.invalid_assignee` unless `userId` is an ACTIVE member

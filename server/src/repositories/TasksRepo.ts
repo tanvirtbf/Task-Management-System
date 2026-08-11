@@ -19,6 +19,7 @@ import * as schema from "../db/schema";
 import {
     customFields,
     lists,
+    spaces,
     statuses,
     taskAssignees,
     taskCustomFieldValues,
@@ -695,6 +696,34 @@ export class TasksRepo {
             .innerJoin(lists, eq(lists.id, tasks.primaryListId))
             .where(inArray(tasks.id, taskIds));
         return new Map(rows.map((r) => [r.taskId, r.spaceId]));
+    }
+
+    /**
+     * Team-access P7 (G4): the task → space → HEAD composition, unified — two
+     * services used to hand-roll it in two different ways. One indexed join
+     * feeding the scope guard's `spaceHeadUserId` (the head-of-owning-space
+     * edit allow-path).
+     */
+    async spaceInfoByTask(
+        taskIds: string[],
+    ): Promise<Map<string, { spaceId: string; headUserId: string | null }>> {
+        if (taskIds.length === 0) return new Map();
+        const rows = await this.db
+            .select({
+                taskId: tasks.id,
+                spaceId: lists.spaceId,
+                headUserId: spaces.headUserId,
+            })
+            .from(tasks)
+            .innerJoin(lists, eq(lists.id, tasks.primaryListId))
+            .innerJoin(spaces, eq(spaces.id, lists.spaceId))
+            .where(inArray(tasks.id, taskIds));
+        return new Map(
+            rows.map((r) => [
+                r.taskId,
+                { spaceId: r.spaceId, headUserId: r.headUserId },
+            ]),
+        );
     }
 
     /** Assignee user-ids for a page of tasks, grouped by task id. */

@@ -7,7 +7,7 @@ import { TaskMembershipRepo } from "../repositories/TaskMembershipRepo";
 import { TaskActivityRepo } from "../repositories/TaskActivityRepo";
 import { NotificationsRepo } from "../repositories/NotificationsRepo";
 import { TagsRepo } from "../repositories/TagsRepo";
-import { assertScoped, hasFullReach } from "../rbac/scopeGuard";
+import { assertTaskScoped } from "../rbac/scopeGuard";
 import { taskEmails } from "./TaskEmailService";
 import { pushSvc } from "./PushService";
 
@@ -102,18 +102,13 @@ export class TaskMembershipService {
      * eligibility checks run before the transaction, so an invalid request
      * never produces a partial assignment.
      */
-    /** F8 (ISS-047): the `task.assign` grant's scope must reach this task. */
-    private async assertAssignScope(task: { id: string; createdBy: string }): Promise<void> {
-        if (await hasFullReach("task.assign")) return;
-        const [spaceIds, assignees] = await Promise.all([
-            this.tasks.spaceIdsByTask([task.id]),
-            this.tasks.assigneesByTask([task.id]),
-        ]);
-        await assertScoped("task.assign", {
-            spaceId: spaceIds.get(task.id) ?? null,
-            createdBy: task.createdBy,
-            assigneeIds: assignees.get(task.id) ?? [],
-        });
+    /** F8 (ISS-047): the `task.assign` grant's scope must reach this task.
+     *  P7: via the unified guard — the space's head may manage their dept. */
+    private async assertAssignScope(task: {
+        id: string;
+        createdBy: string;
+    }): Promise<void> {
+        return assertTaskScoped("task.assign", task, this.tasks);
     }
 
     async addAssignees(input: AddAssigneesInput): Promise<AddAssigneesResult> {
@@ -386,16 +381,8 @@ export class TaskMembershipService {
         id: string;
         createdBy: string;
     }): Promise<void> {
-        if (await hasFullReach("task.edit")) return;
-        const [spaceIds, assignees] = await Promise.all([
-            this.tasks.spaceIdsByTask([task.id]),
-            this.tasks.assigneesByTask([task.id]),
-        ]);
-        await assertScoped("task.edit", {
-            spaceId: spaceIds.get(task.id) ?? null,
-            createdBy: task.createdBy,
-            assigneeIds: assignees.get(task.id) ?? [],
-        });
+        // P7: via the unified guard — includes the head allow-path.
+        return assertTaskScoped("task.edit", task, this.tasks);
     }
 
     async addTags(input: AddTagsInput): Promise<AddTagsResult> {

@@ -491,6 +491,30 @@ class TasksRepo {
             .where((0, drizzle_orm_1.inArray)(schema_1.tasks.id, taskIds));
         return new Map(rows.map((r) => [r.taskId, r.spaceId]));
     }
+    /**
+     * Team-access P7 (G4): the task → space → HEAD composition, unified — two
+     * services used to hand-roll it in two different ways. One indexed join
+     * feeding the scope guard's `spaceHeadUserId` (the head-of-owning-space
+     * edit allow-path).
+     */
+    async spaceInfoByTask(taskIds) {
+        if (taskIds.length === 0)
+            return new Map();
+        const rows = await this.db
+            .select({
+            taskId: schema_1.tasks.id,
+            spaceId: schema_1.lists.spaceId,
+            headUserId: schema_1.spaces.headUserId,
+        })
+            .from(schema_1.tasks)
+            .innerJoin(schema_1.lists, (0, drizzle_orm_1.eq)(schema_1.lists.id, schema_1.tasks.primaryListId))
+            .innerJoin(schema_1.spaces, (0, drizzle_orm_1.eq)(schema_1.spaces.id, schema_1.lists.spaceId))
+            .where((0, drizzle_orm_1.inArray)(schema_1.tasks.id, taskIds));
+        return new Map(rows.map((r) => [
+            r.taskId,
+            { spaceId: r.spaceId, headUserId: r.headUserId },
+        ]));
+    }
     /** Assignee user-ids for a page of tasks, grouped by task id. */
     /**
      * The overdue-alert job's scan (upgrades/014): open tasks in `workspaceId`

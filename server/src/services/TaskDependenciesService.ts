@@ -2,6 +2,7 @@ import { MySql2Database } from "drizzle-orm/mysql2";
 import type { Logger } from "winston";
 import * as schema from "../db/schema";
 import { AppError } from "../errors";
+import { assertTaskScoped } from "../rbac/scopeGuard";
 import {
     TaskDependenciesRepo,
     type DependencyEdge,
@@ -188,6 +189,12 @@ export class TaskDependenciesService {
             }
         }
 
+        // Team-access P7: linking dependencies edits the PRIMARY task's
+        // content — `task.edit` reach on it (assignee / creator / head). The
+        // other endpoint only needs to be visible, which its scoped resolve
+        // above already proved.
+        await assertTaskScoped("task.edit", blocker, this.tasks);
+
         const edge = await this.db.transaction(async (tx) => {
             await this.assertNoCycle(taskId, relatedTaskId, tx);
 
@@ -283,6 +290,13 @@ export class TaskDependenciesService {
                 "dep.not_found",
                 `Dependency ${depId} does not exist`,
             );
+        }
+
+        // Team-access P7: unlinking edits the PRIMARY task's content —
+        // `task.edit` reach on it (assignee / creator / head).
+        const primary = visibleEnds.find((t) => t.id === edge.taskId);
+        if (primary) {
+            await assertTaskScoped("task.edit", primary, this.tasks);
         }
 
         await this.db.transaction(async (tx) => {

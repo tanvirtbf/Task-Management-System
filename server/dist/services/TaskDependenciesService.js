@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TaskDependenciesService = void 0;
 const errors_1 = require("../errors");
+const scopeGuard_1 = require("../rbac/scopeGuard");
 const taskSerializer_1 = require("../serializers/taskSerializer");
 /** mysql2 surfaces a unique-violation as `ER_DUP_ENTRY` / errno 1062. */
 const isDuplicateKeyError = (err) => {
@@ -104,6 +105,11 @@ class TaskDependenciesService {
                 throw errors_1.AppError.conflict("task.archived", `Task ${t.id} is archived — unarchive it to link dependencies`);
             }
         }
+        // Team-access P7: linking dependencies edits the PRIMARY task's
+        // content — `task.edit` reach on it (assignee / creator / head). The
+        // other endpoint only needs to be visible, which its scoped resolve
+        // above already proved.
+        await (0, scopeGuard_1.assertTaskScoped)("task.edit", blocker, this.tasks);
         const edge = await this.db.transaction(async (tx) => {
             await this.assertNoCycle(taskId, relatedTaskId, tx);
             let created;
@@ -169,6 +175,12 @@ class TaskDependenciesService {
         const visibleEnds = await this.deps.findTaskRowsByIds([edge.taskId, edge.relatedTaskId], workspaceId);
         if (visibleEnds.length < 2) {
             throw errors_1.AppError.notFound("dep.not_found", `Dependency ${depId} does not exist`);
+        }
+        // Team-access P7: unlinking edits the PRIMARY task's content —
+        // `task.edit` reach on it (assignee / creator / head).
+        const primary = visibleEnds.find((t) => t.id === edge.taskId);
+        if (primary) {
+            await (0, scopeGuard_1.assertTaskScoped)("task.edit", primary, this.tasks);
         }
         await this.db.transaction(async (tx) => {
             const removed = await this.deps.deleteById(depId, tx);

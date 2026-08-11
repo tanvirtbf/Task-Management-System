@@ -31,7 +31,12 @@ import type { WorkspaceRepo } from "../repositories/WorkspaceRepo";
 import type { WorkspaceActivityRepo } from "../repositories/WorkspaceActivityRepo";
 import { holds } from "../rbac/can";
 import { currentActor } from "../rbac/context";
-import { assertScoped, hasFullReach, liveLegacyRole } from "../rbac/scopeGuard";
+import {
+    assertScoped,
+    assertTaskScoped,
+    hasFullReach,
+    liveLegacyRole,
+} from "../rbac/scopeGuard";
 import type { PermissionKey } from "../rbac/catalog";
 
 /**
@@ -1535,26 +1540,14 @@ export class TaskWriteService {
 
     /**
      * F8 (ISS-047): enforce the actor's grant SCOPE against a resolved task.
-     *
-     * Builds the `PermissionContext` (space via the primary list, ownership via
-     * creator + assignees) and delegates to the rbac resolver. Full-reach
-     * grants (`all` — every seeded role) skip the two lookups entirely, so the
-     * hot path pays nothing. No-actor contexts (jobs, public submit) pass.
+     * Team-access P7: delegated to the unified guard (G4), which also carries
+     * the space's HEAD — the head-of-owning-space edit allow-path.
      */
     private async assertTaskScope(
         key: PermissionKey,
         task: { id: string; createdBy: string },
     ): Promise<void> {
-        if (await hasFullReach(key)) return;
-        const [spaceIds, assignees] = await Promise.all([
-            this.tasks.spaceIdsByTask([task.id]),
-            this.tasks.assigneesByTask([task.id]),
-        ]);
-        await assertScoped(key, {
-            spaceId: spaceIds.get(task.id) ?? null,
-            createdBy: task.createdBy,
-            assigneeIds: assignees.get(task.id) ?? [],
-        });
+        return assertTaskScoped(key, task, this.tasks);
     }
 
     /** Archive `taskId` + descendants + gated `task_archived` rows, atomically. */
@@ -1708,13 +1701,16 @@ export class TaskWriteService {
         // like the rest of bulk. One batched context build for all ids; skipped
         // outright for full-reach grants (every seeded role).
         if (!(await hasFullReach("task.edit"))) {
-            const [spaceIds, assignees] = await Promise.all([
-                this.tasks.spaceIdsByTask(ids),
+            const [spaceInfo, assignees] = await Promise.all([
+                // P7: the space's HEAD rides along — a department head may
+                // bulk-edit their own department's tasks (G4).
+                this.tasks.spaceInfoByTask(ids),
                 this.tasks.assigneesByTask(ids),
             ]);
             for (const t of found) {
                 await assertScoped("task.edit", {
-                    spaceId: spaceIds.get(t.id) ?? null,
+                    spaceId: spaceInfo.get(t.id)?.spaceId ?? null,
+                    spaceHeadUserId: spaceInfo.get(t.id)?.headUserId ?? null,
                     createdBy: t.createdBy,
                     assigneeIds: assignees.get(t.id) ?? [],
                 });

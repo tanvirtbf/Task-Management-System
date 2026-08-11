@@ -458,7 +458,29 @@ all agree.
 
 ---
 
-## PHASE 7 — Edit rights (R2.2)
+## PHASE 7 — Edit rights (R2.2) ✅ SHIPPED 2026-08-11 (LIVE on dev + qa)
+
+> **Status: DONE.** Upgrade `020_edit_rights.sql` (data: Member `task.edit`/`task.archive`/
+> `task.delete` → `own`; rollback = one UPDATE in-file; guest holds none of these; `task.assign`
+> stays `all` until P8's approval gate). Code: **the G4 head allow-path** lives in `decide()` via
+> `PermissionContext.spaceHeadUserId` — supplied ONLY by the new unified guard
+> `assertTaskScoped(key, task, tasksRepo)` (scopeGuard.ts), which composes task → space → head
+> through the new `TasksRepo.spaceInfoByTask` (the two hand-rolled compositions now delegate).
+> Head-ness widens reach, never conjures a verb (`no_grant` still wins). **Adjacent surfaces**
+> enforce ONE doctrine — *mutating a task's CONTENT is editing the task*: checklists (all 8
+> mutations), attachments (sign/direct/finalize; delete stays uploader-or-admin), custom-field
+> set/clear, dependency link/unlink (primary side), SLA override (uniformity; admin fast-path
+> free), plus tags/bulk/archive already on `task.edit`. Their route verb keys stay `all` — the
+> object check narrows. **Comments deliberately unchanged** (discussion ≠ edit; author-only rules
+> already stricter). Client: `useCanEditTask` (mirrors the server incl. head path) guards the
+> central mutation hooks (update/archive/tags — one guard covers drawer, list rows, board,
+> calendar) with a friendly hint, drawer shows a "🔒 View only" bar, error toasts surface the
+> server's human deny messages. Q3 pre-acceptance: the creator keeps edit (own = createdBy).
+> Proof: `tests/rbac/p7-edit-matrix.test.ts` (6 personas × 9 edit paths, 019+020 byte-faithful):
+> same-team non-assignee 403 everywhere · assignee full loop incl. complete · HEAD (unassigned)
+> full reach · creator keeps edit+archive · other team 404 · admin + SLA unaffected. Live on dev:
+> nusrat (head, unassigned) edit 200; sumaiya (same-team unrelated) 403 with the readable message
+> and still reads 200; mitu's "unexpected" allow was correct — she IS Social Media's head.
 
 **Goal:** only assignees — plus the Head of the owning team — may edit a task.
 

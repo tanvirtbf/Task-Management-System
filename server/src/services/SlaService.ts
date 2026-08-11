@@ -3,6 +3,7 @@ import type { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../db/schema";
 import type { NewTask } from "../db/schema";
 import { AppError } from "../errors";
+import { assertTaskScoped } from "../rbac/scopeGuard";
 import type { Role } from "../constants";
 import type { SlaRepo, BreachFilters } from "../repositories/SlaRepo";
 import type { TasksRepo } from "../repositories/TasksRepo";
@@ -116,6 +117,9 @@ export class SlaService {
                 "Cannot update an archived task; unarchive it first",
             );
         }
+        // Team-access P7: uniform task-content rule (admins hold `all`, so
+        // the fast-path makes this free on the 👑 route this serves).
+        await assertTaskScoped("task.edit", current, this.tasks);
 
         let newDueAt: Date | null = null;
         if (input.slaDueAt !== null) {
