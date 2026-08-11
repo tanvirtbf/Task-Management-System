@@ -57,6 +57,8 @@ const SEGMENT_TO_ROUTE: Record<string, string> = {
     profile: "/settings/profile",
     workspace: "/settings/workspace",
     members: "/settings/members",
+    // Team-access P1 — the org chart / roster page.
+    teams: "/settings/teams",
     roles: "/settings/roles",
     "task-types": "/settings/task-types",
     tags: "/settings/tags",

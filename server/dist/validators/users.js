@@ -153,6 +153,27 @@ exports.inviteUserValidator = (0, express_validator_1.checkSchema)({
             errorMessage: `role must be one of: ${_shared_1.invitationRoles.join(", ")}`,
         },
     },
+    // Team-access P1 (B3): the team the person is invited into. Optional on
+    // the wire (the client form requires it); `null` explicitly allowed —
+    // same optional-null treatment as `avatar_url` below. Existence /
+    // archived-ness is the service's 422.
+    space_id: {
+        in: ["body"],
+        optional: true,
+        custom: {
+            options: (value) => {
+                if (value === null)
+                    return true;
+                if (typeof value !== "string" || value.trim() === "") {
+                    throw new Error("space_id must be a non-empty string or null");
+                }
+                if (value.length > _shared_1.ID_LENGTH) {
+                    throw new Error(`space_id must be at most ${_shared_1.ID_LENGTH} characters`);
+                }
+                return true;
+            },
+        },
+    },
 });
 /**
  * Body + param validator for `PATCH /api/v1/users/:id` (🔐 self / 👑 admin).

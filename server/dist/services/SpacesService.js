@@ -4,6 +4,7 @@ exports.SpacesService = void 0;
 const errors_1 = require("../errors");
 const can_1 = require("../rbac/can");
 const context_1 = require("../rbac/context");
+const TeamMembershipService_1 = require("./TeamMembershipService");
 /**
  * §5 Spaces business logic. The read paths are single workspace-scoped reads;
  * `create` owns the transaction that pairs the space insert with its
@@ -90,6 +91,7 @@ class SpacesService {
             (0, can_1.assertCan)(await (0, context_1.currentActor)(), "space.head_assign", {});
             await this.assertValidHead(input.headUserId, input.workspaceId);
         }
+        let headSynced = false;
         const created = await this.withDuplicateName(input.name, () => this.db.transaction(async (tx) => {
             const id = await this.spaces.insert({
                 workspaceId: input.workspaceId,
@@ -110,6 +112,13 @@ class SpacesService {
                 action: "created",
                 context: { name: input.name },
             }, tx);
+            // Team-access P1 (the G2 landmine): a head who is not a MEMBER of
+            // their own space would be locked out of their own department the
+            // moment visibility narrows (plan P6). Same transaction as the
+            // space write — the invariant must never be observable as broken.
+            if (input.headUserId) {
+                headSynced = await (0, TeamMembershipService_1.teamMembership)().syncHeadMembership(input.headUserId, id, input.workspaceId, { exec: tx, grantedBy: input.actorId });
+            }
             const space = await this.spaces.findByIdInWorkspace(id, input.workspaceId, tx);
             if (!space) {
                 // Unreachable: the row was just inserted in this transaction.
@@ -118,6 +127,11 @@ class SpacesService {
             }
             return space;
         }));
+        // The grant landed → invalidate cached permission folds (post-commit;
+        // an in-tx bump would hold the workspace-row lock the whole time).
+        if (headSynced) {
+            await (0, TeamMembershipService_1.teamMembership)().commitMembershipBump(input.workspaceId);
+        }
         // F18 made the head settable at create — hydrate it like every read.
         const [withHead] = await this.hydrateHeads([created], input.workspaceId);
         return withHead;
@@ -167,6 +181,7 @@ class SpacesService {
             const [withHead] = await this.hydrateHeads([existing], input.workspaceId);
             return withHead;
         }
+        let headSynced = false;
         const updatedRow = await this.withDuplicateName(input.fields.name, () => this.db.transaction(async (tx) => {
             await this.spaces.lockById(input.spaceId, tx);
             await this.spaces.updateFields(input.spaceId, input.fields, tx);
@@ -178,6 +193,12 @@ class SpacesService {
                 action: "updated",
                 context: { fields: changedFields },
             }, tx);
+            // Team-access P1 (the G2 landmine): installing a head also makes
+            // them a member of this space (clearing one leaves the old head's
+            // membership alone — leaving a headship is not leaving the team).
+            if (input.fields.headUserId) {
+                headSynced = await (0, TeamMembershipService_1.teamMembership)().syncHeadMembership(input.fields.headUserId, input.spaceId, input.workspaceId, { exec: tx, grantedBy: input.actorId });
+            }
             const updated = await this.spaces.findByIdInWorkspace(input.spaceId, input.workspaceId, tx);
             if (!updated) {
                 // Unreachable: the row was locked in this transaction.
@@ -185,6 +206,9 @@ class SpacesService {
             }
             return updated;
         }));
+        if (headSynced) {
+            await (0, TeamMembershipService_1.teamMembership)().commitMembershipBump(input.workspaceId);
+        }
         const [withHead] = await this.hydrateHeads([updatedRow], input.workspaceId);
         return withHead;
     }

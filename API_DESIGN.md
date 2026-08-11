@@ -2100,6 +2100,32 @@ Notification types `task_reviewed` and `report_ready` (both ENUMs: `notification
 
 ---
 
+## 34. Teams & membership <a id="37-teams"></a>
+
+**ADDENDUM (team-access P1, 2026-08-11 — built per `TEAM_ACCESS_AND_AUDIT_PLAN.md`; upgrade `016_team_membership.sql`).** A *team* IS a space; being on a team IS holding a role scoped to that space (`user_roles.scope_type='space'` — there is deliberately no separate members table). New column `users.primary_space_id` records each person's HOME team (FK → spaces, `ON DELETE SET NULL`; deliberately NOT on the wire `User` — read it from the directory below). Installing a `head_user_id` (POST/PATCH `/spaces`) now also grants the head a Member-role membership of their own space in the same transaction, and sets their home team if unset. Every membership write bumps `workspaces.permissions_version`.
+
+### GET `/api/v1/teams`
+🔐 `member.view`. The whole org chart in one read:
+`{ data: [ { space: {id,name,icon,color,head_user_id}, head: User|null, members: [ { assignment_id, user: User, role_key, role_name, is_head, is_primary } ] } ], unassigned: User[] }`
+— non-archived spaces only; one entry per person (strongest role wins the slot); `unassigned` = everyone (not deactivated) with no home team yet.
+
+### POST `/api/v1/spaces/:id/members`
+Add a person to a team. **Body** `{ "user_id": "…" }` → **204**. Guard (service-level, row-dependent): workspace 👑 owner/admin (live role) OR the space's OWN head OR a `space.members_manage` grant reaching this space — else 403. Always assigns the seeded **Member** role space-scoped (stronger roles stay on the `role.assign` surface with its escalation guard). Idempotent; the person's FIRST team automatically becomes their home team. Errors: `space.not_found` 404, `user.not_found` 404, `space.archived` 409, `team.member_invalid` 422 (deactivated target).
+
+### DELETE `/api/v1/spaces/:id/members/:userId`
+Remove from the team: EVERY role the person holds scoped to that space; a home team pointing here is cleared. Same guard. Idempotent **204**. The current head cannot be removed — **409 `team.head_locked`** (assign a new head first).
+
+### PATCH `/api/v1/users/:id/team`
+🔐 `member.role_change`. **Body** `{ "space_id": "…" | null }` (the key must be present; `null` clears). Setting a team also ensures membership — your home team is always one of your teams; clearing only clears the pointer. **204**. Errors: `user.not_found` 404, `team.space_invalid` 422 (unknown/archived space), `team.member_invalid` 422 (deactivated target).
+
+### Invite change
+`POST /api/v1/users/invite` accepts optional `space_id: string | null` — the invited row gets that home team + a Member space grant inside the invite transaction (422 `team.space_invalid` if unknown/archived). The client form treats the team as REQUIRED.
+
+### Activity & error codes added
+`workspace_activity` actions: `member_added` / `member_removed` (entity `space`, context `{user_id}`) and `team_changed` (entity `user`, context `{space_id}`); the `invited` context gains `space_id`. New codes: `team.head_locked` 409, `team.space_invalid` 422, `team.member_invalid` 422.
+
+---
+
 ## Appendix A — Type reference (TypeScript shapes)
 
 These are the canonical wire formats. Keep them in `client/src/types/` and `server/src/types/` in sync.

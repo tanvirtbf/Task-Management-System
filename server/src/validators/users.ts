@@ -165,6 +165,30 @@ export const inviteUserValidator = checkSchema({
             errorMessage: `role must be one of: ${invitationRoles.join(", ")}`,
         },
     },
+    // Team-access P1 (B3): the team the person is invited into. Optional on
+    // the wire (the client form requires it); `null` explicitly allowed —
+    // same optional-null treatment as `avatar_url` below. Existence /
+    // archived-ness is the service's 422.
+    space_id: {
+        in: ["body"],
+        optional: true,
+        custom: {
+            options: (value: unknown): boolean => {
+                if (value === null) return true;
+                if (typeof value !== "string" || value.trim() === "") {
+                    throw new Error(
+                        "space_id must be a non-empty string or null",
+                    );
+                }
+                if (value.length > ID_LENGTH) {
+                    throw new Error(
+                        `space_id must be at most ${ID_LENGTH} characters`,
+                    );
+                }
+                return true;
+            },
+        },
+    },
 });
 
 /**

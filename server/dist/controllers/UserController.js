@@ -92,7 +92,7 @@ class UserController {
     async invite(req, res, next) {
         try {
             const { sub: actorId, workspaceId } = req.auth;
-            const { first_name, last_name, email, role } = req.body;
+            const { first_name, last_name, email, role, space_id } = req.body;
             const user = await this.userService.invite({
                 workspaceId,
                 actorId,
@@ -100,6 +100,7 @@ class UserController {
                 lastName: last_name,
                 email,
                 role,
+                spaceId: space_id ?? null,
             });
             this.logger.info("users.invite.ok", {
                 requestId: req.requestId,

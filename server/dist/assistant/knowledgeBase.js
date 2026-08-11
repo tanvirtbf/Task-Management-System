@@ -65,7 +65,7 @@ Most pages have a fixed web address, so you can link straight to them. When you 
 - [Forms](/forms) — build intake forms
 - [SLA breaches](/sla) — what is past its SLA deadline right now
 - [Engineering](/eng) · [Sprint board](/eng/sprint) · [On-call rotation](/eng/on-call)
-- [Settings](/settings) — and inside it: [Profile](/settings/profile) · [Workspace](/settings/workspace) · [Members](/settings/members) · [Roles & permissions](/settings/roles) · [Task types](/settings/task-types) · [Tags](/settings/tags) · [Statuses](/settings/statuses) · [Custom fields](/settings/custom-fields) · [Templates](/settings/templates) · [Import / Export](/settings/import-export)
+- [Settings](/settings) — and inside it: [Profile](/settings/profile) · [Workspace](/settings/workspace) · [Members](/settings/members) · [Teams](/settings/teams) · [Roles & permissions](/settings/roles) · [Task types](/settings/task-types) · [Tags](/settings/tags) · [Statuses](/settings/statuses) · [Custom fields](/settings/custom-fields) · [Templates](/settings/templates) · [Import / Export](/settings/import-export)
 - Spaces, Lists and tasks DO each have their own address, but it contains an internal id that you cannot know — so **never write a link to a Space, List or task**. Tell the person to open it from the **Sidebar** Space tree instead (a task opens in a drawer on the right).
 
 ## Getting started (a brand-new workspace is empty)
@@ -170,7 +170,8 @@ Open [**Settings**](/settings) in the Sidebar. You only see the sections you hav
 may be shorter than this one:
 - [**Profile**](/settings/profile) — your name, timezone, and **Change password**. (everyone)
 - [**Workspace**](/settings/workspace) — workspace name, locale, timezone, business hours, week start day.
-- [**Members**](/settings/members) — see all members; **Invite** new people (enter email and role); change roles; deactivate or reactivate users.
+- [**Members**](/settings/members) — see all members; **Invite** new people (enter email, role and team); change roles; deactivate or reactivate users.
+- [**Teams**](/settings/teams) — which team each person belongs to, and who leads (heads) each team. Admins add/remove people on any team and set each person's home team; a team's **head** can manage their own team's roster here too. Inviting someone always asks which team they join.
 - [**Roles & permissions**](/settings/roles) — create roles and choose exactly what each one may do, then give them to people.
 - [**Task Types**](/settings/task-types) — manage the task types (Task, Bug, Feature, Campaign, Order, Complaint, Incident) with icons and colours.
 - [**Tags**](/settings/tags) — manage workspace-wide labels for tasks.

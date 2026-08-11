@@ -16,6 +16,7 @@ const errorHandler_1 = require("./middlewares/errorHandler");
 const auth_1 = __importDefault(require("./routes/auth"));
 const me_1 = __importDefault(require("./routes/me"));
 const roles_1 = __importDefault(require("./routes/roles"));
+const teams_1 = __importDefault(require("./routes/teams"));
 const requirePermission_1 = require("./middlewares/requirePermission");
 const users_1 = __importDefault(require("./routes/users"));
 const workspace_1 = __importDefault(require("./routes/workspace"));
@@ -142,6 +143,9 @@ v1.use(me_1.default);
 // BEFORE `/users` and `/spaces` (its 3-segment routes must resolve ahead of
 // their `/:id` routes).
 v1.use(roles_1.default);
+// Teams & membership (team-access P1) — same v1-root treatment: its paths span
+// `/teams`, `/spaces/:id/members` (POST/DELETE) and `/users/:id/team`.
+v1.use(teams_1.default);
 v1.use("/workspace", workspace_1.default);
 v1.use("/users", users_1.default);
 v1.use("/spaces", spaces_1.default);

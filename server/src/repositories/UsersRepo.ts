@@ -307,6 +307,8 @@ export class UsersRepo {
             avatarUrl: string | null;
             role: Role;
             status: UserStatus;
+            /** Home team (team-access P1) — set only by the team endpoints. */
+            primarySpaceId: string | null;
         }>,
         exec: DbExecutor = this.db,
     ): Promise<void> {
@@ -373,6 +375,56 @@ export class UsersRepo {
                     inArray(users.id, userIds),
                 ),
             );
+    }
+
+    /**
+     * Every user of the workspace with their home team attached (team-access
+     * P1) — the ONE query the Settings → Teams directory needs to compute
+     * `is_primary` badges and the "no home team yet" section. Deliberately a
+     * separate projection: the canonical wire `User` (and the ~dozen tests
+     * that pin its exact key set) stays untouched.
+     */
+    async listWithPrimaryByWorkspace(
+        workspaceId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<(UserListRow & { primarySpaceId: string | null })[]> {
+        return exec
+            .select({
+                id: users.id,
+                firstName: users.firstName,
+                lastName: users.lastName,
+                email: users.email,
+                role: users.role,
+                avatarUrl: users.avatarUrl,
+                status: users.status,
+                timezone: users.timezone,
+                lastLoginAt: users.lastLoginAt,
+                createdAt: users.createdAt,
+                primarySpaceId: users.primarySpaceId,
+            })
+            .from(users)
+            .where(eq(users.workspaceId, workspaceId))
+            .orderBy(asc(users.firstName), asc(users.lastName), asc(users.id));
+    }
+
+    /**
+     * One user's home team. `undefined` = no such user in this workspace
+     * (caller 404s), `null` = user exists with no home team.
+     */
+    async primarySpaceIdOf(
+        userId: string,
+        workspaceId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<string | null | undefined> {
+        const rows = await exec
+            .select({ primarySpaceId: users.primarySpaceId })
+            .from(users)
+            .where(
+                and(eq(users.id, userId), eq(users.workspaceId, workspaceId)),
+            )
+            .limit(1);
+        if (rows.length === 0) return undefined;
+        return rows[0].primarySpaceId ?? null;
     }
 
     /**

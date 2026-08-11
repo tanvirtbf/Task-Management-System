@@ -109,6 +109,14 @@ export const users = mysqlTable(
         timezone: varchar("timezone", { length: TIMEZONE_LENGTH })
             .notNull()
             .default("Asia/Dhaka"),
+        /**
+         * Home team (team-access P1, upgrades/016). Space MEMBERSHIP itself is
+         * the `user_roles` rows with scope_type='space'; this only records
+         * which of those is HOME. The FK to `spaces` lives in SQL only
+         * (schema.sql §6 post-hoc ALTER — declaring it here would import
+         * `hierarchy.ts` circularly; same treatment as `uq_user_roles_grant`).
+         */
+        primarySpaceId: varchar("primary_space_id", { length: ID_LENGTH }),
         lastLoginAt: timestamp("last_login_at"),
         createdAt: timestamp("created_at").notNull().defaultNow(),
         updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
@@ -123,6 +131,7 @@ export const users = mysqlTable(
             t.status,
         ),
         emailIdx: index("idx_users_email").on(t.email),
+        primarySpaceIdx: index("idx_users_primary_space").on(t.primarySpaceId),
     }),
 );
 

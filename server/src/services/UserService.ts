@@ -21,6 +21,7 @@ import type { MailService } from "./MailService";
 import type { TokenService } from "./TokenService";
 import type { PasswordResetTokensRepo } from "../repositories/PasswordResetTokensRepo";
 import type { SpacesRepo } from "../repositories/SpacesRepo";
+import { teamMembership } from "./TeamMembershipService";
 
 /**
  * §4 Users domain logic. The read paths (`list`, `getUser`) delegate straight
@@ -99,6 +100,14 @@ export interface InviteUserInput {
     /** Already lowercased + format-checked by the validator. */
     email: string;
     role: "admin" | "member" | "guest";
+    /**
+     * Team-access P1 (B3): the team the person is being invited INTO. Becomes
+     * their home team + a Member-role space grant from day one, so nobody
+     * arrives teamless once visibility narrows (plan P6). Optional on the
+     * wire for now (the client form requires it); P6's pre-flight decides
+     * whether the server makes it mandatory.
+     */
+    spaceId?: string | null;
 }
 
 /** The whitelisted profile fields `PATCH /api/v1/users/:id` may change. */
@@ -203,6 +212,23 @@ export class UserService {
             );
         }
 
+        // 1b. Team-access P1 (B3): the invited-into team must exist and be
+        //     live. Body input → 422 (mirrors `space.head_invalid`), before
+        //     any write.
+        if (input.spaceId) {
+            const space = await this.spaces.findByIdInWorkspace(
+                input.spaceId,
+                input.workspaceId,
+            );
+            if (!space || space.archivedAt) {
+                throw AppError.unprocessable(
+                    "team.space_invalid",
+                    "space_id must be an existing, non-archived space",
+                    [{ field: "space_id", issue: "unknown or archived space" }],
+                );
+            }
+        }
+
         // 2. Mint ids + the single-use invite token. Only `sha256(token)` is
         //    persisted; the raw token lives only in the emailed link.
         const userId = fakeId("u");
@@ -225,6 +251,9 @@ export class UserService {
                         passwordHash: INVITED_PLACEHOLDER_HASH,
                         role: input.role,
                         status: "invited",
+                        // Team-access P1: home team from day one (validated
+                        // in 1b; the FK backstops it).
+                        primarySpaceId: input.spaceId ?? null,
                     },
                     tx,
                 );
@@ -238,6 +267,18 @@ export class UserService {
                     input.role,
                     { bump: false },
                 );
+                // Team-access P1: and the matching space membership. Same
+                // `bump:false` rationale as above — a fresh account has no
+                // cached actor, and the workspace-row lock inside racing
+                // invite transactions would deadlock.
+                if (input.spaceId) {
+                    await teamMembership().ensureSpaceMembership(
+                        userId,
+                        input.spaceId,
+                        input.workspaceId,
+                        { exec: tx, bump: false, grantedBy: input.actorId },
+                    );
+                }
                 await this.invitations.create(
                     {
                         id: invitationId,
@@ -261,6 +302,7 @@ export class UserService {
                             email: input.email,
                             role: input.role,
                             invitation_id: invitationId,
+                            space_id: input.spaceId ?? null,
                         },
                     },
                     tx,

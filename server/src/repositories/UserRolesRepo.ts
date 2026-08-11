@@ -181,6 +181,87 @@ export class UserRolesRepo {
             .orderBy(asc(roles.rankOrder), asc(userRoleGrants.createdAt));
     }
 
+    /**
+     * Every space-scoped assignment in the workspace, one query — the
+     * Settings → Teams directory (team-access P1). Same projection/order as
+     * `listBySpace`; the service groups by `scopeId`.
+     */
+    async listSpaceAssignments(
+        workspaceId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<AssignmentRecord[]> {
+        return exec
+            .select({
+                id: userRoleGrants.id,
+                userId: userRoleGrants.userId,
+                roleId: userRoleGrants.roleId,
+                roleKey: roles.roleKey,
+                roleName: roles.name,
+                scopeType: userRoleGrants.scopeType,
+                scopeId: userRoleGrants.scopeId,
+                createdAt: userRoleGrants.createdAt,
+            })
+            .from(userRoleGrants)
+            .innerJoin(roles, eq(roles.id, userRoleGrants.roleId))
+            .where(
+                and(
+                    eq(userRoleGrants.workspaceId, workspaceId),
+                    eq(userRoleGrants.scopeType, "space"),
+                ),
+            )
+            .orderBy(asc(roles.rankOrder), asc(userRoleGrants.createdAt));
+    }
+
+    /**
+     * Does the user hold ANY role scoped to this space? Holding one (whatever
+     * the role) IS membership (plan D-1/D-2) — `ensureSpaceMembership` must
+     * not stack a second row on top of e.g. a custom department role.
+     */
+    async hasSpaceMembership(
+        userId: string,
+        spaceId: string,
+        workspaceId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<boolean> {
+        const rows = await exec
+            .select({ id: userRoleGrants.id })
+            .from(userRoleGrants)
+            .where(
+                and(
+                    eq(userRoleGrants.userId, userId),
+                    eq(userRoleGrants.workspaceId, workspaceId),
+                    eq(userRoleGrants.scopeType, "space"),
+                    eq(userRoleGrants.scopeId, spaceId),
+                ),
+            )
+            .limit(1);
+        return rows.length > 0;
+    }
+
+    /**
+     * Remove the person from a team: EVERY role they hold scoped to that
+     * space (removing membership while leaving a space-scoped custom role
+     * behind would silently keep them inside). Workspace-scoped grants are
+     * untouched.
+     */
+    async revokeSpaceMemberships(
+        userId: string,
+        spaceId: string,
+        workspaceId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<void> {
+        await exec
+            .delete(userRoleGrants)
+            .where(
+                and(
+                    eq(userRoleGrants.userId, userId),
+                    eq(userRoleGrants.workspaceId, workspaceId),
+                    eq(userRoleGrants.scopeType, "space"),
+                    eq(userRoleGrants.scopeId, spaceId),
+                ),
+            );
+    }
+
     /** Everyone holding one role, anywhere — the "who has this?" panel. */
     async listByRole(
         roleId: string,

@@ -3,6 +3,7 @@ import {
     User,
     Settings as SettingsIcon,
     Users,
+    Network,
     SquareDashed,
     Tag as TagIcon,
     Hexagon,
@@ -49,6 +50,12 @@ const NAV: NavGroup[] = [
                 to: "/settings/members",
                 label: "Members",
                 icon: Users,
+                permission: "member.view",
+            },
+            {
+                to: "/settings/teams",
+                label: "Teams",
+                icon: Network,
                 permission: "member.view",
             },
             {

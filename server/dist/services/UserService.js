@@ -9,6 +9,7 @@ const scopeGuard_1 = require("../rbac/scopeGuard");
 const config_1 = require("../config");
 const errors_1 = require("../errors");
 const utils_1 = require("../utils");
+const TeamMembershipService_1 = require("./TeamMembershipService");
 /**
  * §4 Users domain logic. The read paths (`list`, `getUser`) delegate straight
  * to the repository; `invite` owns the transaction that pairs the invited-user
@@ -104,6 +105,15 @@ class UserService {
         if (existing) {
             throw errors_1.AppError.conflict("user.email_already_exists", `A user with email ${input.email} already exists`);
         }
+        // 1b. Team-access P1 (B3): the invited-into team must exist and be
+        //     live. Body input → 422 (mirrors `space.head_invalid`), before
+        //     any write.
+        if (input.spaceId) {
+            const space = await this.spaces.findByIdInWorkspace(input.spaceId, input.workspaceId);
+            if (!space || space.archivedAt) {
+                throw errors_1.AppError.unprocessable("team.space_invalid", "space_id must be an existing, non-archived space", [{ field: "space_id", issue: "unknown or archived space" }]);
+            }
+        }
         // 2. Mint ids + the single-use invite token. Only `sha256(token)` is
         //    persisted; the raw token lives only in the emailed link.
         const userId = (0, utils_1.fakeId)("u");
@@ -124,11 +134,21 @@ class UserService {
                     passwordHash: INVITED_PLACEHOLDER_HASH,
                     role: input.role,
                     status: "invited",
+                    // Team-access P1: home team from day one (validated
+                    // in 1b; the FK backstops it).
+                    primarySpaceId: input.spaceId ?? null,
                 }, tx);
                 // RBAC (L13): give the invited row its system-role assignment
                 // now, so the account is correctly powered the moment the
                 // invite is accepted — no separate accept-time step to forget.
                 await (0, bootstrap_1.syncUserSystemRole)(tx, input.workspaceId, userId, input.role, { bump: false });
+                // Team-access P1: and the matching space membership. Same
+                // `bump:false` rationale as above — a fresh account has no
+                // cached actor, and the workspace-row lock inside racing
+                // invite transactions would deadlock.
+                if (input.spaceId) {
+                    await (0, TeamMembershipService_1.teamMembership)().ensureSpaceMembership(userId, input.spaceId, input.workspaceId, { exec: tx, bump: false, grantedBy: input.actorId });
+                }
                 await this.invitations.create({
                     id: invitationId,
                     workspaceId: input.workspaceId,
@@ -148,6 +168,7 @@ class UserService {
                         email: input.email,
                         role: input.role,
                         invitation_id: invitationId,
+                        space_id: input.spaceId ?? null,
                     },
                 }, tx);
             });

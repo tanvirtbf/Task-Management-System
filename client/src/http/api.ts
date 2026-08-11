@@ -321,6 +321,8 @@ export const usersApi = {
         lastName: string;
         email: string;
         role: User["role"];
+        /** Team-access P1 (B3): the team the person is invited into. */
+        spaceId?: string | null;
     }): Promise<User> => (await api.post<User>("/users/invite", input)).data,
     updateRole: async (id: string, role: User["role"]): Promise<User> =>
         (await api.patch<User>(`/users/${id}/role`, { role })).data,
@@ -343,6 +345,60 @@ export const usersApi = {
     // 202 — admin-triggered password-reset email (NOT a self change-password).
     resetPassword: async (id: string): Promise<void> => {
         await api.post(`/users/${id}/reset-password`);
+    },
+};
+
+// ─── Teams (team-access P1) ─ the org chart + roster management ──────────────
+// `/teams` is NOT in SKIP_CAMELIZE_URLS, so the directory arrives camelCase;
+// the member add/remove/home writes return 204 (no body to transform).
+
+export interface TeamMember {
+    assignmentId: string;
+    user: User;
+    roleKey: string;
+    roleName: string;
+    isHead: boolean;
+    isPrimary: boolean;
+}
+
+export interface TeamEntry {
+    space: {
+        id: string;
+        name: string;
+        icon: string;
+        color: string;
+        headUserId: string | null;
+    };
+    head: User | null;
+    members: TeamMember[];
+}
+
+export interface TeamDirectory {
+    teams: TeamEntry[];
+    /** People (not deactivated) with no home team yet — the admin to-do list. */
+    unassigned: User[];
+}
+
+export const teamsApi = {
+    directory: async (): Promise<TeamDirectory> => {
+        const body = (
+            await api.get<{ data: TeamEntry[]; unassigned: User[] }>("/teams")
+        ).data;
+        return { teams: body.data, unassigned: body.unassigned };
+    },
+    /** Admin, the team's own head, or a `space.members_manage` grant. */
+    addMember: async (spaceId: string, userId: string): Promise<void> => {
+        await api.post(`/spaces/${spaceId}/members`, { userId });
+    },
+    removeMember: async (spaceId: string, userId: string): Promise<void> => {
+        await api.delete(`/spaces/${spaceId}/members/${userId}`);
+    },
+    /** 🔐 member.role_change. `null` clears; setting also ensures membership. */
+    setHomeTeam: async (
+        userId: string,
+        spaceId: string | null,
+    ): Promise<void> => {
+        await api.patch(`/users/${userId}/team`, { spaceId });
     },
 };
 

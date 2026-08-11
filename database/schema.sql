@@ -147,6 +147,11 @@ CREATE TABLE users (
     avatar_url    VARCHAR(500) NULL,
     status        ENUM('active','invited','deactivated') NOT NULL DEFAULT 'invited',
     timezone      VARCHAR(64)  NOT NULL DEFAULT 'Asia/Dhaka',
+    -- Home team (team-access P1, upgrades/016). Space MEMBERSHIP itself is the
+    -- `user_roles` rows with scope_type='space' (plan D-1/D-2); this column
+    -- only records which of those is the person's home team. FK to spaces is
+    -- added post-hoc after §6 (spaces does not exist yet at this point).
+    primary_space_id VARCHAR(64) NULL,
     last_login_at TIMESTAMP    NULL,
     created_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -157,7 +162,8 @@ CREATE TABLE users (
     CONSTRAINT fk_users_workspace FOREIGN KEY (workspace_id)
         REFERENCES workspaces(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     INDEX idx_users_workspace_status (workspace_id, status),
-    INDEX idx_users_email           (email)
+    INDEX idx_users_email           (email),
+    INDEX idx_users_primary_space   (primary_space_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
 
 
@@ -277,6 +283,14 @@ CREATE TABLE spaces (
     INDEX idx_spaces_workspace_archived (workspace_id, archived_at, position),
     INDEX idx_spaces_head (head_user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
+
+-- users.primary_space_id → spaces (team-access P1, upgrades/016): added
+-- post-hoc because `users` (§2) is created before `spaces` (§6) — the same
+-- ordering fix the lists ↔ task_types FK uses in §8. ON DELETE SET NULL:
+-- deleting a team leaves its people teamless, it never deletes people.
+ALTER TABLE users
+    ADD CONSTRAINT fk_users_primary_space FOREIGN KEY (primary_space_id)
+        REFERENCES spaces(id) ON DELETE SET NULL ON UPDATE CASCADE;
 
 
 -- =============================================================================

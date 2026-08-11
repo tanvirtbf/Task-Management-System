@@ -12,6 +12,7 @@ import {
 import { ListsRepo } from "../repositories/ListsRepo";
 import { WorkspaceActivityRepo } from "../repositories/WorkspaceActivityRepo";
 import type { UsersRepo, UserListRow } from "../repositories/UsersRepo";
+import { teamMembership } from "./TeamMembershipService";
 
 /**
  * A space row with its department head hydrated (Dept Review V1). `head` is the
@@ -157,6 +158,7 @@ export class SpacesService {
             await this.assertValidHead(input.headUserId, input.workspaceId);
         }
 
+        let headSynced = false;
         const created = await this.withDuplicateName(input.name, () =>
             this.db.transaction(async (tx) => {
             const id = await this.spaces.insert(
@@ -184,6 +186,18 @@ export class SpacesService {
                 },
                 tx,
             );
+            // Team-access P1 (the G2 landmine): a head who is not a MEMBER of
+            // their own space would be locked out of their own department the
+            // moment visibility narrows (plan P6). Same transaction as the
+            // space write — the invariant must never be observable as broken.
+            if (input.headUserId) {
+                headSynced = await teamMembership().syncHeadMembership(
+                    input.headUserId,
+                    id,
+                    input.workspaceId,
+                    { exec: tx, grantedBy: input.actorId },
+                );
+            }
             const space = await this.spaces.findByIdInWorkspace(
                 id,
                 input.workspaceId,
@@ -197,6 +211,11 @@ export class SpacesService {
             return space;
             }),
         );
+        // The grant landed → invalidate cached permission folds (post-commit;
+        // an in-tx bump would hold the workspace-row lock the whole time).
+        if (headSynced) {
+            await teamMembership().commitMembershipBump(input.workspaceId);
+        }
         // F18 made the head settable at create — hydrate it like every read.
         const [withHead] = await this.hydrateHeads([created], input.workspaceId);
         return withHead;
@@ -267,6 +286,7 @@ export class SpacesService {
             return withHead;
         }
 
+        let headSynced = false;
         const updatedRow = await this.withDuplicateName(
             input.fields.name,
             () => this.db.transaction(async (tx) => {
@@ -283,6 +303,17 @@ export class SpacesService {
                 },
                 tx,
             );
+            // Team-access P1 (the G2 landmine): installing a head also makes
+            // them a member of this space (clearing one leaves the old head's
+            // membership alone — leaving a headship is not leaving the team).
+            if (input.fields.headUserId) {
+                headSynced = await teamMembership().syncHeadMembership(
+                    input.fields.headUserId,
+                    input.spaceId,
+                    input.workspaceId,
+                    { exec: tx, grantedBy: input.actorId },
+                );
+            }
             const updated = await this.spaces.findByIdInWorkspace(
                 input.spaceId,
                 input.workspaceId,
@@ -295,6 +326,9 @@ export class SpacesService {
             return updated;
             }),
         );
+        if (headSynced) {
+            await teamMembership().commitMembershipBump(input.workspaceId);
+        }
         const [withHead] = await this.hydrateHeads(
             [updatedRow],
             input.workspaceId,

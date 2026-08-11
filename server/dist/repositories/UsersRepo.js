@@ -256,6 +256,46 @@ class UsersRepo {
             .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.workspaceId, workspaceId), (0, drizzle_orm_1.inArray)(schema_1.users.id, userIds)));
     }
     /**
+     * Every user of the workspace with their home team attached (team-access
+     * P1) — the ONE query the Settings → Teams directory needs to compute
+     * `is_primary` badges and the "no home team yet" section. Deliberately a
+     * separate projection: the canonical wire `User` (and the ~dozen tests
+     * that pin its exact key set) stays untouched.
+     */
+    async listWithPrimaryByWorkspace(workspaceId, exec = this.db) {
+        return exec
+            .select({
+            id: schema_1.users.id,
+            firstName: schema_1.users.firstName,
+            lastName: schema_1.users.lastName,
+            email: schema_1.users.email,
+            role: schema_1.users.role,
+            avatarUrl: schema_1.users.avatarUrl,
+            status: schema_1.users.status,
+            timezone: schema_1.users.timezone,
+            lastLoginAt: schema_1.users.lastLoginAt,
+            createdAt: schema_1.users.createdAt,
+            primarySpaceId: schema_1.users.primarySpaceId,
+        })
+            .from(schema_1.users)
+            .where((0, drizzle_orm_1.eq)(schema_1.users.workspaceId, workspaceId))
+            .orderBy((0, drizzle_orm_1.asc)(schema_1.users.firstName), (0, drizzle_orm_1.asc)(schema_1.users.lastName), (0, drizzle_orm_1.asc)(schema_1.users.id));
+    }
+    /**
+     * One user's home team. `undefined` = no such user in this workspace
+     * (caller 404s), `null` = user exists with no home team.
+     */
+    async primarySpaceIdOf(userId, workspaceId, exec = this.db) {
+        const rows = await exec
+            .select({ primarySpaceId: schema_1.users.primarySpaceId })
+            .from(schema_1.users)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.id, userId), (0, drizzle_orm_1.eq)(schema_1.users.workspaceId, workspaceId)))
+            .limit(1);
+        if (rows.length === 0)
+            return undefined;
+        return rows[0].primarySpaceId ?? null;
+    }
+    /**
      * Active owner/admin ids of a workspace — the `report_ready` fan-out set
      * (Dept Review V1 P20, D-1). The caller dedupes the head into this set.
      */

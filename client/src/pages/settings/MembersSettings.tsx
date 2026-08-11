@@ -18,7 +18,8 @@ import {
     UserCheck,
     Mail,
 } from "lucide-react";
-import { usersApi } from "../../http/api";
+import { usersApi, teamsApi } from "../../http/api";
+import { getApiErrorMessage } from "../../http/client";
 import {
     SettingsHeader,
     SettingsSection,
@@ -51,6 +52,22 @@ const MembersSettings = () => {
         queryKey: ["users"],
         queryFn: () => usersApi.list(),
     });
+
+    // Team-access P1: each person's HOME team, from the /teams directory (the
+    // canonical `User` wire deliberately does not carry it).
+    const { data: teamsDir } = useQuery({
+        queryKey: ["teams"],
+        queryFn: teamsApi.directory,
+    });
+    const teamNameByUser = useMemo(() => {
+        const map = new Map<string, string>();
+        for (const t of teamsDir?.teams ?? []) {
+            for (const m of t.members) {
+                if (m.isPrimary) map.set(m.user.id, t.space.name);
+            }
+        }
+        return map;
+    }, [teamsDir]);
 
     const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
@@ -174,7 +191,7 @@ const MembersSettings = () => {
                 <div
                     style={{
                         display: "grid",
-                        gridTemplateColumns: "auto 1fr auto auto auto",
+                        gridTemplateColumns: "auto 1fr auto auto auto auto",
                         gap: 12,
                         alignItems: "center",
                         padding: "8px 0",
@@ -188,6 +205,7 @@ const MembersSettings = () => {
                 >
                     <span></span>
                     <span>Name & email</span>
+                    <span>Team</span>
                     <span>Role</span>
                     <span>Status</span>
                     <span></span>
@@ -196,6 +214,7 @@ const MembersSettings = () => {
                     <MemberRow
                         key={u.id}
                         user={u}
+                        teamName={teamNameByUser.get(u.id) ?? null}
                         onRoleChange={(role) =>
                             updateRole.mutate({ id: u.id, role })
                         }
@@ -214,11 +233,13 @@ const MembersSettings = () => {
 
 const MemberRow = ({
     user,
+    teamName,
     onRoleChange,
     onDeactivate,
     onReactivate,
 }: {
     user: User;
+    teamName: string | null;
     onRoleChange: (r: Role) => void;
     onDeactivate: () => void;
     onReactivate: () => void;
@@ -226,7 +247,7 @@ const MemberRow = ({
     <div
         style={{
             display: "grid",
-            gridTemplateColumns: "auto 1fr auto auto auto",
+            gridTemplateColumns: "auto 1fr auto auto auto auto",
             gap: 12,
             alignItems: "center",
             padding: "10px 0",
@@ -276,6 +297,21 @@ const MemberRow = ({
                 {user.email}
             </div>
         </div>
+        <span
+            style={{
+                fontSize: 12,
+                color: teamName
+                    ? tokens.colors.textPrimary
+                    : tokens.colors.textMuted,
+                maxWidth: 140,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+            }}
+            title={teamName ?? "No home team — assign one in Settings → Teams"}
+        >
+            {teamName ?? "—"}
+        </span>
         <Select
             value={user.role}
             onChange={onRoleChange}
@@ -356,24 +392,32 @@ const InviteMemberModal = ({ onClose }: { onClose: () => void }) => {
     const [lastName, setLastName] = useState("");
     const [email, setEmail] = useState("");
     const [role, setRole] = useState<Role>("member");
+    // Team-access P1 (B3): required in the FORM — an invited person must have
+    // a team from day one, or they arrive teamless when visibility narrows.
+    const [spaceId, setSpaceId] = useState<string | null>(null);
+
+    const { data: teamsDir } = useQuery({
+        queryKey: ["teams"],
+        queryFn: teamsApi.directory,
+    });
+    const teamOptions = (teamsDir?.teams ?? []).map((t) => ({
+        value: t.space.id,
+        label: t.space.name,
+    }));
 
     const invite = useMutation({
         mutationFn: () =>
-            usersApi.invite({ firstName, lastName, email, role }),
+            usersApi.invite({ firstName, lastName, email, role, spaceId }),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ["users"] });
+            qc.invalidateQueries({ queryKey: ["teams"] });
             message.success(`Invitation sent to ${email}`);
             onClose();
         },
-        onError: (err) =>
-            message.error(
-                err instanceof Error
-                    ? err.message
-                    : "Failed to send invitation",
-            ),
+        onError: (err) => message.error(getApiErrorMessage(err)),
     });
 
-    const canInvite = email.trim() && firstName.trim();
+    const canInvite = email.trim() && firstName.trim() && spaceId;
 
     return (
         <Modal
@@ -433,6 +477,18 @@ const InviteMemberModal = ({ onClose }: { onClose: () => void }) => {
                             value: r,
                             label: ROLE_LABELS[r].label,
                         }))}
+                    />
+                </div>
+                <div>
+                    <Label>Team</Label>
+                    <Select
+                        value={spaceId}
+                        onChange={setSpaceId}
+                        style={{ width: "100%" }}
+                        placeholder="Which team are they joining?"
+                        options={teamOptions}
+                        showSearch
+                        optionFilterProp="label"
                     />
                 </div>
             </div>

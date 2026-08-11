@@ -19,6 +19,8 @@ export interface InviteUserBody {
     last_name: string;
     email: string;
     role: "admin" | "member" | "guest";
+    /** Team-access P1 (B3): the team the person is invited into. */
+    space_id?: string | null;
 }
 
 export interface InviteUserRequest extends AuthRequest {

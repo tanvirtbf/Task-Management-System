@@ -38,6 +38,7 @@
 | `013_perf_indexes.sql` | ✅ 2026-08-06 | ✅ 2026-08-06 | ⏳ pending (no prod yet) |
 | `014_overdue_alerts.sql` | ✅ 2026-08-08 | ✅ 2026-08-08 | ⏳ pending (no prod yet) |
 | `015_push_subscriptions.sql` | ✅ 2026-08-08 | ✅ 2026-08-08 | ⏳ pending (no prod yet) |
+| `016_team_membership.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 | ⏳ pending (no prod yet) |
 
 > `005` ships with the F3 clock fix and is only correct alongside it. If you apply
 > `005`, the app's `DB_TIMEZONE` **must** be `+00:00` (see `server/.env.example`).
@@ -60,3 +61,10 @@
 > `overdue` ENUM value that `009` removed — legitimately this time, because the job is
 > its producer. Gated + re-runnable. Remember the new cron line
 > (`deploy/cron/bbtasks-jobs`: `*/10` overdue-alert) when rolling prod.
+>
+> `016` ships with team-access Phase 1 (TEAM_ACCESS_AND_AUDIT_PLAN.md, 2026-08-11):
+> adds `users.primary_space_id` (home team) and backfills the G2 landmine — every
+> `spaces.head_user_id` now also holds a Member-role `user_roles` row scoped to their
+> own space (heads used to have NO membership row at all). Apply **before or with**
+> that server build (the Drizzle schema reads the column). Gated + re-runnable;
+> counts stay 43/5/9.

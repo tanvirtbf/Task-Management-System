@@ -12,6 +12,7 @@ import { errorHandler } from "./middlewares/errorHandler";
 import authRouter from "./routes/auth";
 import meRouter from "./routes/me";
 import rolesRouter from "./routes/roles";
+import teamsRouter from "./routes/teams";
 import { rbacContext } from "./middlewares/requirePermission";
 import usersRouter from "./routes/users";
 import workspaceRouter from "./routes/workspace";
@@ -155,6 +156,9 @@ v1.use(meRouter);
 // BEFORE `/users` and `/spaces` (its 3-segment routes must resolve ahead of
 // their `/:id` routes).
 v1.use(rolesRouter);
+// Teams & membership (team-access P1) — same v1-root treatment: its paths span
+// `/teams`, `/spaces/:id/members` (POST/DELETE) and `/users/:id/team`.
+v1.use(teamsRouter);
 v1.use("/workspace", workspaceRouter);
 v1.use("/users", usersRouter);
 v1.use("/spaces", spacesRouter);

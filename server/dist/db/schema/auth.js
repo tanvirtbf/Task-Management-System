@@ -71,6 +71,14 @@ exports.users = (0, mysql_core_1.mysqlTable)("users", {
     timezone: (0, mysql_core_1.varchar)("timezone", { length: _shared_1.TIMEZONE_LENGTH })
         .notNull()
         .default("Asia/Dhaka"),
+    /**
+     * Home team (team-access P1, upgrades/016). Space MEMBERSHIP itself is
+     * the `user_roles` rows with scope_type='space'; this only records
+     * which of those is HOME. The FK to `spaces` lives in SQL only
+     * (schema.sql §6 post-hoc ALTER — declaring it here would import
+     * `hierarchy.ts` circularly; same treatment as `uq_user_roles_grant`).
+     */
+    primarySpaceId: (0, mysql_core_1.varchar)("primary_space_id", { length: _shared_1.ID_LENGTH }),
     lastLoginAt: (0, mysql_core_1.timestamp)("last_login_at"),
     createdAt: (0, mysql_core_1.timestamp)("created_at").notNull().defaultNow(),
     updatedAt: (0, mysql_core_1.timestamp)("updated_at").notNull().defaultNow().onUpdateNow(),
@@ -78,6 +86,7 @@ exports.users = (0, mysql_core_1.mysqlTable)("users", {
     workspaceEmailUq: (0, mysql_core_1.uniqueIndex)("uq_users_workspace_email").on(t.workspaceId, t.email),
     workspaceStatusIdx: (0, mysql_core_1.index)("idx_users_workspace_status").on(t.workspaceId, t.status),
     emailIdx: (0, mysql_core_1.index)("idx_users_email").on(t.email),
+    primarySpaceIdx: (0, mysql_core_1.index)("idx_users_primary_space").on(t.primarySpaceId),
 }));
 // ─── sessions ─ refresh-token jar (token_hash never raw) ──────────────────────
 exports.sessions = (0, mysql_core_1.mysqlTable)("sessions", {

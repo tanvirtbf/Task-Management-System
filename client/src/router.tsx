@@ -29,6 +29,7 @@ const WorkspaceSettings = lazy(
     () => import("./pages/settings/WorkspaceSettings"),
 );
 const MembersSettings = lazy(() => import("./pages/settings/MembersSettings"));
+const TeamsSettings = lazy(() => import("./pages/settings/TeamsSettings"));
 const RolesSettings = lazy(() => import("./pages/settings/RolesSettings"));
 const TaskTypesSettings = lazy(
     () => import("./pages/settings/TaskTypesSettings"),
@@ -187,6 +188,14 @@ export const router = createBrowserRouter([
                                         element: lazyRoute(
                                             <RequirePermission permission="member.view">
                                                 <MembersSettings />
+                                            </RequirePermission>,
+                                        ),
+                                    },
+                                    {
+                                        path: "teams",
+                                        element: lazyRoute(
+                                            <RequirePermission permission="member.view">
+                                                <TeamsSettings />
                                             </RequirePermission>,
                                         ),
                                     },
