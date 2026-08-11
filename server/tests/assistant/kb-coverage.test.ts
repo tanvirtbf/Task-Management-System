@@ -389,9 +389,13 @@ describe("KB coverage — P4: every destination is a link", () => {
 
     it("keeps the whole system message inside its size budget (landmine L2)", () => {
         // It ships on EVERY request, so growth is a latency and cost decision,
-        // not a free one. Baseline before P4 was ~27.6k chars.
+        // not a free one. Baseline before P4 was ~27.6k chars. Raised 34k →
+        // 38k for team-access P10 (2026-08-11): visibility, edit rights and
+        // the approval flow are now the app's OPERATING MODEL — "why can't I
+        // see/edit/assign" is exactly what the office will ask this bot, and
+        // ~1k extra tokens on gpt-4o-mini is the cheap side of that trade.
         const sys = buildMessages([], "x")[0].content as string;
-        expect(sys.length).toBeLessThan(34000);
+        expect(sys.length).toBeLessThan(38000);
     });
 });
 
@@ -415,5 +419,42 @@ describe("System prompt — P4: the always-give-a-destination rule", () => {
 
     it("still allows no link when the question genuinely has no page", () => {
         expect(SYSTEM_PROMPT).toMatch(/Only skip the link when/i);
+    });
+});
+
+
+describe("KB coverage — team access + cross-team approval (P10, 2026-08-11)", () => {
+    it("states the team-scoped default (members see only their own team)", () => {
+        expect(KNOWLEDGE_BASE).toContain("Member or Guest sees only their own team's");
+        expect(KNOWLEDGE_BASE).toContain("Owners and Admins still see everything");
+    });
+
+    it("no longer claims team membership is automatic from assignments", () => {
+        expect(KNOWLEDGE_BASE).not.toContain("Team membership is automatic");
+        expect(KNOWLEDGE_BASE).toContain("managed on the [Teams](/settings/teams) page");
+    });
+
+    it("states the edit-rights rule (assignees, creator, the owning team's Head, admins)", () => {
+        expect(KNOWLEDGE_BASE).toContain("Who can edit a task");
+        expect(KNOWLEDGE_BASE).toContain("View only");
+    });
+
+    it("explains the cross-team assignment request + the deciders", () => {
+        expect(KNOWLEDGE_BASE).toContain("assignment request");
+        expect(KNOWLEDGE_BASE).toContain("never by the person who asked");
+        expect(KNOWLEDGE_BASE).toContain("expires after 7 days");
+    });
+
+    it("routes people to the Inbox Requests tab and the drawer panel", () => {
+        expect(KNOWLEDGE_BASE).toContain('"Requests" tab');
+        expect(KNOWLEDGE_BASE).toContain("Assignment approval");
+    });
+
+    it("quick-answers cover the three questions the office will actually ask", () => {
+        expect(KNOWLEDGE_BASE).toContain("Why can't I see another team's Space or tasks?");
+        expect(KNOWLEDGE_BASE).toContain(
+            "Why can't I edit this task (\"View only\")?",
+        );
+        expect(KNOWLEDGE_BASE).toContain("I assigned someone but they were not added");
     });
 });

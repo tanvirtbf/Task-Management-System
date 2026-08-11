@@ -133,13 +133,35 @@ Open [**Engineering**](/eng) in the Sidebar:
 - **Report a Bug** — a button in the Sidebar footer, available to everyone. File a bug with a severity (S0 to S3) and the reporting team; it creates a Bug task routed to the on-call engineer.
 Engineering tasks can carry extra fields: bug severity, story points, a sprint, a Git branch / PR link with PR status, and incident postmortems.
 
+## Team access, edit rights and cross-team approval
+Since the team-access update (August 2026) the workspace is TEAM-SCOPED. The rules, in plain terms:
+
+### Who sees what
+- A **Member or Guest sees only their own team's** Spaces, Lists and tasks. Other teams' work is invisible to them (not even shown as existing). **Owners and Admins still see everything.**
+- If you see nothing at all, you are probably not on any team yet — ask an Admin to add you on the [Teams](/settings/teams) page.
+- An Admin can grant **one team sight of another** ("Marketing can also see Social Media") from the [Teams](/settings/teams) page. That is view-only — no edit or assign rights come with it.
+- If you are assigned a task that belongs to ANOTHER team, you can open that one task from anywhere (Inbox, My Work, Search, a link) — but you still cannot browse that team's lists.
+
+### Who can edit a task
+Only these people can change a task (its fields, checklists, attachments, custom fields, dependencies, tags, or archive/delete it):
+1. its **assignees**, 2. its **creator**, 3. the **Head of the team that owns it**, 4. an Owner/Admin.
+Everyone else on the team can still READ it and COMMENT on it — the task drawer shows a "View only" notice for them. Every change is recorded in the task's **Activity** section (who, when, old value, new value), visible to anyone who can open the task.
+
+### Assigning someone from another team (approval)
+- Assigning a person who is NOT a member of the task's team does not assign them immediately — it creates an **assignment request** they must approve first. Assigning inside your own team is instant, as always.
+- The request can be **Accepted** or **Declined** by: the person themselves, THEIR team's Head, or an Admin — never by the person who asked.
+- The receiver can also raise a **query** instead (for example "I need 2 more days" with a proposed date). The requester answers from the task's **Assignment approval** panel and can move the real due date in the same step; the receiver then accepts or declines.
+- Where to act: the **[Inbox](/inbox) "Requests" tab** (your own requests, plus your team's if you are a Head) or the task drawer's **Assignment approval** panel. You also get an email and a push notification at each step.
+- A request nobody answers **expires after 7 days** and the requester is told. Until you accept, the task itself stays closed to you — decide from the request card, which shows the task's name, team, list and due date.
+- Bulk assigning across teams works the same way: the toolbar reports "N updated — M assignments waiting for approval".
+
 ## Department review and weekly reports (for team leads and HR)
 Each **Space** can act as a **department** led by one **Head**. The Head keeps an eye on their team's completed work, and every week the system sends a summary to HR/management automatically — so a manager can see across the whole company whether work is being delivered, without chasing each person.
 
 ### The Head of a department
 - A **Head** is not a separate account type — it is a **Member or Admin** chosen to lead a Space.
 - **Who sets it:** an **Owner or Admin**. Open the Space from the Sidebar Space tree, then use the **Department head** card on the Space page to pick a person (or clear it to remove the Head).
-- Team membership is automatic: whoever is **assigned** tasks in that Space's Lists counts as a team member — nothing extra to set up.
+- Team membership is managed on the [Teams](/settings/teams) page: an Admin (or the team's own Head) adds and removes people there, and each person has one **home team**. Membership is what decides WHAT YOU SEE (next section) — being assigned a single task does not make you a team member.
 
 ### Reviewing the team's work — the Department page ([Department](/dept))
 Owners, Admins and a Space's Head can open **[Department](/dept)** from the Sidebar to review work. (Members and Guests do not see this page.)
@@ -228,7 +250,7 @@ If a page says access is not available, or an action is refused, it is not a bug
 - **How do I change my password?** [Settings → Profile](/settings/profile), then **Change password**.
 - **How do I invite a teammate?** [Settings → Members](/settings/members), then **Invite** (Owner/Admin only).
 - **How do I create a new role?** [Roles & permissions](/settings/roles) → **New role** → give it a name → tick the abilities it should have (and pick how far each reaches) → **Save changes**.
-- **How do I stop someone seeing other departments?** In [Roles & permissions](/settings/roles), open their role and set **See spaces** to **Their spaces**. Everything else — Lists, tasks, search, dashboard counts — follows that one switch. Note: choosing it for ONE person, or giving someone a role in only one Space, is not available in Settings yet; ask an Owner or Admin.
+- **How do I stop someone seeing other departments?** Since the team-access update this is the DEFAULT: Members and Guests already see only the team(s) they belong to on [Teams](/settings/teams). To widen it, add them to more teams or grant their team sight of another team; the underlying role switch lives in [Roles & permissions](/settings/roles) (**See spaces → Their spaces**).
 - **Why does it say I don't have permission?** That ability is not in your role. Ask an Owner or Admin to add it in [Roles & permissions](/settings/roles).
 - **Who is on call, and how do I set it?** [On-call rotation](/eng/on-call), or the on-call badge in the Topbar.
 - **How do I search?** Open [Search](/search), or click the Search box in the Topbar.
@@ -236,6 +258,11 @@ If a page says access is not available, or an action is refused, it is not a bug
 - **Who reviews my completed tasks?** Your Space's **Head** — they use [Department](/dept) to approve or flag them (Owners/Admins/Heads only).
 - **Where are the weekly department reports?** [Reports](/reports) — for Owners, Admins and Heads.
 - **How do I report a bug?** Click **Report a Bug** in the Sidebar footer, fill the form (severity + your team), and Submit.
+- **Why can't I see another team's Space or tasks?** Since the team-access update, Members see only their OWN team's work. Ask an Admin to add you to that team on [Teams](/settings/teams), or to grant your team sight of it.
+- **Why can't I edit this task ("View only")?** Only its assignees, its creator, that team's Head, or an Admin may edit. Anyone else can read and comment only.
+- **I assigned someone but they were not added — why?** They are from ANOTHER team, so an **assignment request** was created instead. Track it in the task's Assignment approval panel or your [Inbox](/inbox) Requests tab; they (or their Head) must accept first.
+- **Where do I approve an assignment request?** [Inbox](/inbox) → the **Requests** tab → Accept, Decline, or Query on the card. Heads see their whole team's requests there too.
+- **The request says I need more time — what now?** If YOU raised the request, open the task's **Assignment approval** panel and use **Answer** — you can reply and move the due date in one step; the other side then accepts.
 
 ## Good to know (current limitations — be honest about these)
 - A brand-new workspace starts empty; you create the Spaces, Lists and Tasks yourself.

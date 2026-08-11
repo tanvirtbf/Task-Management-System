@@ -19,7 +19,7 @@
  *   (+ members: arif, sumaiya, jhankar, priya)
  */
 import bcrypt from "bcrypt";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { initDb, closeDb, getPool } from "./client";
 import * as S from "./schema";
 import { fakeId } from "../utils";
@@ -604,6 +604,197 @@ const seed = async () => {
     // so the demo workspace is ready for an admin to tighten access.
     const rbac = await bootstrapRbac(db, ws);
     logger.info("RBAC bootstrapped", rbac);
+
+    // ── 14. team roster (team-access P10) ────────────────────────────────────
+    // Every person gets an EXPLICIT home team + space membership — the
+    // assignment-derived map above misses anyone who happens to hold no task,
+    // and after the visibility switch (step 15) a teamless member sees an
+    // empty app (plan B3/Q9). sumaiya deliberately straddles two teams (the
+    // Q1 "genuinely straddles" case the walks exercise).
+    const [memberRole] = await db
+        .select({ id: S.roles.id })
+        .from(S.roles)
+        .where(and(eq(S.roles.workspaceId, ws), eq(S.roles.roleKey, "member")));
+    // userIdx → [homeTeamKey, ...extraTeamKeys]
+    const roster: Record<number, string[]> = {
+        1: ["ord"], // Farhana — Admin (Operations)
+        2: ["eng"], // Tanvir — Engineering head
+        3: ["mkt"], // Nusrat — Marketing head
+        4: ["cs"], // Rakib — CS head
+        5: ["ord"], // Sadia — Orders head
+        6: ["prod"], // Imran — Product head
+        7: ["soc"], // Mitu — Social head
+        8: ["cs"], // Arif
+        9: ["mkt", "soc"], // Sumaiya — two teams (Q1)
+        10: ["eng"], // Jhankar — the on-call engineer
+        11: ["soc"], // Priya
+    };
+    const existingPairs = new Set(
+        (
+            await db
+                .select({
+                    userId: S.userRoleGrants.userId,
+                    scopeId: S.userRoleGrants.scopeId,
+                })
+                .from(S.userRoleGrants)
+                .where(
+                    and(
+                        eq(S.userRoleGrants.workspaceId, ws),
+                        eq(S.userRoleGrants.scopeType, "space"),
+                    ),
+                )
+        ).map((r) => `${r.userId}|${r.scopeId}`),
+    );
+    for (const [idxStr, teams] of Object.entries(roster)) {
+        const idx = Number(idxStr);
+        for (const key of teams) {
+            if (existingPairs.has(`${U[idx]}|${SP[key]}`)) continue;
+            await db.insert(S.userRoleGrants).values({
+                id: fakeId("ur"),
+                workspaceId: ws,
+                userId: U[idx],
+                roleId: memberRole.id,
+                scopeType: "space",
+                scopeId: SP[key],
+            });
+        }
+        await db
+            .update(S.users)
+            .set({ primarySpaceId: SP[teams[0]] })
+            .where(eq(S.users.id, U[idx]));
+    }
+    logger.info("Team roster seeded (home teams + memberships)");
+
+    // ── 15. THE SWITCH + edit rights (upgrades 019 + 020, in-seed) ───────────
+    // The demo exists to demonstrate the OFFICE model, so the tightening ships
+    // seeded: Member/Guest see their own team(s) only (space.view=space,
+    // task.view=own — B1's escape) and Members edit only their own work
+    // (edit/archive/delete=own; the owning team's head rides the G4 allow-path
+    // in code). Plain `db:seed` stays OPEN on purpose — this block is the
+    // demo-only equivalent of applying 019+020 after seeding.
+    const mgRoles = await db
+        .select({ id: S.roles.id })
+        .from(S.roles)
+        .where(
+            and(
+                eq(S.roles.workspaceId, ws),
+                inArray(S.roles.roleKey, ["member", "guest"]),
+            ),
+        );
+    const mgIds = mgRoles.map((r) => r.id);
+    await db
+        .update(S.rolePermissions)
+        .set({ scope: "space" })
+        .where(
+            and(
+                inArray(S.rolePermissions.roleId, mgIds),
+                eq(S.rolePermissions.permissionKey, "space.view"),
+            ),
+        );
+    await db
+        .update(S.rolePermissions)
+        .set({ scope: "own" })
+        .where(
+            and(
+                inArray(S.rolePermissions.roleId, mgIds),
+                eq(S.rolePermissions.permissionKey, "task.view"),
+            ),
+        );
+    await db
+        .update(S.rolePermissions)
+        .set({ scope: "own" })
+        .where(
+            and(
+                eq(S.rolePermissions.roleId, memberRole.id),
+                inArray(S.rolePermissions.permissionKey, [
+                    "task.edit",
+                    "task.archive",
+                    "task.delete",
+                ]),
+            ),
+        );
+    await db
+        .update(S.workspaces)
+        .set({ permissionsVersion: sql`${S.workspaces.permissionsVersion} + 1` })
+        .where(eq(S.workspaces.id, ws));
+    logger.info("Visibility switch + edit rights applied (019/020 semantics)");
+
+    // ── 16. a cross-team assignment request, mid-negotiation (P8/P9 demo) ────
+    // Nusrat (Marketing head) asks engineer Jhankar to set up the Eid discount
+    // codes; Jhankar has queried for two more days. The drawer panel, the
+    // Inbox "Requests" tab, the head's team box and the answer flow all have
+    // something real to show the moment anyone logs in.
+    const demoReqTask = taskIdByName["Set up 25% Eid discount codes"];
+    if (demoReqTask) {
+        const reqId = fakeId("areq");
+        const now = new Date();
+        const proposed = ymdOffset(5);
+        await db.insert(S.taskAssignmentRequests).values({
+            id: reqId,
+            workspaceId: ws,
+            spaceId: SP.mkt,
+            taskId: demoReqTask,
+            targetUserId: U[10], // Jhankar (Engineering)
+            requestedBy: U[3], // Nusrat (Marketing head)
+            status: "pending",
+            requestNote:
+                "Discount codes need to go into the system before the Eid sale — can you take this?",
+            queryNote: "Sprint sesh kore dhorte parbo — need 2 more days.",
+            proposedDueDate: proposed,
+            expiresAt: new Date(now.getTime() + 7 * 86_400_000),
+            createdAt: now,
+            updatedAt: now,
+        });
+        await db.insert(S.taskAssignmentRequestEvents).values([
+            {
+                id: fakeId("arev"),
+                requestId: reqId,
+                actorId: U[3],
+                action: "created",
+                note: "Discount codes need to go into the system before the Eid sale — can you take this?",
+                createdAt: now,
+            },
+            {
+                id: fakeId("arev"),
+                requestId: reqId,
+                actorId: U[10],
+                action: "queried",
+                note: "Sprint sesh kore dhorte parbo — need 2 more days.",
+                proposedDueDate: proposed,
+                createdAt: new Date(now.getTime() + 60_000),
+            },
+        ]);
+        await db.insert(S.notifications).values([
+            {
+                id: fakeId("ntf"),
+                userId: U[10], // the target
+                type: "assignment_request",
+                entityType: "task",
+                entityId: demoReqTask,
+                actorId: U[3],
+                title: "Assignment approval needed: Set up 25% Eid discount codes",
+            },
+            {
+                id: fakeId("ntf"),
+                userId: U[2], // Tanvir — Engineering head (Q2: both are told)
+                type: "assignment_request",
+                entityType: "task",
+                entityId: demoReqTask,
+                actorId: U[3],
+                title: "Assignment approval needed: Set up 25% Eid discount codes",
+            },
+            {
+                id: fakeId("ntf"),
+                userId: U[3], // the requester hears the query
+                type: "assignment_query",
+                entityType: "task",
+                entityId: demoReqTask,
+                actorId: U[10],
+                title: "Query on assignment: Set up 25% Eid discount codes",
+            },
+        ]);
+        logger.info("Demo cross-team assignment request seeded (pending, mid-query)");
+    }
 
     const counts = (await pool.query(
         "SELECT (SELECT COUNT(*) FROM users) u,(SELECT COUNT(*) FROM spaces) s,(SELECT COUNT(*) FROM lists) l,(SELECT COUNT(*) FROM tasks) t,(SELECT COUNT(*) FROM comments) c,(SELECT COUNT(*) FROM checklists) ck,(SELECT COUNT(*) FROM task_reviews) r,(SELECT COUNT(*) FROM notifications) n",

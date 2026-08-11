@@ -117,7 +117,7 @@ describe("Dept Review notifications on the wire (P22)", () => {
      * `user_notification_prefs.type` row, which 500s with MySQL 1265 if the
      * second ENUM copy was ever missed — `task_reviewed` still proves that.
      */
-    it("preferences enumerate the live types (8 since upgrades/014) and a PUT for task_reviewed round-trips (the second-ENUM-copy migration, end-to-end)", async () => {
+    it("preferences enumerate the live types (11 since upgrades/021) and a PUT for task_reviewed round-trips (the second-ENUM-copy migration, end-to-end)", async () => {
         const s = await seed();
 
         const prefs = await s.assigneeClient.get(
@@ -135,6 +135,11 @@ describe("Dept Review notifications on the wire (P22)", () => {
                 "overdue", // upgrades/014 (2026-08-08): produced by the overdue-alert job
                 "task_reviewed",
                 "report_ready",
+                // upgrades/021 (team-access P8, 2026-08-11): the
+                // assignment-approval flow's three types.
+                "assignment_request",
+                "assignment_request_decided",
+                "assignment_query",
             ].sort(),
         );
         expect(prefs.body.task_reviewed).toEqual({ in_app_enabled: true });

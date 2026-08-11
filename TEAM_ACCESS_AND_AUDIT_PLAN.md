@@ -620,7 +620,33 @@ requester withdraws, assignee deactivated mid-request.
 
 ---
 
-## PHASE 10 — Regression, docs, demo data
+## PHASE 10 — Regression, docs, demo data ✅ SHIPPED 2026-08-11/12
+
+> **Status: DONE — the plan is complete.** **Demo seed** (`db:seed:demo`) now ships the OFFICE
+> MODEL live: an explicit team roster (every person a home team + membership; sumaiya = the
+> Q1 two-team case; all 6 teams headed), the 019+020 tightening applied in-seed (plain
+> `db:seed` stays open on purpose), and a mid-negotiation cross-team request (nusrat →
+> jhankar on "Set up 25% Eid discount codes", query pending) so drawer panel, Inbox
+> Requests, the head's team box and the answer flow all have real data at first login —
+> verified on a scratch DB, then dev refreshed. **Playwright** `client/e2e/team-access.pw.ts`
+> — 4/4 green against the live stack: member sidebar = own team(s) only · same-team
+> non-assignee gets the 🔒 view-only drawer · the drawer shows the pending negotiation and
+> the picker warns before a cross-team pick · the receiver accepts from the Inbox Requests
+> tab and the task then opens for them (B1 + the /t/:id drawer-on-blank, B5). The suite is
+> RE-RUNNABLE: tests 3–4 build their own per-run probe negotiation over the API and clean it
+> up (the seeded request stays for humans); two harness lessons are recorded in-file (the
+> SSE stream never lets `networkidle` settle — wait for landmarks; the task NAME in list
+> rows is the inline-edit button — drawers open via the `?task=` param recipe). **Docs**:
+> `TEAM_GUIDE.md` (Bangla operator guide — teams, heads, membership, sight grants, edit
+> rights, the whole approval flow + FAQ), §7 of this plan rewritten as the Q1–Q12 DECISION
+> LOG with enforcement points, `LOCAL_RUN_GUIDE.md` §4.8 (team-scoped quickstart + the
+> seed caveat), and the **assistant KB** taught the new operating model (stale "membership
+> is automatic" claim fixed; new team-access section + 6 FAQ quick-answers; size budget
+> deliberately raised 34k → 38k and recorded; kb-coverage grew a P10 describe — assistant
+> suite 133/133). **Full wrap sweep**: every jest module config + client vitest + both
+> builds green (results in the P10 commit message).
+
+## PHASE 10 — Regression, docs, demo data (original scope)
 
 - Full per-module test sweep + the client suites.
 - New Playwright specs: team-scoped visibility, edit restriction, the approval round-trip.
@@ -654,10 +680,28 @@ requester withdraws, assignee deactivated mid-request.
 
 ---
 
-## 7. WHAT I NEED FROM YOU
+## 7. DECISION LOG (Q1–Q12 — accepted 2026-08-11, all SHIPPED)
 
-1. Answer the 8 questions in §4 (or say "recommendations thik ache").
-2. Tell me to start **Phase 1** — and only Phase 1.
+The §4 recommendations were accepted verbatim ("recommendation thik ache") and every phase
+shipped the same day, P1 through P10. Where each decision is enforced:
 
-I will ship each phase, verify it, show you the evidence, and stop. Nothing moves to the next phase
-until you say so.
+| # | Decision (final) | Enforced at |
+|---|---|---|
+| Q1 | One home team (`users.primary_space_id`) + optional extra memberships | upgrade 016 · TeamMembershipService · demo roster (sumaiya = mkt+soc) |
+| Q2 | Cross-team requests decided by the assignee OR their Head (both notified) | AssignmentRequestsService.assertDecider + headsOfUserSpaces fanout |
+| Q3 | The creator keeps edit until acceptance ("own" includes createdBy) | rbac/ownEscape + isOwnResource (createdBy ∨ assignee) |
+| Q4 | Owner/Admin keep `space.view = all` | upgrades 019/020 touch only Member+Guest |
+| Q5 | Same-team assignment stays instant | splitByApproval: membership → direct |
+| Q6 | Unanswered requests auto-expire after 7 days, requester notified | expires_at + assignment-request-expiry job (hourly :50) |
+| Q7 | S0/S1 on-call auto-assign exempt from approval | CreateTaskInput.exemptAssignmentApproval, set only by reportBug |
+| Q8 | Bulk assign creates requests + reports honest counts | bulk `pending_approval` + the P9 toolbar message |
+| Q9 | A guest sees only the team they are given; teamless = nothing | 019 flips guest too; invite requires a team (B3) |
+| Q10 | A cross-team task lives on the REQUESTING team's own list | inherent — the gate never moves tasks |
+| Q11 | "Cross-team" = the assignee is not a MEMBER of the owning space | splitByApproval → hasSpaceMembership |
+| Q12 | The assignee's own Head gets NO edit on another team's task | decide() head branch keys on the OWNING space's head only |
+
+Self-review fixes B1 (own-escape keeps cross-team assignees sighted) and B2 (answering a
+query is its own requester-authorised endpoint) shipped in P6 and P8; B3–B6 landed where
+§2b said they would. Operator-facing summary: `TEAM_GUIDE.md` (Bangla). E2E proof:
+`client/e2e/team-access.pw.ts` (4 specs — visibility, view-only, negotiation + picker
+warning, the accept round-trip incl. B1/B5).
