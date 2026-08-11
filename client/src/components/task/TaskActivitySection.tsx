@@ -2,8 +2,14 @@ import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "antd";
 import { Activity } from "lucide-react";
 import { taskActivityApi } from "../../http/api";
+import {
+    useStatusMap,
+    useTaskTypeMap,
+    useUserMap,
+} from "../../hooks/useReferenceData";
 import { Avatar } from "../ui/Avatar";
 import { tokens } from "../../theme";
+import { PRIORITY_LABELS, type Priority, type User } from "../../types";
 
 const timeAgo = (iso: string): string => {
     const diff = Date.now() - new Date(iso).getTime();
@@ -24,8 +30,8 @@ const VERBS: Record<string, string> = {
     task_created: "created this task",
     task_updated: "updated",
     status_changed: "moved status",
-    assignee_added: "added an assignee",
-    assignee_removed: "removed an assignee",
+    assignee_added: "assigned",
+    assignee_removed: "unassigned",
     tag_added: "added a tag",
     tag_removed: "removed a tag",
     comment_posted: "commented",
@@ -55,20 +61,144 @@ const verb = (action: string): string =>
     VERBS[action] ?? action.replace(/_/g, " ");
 
 /**
- * The load-bearing bit of `context`, as a short suffix. The old component read
- * only `context.taskName`, which task activity never contains — so the real
- * context (which fields changed, which checklist, what text) was discarded.
+ * Team-access P2 — the audit log rendered for HUMANS. The server has recorded
+ * `{field: {from, to}}` diffs since F21, and this component threw them away,
+ * printing only field names ("updated — priority, due date"). Now every
+ * `task_updated` row shows readable before→after values, ids resolved through
+ * the reference maps the drawer already caches (statuses per list, task types,
+ * users) — zero extra requests.
+ *
+ * ⚠️ The response camelizer renames CONTEXT KEYS too: the server's
+ * `changes.task_type_id` arrives as `changes.taskTypeId`, `user_id` as
+ * `userId`. Everything here speaks camelCase on purpose.
  */
+
+/** Human field names; fallback = decamelized key. */
+const FIELD_LABELS: Record<string, string> = {
+    name: "name",
+    customId: "task ID",
+    priority: "priority",
+    taskTypeId: "type",
+    reviewerId: "reviewer",
+    dueDate: "due date",
+    startDate: "start date",
+    isMilestone: "milestone",
+    storyPoints: "story points",
+    timeEstimateSeconds: "time estimate",
+    recurrencePattern: "recurrence",
+    recurrenceDays: "recurrence days",
+    recurrenceEndsAt: "recurrence end",
+    branchName: "branch",
+    prUrl: "PR",
+    prStatus: "PR status",
+    bugSeverity: "severity",
+    bugReproducibility: "reproducibility",
+    bugEnvironment: "environment",
+    bugBrowser: "browser",
+    reporterTeam: "reporter team",
+    deployedAt: "deployed at",
+    rollbackReason: "rollback reason",
+};
+
+/** Fields whose values are unreadable/huge — show "edited" with no values. */
+const VALUELESS_FIELDS = new Set(["description", "sprintId"]);
+
+const fieldLabel = (key: string): string =>
+    FIELD_LABELS[key] ?? key.replace(/([A-Z])/g, " $1").toLowerCase().trim();
+
+const fullName = (u: User | undefined): string | null =>
+    u ? `${u.firstName} ${u.lastName}`.trim() : null;
+
+const shortSeconds = (s: number): string => {
+    if (s % 3600 === 0) return `${s / 3600}h`;
+    if (s % 60 === 0) return `${s / 60}m`;
+    return `${s}s`;
+};
+
+interface RefMaps {
+    users: Map<string, User>;
+    types: Map<string, { name: string }>;
+    statuses: Map<string, { name: string }>;
+}
+
+/** One diff value → short human text. Deleted references degrade honestly. */
+const formatValue = (field: string, v: unknown, maps: RefMaps): string => {
+    if (v === null || v === undefined || v === "") return "—";
+    if (field === "priority") {
+        return PRIORITY_LABELS[v as Priority] ?? String(v);
+    }
+    if (field === "taskTypeId") {
+        return maps.types.get(String(v))?.name ?? "(deleted type)";
+    }
+    if (field === "reviewerId") {
+        return fullName(maps.users.get(String(v))) ?? "(removed user)";
+    }
+    if (field === "timeEstimateSeconds" && typeof v === "number") {
+        return shortSeconds(v);
+    }
+    if (typeof v === "boolean") return v ? "yes" : "no";
+    if (Array.isArray(v)) return v.map(String).join(", ") || "—";
+    const s = String(v);
+    return s.length > 48 ? `${s.slice(0, 48)}…` : s;
+};
+
+interface DiffRow {
+    label: string;
+    detail: string;
+}
+
+/** `task_updated` context → one readable row per changed field. */
+const diffRows = (
+    context: Record<string, unknown>,
+    maps: RefMaps,
+): DiffRow[] => {
+    const changes = context.changes;
+    if (typeof changes !== "object" || changes === null) {
+        // Pre-F21 rows carry only `fields` — degrade to the old name list.
+        const fields = Array.isArray(context.fields)
+            ? (context.fields as string[])
+            : [];
+        return fields.map((f) => ({
+            label: f.replace(/_/g, " "),
+            detail: "changed",
+        }));
+    }
+    const rows: DiffRow[] = [];
+    for (const [key, raw] of Object.entries(
+        changes as Record<string, unknown>,
+    )) {
+        const label = fieldLabel(key);
+        if (VALUELESS_FIELDS.has(key)) {
+            rows.push({ label, detail: "edited" });
+            continue;
+        }
+        const pair = raw as { from?: unknown; to?: unknown } | null;
+        const from = formatValue(key, pair?.from, maps);
+        const to = formatValue(key, pair?.to, maps);
+        rows.push({ label, detail: `${from} → ${to}` });
+    }
+    return rows;
+};
+
+/** Single-line suffix for the non-update actions (name hydration included). */
 const contextDetail = (
     action: string,
     context: Record<string, unknown> | null | undefined,
+    maps: RefMaps,
 ): string | null => {
     if (!context) return null;
-    if (action === "task_updated" && Array.isArray(context.fields)) {
-        const names = (context.fields as string[]).map((f) =>
-            f.replace(/_/g, " "),
-        );
-        return names.length > 0 ? names.join(", ") : null;
+    if (action === "status_changed") {
+        const from =
+            maps.statuses.get(String(context.from))?.name ?? "(old status)";
+        const to =
+            maps.statuses.get(String(context.to))?.name ?? "(new status)";
+        return `${from} → ${to}`;
+    }
+    if (
+        (action === "assignee_added" || action === "assignee_removed") &&
+        typeof context.userId === "string"
+    ) {
+        return fullName(maps.users.get(context.userId)) ?? "a member";
     }
     if (typeof context.name === "string") return `"${context.name}"`;
     if (typeof context.text === "string") return `"${context.text}"`;
@@ -78,11 +208,22 @@ const contextDetail = (
     return null;
 };
 
-export const TaskActivitySection = ({ taskId }: { taskId: string }) => {
+export const TaskActivitySection = ({
+    taskId,
+    listId,
+}: {
+    taskId: string;
+    /** Resolves status names in `status_changed` rows (drawer cache — free). */
+    listId?: string;
+}) => {
     const { data = [], isLoading } = useQuery({
         queryKey: ["task-activity", taskId],
         queryFn: () => taskActivityApi.byTask(taskId),
     });
+    const users = useUserMap();
+    const types = useTaskTypeMap();
+    const statuses = useStatusMap(listId);
+    const maps: RefMaps = { users, types, statuses };
 
     return (
         <div
@@ -137,6 +278,16 @@ export const TaskActivitySection = ({ taskId }: { taskId: string }) => {
                 >
                     {data.map((entry) => {
                         const actor = entry.actor;
+                        const isUpdate = entry.action === "task_updated";
+                        const detail = isUpdate
+                            ? null
+                            : contextDetail(entry.action, entry.context, maps);
+                        const rows =
+                            isUpdate && entry.context
+                                ? diffRows(entry.context, maps)
+                                : [];
+                        const isBulk =
+                            isUpdate && entry.context?.bulk === true;
                         return (
                             <div
                                 key={entry.id}
@@ -172,11 +323,8 @@ export const TaskActivitySection = ({ taskId }: { taskId: string }) => {
                                         {actor?.firstName ?? "Someone"}
                                     </span>{" "}
                                     {verb(entry.action)}
-                                    {/* M12: `context` is nullable on the wire */}
-                                    {contextDetail(
-                                        entry.action,
-                                        entry.context,
-                                    ) && (
+                                    {isBulk ? " (bulk edit)" : ""}
+                                    {detail && (
                                         <>
                                             {" — "}
                                             <span
@@ -189,12 +337,50 @@ export const TaskActivitySection = ({ taskId }: { taskId: string }) => {
                                                         .textPrimary,
                                                 }}
                                             >
-                                                {contextDetail(
-                                                    entry.action,
-                                                    entry.context,
-                                                )}
+                                                {detail}
                                             </span>
                                         </>
+                                    )}
+                                    {rows.length > 0 && (
+                                        <div
+                                            style={{
+                                                marginTop: 3,
+                                                display: "flex",
+                                                flexDirection: "column",
+                                                gap: 2,
+                                            }}
+                                        >
+                                            {rows.map((r, i) => (
+                                                <div
+                                                    key={`${entry.id}-${i}`}
+                                                    style={{
+                                                        fontFamily:
+                                                            tokens.typography
+                                                                .fontFamilyMono,
+                                                        fontSize: 12,
+                                                    }}
+                                                >
+                                                    <span
+                                                        style={{
+                                                            color: tokens
+                                                                .colors
+                                                                .textMuted,
+                                                        }}
+                                                    >
+                                                        {r.label}:{" "}
+                                                    </span>
+                                                    <span
+                                                        style={{
+                                                            color: tokens
+                                                                .colors
+                                                                .textPrimary,
+                                                        }}
+                                                    >
+                                                        {r.detail}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
                                     )}
                                     <div
                                         style={{

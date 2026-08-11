@@ -651,7 +651,7 @@ Server rejects with **422** `dep.cycle` if it would create a cycle.
 ## 13. Task activity <a id="13-task-activity"></a>
 
 ### GET `/api/v1/tasks/:id/activity`
-Paginated, newest first.
+Paginated, newest first. 🔐 `task.view` (team-access P2 / scan G11 — the route used to carry no permission gate). Reach = exactly the task read's reach: the task resolves through the scope-filtered repo WITH the own-escape, so a cross-team assignee keeps their own task's history and an out-of-scope id stays a 404 (no existence oracle).
 **200 OK** — paginated `TaskActivity[]`.
 
 `TaskActivity` shape:
@@ -666,7 +666,7 @@ Paginated, newest first.
 }
 ```
 
-Known `action` values: `created`, `status_changed`, `assignee_added`, `assignee_removed`, `priority_changed`, `due_date_changed`, `branch_created`, `pr_opened`, `pr_merged`, `comment_posted`, `completed`, `archived`, `deployed`, `rolled_back`.
+Known `action` values (the REAL producer vocabulary, verified against every `task_activity` writer — the draft-era list named codes the server never emits): `task_created`, `task_updated` (context `{fields, changes:{field:{from,to}}}` since F21; `bulk: true` on bulk edits), `status_changed` (`{from,to}` status ids), `assignee_added`/`assignee_removed` (`{user_id}`), `tag_added`/`tag_removed`, `comment_posted`, `comment_referenced`, `checklist_created`/`checklist_deleted`/`checklist_item_added`/`checklist_item_deleted`/`checklist_item_toggled`/`checklist_item_updated`, `dependency_added`/`dependency_removed`, `sprint_added`/`sprint_removed`/`task_removed`/`sprint_rolled_over`, `task_archived`/`task_unarchived`, `task_reviewed`, `sla_overridden`, `created_from_template`, `custom_field_value_set`/`custom_field_value_cleared`.
 
 ---
 

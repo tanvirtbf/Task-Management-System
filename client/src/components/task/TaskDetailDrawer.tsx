@@ -393,7 +393,14 @@ export const TaskDetailDrawer = ({
 
                         <CommentsSection taskId={task.id} />
 
-                        {isDev && <TaskActivitySection taskId={task.id} />}
+                        {/* Team-access P2: the audit log is for EVERY task —
+                            it was gated behind isDev, so "ke ki change korse"
+                            was invisible on all non-engineering work. */}
+                        <TaskActivitySection
+                            taskId={task.id}
+                            listId={listId}
+                        />
+
                     </div>
 
                     {/* Footer */}

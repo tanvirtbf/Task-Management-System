@@ -314,14 +314,21 @@ router.get(
 );
 
 // ─── GET /api/v1/tasks/:id/activity ───────────────────────────────────────────
-// 🔐 Any workspace member. Newest-first, cursor-paginated activity feed for a
-// task, each row's `actor` hydrated to the full User (null for system events).
+// 🔐 `task.view` (team-access P2 / scan G11: this route carried NO permission
+// gate, so a role stripped of task.view could still read any task's whole
+// history). The gate answers only the VERB question; the OBJECT reach is the
+// service's task resolution, which runs through the scope-filtered TasksRepo
+// WITH the own-escape — the feed is readable exactly where the task itself is
+// (a cross-team assignee keeps their own task's history; an out-of-scope id
+// stays a 404, never an existence oracle). Newest-first, cursor-paginated,
+// each row's `actor` hydrated to the full User (null for system events).
 // `?action=` filters by exact action code; `?cursor=`/`?limit=` paginate by
 // `internal_id`. 404 `task.not_found` if the task is absent or in another
 // workspace. Declared before the catch-all `/:id` (more-specific-first).
 router.get(
     "/:id/activity",
     authenticate,
+    requirePermission("task.view"),
     taskActivityValidator,
     validate,
     (req: Request, res: Response, next: NextFunction) =>

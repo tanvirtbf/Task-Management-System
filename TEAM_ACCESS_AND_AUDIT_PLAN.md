@@ -243,7 +243,22 @@ screen to manage both. **No visibility changes yet.**
 
 ---
 
-## PHASE 2 — The audit log becomes visible (R2.1, part 1)
+## PHASE 2 — The audit log becomes visible (R2.1, part 1) ✅ SHIPPED 2026-08-11
+
+> **Status: DONE.** Server: `GET /tasks/:id/activity` now gated `requirePermission("task.view")`
+> (G11 closed) — object reach was ALREADY the task read's reach (the service resolves through the
+> scope-filtered `TasksRepo.findByIdOrCustomIdInWorkspace`, which carries the own-escape), so the
+> B1 caveat held with zero extra code; proven by `tests/rbac/task-activity-scope.test.ts` (3 tests:
+> space-scoped reach, cross-team-assignee escape, no-key 403). Client: `isDev` gate removed at the
+> drawer — activity on EVERY task; `TaskActivitySection` now renders the stored F21 `{from,to}`
+> diffs as readable rows (status ids → status names via the drawer's cached maps, `user_id` →
+> full names on assign/unassign, priority numbers → labels, dates as YMD, description/sprint
+> value-less by design, deleted refs degrade to "(deleted …)"); ⚠️ the response camelizer renames
+> CONTEXT KEYS (`changes.task_type_id` → `taskTypeId`) — the renderer speaks camelCase on purpose.
+> Verified: activity.test.ts 55/55 (pinned wire + all-four-roles intact), tasks + rbac modules
+> green, vitest 44, both builds; LIVE UI proof on a Marketing task (screenshot): "moved status —
+> In Progress → To Do", "assigned — Mitu Rahman", "updated / due date: 2026-08-11 → 2026-08-15 /
+> priority: High → Urgent". API_DESIGN §13 updated (gate + the real 27-action vocabulary).
 
 **Goal:** open any task, see who created it and every change since, in plain language.
 
