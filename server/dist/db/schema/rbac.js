@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.userRoleGrants = exports.rolePermissions = exports.roles = exports.permissions = void 0;
+exports.spaceVisibilityGrants = exports.userRoleGrants = exports.rolePermissions = exports.roles = exports.permissions = void 0;
 // =============================================================================
 // Dynamic RBAC — permissions, roles, role_permissions, user_roles (4 tables)
 //   Mirrors `database/schema.sql §38-41` 1:1.
@@ -175,4 +175,52 @@ exports.userRoleGrants = (0, mysql_core_1.mysqlTable)("user_roles", {
     // "who is in this space" (P24/P27 membership panel).
     scopeIdx: (0, mysql_core_1.index)("idx_user_roles_scope").on(t.scopeId),
     roleIdx: (0, mysql_core_1.index)("idx_user_roles_role").on(t.roleId),
+}));
+// ─── space_visibility_grants ─ "team A can also SEE team B" (P4) ──────────────
+// Mirrors `database/schema.sql §42` 1:1. Consumed at actor-fold time
+// (PolicyService): a space-scoped `space.view` entry gains the granted
+// targets, so every read follows through the one visibility choke point.
+// Single hop by design; `viewer <> target` is enforced app-side (MySQL 8
+// forbids a CHECK on columns used in cascading FKs).
+exports.spaceVisibilityGrants = (0, mysql_core_1.mysqlTable)("space_visibility_grants", {
+    id: (0, mysql_core_1.varchar)("id", { length: _shared_1.ID_LENGTH }).primaryKey(),
+    workspaceId: (0, mysql_core_1.varchar)("workspace_id", { length: _shared_1.ID_LENGTH })
+        .notNull()
+        .references(() => auth_1.workspaces.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+    }),
+    /** The team that GAINS sight. */
+    viewerSpaceId: (0, mysql_core_1.varchar)("viewer_space_id", { length: _shared_1.ID_LENGTH })
+        .notNull(),
+    /** The team that becomes visible to it. */
+    targetSpaceId: (0, mysql_core_1.varchar)("target_space_id", { length: _shared_1.ID_LENGTH })
+        .notNull(),
+    grantedBy: (0, mysql_core_1.varchar)("granted_by", { length: _shared_1.ID_LENGTH }),
+    createdAt: (0, mysql_core_1.timestamp)("created_at").notNull().defaultNow(),
+}, (t) => ({
+    pairUq: (0, mysql_core_1.uniqueIndex)("uq_svg_pair").on(t.viewerSpaceId, t.targetSpaceId),
+    viewerFk: (0, mysql_core_1.foreignKey)({
+        columns: [t.viewerSpaceId],
+        foreignColumns: [hierarchy_1.spaces.id],
+        name: "fk_svg_viewer",
+    })
+        .onDelete("cascade")
+        .onUpdate("cascade"),
+    targetFk: (0, mysql_core_1.foreignKey)({
+        columns: [t.targetSpaceId],
+        foreignColumns: [hierarchy_1.spaces.id],
+        name: "fk_svg_target",
+    })
+        .onDelete("cascade")
+        .onUpdate("cascade"),
+    grantedByFk: (0, mysql_core_1.foreignKey)({
+        columns: [t.grantedBy],
+        foreignColumns: [auth_1.users.id],
+        name: "fk_svg_granted_by",
+    })
+        .onDelete("set null")
+        .onUpdate("cascade"),
+    workspaceIdx: (0, mysql_core_1.index)("idx_svg_workspace").on(t.workspaceId),
+    targetIdx: (0, mysql_core_1.index)("idx_svg_target").on(t.targetSpaceId),
 }));

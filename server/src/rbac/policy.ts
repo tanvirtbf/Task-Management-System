@@ -1,6 +1,7 @@
 import logger from "../config/logger";
 import { getDb } from "../db/client";
 import { ListsRepo } from "../repositories/ListsRepo";
+import { SpaceVisibilityGrantsRepo } from "../repositories/SpaceVisibilityGrantsRepo";
 import { UserRolesRepo } from "../repositories/UserRolesRepo";
 import { PolicyService } from "../services/PolicyService";
 
@@ -23,6 +24,8 @@ export const getPolicy = (): PolicyService => {
         instance = new PolicyService(
             new UserRolesRepo(db),
             new ListsRepo(db),
+            // Team-access P4: team → team sight, folded into `space.view`.
+            new SpaceVisibilityGrantsRepo(db),
             logger,
         );
     }

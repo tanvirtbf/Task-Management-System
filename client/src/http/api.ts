@@ -371,6 +371,8 @@ export interface TeamEntry {
     };
     head: User | null;
     members: TeamMember[];
+    /** Team-access P4: teams this team has been granted sight of (dormant). */
+    canAlsoSee: { id: string; name: string }[];
 }
 
 export interface TeamDirectory {
@@ -399,6 +401,23 @@ export const teamsApi = {
         spaceId: string | null,
     ): Promise<void> => {
         await api.patch(`/users/${userId}/team`, { spaceId });
+    },
+    /** 🔐 space.members_manage (admin). "Viewer team can also see target." */
+    grantVisibility: async (
+        viewerSpaceId: string,
+        targetSpaceId: string,
+    ): Promise<void> => {
+        await api.post(`/spaces/${viewerSpaceId}/visibility-grants`, {
+            targetSpaceId,
+        });
+    },
+    revokeVisibility: async (
+        viewerSpaceId: string,
+        targetSpaceId: string,
+    ): Promise<void> => {
+        await api.delete(
+            `/spaces/${viewerSpaceId}/visibility-grants/${targetSpaceId}`,
+        );
     },
 };
 

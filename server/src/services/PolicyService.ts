@@ -165,6 +165,18 @@ interface CacheEntry {
 /** Plenty for a workspace of this size; the bound only guards against leaks. */
 const MAX_CACHE_ENTRIES = 5000;
 
+/**
+ * Team-access P4: the one read the fold needs from
+ * `space_visibility_grants`. An interface (not the repo class) so unit tests
+ * stub it without a database; `SpaceVisibilityGrantsRepo` satisfies it.
+ */
+export interface VisibilityGrantsSource {
+    targetsForViewers(
+        viewerSpaceIds: readonly string[],
+        workspaceId: string,
+    ): Promise<string[]>;
+}
+
 export class PolicyService {
     private cache = new Map<string, CacheEntry>();
 
@@ -172,6 +184,12 @@ export class PolicyService {
         private userRoles: UserRolesRepo,
         /** Supplies the `listIds` half of a visibility scope — `ListsRepo`. */
         private listScope: ListScopeSource,
+        /**
+         * Team-access P4: team → team sight. Optional so pre-P4 direct
+         * constructions keep working; absent = no expansion (identical to an
+         * empty grants table).
+         */
+        private visibilityGrants?: VisibilityGrantsSource,
         private logger?: Logger,
     ) {}
 
@@ -209,6 +227,8 @@ export class PolicyService {
             userId,
             workspaceId,
         );
+        const perms = foldGrants(rows);
+        await this.applyVisibilityGrants(perms, workspaceId);
         const actor: ActorPermissions = {
             kind: "user",
             userId,
@@ -216,7 +236,7 @@ export class PolicyService {
             isOwner: ctx.legacyRole === "owner",
             legacyRole: ctx.legacyRole,
             version: ctx.permissionsVersion,
-            perms: foldGrants(rows),
+            perms,
         };
 
         if (this.cache.size >= MAX_CACHE_ENTRIES) {
@@ -232,6 +252,44 @@ export class PolicyService {
             permissions: actor.perms.size,
         });
         return actor;
+    }
+
+    /**
+     * Team-access P4 — team → team SIGHT, applied at the fold so every
+     * downstream consumer (visibleSpaceIds → the repo filters, and
+     * `can("space.view", {spaceId})` object checks) follows through the one
+     * choke point:
+     *
+     *   - Only a SCOPED `space.view` entry is expanded; `all` needs nothing
+     *     and pays nothing — which is exactly what keeps this DORMANT while
+     *     every seeded role still sees everything.
+     *   - The viewer set is the entry's own spaceIds (the person's teams, by
+     *     the D-1/D-2 membership model) BEFORE expansion — grants are a
+     *     single hop, never transitive.
+     *   - Only `space.view` widens. Write keys (`task.edit`, …) are
+     *     untouched: sight is not touch.
+     *   - Cached with the fold by `(userId, permissions_version)` —
+     *     grant/revoke bumps the version, so a change bites on the very next
+     *     request.
+     */
+    private async applyVisibilityGrants(
+        perms: Map<string, PermissionEntry>,
+        workspaceId: string,
+    ): Promise<void> {
+        if (!this.visibilityGrants) return;
+        const view = perms.get("space.view");
+        if (!view || view.all || view.spaceIds.size === 0) return;
+        const targets = await this.visibilityGrants.targetsForViewers(
+            [...view.spaceIds],
+            workspaceId,
+        );
+        if (targets.length === 0) return;
+        perms.set("space.view", {
+            all: view.all,
+            spaceIds: new Set([...view.spaceIds, ...targets]),
+            own: view.own,
+            ownSpaceIds: view.ownSpaceIds,
+        });
     }
 
     // ── the decision (P7) ────────────────────────────────────────────────────

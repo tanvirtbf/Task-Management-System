@@ -2123,6 +2123,14 @@ Remove from the team: EVERY role the person holds scoped to that space; a home t
 ### Invite change
 `POST /api/v1/users/invite` accepts optional `space_id: string | null` — the invited row gets that home team + a Member space grant inside the invite transaction (422 `team.space_invalid` if unknown/archived). The client form treats the team as REQUIRED.
 
+### Team → team visibility grants (P4, upgrade `018` — DORMANT until the visibility switch)
+**"Supply Chain can also SEE Software."** Table `space_visibility_grants` (one row per viewer→target pair; single hop, never transitive). Consumed at the PolicyService actor FOLD: a space-scoped `space.view` entry gains the granted targets, so spaces/lists/tasks/search/home all follow through the one visibility choke point — **sight only; write keys are untouched**. Cached with the fold by `permissions_version`; grant/revoke bump it, so changes bite on the next request. While every role's `space.view` is `all` (today), grants change nothing for anybody.
+
+- **POST `/api/v1/spaces/:id/visibility-grants`** — 🔐 `space.members_manage` at the route (admin/owner ONLY — deliberately no head branch: a head must not self-expand their team's sight). Body `{ "target_space_id": "…" }` → **204**, idempotent. Errors: `space.not_found` 404 (viewer), `space.archived` 409 (viewer archived), `team.grant_invalid` 422 (self-grant), `team.space_invalid` 422 (unknown/archived target).
+- **DELETE `/api/v1/spaces/:id/visibility-grants/:targetId`** — same gate. Idempotent **204**.
+- `GET /api/v1/teams` entries now carry `can_also_see: [{id, name}]` (archived targets filtered from display).
+- `workspace_activity` actions: `visibility_granted` / `visibility_revoked` (entity `space`, context `{target_space_id}`).
+
 ### Activity & error codes added
 `workspace_activity` actions: `member_added` / `member_removed` (entity `space`, context `{user_id}`) and `team_changed` (entity `user`, context `{space_id}`); the `invited` context gains `space_id`. New codes: `team.head_locked` 409, `team.space_invalid` 422, `team.member_invalid` 422.
 

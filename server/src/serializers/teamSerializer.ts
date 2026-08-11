@@ -32,6 +32,8 @@ export interface WireTeam {
     };
     head: WireUser | null;
     members: WireTeamMember[];
+    /** Team-access P4: teams this team has been granted sight of. */
+    can_also_see: { id: string; name: string }[];
 }
 
 export interface WireTeamDirectory {
@@ -58,6 +60,7 @@ const toWireTeam = (t: TeamEntry): WireTeam => ({
     },
     head: t.head ? toWireUser(t.head) : null,
     members: t.members.map(toWireTeamMember),
+    can_also_see: t.canAlsoSee,
 });
 
 export const toWireTeamDirectory = (d: TeamDirectory): WireTeamDirectory => ({

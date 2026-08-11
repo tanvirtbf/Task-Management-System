@@ -7,6 +7,7 @@ exports.resetPolicy = exports.getPolicy = void 0;
 const logger_1 = __importDefault(require("../config/logger"));
 const client_1 = require("../db/client");
 const ListsRepo_1 = require("../repositories/ListsRepo");
+const SpaceVisibilityGrantsRepo_1 = require("../repositories/SpaceVisibilityGrantsRepo");
 const UserRolesRepo_1 = require("../repositories/UserRolesRepo");
 const PolicyService_1 = require("../services/PolicyService");
 /**
@@ -24,7 +25,9 @@ let instance = null;
 const getPolicy = () => {
     if (!instance) {
         const db = (0, client_1.getDb)();
-        instance = new PolicyService_1.PolicyService(new UserRolesRepo_1.UserRolesRepo(db), new ListsRepo_1.ListsRepo(db), logger_1.default);
+        instance = new PolicyService_1.PolicyService(new UserRolesRepo_1.UserRolesRepo(db), new ListsRepo_1.ListsRepo(db), 
+        // Team-access P4: team → team sight, folded into `space.view`.
+        new SpaceVisibilityGrantsRepo_1.SpaceVisibilityGrantsRepo(db), logger_1.default);
     }
     return instance;
 };

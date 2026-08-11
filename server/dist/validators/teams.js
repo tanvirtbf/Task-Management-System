@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.setHomeTeamValidator = exports.removeTeamMemberValidator = exports.addTeamMemberValidator = void 0;
+exports.setHomeTeamValidator = exports.revokeVisibilityValidator = exports.grantVisibilityValidator = exports.removeTeamMemberValidator = exports.addTeamMemberValidator = void 0;
 const express_validator_1 = require("express-validator");
 const _shared_1 = require("../db/schema/_shared");
 /**
@@ -48,6 +48,52 @@ exports.removeTeamMemberValidator = (0, express_validator_1.checkSchema)({
         isLength: {
             options: { max: _shared_1.ID_LENGTH },
             errorMessage: `userId must be at most ${_shared_1.ID_LENGTH} characters`,
+        },
+    },
+});
+/** `POST /api/v1/spaces/:id/visibility-grants` — body `{ target_space_id }`. */
+exports.grantVisibilityValidator = (0, express_validator_1.checkSchema)({
+    id: {
+        in: ["params"],
+        trim: true,
+        notEmpty: { errorMessage: "id must not be empty" },
+        isLength: {
+            options: { max: _shared_1.ID_LENGTH },
+            errorMessage: `id must be at most ${_shared_1.ID_LENGTH} characters`,
+        },
+    },
+    target_space_id: {
+        in: ["body"],
+        isString: {
+            errorMessage: "target_space_id must be a string",
+            bail: true,
+        },
+        trim: true,
+        notEmpty: { errorMessage: "target_space_id is required" },
+        isLength: {
+            options: { max: _shared_1.ID_LENGTH },
+            errorMessage: `target_space_id must be at most ${_shared_1.ID_LENGTH} characters`,
+        },
+    },
+});
+/** `DELETE /api/v1/spaces/:id/visibility-grants/:targetId`. */
+exports.revokeVisibilityValidator = (0, express_validator_1.checkSchema)({
+    id: {
+        in: ["params"],
+        trim: true,
+        notEmpty: { errorMessage: "id must not be empty" },
+        isLength: {
+            options: { max: _shared_1.ID_LENGTH },
+            errorMessage: `id must be at most ${_shared_1.ID_LENGTH} characters`,
+        },
+    },
+    targetId: {
+        in: ["params"],
+        trim: true,
+        notEmpty: { errorMessage: "targetId must not be empty" },
+        isLength: {
+            options: { max: _shared_1.ID_LENGTH },
+            errorMessage: `targetId must be at most ${_shared_1.ID_LENGTH} characters`,
         },
     },
 });

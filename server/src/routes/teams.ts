@@ -11,7 +11,9 @@ import { TeamsController } from "../controllers/TeamsController";
 import { teamMembership } from "../services/TeamMembershipService";
 import {
     addTeamMemberValidator,
+    grantVisibilityValidator,
     removeTeamMemberValidator,
+    revokeVisibilityValidator,
     setHomeTeamValidator,
 } from "../validators/teams";
 import type { AuthRequest } from "../types";
@@ -62,6 +64,33 @@ router.delete(
     validate,
     (req: Request, res: Response, next: NextFunction) =>
         controller.removeMember(as(req), res, next),
+);
+
+// ─── POST /api/v1/spaces/:id/visibility-grants ───────────────────────────────
+// 🔐 space.members_manage at the ROUTE (admin/owner only) — deliberately NO
+// service-level head branch, unlike the member routes: a head must not be able
+// to self-expand what their own team can see. Body `{target_space_id}`.
+// Idempotent 204. DORMANT until the P6 visibility switch.
+router.post(
+    "/spaces/:id/visibility-grants",
+    authenticate,
+    requirePermission("space.members_manage"),
+    grantVisibilityValidator,
+    validate,
+    (req: Request, res: Response, next: NextFunction) =>
+        controller.grantVisibility(as(req), res, next),
+);
+
+// ─── DELETE /api/v1/spaces/:id/visibility-grants/:targetId ───────────────────
+// Same gate. Idempotent 204.
+router.delete(
+    "/spaces/:id/visibility-grants/:targetId",
+    authenticate,
+    requirePermission("space.members_manage"),
+    revokeVisibilityValidator,
+    validate,
+    (req: Request, res: Response, next: NextFunction) =>
+        controller.revokeVisibility(as(req), res, next),
 );
 
 // ─── PATCH /api/v1/users/:id/team ────────────────────────────────────────────

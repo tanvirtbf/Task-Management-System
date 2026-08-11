@@ -1501,6 +1501,43 @@ CREATE TABLE user_roles (
 
 
 -- =============================================================================
+-- 42. space_visibility_grants  (team-access P4, upgrades/018)
+-- "Team A can also SEE team B." One row per (viewer, target) pair. Consumed at
+-- actor-fold time (PolicyService): a space-scoped `space.view` entry gains the
+-- granted targets, so spaces/lists/tasks/search/home all follow through the
+-- one visibility choke point. DORMANT while every role's `space.view` is
+-- `all` (today) — the machinery ships ahead of the P6 switch.
+-- Single hop by design: a grant to A does NOT inherit A's own grants.
+-- `viewer <> target` is enforced app-side: MySQL 8 forbids a CHECK on columns
+-- used in cascading FKs (the same reason task_dependencies uses triggers).
+-- =============================================================================
+CREATE TABLE space_visibility_grants (
+    id              VARCHAR(64) NOT NULL,
+    workspace_id    VARCHAR(64) NOT NULL,
+    -- The team that GAINS sight.
+    viewer_space_id VARCHAR(64) NOT NULL,
+    -- The team that becomes visible to it.
+    target_space_id VARCHAR(64) NOT NULL,
+    granted_by      VARCHAR(64) NULL,
+    created_at      TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    -- Also serves viewer-prefix lookups (targetsForViewers).
+    UNIQUE KEY uq_svg_pair (viewer_space_id, target_space_id),
+    CONSTRAINT fk_svg_ws FOREIGN KEY (workspace_id)
+        REFERENCES workspaces(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_svg_viewer FOREIGN KEY (viewer_space_id)
+        REFERENCES spaces(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_svg_target FOREIGN KEY (target_space_id)
+        REFERENCES spaces(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_svg_granted_by FOREIGN KEY (granted_by)
+        REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,
+    INDEX idx_svg_workspace (workspace_id),
+    INDEX idx_svg_target (target_space_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
+
+
+-- =============================================================================
 -- OPTIONAL: counter-maintenance triggers
 -- These keep `tasks.comments_count`, `tasks.attachments_count`,
 -- `tasks.subtasks_count`, `tasks.subtasks_completed` and `forms.submission_count`

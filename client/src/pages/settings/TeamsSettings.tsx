@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Select, Tag, App as AntApp, Modal, Empty, Spin } from "antd";
-import { Crown, Home, UserPlus, X } from "lucide-react";
+import { Crown, Eye, Home, UserPlus, X } from "lucide-react";
 import {
     teamsApi,
     spacesApi,
@@ -91,6 +91,24 @@ const TeamsSettings = () => {
         },
         onError,
     });
+    const grantVis = useMutation({
+        mutationFn: (v: { viewerId: string; targetId: string }) =>
+            teamsApi.grantVisibility(v.viewerId, v.targetId),
+        onSuccess: () => {
+            invalidate();
+            message.success("Visibility granted");
+        },
+        onError,
+    });
+    const revokeVis = useMutation({
+        mutationFn: (v: { viewerId: string; targetId: string }) =>
+            teamsApi.revokeVisibility(v.viewerId, v.targetId),
+        onSuccess: () => {
+            invalidate();
+            message.success("Visibility removed");
+        },
+        onError,
+    });
 
     const teams = data?.teams ?? [];
     const unassigned = data?.unassigned ?? [];
@@ -123,9 +141,11 @@ const TeamsSettings = () => {
                 <TeamCard
                     key={team.space.id}
                     team={team}
+                    allTeams={teams}
                     allUsers={users}
                     canManage={canManage(team)}
                     canSetHead={canSetHead}
+                    canManageVisibility={holds("space.members_manage")}
                     onAdd={(userId) =>
                         addMember.mutate({ spaceId: team.space.id, userId })
                     }
@@ -145,6 +165,12 @@ const TeamsSettings = () => {
                     }
                     onSetHead={(userId) =>
                         setHead.mutate({ spaceId: team.space.id, userId })
+                    }
+                    onGrantVisibility={(targetId) =>
+                        grantVis.mutate({ viewerId: team.space.id, targetId })
+                    }
+                    onRevokeVisibility={(targetId) =>
+                        revokeVis.mutate({ viewerId: team.space.id, targetId })
                     }
                 />
             ))}
@@ -203,22 +229,35 @@ const TeamsSettings = () => {
 
 const TeamCard = ({
     team,
+    allTeams,
     allUsers,
     canManage,
     canSetHead,
+    canManageVisibility,
     onAdd,
     onRemove,
     onSetHead,
+    onGrantVisibility,
+    onRevokeVisibility,
 }: {
     team: TeamEntry;
+    allTeams: TeamEntry[];
     allUsers: User[];
     canManage: boolean;
     canSetHead: boolean;
+    canManageVisibility: boolean;
     onAdd: (userId: string) => void;
     onRemove: (member: TeamMember) => void;
     onSetHead: (userId: string | null) => void;
+    onGrantVisibility: (targetSpaceId: string) => void;
+    onRevokeVisibility: (targetSpaceId: string) => void;
 }) => {
     const [adding, setAdding] = useState(false);
+    const [grantingSight, setGrantingSight] = useState(false);
+    const seenIds = new Set(team.canAlsoSee.map((s) => s.id));
+    const grantable = allTeams.filter(
+        (t) => t.space.id !== team.space.id && !seenIds.has(t.space.id),
+    );
     const memberIds = new Set(team.members.map((m) => m.user.id));
     const addable = allUsers.filter(
         (u) => !memberIds.has(u.id) && u.status !== "deactivated",
@@ -302,6 +341,81 @@ const TeamCard = ({
                     </span>
                 )}
             </div>
+
+            {(team.canAlsoSee.length > 0 || canManageVisibility) && (
+                <div
+                    style={{
+                        display: "flex",
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                        gap: 6,
+                        padding: "8px 0",
+                        borderBottom: `1px solid ${tokens.colors.borderSubtle}`,
+                        fontSize: 12,
+                    }}
+                >
+                    <Eye
+                        size={13}
+                        strokeWidth={1.75}
+                        color={tokens.colors.textMuted}
+                    />
+                    <span style={{ color: tokens.colors.textMuted }}>
+                        Can also see:
+                    </span>
+                    {team.canAlsoSee.length === 0 && (
+                        <span style={{ color: tokens.colors.textMuted }}>
+                            only itself
+                        </span>
+                    )}
+                    {team.canAlsoSee.map((s) => (
+                        <Tag
+                            key={s.id}
+                            closable={canManageVisibility}
+                            onClose={(e) => {
+                                e.preventDefault();
+                                onRevokeVisibility(s.id);
+                            }}
+                            style={{ margin: 0 }}
+                        >
+                            {s.name}
+                        </Tag>
+                    ))}
+                    {canManageVisibility &&
+                        (grantingSight ? (
+                            <Select
+                                autoFocus
+                                size="small"
+                                style={{ width: 200 }}
+                                placeholder="Pick a team..."
+                                options={grantable.map((t) => ({
+                                    value: t.space.id,
+                                    label: t.space.name,
+                                }))}
+                                onChange={(targetId: string) => {
+                                    onGrantVisibility(targetId);
+                                    setGrantingSight(false);
+                                }}
+                                onBlur={() => setGrantingSight(false)}
+                                showSearch
+                                optionFilterProp="label"
+                                open
+                            />
+                        ) : (
+                            <Button
+                                size="small"
+                                type="text"
+                                style={{
+                                    fontSize: 12,
+                                    color: tokens.colors.primary,
+                                }}
+                                onClick={() => setGrantingSight(true)}
+                                disabled={grantable.length === 0}
+                            >
+                                + Add
+                            </Button>
+                        ))}
+                </div>
+            )}
 
             {team.members.map((m) => (
                 <div

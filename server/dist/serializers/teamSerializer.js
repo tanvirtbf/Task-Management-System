@@ -20,6 +20,7 @@ const toWireTeam = (t) => ({
     },
     head: t.head ? (0, userSerializer_1.toWireUser)(t.head) : null,
     members: t.members.map(toWireTeamMember),
+    can_also_see: t.canAlsoSee,
 });
 const toWireTeamDirectory = (d) => ({
     data: d.teams.map(toWireTeam),

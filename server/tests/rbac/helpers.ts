@@ -4,6 +4,7 @@ import * as schema from "../../src/db/schema";
 import { ListsRepo } from "../../src/repositories/ListsRepo";
 import { PermissionsRepo } from "../../src/repositories/PermissionsRepo";
 import { RolesRepo } from "../../src/repositories/RolesRepo";
+import { SpaceVisibilityGrantsRepo } from "../../src/repositories/SpaceVisibilityGrantsRepo";
 import {
     UserRolesRepo,
     type EffectiveGrantRow,
@@ -70,7 +71,11 @@ export const rbacRepos = () => {
  */
 export const policyService = (): PolicyService => {
     const db = getDb();
-    return new PolicyService(new UserRolesRepo(db), new ListsRepo(db));
+    return new PolicyService(
+        new UserRolesRepo(db),
+        new ListsRepo(db),
+        new SpaceVisibilityGrantsRepo(db),
+    );
 };
 
 export interface RbacWorkspace {

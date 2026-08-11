@@ -66,6 +66,47 @@ class TeamsController {
             next(err);
         }
     }
+    /** POST /api/v1/spaces/:id/visibility-grants — team A can also see B. */
+    async grantVisibility(req, res, next) {
+        try {
+            const body = req.body;
+            await this.service.grantVisibility({
+                workspaceId: req.auth.workspaceId,
+                viewerSpaceId: req.params.id,
+                targetSpaceId: body.target_space_id,
+                actorId: req.auth.sub,
+            });
+            this.logger.info("teams.grant_visibility.ok", {
+                requestId: req.requestId,
+                viewerSpaceId: req.params.id,
+                targetSpaceId: body.target_space_id,
+            });
+            res.status(204).send();
+        }
+        catch (err) {
+            next(err);
+        }
+    }
+    /** DELETE /api/v1/spaces/:id/visibility-grants/:targetId. */
+    async revokeVisibility(req, res, next) {
+        try {
+            await this.service.revokeVisibility({
+                workspaceId: req.auth.workspaceId,
+                viewerSpaceId: req.params.id,
+                targetSpaceId: req.params.targetId,
+                actorId: req.auth.sub,
+            });
+            this.logger.info("teams.revoke_visibility.ok", {
+                requestId: req.requestId,
+                viewerSpaceId: req.params.id,
+                targetSpaceId: req.params.targetId,
+            });
+            res.status(204).send();
+        }
+        catch (err) {
+            next(err);
+        }
+    }
     /** PATCH /api/v1/users/:id/team — set/clear a person's home team. */
     async setHomeTeam(req, res, next) {
         try {

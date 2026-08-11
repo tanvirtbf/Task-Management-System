@@ -52,6 +52,54 @@ export const removeTeamMemberValidator = checkSchema({
     },
 });
 
+/** `POST /api/v1/spaces/:id/visibility-grants` — body `{ target_space_id }`. */
+export const grantVisibilityValidator = checkSchema({
+    id: {
+        in: ["params"],
+        trim: true,
+        notEmpty: { errorMessage: "id must not be empty" },
+        isLength: {
+            options: { max: ID_LENGTH },
+            errorMessage: `id must be at most ${ID_LENGTH} characters`,
+        },
+    },
+    target_space_id: {
+        in: ["body"],
+        isString: {
+            errorMessage: "target_space_id must be a string",
+            bail: true,
+        },
+        trim: true,
+        notEmpty: { errorMessage: "target_space_id is required" },
+        isLength: {
+            options: { max: ID_LENGTH },
+            errorMessage: `target_space_id must be at most ${ID_LENGTH} characters`,
+        },
+    },
+});
+
+/** `DELETE /api/v1/spaces/:id/visibility-grants/:targetId`. */
+export const revokeVisibilityValidator = checkSchema({
+    id: {
+        in: ["params"],
+        trim: true,
+        notEmpty: { errorMessage: "id must not be empty" },
+        isLength: {
+            options: { max: ID_LENGTH },
+            errorMessage: `id must be at most ${ID_LENGTH} characters`,
+        },
+    },
+    targetId: {
+        in: ["params"],
+        trim: true,
+        notEmpty: { errorMessage: "targetId must not be empty" },
+        isLength: {
+            options: { max: ID_LENGTH },
+            errorMessage: `targetId must be at most ${ID_LENGTH} characters`,
+        },
+    },
+});
+
 /**
  * `PATCH /api/v1/users/:id/team` — body `{ space_id }`, where `null` clears
  * the home team. The key must be PRESENT: an empty body silently clearing

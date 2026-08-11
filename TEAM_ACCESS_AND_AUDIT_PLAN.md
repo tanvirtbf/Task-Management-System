@@ -329,7 +329,25 @@ edit a field → the new entry appears without a reload.
 
 ---
 
-## PHASE 4 — Team → team visibility grants (built, dormant)
+## PHASE 4 — Team → team visibility grants (built, dormant) ✅ SHIPPED 2026-08-11
+
+> **Status: DONE.** Upgrade `018_space_visibility_grants.sql` (dev+qa; fresh `db:setup` = **44
+> tables**/5/9). One deliberate improvement over the draft below: the expansion lives at the
+> **PolicyService actor FOLD**, not inside `visibleSpaceIds()` — the fold is where the `space.view`
+> entry is BUILT, so expanding it there makes `visibleSpaceIds` (all repo filters) **and**
+> `can("space.view", {spaceId})` object checks agree for free, cached by `(userId,
+> permissions_version)` with zero per-request cost; grant/revoke bump the version + clear the
+> cache, so changes bite on the next request. Single hop (viewer set = the entry's own pre-expansion
+> spaceIds), sight-only (write keys untouched), `all` entries skip the query entirely (the dormancy
+> guarantee). Endpoints: `POST/DELETE /spaces/:id/visibility-grants[/:targetId]` — route-gated
+> `space.members_manage` (admin/owner ONLY; deliberately NO head branch — a head must not
+> self-expand their team's sight); viewer≠target 422 (`team.grant_invalid`), archived/unknown
+> target 422, idempotent both ways, `workspace_activity` visibility_granted/revoked. `GET /teams`
+> gained `can_also_see`; Teams page shows "👁 Can also see: [chips] + Add" (admin). Tests: 6 new in
+> `tests/rbac/space-visibility-grants.test.ts` — invisible→grant→visible→revoke→invisible through
+> the NORMAL endpoints, sight≠touch (edit still 403), single-hop/no-bystander-effect, head refused,
+> validation + idempotency, directory. Full rbac/spaces/tasks regressions green (dormancy proof).
+> MySQL note recorded in-schema: no CHECK on cascading-FK columns → viewer≠target is app-side.
 
 **Goal:** the mechanism for *"Supply Chain can also see Software"* exists and is manageable — but
 changes nothing yet, because visibility is still `all`.

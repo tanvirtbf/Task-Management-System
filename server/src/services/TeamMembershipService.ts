@@ -10,6 +10,7 @@ import { getPolicy } from "../rbac/policy";
 import { liveLegacyRole } from "../rbac/scopeGuard";
 import type { PolicyService } from "./PolicyService";
 import { RolesRepo } from "../repositories/RolesRepo";
+import { SpaceVisibilityGrantsRepo } from "../repositories/SpaceVisibilityGrantsRepo";
 import {
     UserRolesRepo,
     type AssignmentRecord,
@@ -63,6 +64,11 @@ export interface TeamEntry {
     space: SpaceRecord;
     head: UserListRow | null;
     members: TeamMemberEntry[];
+    /**
+     * Team-access P4: teams THIS team has been granted sight of ("Supply
+     * Chain can also see Software"). Dormant until the P6 visibility switch.
+     */
+    canAlsoSee: { id: string; name: string }[];
 }
 
 export interface TeamDirectory {
@@ -79,6 +85,8 @@ export class TeamMembershipService {
         private users: UsersRepo,
         private spaces: SpacesRepo,
         private activity: WorkspaceActivityRepo,
+        /** Team-access P4: team → team sight rows. */
+        private grants: SpaceVisibilityGrantsRepo,
         private policy: PolicyService,
         private logger: Logger,
     ) {}
@@ -87,13 +95,18 @@ export class TeamMembershipService {
 
     /** The org chart: every (non-archived) team, its head, its people. */
     async directory(workspaceId: string): Promise<TeamDirectory> {
-        const [spaceRows, assignmentRows, usersWithPrimary] = await Promise.all([
-            this.spaces.listByWorkspace(workspaceId, { includeArchived: false }),
-            this.assignments.listSpaceAssignments(workspaceId),
-            this.users.listWithPrimaryByWorkspace(workspaceId),
-        ]);
+        const [spaceRows, assignmentRows, usersWithPrimary, grantRows] =
+            await Promise.all([
+                this.spaces.listByWorkspace(workspaceId, {
+                    includeArchived: false,
+                }),
+                this.assignments.listSpaceAssignments(workspaceId),
+                this.users.listWithPrimaryByWorkspace(workspaceId),
+                this.grants.listByWorkspace(workspaceId),
+            ]);
 
         const usersById = new Map(usersWithPrimary.map((u) => [u.id, u]));
+        const spaceById = new Map(spaceRows.map((s) => [s.id, s]));
         const bySpace = new Map<string, AssignmentRecord[]>();
         for (const a of assignmentRows) {
             if (!a.scopeId) continue;
@@ -126,7 +139,18 @@ export class TeamMembershipService {
             const head = space.headUserId
                 ? (usersById.get(space.headUserId) ?? null)
                 : null;
-            return { space, head, members };
+            // P4: sight grants, hydrated to live space names. A grant whose
+            // target has since been archived is real but moot (its lists are
+            // archived too) — filtered from display, kept in the table.
+            const canAlsoSee = grantRows
+                .filter((g) => g.viewerSpaceId === space.id)
+                .flatMap((g) => {
+                    const target = spaceById.get(g.targetSpaceId);
+                    return target
+                        ? [{ id: target.id, name: target.name }]
+                        : [];
+                });
+            return { space, head, members, canAlsoSee };
         });
 
         const unassigned = usersWithPrimary.filter(
@@ -498,6 +522,138 @@ export class TeamMembershipService {
         if (added) this.policy.clearCache();
     }
 
+    // ─── team → team sight (P4) ──────────────────────────────────────────────
+
+    /**
+     * Grant team `viewerSpaceId` sight of team `targetSpaceId`. 🔐 the route
+     * gates on `space.members_manage` (admin/owner) — deliberately NO head
+     * branch here, unlike the roster methods: a head must not be able to
+     * self-expand what their own team can see. Idempotent. Dormant while
+     * `space.view` is `all` everywhere; once teams are scoped (plan P6), the
+     * fold picks the row up on the very next request via the version bump.
+     */
+    async grantVisibility(input: {
+        workspaceId: string;
+        viewerSpaceId: string;
+        targetSpaceId: string;
+        actorId: string;
+    }): Promise<void> {
+        const viewer = await this.requireSpace(
+            input.viewerSpaceId,
+            input.workspaceId,
+        );
+        if (viewer.archivedAt) {
+            throw AppError.conflict(
+                "space.archived",
+                "This team is archived — unarchive it before changing what it sees",
+            );
+        }
+        if (input.viewerSpaceId === input.targetSpaceId) {
+            throw AppError.unprocessable(
+                "team.grant_invalid",
+                "A team always sees itself — pick a different team",
+                [{ field: "target_space_id", issue: "same as the viewer" }],
+            );
+        }
+        // Body input → 422 (mirrors team.space_invalid), never a 404 oracle.
+        const target = await this.spaces.findByIdInWorkspace(
+            input.targetSpaceId,
+            input.workspaceId,
+        );
+        if (!target || target.archivedAt) {
+            throw AppError.unprocessable(
+                "team.space_invalid",
+                "target_space_id must be an existing, non-archived space",
+                [
+                    {
+                        field: "target_space_id",
+                        issue: "unknown or archived space",
+                    },
+                ],
+            );
+        }
+
+        let added = false;
+        await this.db.transaction(async (tx) => {
+            added = await this.grants.grant(
+                {
+                    workspaceId: input.workspaceId,
+                    viewerSpaceId: input.viewerSpaceId,
+                    targetSpaceId: input.targetSpaceId,
+                    grantedBy: input.actorId,
+                },
+                tx,
+            );
+            if (!added) return; // already granted — idempotent, no audit row
+            await this.activity.record(
+                {
+                    workspaceId: input.workspaceId,
+                    actorId: input.actorId,
+                    entityType: "space",
+                    entityId: input.viewerSpaceId,
+                    action: "visibility_granted",
+                    context: { target_space_id: input.targetSpaceId },
+                },
+                tx,
+            );
+            // The fold caches grants with the permission set — invalidate.
+            await this.roles.bumpPermissionsVersion(input.workspaceId, tx);
+        });
+        if (added) {
+            this.policy.clearCache();
+            this.logger.info("teams.visibility_granted", {
+                workspaceId: input.workspaceId,
+                viewerSpaceId: input.viewerSpaceId,
+                targetSpaceId: input.targetSpaceId,
+                actorId: input.actorId,
+            });
+        }
+    }
+
+    /** Revoke sight. Idempotent 204 — revoking a grant that never existed is a no-op. */
+    async revokeVisibility(input: {
+        workspaceId: string;
+        viewerSpaceId: string;
+        targetSpaceId: string;
+        actorId: string;
+    }): Promise<void> {
+        await this.requireSpace(input.viewerSpaceId, input.workspaceId);
+
+        let removed = false;
+        await this.db.transaction(async (tx) => {
+            removed = await this.grants.revoke(
+                {
+                    workspaceId: input.workspaceId,
+                    viewerSpaceId: input.viewerSpaceId,
+                    targetSpaceId: input.targetSpaceId,
+                },
+                tx,
+            );
+            if (!removed) return;
+            await this.activity.record(
+                {
+                    workspaceId: input.workspaceId,
+                    actorId: input.actorId,
+                    entityType: "space",
+                    entityId: input.viewerSpaceId,
+                    action: "visibility_revoked",
+                    context: { target_space_id: input.targetSpaceId },
+                },
+                tx,
+            );
+            await this.roles.bumpPermissionsVersion(input.workspaceId, tx);
+        });
+        if (removed) {
+            this.policy.clearCache();
+            this.logger.info("teams.visibility_revoked", {
+                workspaceId: input.workspaceId,
+                viewerSpaceId: input.viewerSpaceId,
+                targetSpaceId: input.targetSpaceId,
+                actorId: input.actorId,
+            });
+        }
+    }
+
     // ─── guards ──────────────────────────────────────────────────────────────
 
     private async requireSpace(
@@ -554,6 +710,7 @@ export const teamMembership = (): TeamMembershipService => {
             new UsersRepo(db),
             new SpacesRepo(db),
             new WorkspaceActivityRepo(db),
+            new SpaceVisibilityGrantsRepo(db),
             getPolicy(),
             logger,
         );

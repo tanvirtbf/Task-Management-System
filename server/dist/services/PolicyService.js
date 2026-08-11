@@ -87,13 +87,21 @@ const MAX_CACHE_ENTRIES = 5000;
 class PolicyService {
     userRoles;
     listScope;
+    visibilityGrants;
     logger;
     cache = new Map();
     constructor(userRoles, 
     /** Supplies the `listIds` half of a visibility scope — `ListsRepo`. */
-    listScope, logger) {
+    listScope, 
+    /**
+     * Team-access P4: team → team sight. Optional so pre-P4 direct
+     * constructions keep working; absent = no expansion (identical to an
+     * empty grants table).
+     */
+    visibilityGrants, logger) {
         this.userRoles = userRoles;
         this.listScope = listScope;
+        this.visibilityGrants = visibilityGrants;
         this.logger = logger;
     }
     /**
@@ -123,6 +131,8 @@ class PolicyService {
         // endpoint, RBAC-gated or not), so it belongs in `authenticate`, not
         // here, and it is flagged as a known gap rather than smuggled in.
         const rows = await this.userRoles.listEffectiveGrants(userId, workspaceId);
+        const perms = (0, exports.foldGrants)(rows);
+        await this.applyVisibilityGrants(perms, workspaceId);
         const actor = {
             kind: "user",
             userId,
@@ -130,7 +140,7 @@ class PolicyService {
             isOwner: ctx.legacyRole === "owner",
             legacyRole: ctx.legacyRole,
             version: ctx.permissionsVersion,
-            perms: (0, exports.foldGrants)(rows),
+            perms,
         };
         if (this.cache.size >= MAX_CACHE_ENTRIES) {
             // Cheap FIFO eviction — insertion order is Map's iteration order.
@@ -146,6 +156,40 @@ class PolicyService {
             permissions: actor.perms.size,
         });
         return actor;
+    }
+    /**
+     * Team-access P4 — team → team SIGHT, applied at the fold so every
+     * downstream consumer (visibleSpaceIds → the repo filters, and
+     * `can("space.view", {spaceId})` object checks) follows through the one
+     * choke point:
+     *
+     *   - Only a SCOPED `space.view` entry is expanded; `all` needs nothing
+     *     and pays nothing — which is exactly what keeps this DORMANT while
+     *     every seeded role still sees everything.
+     *   - The viewer set is the entry's own spaceIds (the person's teams, by
+     *     the D-1/D-2 membership model) BEFORE expansion — grants are a
+     *     single hop, never transitive.
+     *   - Only `space.view` widens. Write keys (`task.edit`, …) are
+     *     untouched: sight is not touch.
+     *   - Cached with the fold by `(userId, permissions_version)` —
+     *     grant/revoke bumps the version, so a change bites on the very next
+     *     request.
+     */
+    async applyVisibilityGrants(perms, workspaceId) {
+        if (!this.visibilityGrants)
+            return;
+        const view = perms.get("space.view");
+        if (!view || view.all || view.spaceIds.size === 0)
+            return;
+        const targets = await this.visibilityGrants.targetsForViewers([...view.spaceIds], workspaceId);
+        if (targets.length === 0)
+            return;
+        perms.set("space.view", {
+            all: view.all,
+            spaceIds: new Set([...view.spaceIds, ...targets]),
+            own: view.own,
+            ownSpaceIds: view.ownSpaceIds,
+        });
     }
     // ── the decision (P7) ────────────────────────────────────────────────────
     // Thin delegations to the pure functions in `rbac/can.ts`. There is ONE

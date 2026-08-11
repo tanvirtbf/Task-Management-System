@@ -224,6 +224,62 @@ export const userRoleGrants = mysqlTable(
     }),
 );
 
+// ─── space_visibility_grants ─ "team A can also SEE team B" (P4) ──────────────
+// Mirrors `database/schema.sql §42` 1:1. Consumed at actor-fold time
+// (PolicyService): a space-scoped `space.view` entry gains the granted
+// targets, so every read follows through the one visibility choke point.
+// Single hop by design; `viewer <> target` is enforced app-side (MySQL 8
+// forbids a CHECK on columns used in cascading FKs).
+export const spaceVisibilityGrants = mysqlTable(
+    "space_visibility_grants",
+    {
+        id: varchar("id", { length: ID_LENGTH }).primaryKey(),
+        workspaceId: varchar("workspace_id", { length: ID_LENGTH })
+            .notNull()
+            .references(() => workspaces.id, {
+                onDelete: "cascade",
+                onUpdate: "cascade",
+            }),
+        /** The team that GAINS sight. */
+        viewerSpaceId: varchar("viewer_space_id", { length: ID_LENGTH })
+            .notNull(),
+        /** The team that becomes visible to it. */
+        targetSpaceId: varchar("target_space_id", { length: ID_LENGTH })
+            .notNull(),
+        grantedBy: varchar("granted_by", { length: ID_LENGTH }),
+        createdAt: timestamp("created_at").notNull().defaultNow(),
+    },
+    (t) => ({
+        pairUq: uniqueIndex("uq_svg_pair").on(
+            t.viewerSpaceId,
+            t.targetSpaceId,
+        ),
+        viewerFk: foreignKey({
+            columns: [t.viewerSpaceId],
+            foreignColumns: [spaces.id],
+            name: "fk_svg_viewer",
+        })
+            .onDelete("cascade")
+            .onUpdate("cascade"),
+        targetFk: foreignKey({
+            columns: [t.targetSpaceId],
+            foreignColumns: [spaces.id],
+            name: "fk_svg_target",
+        })
+            .onDelete("cascade")
+            .onUpdate("cascade"),
+        grantedByFk: foreignKey({
+            columns: [t.grantedBy],
+            foreignColumns: [users.id],
+            name: "fk_svg_granted_by",
+        })
+            .onDelete("set null")
+            .onUpdate("cascade"),
+        workspaceIdx: index("idx_svg_workspace").on(t.workspaceId),
+        targetIdx: index("idx_svg_target").on(t.targetSpaceId),
+    }),
+);
+
 export type Permission = typeof permissions.$inferSelect;
 export type NewPermission = typeof permissions.$inferInsert;
 export type Role = typeof roles.$inferSelect;
@@ -232,3 +288,6 @@ export type RolePermission = typeof rolePermissions.$inferSelect;
 export type NewRolePermission = typeof rolePermissions.$inferInsert;
 export type UserRoleGrant = typeof userRoleGrants.$inferSelect;
 export type NewUserRoleGrant = typeof userRoleGrants.$inferInsert;
+export type SpaceVisibilityGrant = typeof spaceVisibilityGrants.$inferSelect;
+export type NewSpaceVisibilityGrant =
+    typeof spaceVisibilityGrants.$inferInsert;

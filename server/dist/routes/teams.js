@@ -34,6 +34,15 @@ router.post("/spaces/:id/members", authenticate_1.default, teams_1.addTeamMember
 // ─── DELETE /api/v1/spaces/:id/members/:userId ───────────────────────────────
 // Same guard. The current head cannot be removed (409 `team.head_locked`).
 router.delete("/spaces/:id/members/:userId", authenticate_1.default, teams_1.removeTeamMemberValidator, validate_1.validate, (req, res, next) => controller.removeMember(as(req), res, next));
+// ─── POST /api/v1/spaces/:id/visibility-grants ───────────────────────────────
+// 🔐 space.members_manage at the ROUTE (admin/owner only) — deliberately NO
+// service-level head branch, unlike the member routes: a head must not be able
+// to self-expand what their own team can see. Body `{target_space_id}`.
+// Idempotent 204. DORMANT until the P6 visibility switch.
+router.post("/spaces/:id/visibility-grants", authenticate_1.default, (0, requirePermission_1.requirePermission)("space.members_manage"), teams_1.grantVisibilityValidator, validate_1.validate, (req, res, next) => controller.grantVisibility(as(req), res, next));
+// ─── DELETE /api/v1/spaces/:id/visibility-grants/:targetId ───────────────────
+// Same gate. Idempotent 204.
+router.delete("/spaces/:id/visibility-grants/:targetId", authenticate_1.default, (0, requirePermission_1.requirePermission)("space.members_manage"), teams_1.revokeVisibilityValidator, validate_1.validate, (req, res, next) => controller.revokeVisibility(as(req), res, next));
 // ─── PATCH /api/v1/users/:id/team ────────────────────────────────────────────
 // 🔐 member.role_change (org-structure management, same tier as role changes).
 // Body `{space_id}`; null clears. Setting a team also ensures membership.

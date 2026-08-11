@@ -12,6 +12,7 @@ const context_1 = require("../rbac/context");
 const policy_1 = require("../rbac/policy");
 const scopeGuard_1 = require("../rbac/scopeGuard");
 const RolesRepo_1 = require("../repositories/RolesRepo");
+const SpaceVisibilityGrantsRepo_1 = require("../repositories/SpaceVisibilityGrantsRepo");
 const UserRolesRepo_1 = require("../repositories/UserRolesRepo");
 const UsersRepo_1 = require("../repositories/UsersRepo");
 const SpacesRepo_1 = require("../repositories/SpacesRepo");
@@ -23,27 +24,35 @@ class TeamMembershipService {
     users;
     spaces;
     activity;
+    grants;
     policy;
     logger;
-    constructor(db, roles, assignments, users, spaces, activity, policy, logger) {
+    constructor(db, roles, assignments, users, spaces, activity, 
+    /** Team-access P4: team → team sight rows. */
+    grants, policy, logger) {
         this.db = db;
         this.roles = roles;
         this.assignments = assignments;
         this.users = users;
         this.spaces = spaces;
         this.activity = activity;
+        this.grants = grants;
         this.policy = policy;
         this.logger = logger;
     }
     // ─── reads ───────────────────────────────────────────────────────────────
     /** The org chart: every (non-archived) team, its head, its people. */
     async directory(workspaceId) {
-        const [spaceRows, assignmentRows, usersWithPrimary] = await Promise.all([
-            this.spaces.listByWorkspace(workspaceId, { includeArchived: false }),
+        const [spaceRows, assignmentRows, usersWithPrimary, grantRows] = await Promise.all([
+            this.spaces.listByWorkspace(workspaceId, {
+                includeArchived: false,
+            }),
             this.assignments.listSpaceAssignments(workspaceId),
             this.users.listWithPrimaryByWorkspace(workspaceId),
+            this.grants.listByWorkspace(workspaceId),
         ]);
         const usersById = new Map(usersWithPrimary.map((u) => [u.id, u]));
+        const spaceById = new Map(spaceRows.map((s) => [s.id, s]));
         const bySpace = new Map();
         for (const a of assignmentRows) {
             if (!a.scopeId)
@@ -80,7 +89,18 @@ class TeamMembershipService {
             const head = space.headUserId
                 ? (usersById.get(space.headUserId) ?? null)
                 : null;
-            return { space, head, members };
+            // P4: sight grants, hydrated to live space names. A grant whose
+            // target has since been archived is real but moot (its lists are
+            // archived too) — filtered from display, kept in the table.
+            const canAlsoSee = grantRows
+                .filter((g) => g.viewerSpaceId === space.id)
+                .flatMap((g) => {
+                const target = spaceById.get(g.targetSpaceId);
+                return target
+                    ? [{ id: target.id, name: target.name }]
+                    : [];
+            });
+            return { space, head, members, canAlsoSee };
         });
         const unassigned = usersWithPrimary.filter((u) => u.primarySpaceId === null && u.status !== "deactivated");
         return { teams, unassigned };
@@ -291,6 +311,96 @@ class TeamMembershipService {
         if (added)
             this.policy.clearCache();
     }
+    // ─── team → team sight (P4) ──────────────────────────────────────────────
+    /**
+     * Grant team `viewerSpaceId` sight of team `targetSpaceId`. 🔐 the route
+     * gates on `space.members_manage` (admin/owner) — deliberately NO head
+     * branch here, unlike the roster methods: a head must not be able to
+     * self-expand what their own team can see. Idempotent. Dormant while
+     * `space.view` is `all` everywhere; once teams are scoped (plan P6), the
+     * fold picks the row up on the very next request via the version bump.
+     */
+    async grantVisibility(input) {
+        const viewer = await this.requireSpace(input.viewerSpaceId, input.workspaceId);
+        if (viewer.archivedAt) {
+            throw errors_1.AppError.conflict("space.archived", "This team is archived — unarchive it before changing what it sees");
+        }
+        if (input.viewerSpaceId === input.targetSpaceId) {
+            throw errors_1.AppError.unprocessable("team.grant_invalid", "A team always sees itself — pick a different team", [{ field: "target_space_id", issue: "same as the viewer" }]);
+        }
+        // Body input → 422 (mirrors team.space_invalid), never a 404 oracle.
+        const target = await this.spaces.findByIdInWorkspace(input.targetSpaceId, input.workspaceId);
+        if (!target || target.archivedAt) {
+            throw errors_1.AppError.unprocessable("team.space_invalid", "target_space_id must be an existing, non-archived space", [
+                {
+                    field: "target_space_id",
+                    issue: "unknown or archived space",
+                },
+            ]);
+        }
+        let added = false;
+        await this.db.transaction(async (tx) => {
+            added = await this.grants.grant({
+                workspaceId: input.workspaceId,
+                viewerSpaceId: input.viewerSpaceId,
+                targetSpaceId: input.targetSpaceId,
+                grantedBy: input.actorId,
+            }, tx);
+            if (!added)
+                return; // already granted — idempotent, no audit row
+            await this.activity.record({
+                workspaceId: input.workspaceId,
+                actorId: input.actorId,
+                entityType: "space",
+                entityId: input.viewerSpaceId,
+                action: "visibility_granted",
+                context: { target_space_id: input.targetSpaceId },
+            }, tx);
+            // The fold caches grants with the permission set — invalidate.
+            await this.roles.bumpPermissionsVersion(input.workspaceId, tx);
+        });
+        if (added) {
+            this.policy.clearCache();
+            this.logger.info("teams.visibility_granted", {
+                workspaceId: input.workspaceId,
+                viewerSpaceId: input.viewerSpaceId,
+                targetSpaceId: input.targetSpaceId,
+                actorId: input.actorId,
+            });
+        }
+    }
+    /** Revoke sight. Idempotent 204 — revoking a grant that never existed is a no-op. */
+    async revokeVisibility(input) {
+        await this.requireSpace(input.viewerSpaceId, input.workspaceId);
+        let removed = false;
+        await this.db.transaction(async (tx) => {
+            removed = await this.grants.revoke({
+                workspaceId: input.workspaceId,
+                viewerSpaceId: input.viewerSpaceId,
+                targetSpaceId: input.targetSpaceId,
+            }, tx);
+            if (!removed)
+                return;
+            await this.activity.record({
+                workspaceId: input.workspaceId,
+                actorId: input.actorId,
+                entityType: "space",
+                entityId: input.viewerSpaceId,
+                action: "visibility_revoked",
+                context: { target_space_id: input.targetSpaceId },
+            }, tx);
+            await this.roles.bumpPermissionsVersion(input.workspaceId, tx);
+        });
+        if (removed) {
+            this.policy.clearCache();
+            this.logger.info("teams.visibility_revoked", {
+                workspaceId: input.workspaceId,
+                viewerSpaceId: input.viewerSpaceId,
+                targetSpaceId: input.targetSpaceId,
+                actorId: input.actorId,
+            });
+        }
+    }
     // ─── guards ──────────────────────────────────────────────────────────────
     async requireSpace(spaceId, workspaceId) {
         const space = await this.spaces.findByIdInWorkspace(spaceId, workspaceId);
@@ -326,7 +436,7 @@ let instance = null;
 const teamMembership = () => {
     if (!instance) {
         const db = (0, client_1.getDb)();
-        instance = new TeamMembershipService(db, new RolesRepo_1.RolesRepo(db), new UserRolesRepo_1.UserRolesRepo(db), new UsersRepo_1.UsersRepo(db), new SpacesRepo_1.SpacesRepo(db), new WorkspaceActivityRepo_1.WorkspaceActivityRepo(db), (0, policy_1.getPolicy)(), logger_1.default);
+        instance = new TeamMembershipService(db, new RolesRepo_1.RolesRepo(db), new UserRolesRepo_1.UserRolesRepo(db), new UsersRepo_1.UsersRepo(db), new SpacesRepo_1.SpacesRepo(db), new WorkspaceActivityRepo_1.WorkspaceActivityRepo(db), new SpaceVisibilityGrantsRepo_1.SpaceVisibilityGrantsRepo(db), (0, policy_1.getPolicy)(), logger_1.default);
     }
     return instance;
 };
