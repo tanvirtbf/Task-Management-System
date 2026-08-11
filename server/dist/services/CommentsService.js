@@ -4,6 +4,7 @@ exports.CommentsService = void 0;
 const errors_1 = require("../errors");
 const constants_1 = require("../constants");
 const can_1 = require("../rbac/can");
+const policy_1 = require("../rbac/policy");
 const scopeGuard_1 = require("../rbac/scopeGuard");
 const context_1 = require("../rbac/context");
 const commentSerializer_1 = require("../serializers/commentSerializer");
@@ -63,6 +64,22 @@ class CommentsService {
         // its id exists.
         const mentionedIds = await this.resolveMentions(input.body, input.workspaceId, input.authorId);
         const refTaskIds = await this.resolveTaskRefs(input.body, input.workspaceId, task.id, task.primaryListId);
+        // The attached sets — fetched BEFORE the transaction (reads have no
+        // business under the insert; also feeds the mention filter below).
+        const [assigneeMap, watcherMap] = await Promise.all([
+            this.tasks.assigneesByTask([task.id]),
+            this.tasks.watchersByTask([task.id]),
+        ]);
+        const assigneeSet = new Set(assigneeMap.get(task.id) ?? []);
+        const watcherSet = new Set(watcherMap.get(task.id) ?? []);
+        // Team-access P5 (fan-out leak): the handle match runs against EVERY
+        // active user in the workspace, so "@sarah" in a Marketing task could
+        // notify an unrelated Sarah with 140 chars of comment body and a deep
+        // link she cannot open. Keep only people who can actually SEE this
+        // task: attached (creator/assignee/watcher — the own-escape people)
+        // or reached by their `space.view`. Costs nothing today (everyone
+        // sees everything); becomes the guard when teams are scoped (P6).
+        const visibleMentioned = await this.filterMentionsToVisible(mentionedIds, task, assigneeSet, watcherSet, input.workspaceId);
         const comment = await this.db.transaction(async (tx) => {
             const created = await this.comments.insert({
                 taskId: task.id,
@@ -78,8 +95,8 @@ class CommentsService {
                     context: { comment_id: created.id },
                 },
             ], tx);
-            if (mentionedIds.length > 0) {
-                await this.notifications.createMany(mentionedIds.map((userId) => ({
+            if (visibleMentioned.length > 0) {
+                await this.notifications.createMany(visibleMentioned.map((userId) => ({
                     userId,
                     type: "mentioned",
                     entityType: "comment",
@@ -96,16 +113,9 @@ class CommentsService {
             // assignees + watchers, minus the author (their own comment) and
             // minus anyone already notified as `mentioned` (one event, one
             // notification). Preference suppression happens inside createMany.
-            const [assigneeMap, watcherMap] = await Promise.all([
-                this.tasks.assigneesByTask([task.id]),
-                this.tasks.watchersByTask([task.id]),
-            ]);
-            const already = new Set([input.authorId, ...mentionedIds]);
+            const already = new Set([input.authorId, ...visibleMentioned]);
             const attached = [
-                ...new Set([
-                    ...(assigneeMap.get(task.id) ?? []),
-                    ...(watcherMap.get(task.id) ?? []),
-                ]),
+                ...new Set([...assigneeSet, ...watcherSet]),
             ].filter((id) => !already.has(id));
             if (attached.length > 0) {
                 await this.notifications.createMany(attached.map((userId) => ({
@@ -193,6 +203,37 @@ class CommentsService {
         });
     }
     // ─── helpers ──────────────────────────────────────────────────────────────
+    /**
+     * Team-access P5: which of the @mentioned users may actually SEE the
+     * task? Attached people (creator / assignee / watcher) always — they are
+     * exactly the own-escape set. Everyone else must be reached by their
+     * `space.view` (resolved through the cached PolicyService fold, so this
+     * costs one cache-hit per mentioned user). Dormant while every role sees
+     * everything.
+     */
+    async filterMentionsToVisible(mentionedIds, task, assignees, watchers, workspaceId) {
+        if (mentionedIds.length === 0)
+            return [];
+        const spaceId = (await this.tasks.spaceIdsByTask([task.id])).get(task.id) ?? null;
+        const policy = (0, policy_1.getPolicy)();
+        const out = [];
+        for (const userId of mentionedIds) {
+            if (userId === task.createdBy ||
+                assignees.has(userId) ||
+                watchers.has(userId)) {
+                out.push(userId);
+                continue;
+            }
+            const actor = await policy.resolveActor(userId, workspaceId);
+            if (!actor)
+                continue;
+            const view = (0, can_1.entryFor)(actor, "space.view");
+            if (view.all || (spaceId !== null && view.spaceIds.has(spaceId))) {
+                out.push(userId);
+            }
+        }
+        return out;
+    }
     /** Resolve `:id` (internal id or custom_id) to a task in the workspace. */
     async requireTask(idOrKey, workspaceId) {
         const task = await this.tasks.findByIdOrCustomIdInWorkspace(idOrKey, workspaceId);

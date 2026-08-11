@@ -179,6 +179,13 @@ export class TaskDependenciesRepo {
                 and(
                     eq(taskDependencies.id, depId),
                     eq(tasks.workspaceId, workspaceId),
+                    // Team-access P5: the edge is reachable exactly where its
+                    // task is (same filter + own-escape as every task read) —
+                    // no deleting a dependency on a task you cannot see.
+                    await listScopeFilter(
+                        tasks.primaryListId,
+                        await taskOwnEscape(),
+                    ),
                 ),
             )
             .limit(1);

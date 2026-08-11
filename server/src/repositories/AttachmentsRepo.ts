@@ -12,6 +12,8 @@ import {
 import { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../db/schema";
 import { attachments, r2PurgeQueue, tasks } from "../db/schema";
+import { listScopeFilter } from "../rbac/context";
+import { taskOwnEscape } from "../rbac/ownEscape";
 import { fakeId } from "../utils";
 import type { DbExecutor } from "./types";
 
@@ -104,6 +106,15 @@ export class AttachmentsRepo {
                 and(
                     eq(attachments.id, id),
                     eq(tasks.workspaceId, workspaceId),
+                    // Team-access P5: an attachment is reachable exactly where
+                    // its task is (same filter + own-escape as every task
+                    // read; undefined for unrestricted viewers). Without it,
+                    // download/finalize/delete could be driven by probing ids
+                    // into another team's files.
+                    await listScopeFilter(
+                        tasks.primaryListId,
+                        await taskOwnEscape(),
+                    ),
                 ),
             )
             .limit(1);

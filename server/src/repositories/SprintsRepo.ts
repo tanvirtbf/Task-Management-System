@@ -16,6 +16,8 @@ import * as schema from "../db/schema";
 import { sprints, statuses, tasks, workspaces } from "../db/schema";
 import type { Sprint } from "../db/schema";
 import { sprintStatuses } from "../db/schema/_shared";
+import { listScopeFilter } from "../rbac/context";
+import { taskOwnEscape } from "../rbac/ownEscape";
 import { fakeId } from "../utils";
 import type { DbExecutor } from "./types";
 
@@ -328,6 +330,15 @@ export class SprintsRepo {
                     inArray(tasks.id, ids),
                     eq(tasks.workspaceId, workspaceId),
                     isNull(tasks.archivedAt),
+                    // Team-access P5: attaching a task to a sprint is a task
+                    // WRITE — reachable exactly where the task read is (same
+                    // filter + own-escape; undefined for unrestricted
+                    // viewers). An invisible id resolves as not-found, and
+                    // addTasks is fail-atomic on that.
+                    await listScopeFilter(
+                        tasks.primaryListId,
+                        await taskOwnEscape(),
+                    ),
                 ),
             );
     }
@@ -345,7 +356,17 @@ export class SprintsRepo {
         const [row] = await exec
             .select({ id: tasks.id, sprintId: tasks.sprintId })
             .from(tasks)
-            .where(and(eq(tasks.id, taskId), eq(tasks.workspaceId, workspaceId)))
+            .where(
+                and(
+                    eq(tasks.id, taskId),
+                    eq(tasks.workspaceId, workspaceId),
+                    // Team-access P5 — same rule as `findTasksByIdsInWorkspace`.
+                    await listScopeFilter(
+                        tasks.primaryListId,
+                        await taskOwnEscape(),
+                    ),
+                ),
+            )
             .limit(1);
         return row ?? null;
     }

@@ -3,6 +3,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AttachmentsRepo = void 0;
 const drizzle_orm_1 = require("drizzle-orm");
 const schema_1 = require("../db/schema");
+const context_1 = require("../rbac/context");
+const ownEscape_1 = require("../rbac/ownEscape");
 const utils_1 = require("../utils");
 const ATTACHMENT_COLUMNS = {
     id: schema_1.attachments.id,
@@ -52,7 +54,13 @@ class AttachmentsRepo {
             .select(ATTACHMENT_COLUMNS)
             .from(schema_1.attachments)
             .innerJoin(schema_1.tasks, (0, drizzle_orm_1.eq)(schema_1.attachments.taskId, schema_1.tasks.id))
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.attachments.id, id), (0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId)))
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.attachments.id, id), (0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId), 
+        // Team-access P5: an attachment is reachable exactly where
+        // its task is (same filter + own-escape as every task
+        // read; undefined for unrestricted viewers). Without it,
+        // download/finalize/delete could be driven by probing ids
+        // into another team's files.
+        await (0, context_1.listScopeFilter)(schema_1.tasks.primaryListId, await (0, ownEscape_1.taskOwnEscape)())))
             .limit(1);
         return row ?? null;
     }

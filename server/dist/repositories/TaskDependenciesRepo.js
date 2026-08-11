@@ -132,7 +132,11 @@ class TaskDependenciesRepo {
             .select(EDGE_COLUMNS)
             .from(schema_1.taskDependencies)
             .innerJoin(schema_1.tasks, (0, drizzle_orm_1.eq)(schema_1.taskDependencies.taskId, schema_1.tasks.id))
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.taskDependencies.id, depId), (0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId)))
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.taskDependencies.id, depId), (0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId), 
+        // Team-access P5: the edge is reachable exactly where its
+        // task is (same filter + own-escape as every task read) —
+        // no deleting a dependency on a task you cannot see.
+        await (0, context_1.listScopeFilter)(schema_1.tasks.primaryListId, await (0, ownEscape_1.taskOwnEscape)())))
             .limit(1);
         return row ?? null;
     }

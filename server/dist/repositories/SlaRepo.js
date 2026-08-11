@@ -3,6 +3,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SlaRepo = void 0;
 const drizzle_orm_1 = require("drizzle-orm");
 const schema_1 = require("../db/schema");
+const context_1 = require("../rbac/context");
+const ownEscape_1 = require("../rbac/ownEscape");
 /**
  * §29 SLA — reads breached-SLA tasks.
  *
@@ -31,6 +33,14 @@ class SlaRepo {
             (0, drizzle_orm_1.isNull)(schema_1.tasks.completedAt),
             (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt),
         ];
+        // Team-access P5 (G7): the SAME visibility filter every task read
+        // applies (undefined for unrestricted viewers → SQL unchanged today).
+        // Without it, the SLA queue would keep showing the whole company to a
+        // team-scoped member while the Home tile counts only their reach —
+        // two screens openly disagreeing.
+        const visible = await (0, context_1.listScopeFilter)(schema_1.tasks.primaryListId, await (0, ownEscape_1.taskOwnEscape)());
+        if (visible)
+            conds.push(visible);
         if (filters.severities && filters.severities.length > 0) {
             conds.push((0, drizzle_orm_1.inArray)(schema_1.tasks.bugSeverity, filters.severities));
         }

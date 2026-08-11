@@ -2,6 +2,8 @@ import { and, asc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../db/schema";
 import { tasks, taskTypes, bugSeverities, reporterTeams } from "../db/schema";
+import { listScopeFilter } from "../rbac/context";
+import { taskOwnEscape } from "../rbac/ownEscape";
 
 type BugSeverity = (typeof bugSeverities)[number];
 type ReporterTeam = (typeof reporterTeams)[number];
@@ -51,6 +53,17 @@ export class SlaRepo {
             isNull(tasks.completedAt),
             isNull(tasks.archivedAt),
         ];
+
+        // Team-access P5 (G7): the SAME visibility filter every task read
+        // applies (undefined for unrestricted viewers → SQL unchanged today).
+        // Without it, the SLA queue would keep showing the whole company to a
+        // team-scoped member while the Home tile counts only their reach —
+        // two screens openly disagreeing.
+        const visible = await listScopeFilter(
+            tasks.primaryListId,
+            await taskOwnEscape(),
+        );
+        if (visible) conds.push(visible);
 
         if (filters.severities && filters.severities.length > 0) {
             conds.push(

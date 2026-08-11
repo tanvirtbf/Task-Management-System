@@ -7,7 +7,7 @@ exports.ASSISTANT_TOOL_DEFS = [
         type: "function",
         function: {
             name: "get_my_task_counts",
-            description: "Live task counts. Returns SIX separate numbers, each named for its scope: openTasksAssignedToMe, myTasksDueToday, myTasksOverdue, tasksAwaitingMyReview, openTasksAcrossTheWholeWorkspace, slaBreachesAcrossTheWholeWorkspace. Read the key that matches what was asked — a question about the team or the whole workspace is NOT the same as a question about the user's own tasks. Use whenever the user asks how many tasks there are.",
+            description: "Live task counts. Returns SIX separate numbers, each named for its scope: openTasksAssignedToMe, myTasksDueToday, myTasksOverdue, tasksAwaitingMyReview, openTasksAcrossTheWholeWorkspace, slaBreachesAcrossTheWholeWorkspace. Read the key that matches what was asked — a question about the team or the workspace is NOT the same as a question about the user's own tasks. IMPORTANT: the two AcrossTheWholeWorkspace numbers cover everything THIS USER is allowed to see — for a team-scoped member that is their team(s), not the whole company; say 'across everything you can see' rather than claiming the whole company. Use whenever the user asks how many tasks there are.",
             parameters: {
                 type: "object",
                 properties: {},
@@ -36,7 +36,7 @@ exports.ASSISTANT_TOOL_DEFS = [
         type: "function",
         function: {
             name: "search",
-            description: "Search the user's workspace for tasks, lists, and spaces matching a keyword. Use when the user asks to find or locate a specific item by name.",
+            description: "Search the tasks, lists, and spaces THIS USER can see for a keyword (team-scoped members search their own teams' work, not the whole company). Use when the user asks to find or locate a specific item by name.",
             parameters: {
                 type: "object",
                 properties: {

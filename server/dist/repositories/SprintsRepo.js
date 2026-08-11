@@ -3,6 +3,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SprintsRepo = void 0;
 const drizzle_orm_1 = require("drizzle-orm");
 const schema_1 = require("../db/schema");
+const context_1 = require("../rbac/context");
+const ownEscape_1 = require("../rbac/ownEscape");
 const utils_1 = require("../utils");
 /** Status groups that count a task as finished (for completed-points + rollover). */
 const DONE_GROUPS = ["done", "closed"];
@@ -173,7 +175,13 @@ class SprintsRepo {
         return exec
             .select({ id: schema_1.tasks.id, sprintId: schema_1.tasks.sprintId })
             .from(schema_1.tasks)
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.inArray)(schema_1.tasks.id, ids), (0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId), (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt)));
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.inArray)(schema_1.tasks.id, ids), (0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId), (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt), 
+        // Team-access P5: attaching a task to a sprint is a task
+        // WRITE — reachable exactly where the task read is (same
+        // filter + own-escape; undefined for unrestricted
+        // viewers). An invisible id resolves as not-found, and
+        // addTasks is fail-atomic on that.
+        await (0, context_1.listScopeFilter)(schema_1.tasks.primaryListId, await (0, ownEscape_1.taskOwnEscape)())));
     }
     /**
      * Resolve one task within the workspace (id + current sprint link). Includes
@@ -184,7 +192,9 @@ class SprintsRepo {
         const [row] = await exec
             .select({ id: schema_1.tasks.id, sprintId: schema_1.tasks.sprintId })
             .from(schema_1.tasks)
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.id, taskId), (0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId)))
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.id, taskId), (0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId), 
+        // Team-access P5 — same rule as `findTasksByIdsInWorkspace`.
+        await (0, context_1.listScopeFilter)(schema_1.tasks.primaryListId, await (0, ownEscape_1.taskOwnEscape)())))
             .limit(1);
         return row ?? null;
     }

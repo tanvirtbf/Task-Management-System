@@ -2,6 +2,7 @@ import { and, asc, count, eq, inArray, max } from "drizzle-orm";
 import { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../db/schema";
 import { lists, spaces, statuses, tasks, type Status } from "../db/schema";
+import { spaceScopeFilter } from "../rbac/context";
 import { fakeId } from "../utils";
 import type { DbExecutor } from "./types";
 
@@ -217,6 +218,11 @@ export class StatusesRepo {
                     eq(statuses.id, statusId),
                     eq(statuses.scopeType, "list"),
                     eq(spaces.workspaceId, workspaceId),
+                    // Team-access P5: a status is reachable exactly where its
+                    // list's space is (undefined for unrestricted viewers) —
+                    // no PATCH/DELETE on another department's board by
+                    // probing ids.
+                    await spaceScopeFilter(lists.spaceId),
                 ),
             )
             .limit(1);

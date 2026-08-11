@@ -3,6 +3,7 @@ import { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../db/schema";
 import { formFields, forms, lists, spaces } from "../db/schema";
 import type { FormField, NewFormField } from "../db/schema";
+import { listScopeFilter } from "../rbac/context";
 import type { DbExecutor } from "./types";
 
 /**
@@ -66,6 +67,10 @@ export class FormFieldsRepo {
                 and(
                     eq(formFields.id, fieldId),
                     eq(spaces.workspaceId, workspaceId),
+                    // Team-access P5: same reach as the form itself
+                    // (`FormsRepo` filters on `forms.list_id`) — this resolve
+                    // used to bypass the scoped `requireForm` path entirely.
+                    await listScopeFilter(forms.listId),
                 ),
             )
             .limit(1);

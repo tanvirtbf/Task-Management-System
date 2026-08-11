@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.FormFieldsRepo = void 0;
 const drizzle_orm_1 = require("drizzle-orm");
 const schema_1 = require("../db/schema");
+const context_1 = require("../rbac/context");
 /**
  * Data access for `form_fields`. Uniqueness is `(form_id, field_kind,
  * field_key)`; `position` is NOT unique. `field_kind='custom_field'` stores a
@@ -46,7 +47,11 @@ class FormFieldsRepo {
             .innerJoin(schema_1.forms, (0, drizzle_orm_1.eq)(schema_1.forms.id, schema_1.formFields.formId))
             .innerJoin(schema_1.lists, (0, drizzle_orm_1.eq)(schema_1.lists.id, schema_1.forms.listId))
             .innerJoin(schema_1.spaces, (0, drizzle_orm_1.eq)(schema_1.spaces.id, schema_1.lists.spaceId))
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.formFields.id, fieldId), (0, drizzle_orm_1.eq)(schema_1.spaces.workspaceId, workspaceId)))
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.formFields.id, fieldId), (0, drizzle_orm_1.eq)(schema_1.spaces.workspaceId, workspaceId), 
+        // Team-access P5: same reach as the form itself
+        // (`FormsRepo` filters on `forms.list_id`) — this resolve
+        // used to bypass the scoped `requireForm` path entirely.
+        await (0, context_1.listScopeFilter)(schema_1.forms.listId)))
             .limit(1);
         return row?.field ?? null;
     }

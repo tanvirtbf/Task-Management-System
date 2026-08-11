@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.StatusesRepo = exports.DEFAULT_LIST_STATUSES = void 0;
 const drizzle_orm_1 = require("drizzle-orm");
 const schema_1 = require("../db/schema");
+const context_1 = require("../rbac/context");
 const utils_1 = require("../utils");
 /**
  * The default status workflow seeded into every new list by `POST /api/v1/lists`
@@ -150,7 +151,12 @@ class StatusesRepo {
             .from(schema_1.statuses)
             .innerJoin(schema_1.lists, (0, drizzle_orm_1.eq)(schema_1.statuses.scopeId, schema_1.lists.id))
             .innerJoin(schema_1.spaces, (0, drizzle_orm_1.eq)(schema_1.lists.spaceId, schema_1.spaces.id))
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.statuses.id, statusId), (0, drizzle_orm_1.eq)(schema_1.statuses.scopeType, "list"), (0, drizzle_orm_1.eq)(schema_1.spaces.workspaceId, workspaceId)))
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.statuses.id, statusId), (0, drizzle_orm_1.eq)(schema_1.statuses.scopeType, "list"), (0, drizzle_orm_1.eq)(schema_1.spaces.workspaceId, workspaceId), 
+        // Team-access P5: a status is reachable exactly where its
+        // list's space is (undefined for unrestricted viewers) —
+        // no PATCH/DELETE on another department's board by
+        // probing ids.
+        await (0, context_1.spaceScopeFilter)(schema_1.lists.spaceId)))
             .limit(1);
         return row ?? null;
     }

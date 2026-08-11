@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.HomeRepo = void 0;
 const drizzle_orm_1 = require("drizzle-orm");
 const context_1 = require("../rbac/context");
+const ownEscape_1 = require("../rbac/ownEscape");
 const schema_1 = require("../db/schema");
 /**
  * §25 Home data access. Owns the workspace-scoped aggregate queries behind the
@@ -99,7 +100,13 @@ class HomeRepo {
         return this.db
             .select({ day: DAY, cnt: (0, drizzle_orm_1.count)() })
             .from(schema_1.tasks)
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId), (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt), (0, drizzle_orm_1.isNull)(schema_1.tasks.completedAt), (0, drizzle_orm_1.lt)(schema_1.tasks.slaDueAt, now), await (0, context_1.listScopeFilter)(schema_1.tasks.primaryListId)))
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId), (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt), (0, drizzle_orm_1.isNull)(schema_1.tasks.completedAt), (0, drizzle_orm_1.lt)(schema_1.tasks.slaDueAt, now), 
+        // RBAC P19, tightened in team-access P5 (G7): the SAME
+        // predicate as the SLA queue (`SlaRepo.listBreached`) —
+        // scope + the own-escape — so the tile's number and the
+        // queue's rows can never disagree. Undefined for
+        // unrestricted viewers → SQL unchanged today.
+        await (0, context_1.listScopeFilter)(schema_1.tasks.primaryListId, await (0, ownEscape_1.taskOwnEscape)())))
             .groupBy(DAY);
     }
     /**

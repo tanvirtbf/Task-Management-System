@@ -366,7 +366,31 @@ changes nothing yet, because visibility is still `all`.
 
 ---
 
-## PHASE 5 — Close every visibility leak (the safety phase)
+## PHASE 5 — Close every visibility leak (the safety phase) ✅ SHIPPED 2026-08-11
+
+> **Status: DONE.** A very-thorough audit (agent + hand verification) mapped every surface to
+> FILTERED / OPEN / INDIRECT; all OPEN items are closed, each with the SAME dormant predicate every
+> task read uses (undefined for unrestricted viewers → SQL byte-identical today):
+> **SlaRepo.listBreached** (G7) + **HomeRepo.slaBreachesSeries** now share one predicate
+> (scope + own-escape) so tile == queue exactly · **StatusesRepo.findByIdInWorkspace** (PATCH/DELETE
+> /statuses/:id probing) · **FormFieldsRepo.findByIdInWorkspace** (/form-fields/:id bypassed the
+> scoped requireForm) · **AttachmentsRepo.findByIdInWorkspace** (download 302 = real file bytes,
+> finalize, delete) · **TaskDependenciesRepo.findByIdInWorkspace** (edge delete) ·
+> **SprintsRepo.findTask(s)ByIdsInWorkspace** (sprint add/remove = task writes; fail-atomic on an
+> invisible id). **Mention fan-out leak closed**: "@sarah" matched EVERY active user by first name /
+> email local-part and shipped 140 chars of body to people with no sight of the task — recipients
+> now filtered to creator/assignee/watcher (the own-escape set) or `space.view` reach, resolved
+> through the cached fold. **Assistant**: `get_my_task_counts` + `search` descriptions no longer
+> claim the whole company (key names kept for wire stability; behavioural test pins keys, not text).
+> **Verified NON-issues, on purpose**: reviews/reports need NO elevation — every ReviewsRepo query
+> is space-pinned by the boundary guard (the L1 design realized; heads reach their own dept via P1
+> membership); `elevateToSpaces` stays tested-but-unwired; sprint close/rollover moves ITS OWN
+> tasks wherever they live (sprint-level op, documented); comments/checklists/CF-values/statuses-
+> create/forms-CRUD were already INDIRECT via scoped parent resolves; `GET /activity` already has
+> auditVisibility; background jobs run ALL_VISIBLE by the no-store default (documented design).
+> Tests: **7-probe walkthrough** (`tests/rbac/p5-leak-closure.test.ts`) — a user with every VERB
+> clamped to their team probes each closed door: 404s everywhere, writes never land, tile==queue,
+> outsider mention silent while teammate mention fires. Dormancy: 11-module regression green.
 
 **Goal:** make sure that when the switch is thrown in P6, **every** screen agrees. This phase exists
 because 28 of 36 repositories never filter (G6), and two screens would openly contradict each other.

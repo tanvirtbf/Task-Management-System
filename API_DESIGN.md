@@ -2134,6 +2134,9 @@ Remove from the team: EVERY role the person holds scoped to that space; a home t
 ### Activity & error codes added
 `workspace_activity` actions: `member_added` / `member_removed` (entity `space`, context `{user_id}`) and `team_changed` (entity `user`, context `{space_id}`); the `invited` context gains `space_id`. New codes: `team.head_locked` 409, `team.space_invalid` 422, `team.member_invalid` 422.
 
+### Visibility-leak closures (P5 — dormant until the switch)
+Every side-door resolve now applies the SAME visibility predicate the task reads use (undefined for unrestricted viewers, so today's SQL is unchanged): `GET /sla/breached` + the Home `sla_breaches` tile share one predicate (scope + own-escape — they can never disagree); `PATCH/DELETE /statuses/:id`, `PATCH/DELETE /form-fields/:id`, `GET /attachments/:id/download` + finalize + delete, `DELETE /task-dependencies/:id`, and sprint task add/remove all answer **404** for objects whose parent space/task the caller cannot see. **@mentions** notify only people who can see the task (creator/assignee/watcher or `space.view` reach) — an out-of-sight name match is silently dropped. Deliberately open: sprint close/rollover re-targets the sprint's OWN tasks wherever they live; background jobs run unrestricted; reviews/reports stay boundary-gated space-pinned aggregates (heads see their whole department by design).
+
 ---
 
 ## Appendix A — Type reference (TypeScript shapes)

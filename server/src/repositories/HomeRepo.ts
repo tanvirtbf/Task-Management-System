@@ -13,6 +13,7 @@ import {
 import { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../db/schema";
 import { listScopeFilter } from "../rbac/context";
+import { taskOwnEscape } from "../rbac/ownEscape";
 import { lists, spaces, statuses, taskAssignees, tasks } from "../db/schema";
 import type { Task as TaskRow } from "../db/schema";
 
@@ -184,7 +185,15 @@ export class HomeRepo {
                     isNull(tasks.archivedAt),
                     isNull(tasks.completedAt),
                     lt(tasks.slaDueAt, now),
-                    await listScopeFilter(tasks.primaryListId), // RBAC P19
+                    // RBAC P19, tightened in team-access P5 (G7): the SAME
+                    // predicate as the SLA queue (`SlaRepo.listBreached`) —
+                    // scope + the own-escape — so the tile's number and the
+                    // queue's rows can never disagree. Undefined for
+                    // unrestricted viewers → SQL unchanged today.
+                    await listScopeFilter(
+                        tasks.primaryListId,
+                        await taskOwnEscape(),
+                    ),
                 ),
             )
             .groupBy(DAY);
