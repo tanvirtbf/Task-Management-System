@@ -16,6 +16,7 @@ const AttachmentsRepo_1 = require("../repositories/AttachmentsRepo");
 const ListsRepo_1 = require("../repositories/ListsRepo");
 const TaskMembershipRepo_1 = require("../repositories/TaskMembershipRepo");
 const TaskActivityRepo_1 = require("../repositories/TaskActivityRepo");
+const WorkspaceActivityRepo_1 = require("../repositories/WorkspaceActivityRepo");
 const NotificationsRepo_1 = require("../repositories/NotificationsRepo");
 const StatusesRepo_1 = require("../repositories/StatusesRepo");
 const TaskTypesRepo_1 = require("../repositories/TaskTypesRepo");
@@ -59,7 +60,7 @@ const tasksService = new TasksService_1.TasksService(listsRepo, tasksRepo);
 const tasksController = new TasksController_1.TasksController(tasksService, logger_1.default);
 const taskActivityService = new TaskActivityService_1.TaskActivityService(tasksRepo, activityRepo, usersRepo);
 const taskActivityController = new TaskActivityController_1.TaskActivityController(taskActivityService, logger_1.default);
-const taskWriteService = new TaskWriteService_1.TaskWriteService(db, listsRepo, statusesRepo, taskTypesRepo, tasksRepo, membershipRepo, usersRepo, tagsRepo, activityRepo, notificationsRepo, new AttachmentsRepo_1.AttachmentsRepo(db), new WorkspaceRepo_1.WorkspaceRepo(db), tasksService, logger_1.default);
+const taskWriteService = new TaskWriteService_1.TaskWriteService(db, listsRepo, statusesRepo, taskTypesRepo, tasksRepo, membershipRepo, usersRepo, tagsRepo, activityRepo, notificationsRepo, new AttachmentsRepo_1.AttachmentsRepo(db), new WorkspaceRepo_1.WorkspaceRepo(db), new WorkspaceActivityRepo_1.WorkspaceActivityRepo(db), tasksService, logger_1.default);
 const taskWriteController = new TaskWriteController_1.TaskWriteController(taskWriteService, logger_1.default);
 // ─── POST /api/v1/tasks ────────────────────────────────────────────────────
 // 🔐 Any workspace member. Creates a task in the caller's workspace: validates

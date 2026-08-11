@@ -156,14 +156,32 @@ class TemplateApplyService {
                     });
                     await tx.insert(schema_1.checklistItems).values(itemRows);
                     await this.templates.incrementUsage(input.templateId, tx);
+                    // Team-access P3 (plan G13): the template's checklist was
+                    // raw-inserted with NO trace — the audit log claimed the
+                    // checklist never came into being. One row per checklist
+                    // (items summarised, not one row per templated item — the
+                    // birth of a task is one event, not twenty). Context keys
+                    // snake_case now, like every other producer (`name` also
+                    // feeds the renderer's generic detail).
                     await this.activity.recordMany([
                         {
                             taskId,
                             actorId: input.actorId,
                             action: "created_from_template",
                             context: {
-                                templateId: input.templateId,
-                                templateName: template.name,
+                                template_id: input.templateId,
+                                name: template.name,
+                            },
+                        },
+                        {
+                            taskId,
+                            actorId: input.actorId,
+                            action: "checklist_created",
+                            context: {
+                                checklist_id: checklistId,
+                                name: checklistName,
+                                items: itemRows.length,
+                                via_template: input.templateId,
                             },
                         },
                     ], tx);

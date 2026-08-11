@@ -54,7 +54,27 @@ class ChecklistsService {
         if (input.position !== undefined)
             patch.position = input.position;
         if (Object.keys(patch).length > 0) {
-            await this.checklists.updateChecklist(checklist.id, patch);
+            // Team-access P3 (plan G13): a RENAME is a real change and gets a
+            // row with the before/after; a position shuffle is presentation
+            // and stays silent (logging every drag would drown the feed).
+            const renamed = input.name !== undefined && input.name !== checklist.name;
+            await this.db.transaction(async (tx) => {
+                await this.checklists.updateChecklist(checklist.id, patch, tx);
+                if (renamed) {
+                    await this.activity.recordMany([
+                        {
+                            taskId: checklist.taskId,
+                            actorId: input.actorId,
+                            action: "checklist_renamed",
+                            context: {
+                                checklist_id: checklist.id,
+                                from: checklist.name,
+                                to: input.name,
+                            },
+                        },
+                    ], tx);
+                }
+            });
         }
         const fresh = (await this.checklists.findChecklistById(checklist.id)) ?? checklist;
         const items = await this.checklists.listItemsByChecklistIds([fresh.id]);
@@ -123,11 +143,25 @@ class ChecklistsService {
         const checklist = await this.requireChecklist(input.checklistId, input.workspaceId);
         const created = await this.db.transaction(async (tx) => {
             const base = await this.checklists.nextItemPosition(checklist.id, tx);
-            return this.checklists.insertItems(input.texts.map((text, i) => ({
+            const rows = await this.checklists.insertItems(input.texts.map((text, i) => ({
                 checklistId: checklist.id,
                 text,
                 position: base + i,
             })), tx);
+            // Team-access P3 (plan G13): the bulk path was the ONE item-add
+            // with zero audit. Same per-item shape as the single `addItem`.
+            await this.activity.recordMany(rows.map((row) => ({
+                taskId: checklist.taskId,
+                actorId: input.actorId,
+                action: "checklist_item_added",
+                context: {
+                    checklist_id: checklist.id,
+                    item_id: row.id,
+                    text: row.text.slice(0, 120),
+                    bulk: true,
+                },
+            })), tx);
+            return rows;
         });
         return created.map(checklistSerializer_1.toWireItem);
     }
@@ -147,6 +181,23 @@ class ChecklistsService {
         if (input.position !== undefined)
             patch.position = input.position;
         if (Object.keys(patch).length > 0) {
+            // Team-access P3 (plan G13): field-level detail. The row used to
+            // say only WHICH item — not what happened to it. Text edits carry
+            // the before/after (clipped like `checklist_item_added`).
+            const detail = {
+                checklist_id: checklist.id,
+                item_id: item.id,
+                fields: Object.keys(patch),
+            };
+            if (patch.text !== undefined && patch.text !== item.text) {
+                detail.text_from = item.text.slice(0, 120);
+                detail.text_to = patch.text.slice(0, 120);
+            }
+            if (patch.assigneeId !== undefined &&
+                patch.assigneeId !== item.assigneeId) {
+                detail.assignee_from = item.assigneeId ?? null;
+                detail.assignee_to = patch.assigneeId ?? null;
+            }
             await this.db.transaction(async (tx) => {
                 await this.checklists.updateItem(item.id, patch, tx);
                 await this.activity.recordMany([
@@ -154,10 +205,7 @@ class ChecklistsService {
                         taskId: checklist.taskId,
                         actorId: input.actorId,
                         action: "checklist_item_updated",
-                        context: {
-                            checklist_id: checklist.id,
-                            item_id: item.id,
-                        },
+                        context: detail,
                     },
                 ], tx);
             });

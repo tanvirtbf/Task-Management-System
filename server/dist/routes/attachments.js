@@ -8,6 +8,7 @@ const AttachmentsController_1 = require("../controllers/AttachmentsController");
 const AttachmentsService_1 = require("../services/AttachmentsService");
 const AttachmentsRepo_1 = require("../repositories/AttachmentsRepo");
 const TasksRepo_1 = require("../repositories/TasksRepo");
+const TaskActivityRepo_1 = require("../repositories/TaskActivityRepo");
 const R2Service_1 = require("../services/R2Service");
 const client_1 = require("../db/client");
 const logger_1 = __importDefault(require("../config/logger"));
@@ -24,7 +25,7 @@ const db = (0, client_1.getDb)();
 const attachmentsRepo = new AttachmentsRepo_1.AttachmentsRepo(db);
 const tasksRepo = new TasksRepo_1.TasksRepo(db);
 const r2 = new R2Service_1.R2Service(logger_1.default);
-const attachmentsService = new AttachmentsService_1.AttachmentsService(attachmentsRepo, tasksRepo, r2);
+const attachmentsService = new AttachmentsService_1.AttachmentsService(db, attachmentsRepo, tasksRepo, new TaskActivityRepo_1.TaskActivityRepo(db), r2);
 const attachmentsController = new AttachmentsController_1.AttachmentsController(attachmentsService, logger_1.default);
 // This router declares FULL paths and mounts at the v1 root because §16's routes
 // span the `/uploads`, `/attachments`, and `/tasks` prefixes.

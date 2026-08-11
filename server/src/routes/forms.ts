@@ -28,6 +28,7 @@ import { NotificationsRepo } from "../repositories/NotificationsRepo";
 import { TasksService } from "../services/TasksService";
 import { TaskWriteService } from "../services/TaskWriteService";
 import { WorkspaceRepo } from "../repositories/WorkspaceRepo";
+import { WorkspaceActivityRepo } from "../repositories/WorkspaceActivityRepo";
 import { FormsService } from "../services/FormsService";
 import { FormsController } from "../controllers/FormsController";
 import {
@@ -98,6 +99,7 @@ const taskWriteService = new TaskWriteService(
     notificationsRepo,
     new AttachmentsRepo(db),
     new WorkspaceRepo(db),
+    new WorkspaceActivityRepo(db),
     tasksReadService,
     logger,
 );

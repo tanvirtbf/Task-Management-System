@@ -287,7 +287,28 @@ edit a field → the new entry appears without a reload.
 
 ---
 
-## PHASE 3 — The audit log becomes complete (R2.1, part 2)
+## PHASE 3 — The audit log becomes complete (R2.1, part 2) ✅ SHIPPED 2026-08-11
+
+> **Status: DONE.** Every G13 gap closed, all rows in the same transaction as their mutation:
+> **bulk** assignee/tag/(un)archive now write the single-path row shapes per (task, pair) that
+> ACTUALLY changed (pre-state captured F21-style; `bulk: true` marker; `archived_at` no longer
+> leaks into `task_updated` diffs) · **attachments** add/remove (`AttachmentsService` gained
+> db+activity deps; first-finalize only, idempotent re-finalize silent) · **comment edit/delete**
+> (delete carries `author_id` — an admin deleting someone else's words stays attributable) ·
+> **checklist** rename `{from,to}` + bulk-item per-item rows + item field-detail
+> (`text_from/text_to`, `assignee_from/to`) + template-apply now audits its checklist into being ·
+> **postmortem_submitted** `{items, revised}` + ETag bump · **archive cascade** writes `via_parent`
+> rows per descendant that transitioned (new `TasksRepo.descendantIdsByArchivedState`) · **hard
+> delete** writes `workspace_activity` (entity `'task'` — upgrade `017_task_audit.sql`, dev+qa
+> applied) BEFORE the cascade wipes the task's own trail · **names denormalised** into rows
+> (`status_changed` from_name/to_name single+bulk via `StatusesRepo.namesByIds`, tag `name`,
+> custom-field `field_name` + clipped `value`) · **description diffs clipped** at 280 chars.
+> `created_from_template` context keys fixed to snake_case (`template_id`, `name`).
+> Client: 6 new VERBS + renderer branches (prefers denormed names; statusMap stays the
+> pre-P3-row fallback). Deliberately still silent (documented in API_DESIGN §13): uploads/sign,
+> watcher self-toggle, position shuffles, initial content at creation (form CF values, create's
+> initial tags). Tests: **16 new** across tasks/collab/attachments/eng + extended
+> set-value/apply assertions; full regressions green (see commit).
 
 **Goal:** no change to a task can happen without a row.
 

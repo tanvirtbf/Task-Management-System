@@ -246,6 +246,21 @@ describe("PUT /api/v1/tasks/:id/custom-fields/:fieldId", () => {
             expect(await activityActions(t.id)).toContain(
                 "custom_field_value_set",
             );
+            // Team-access P3: the row names the field (rename-proof) and
+            // records the value that landed.
+            const [row] = (
+                await getDb()
+                    .select()
+                    .from(taskActivity)
+                    .where(eq(taskActivity.taskId, t.id))
+            ).filter((a) => a.action === "custom_field_value_set");
+            expect(row.context).toMatchObject({
+                field_id: f,
+                field_name: "text field",
+            });
+            expect(
+                (row.context as { value?: unknown }).value,
+            ).toBeDefined();
         });
     });
 

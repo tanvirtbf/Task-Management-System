@@ -1,4 +1,4 @@
-import { and, asc, count, eq, max } from "drizzle-orm";
+import { and, asc, count, eq, inArray, max } from "drizzle-orm";
 import { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../db/schema";
 import { lists, spaces, statuses, tasks, type Status } from "../db/schema";
@@ -221,6 +221,24 @@ export class StatusesRepo {
             )
             .limit(1);
         return row ?? null;
+    }
+
+    /**
+     * Names for a set of status ids, one query (team-access P3): the bulk
+     * `status_changed` audit rows denormalise the OLD status name per task.
+     * No workspace clamp needed — callers pass ids read off rows already
+     * workspace-scoped, and a name is not an oracle.
+     */
+    async namesByIds(
+        statusIds: string[],
+        exec: DbExecutor = this.db,
+    ): Promise<Map<string, string>> {
+        if (statusIds.length === 0) return new Map();
+        const rows = await exec
+            .select({ id: statuses.id, name: statuses.name })
+            .from(statuses)
+            .where(inArray(statuses.id, statusIds));
+        return new Map(rows.map((r) => [r.id, r.name]));
     }
 
     /**

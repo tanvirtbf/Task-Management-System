@@ -131,6 +131,10 @@ exports.workspaceActivityEntityTypes = [
     "user",
     "role",
     "sprint",
+    // Appended LAST (ordinal parity with the SQL ENUM — the 014 rule).
+    // Team-access P3 (upgrades/017): a hard-deleted task's trail lives here,
+    // because its own task_activity rows die in the FK cascade.
+    "task",
 ];
 exports.weekDays = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 exports.formFieldKinds = ["task_attr", "custom_field"];

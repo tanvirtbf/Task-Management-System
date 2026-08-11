@@ -1165,8 +1165,10 @@ CREATE TABLE workspace_activity (
     internal_id  BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     workspace_id VARCHAR(64)  NOT NULL,
     actor_id     VARCHAR(64)  NULL,
+    -- 'task' appended (team-access P3, upgrades/017): hard-deleting a task
+    -- must leave a trail HERE — its own task_activity rows die in the cascade.
     entity_type  ENUM('workspace','space','list','task_type','tag',
-                      'custom_field','user','role','sprint') NOT NULL,
+                      'custom_field','user','role','sprint','task') NOT NULL,
     entity_id    VARCHAR(64)  NOT NULL,
     action       VARCHAR(60)  NOT NULL,   -- 'created' | 'archived' | 'role_changed' | …
     context      JSON         NULL,

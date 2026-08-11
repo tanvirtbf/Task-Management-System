@@ -402,6 +402,34 @@ class TasksRepo {
         return [...kidIds, ...grands.map((g) => g.id)];
     }
     /**
+     * Descendants (children + grandchildren) filtered by archival state
+     * (team-access P3): the archive/unarchive cascade writes one audit row
+     * per descendant it ACTUALLY flips, so the caller reads "who is about to
+     * transition" before the cascade runs — same 2-level shape as
+     * `descendantIds` / the cascade writers.
+     */
+    async descendantIdsByArchivedState(rootId, archived, exec = this.db) {
+        const stateFilter = archived
+            ? (0, drizzle_orm_1.isNotNull)(schema_1.tasks.archivedAt)
+            : (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt);
+        const kids = await exec
+            .select({ id: schema_1.tasks.id })
+            .from(schema_1.tasks)
+            .where((0, drizzle_orm_1.eq)(schema_1.tasks.parentTaskId, rootId));
+        const kidIds = kids.map((k) => k.id);
+        if (kidIds.length === 0)
+            return [];
+        const matchingKids = await exec
+            .select({ id: schema_1.tasks.id })
+            .from(schema_1.tasks)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.inArray)(schema_1.tasks.id, kidIds), stateFilter));
+        const grands = await exec
+            .select({ id: schema_1.tasks.id })
+            .from(schema_1.tasks)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.inArray)(schema_1.tasks.parentTaskId, kidIds), stateFilter));
+        return [...matchingKids.map((k) => k.id), ...grands.map((g) => g.id)];
+    }
+    /**
      * F15 (ISS-046): recompute a parent's `subtasks_count` /
      * `subtasks_completed` from the rows themselves.
      *

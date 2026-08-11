@@ -7,6 +7,7 @@ import { AttachmentsController } from "../controllers/AttachmentsController";
 import { AttachmentsService } from "../services/AttachmentsService";
 import { AttachmentsRepo } from "../repositories/AttachmentsRepo";
 import { TasksRepo } from "../repositories/TasksRepo";
+import { TaskActivityRepo } from "../repositories/TaskActivityRepo";
 import { R2Service } from "../services/R2Service";
 import { getDb } from "../db/client";
 import logger from "../config/logger";
@@ -36,7 +37,13 @@ const db = getDb();
 const attachmentsRepo = new AttachmentsRepo(db);
 const tasksRepo = new TasksRepo(db);
 const r2 = new R2Service(logger);
-const attachmentsService = new AttachmentsService(attachmentsRepo, tasksRepo, r2);
+const attachmentsService = new AttachmentsService(
+    db,
+    attachmentsRepo,
+    tasksRepo,
+    new TaskActivityRepo(db),
+    r2,
+);
 const attachmentsController = new AttachmentsController(
     attachmentsService,
     logger,

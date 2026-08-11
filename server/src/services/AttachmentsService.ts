@@ -1,3 +1,5 @@
+import { MySql2Database } from "drizzle-orm/mysql2";
+import * as schema from "../db/schema";
 import { AppError } from "../errors";
 import { Roles, type Role } from "../constants";
 import { holds } from "../rbac/can";
@@ -5,6 +7,7 @@ import { liveLegacyRole } from "../rbac/scopeGuard";
 import { currentActor } from "../rbac/context";
 import { fakeId } from "../utils";
 import { TasksRepo } from "../repositories/TasksRepo";
+import { TaskActivityRepo } from "../repositories/TaskActivityRepo";
 import {
     AttachmentsRepo,
     type AttachmentRecord,
@@ -25,9 +28,13 @@ import {
 /**
  * §16 Attachments domain logic. Owns the workspace-isolation guards (every
  * attachment is reached through its task), the upload policy (size / MIME),
- * R2 presigning, and the soft-delete lifecycle. No transactions are needed —
- * each endpoint is a single write (or read) plus a presign, and the
- * trigger-maintained `attachments_count` is consistent on its own.
+ * R2 presigning, and the soft-delete lifecycle.
+ *
+ * Team-access P3 (plan G13): attachment add/remove finally show up in the
+ * task's audit log — this service wrote NO `task_activity` at all, so files
+ * appeared and vanished with no trace of who did it. The row commits in the
+ * same transaction as the attachment write (the `sign` step stays silent:
+ * a pending row nobody finished is not an event a human did to the task).
  */
 
 export interface SignUploadInput {
@@ -51,6 +58,8 @@ export interface SignUploadResult {
 export interface FinalizeInput {
     id: string;
     workspaceId: string;
+    /** The caller (`req.auth.sub`) — the `attachment_added` audit actor. */
+    actorId: string;
     storageKey?: string;
     thumbnailKey?: string;
 }
@@ -74,8 +83,10 @@ export interface DownloadInput {
 
 export class AttachmentsService {
     constructor(
+        private db: MySql2Database<typeof schema>,
         private attachments: AttachmentsRepo,
         private tasksRepo: TasksRepo,
+        private activity: TaskActivityRepo,
         private r2: R2Service,
     ) {}
 
@@ -225,9 +236,28 @@ export class AttachmentsService {
             uploadedBy: input.uploaderId,
         });
         await this.r2.putObject(storageKey, input.body, input.mimeType);
-        await this.attachments.markComplete(id, {
-            thumbnailKey: null,
-            sizeBytes: size,
+        // Team-access P3: the completion + its audit row commit together (R2
+        // stays outside the transaction — an external PUT cannot roll back).
+        await this.db.transaction(async (tx) => {
+            await this.attachments.markComplete(
+                id,
+                {
+                    thumbnailKey: null,
+                    sizeBytes: size,
+                },
+                tx,
+            );
+            await this.activity.recordMany(
+                [
+                    {
+                        taskId: task.id,
+                        actorId: input.uploaderId,
+                        action: "attachment_added",
+                        context: { attachment_id: id, name: input.filename },
+                    },
+                ],
+                tx,
+            );
         });
 
         const updated = await this.attachments.findByIdInWorkspace(
@@ -297,9 +327,35 @@ export class AttachmentsService {
         const thumbnailKey = input.thumbnailKey ?? null;
         const realSize =
             head.sizeBytes != null ? BigInt(head.sizeBytes) : undefined;
-        await this.attachments.markComplete(att.id, {
-            thumbnailKey,
-            sizeBytes: realSize,
+        // Team-access P3: the FIRST finalize is the moment the file becomes
+        // real to the task — that transition gets the audit row. A re-finalize
+        // (idempotent re-verify of an already-complete row) writes nothing.
+        const firstFinalize = att.uploadStatus !== "complete";
+        await this.db.transaction(async (tx) => {
+            await this.attachments.markComplete(
+                att.id,
+                {
+                    thumbnailKey,
+                    sizeBytes: realSize,
+                },
+                tx,
+            );
+            if (firstFinalize) {
+                await this.activity.recordMany(
+                    [
+                        {
+                            taskId: att.taskId,
+                            actorId: input.actorId,
+                            action: "attachment_added",
+                            context: {
+                                attachment_id: att.id,
+                                name: att.name,
+                            },
+                        },
+                    ],
+                    tx,
+                );
+            }
         });
 
         // Re-read so the response reflects the persisted state (status + thumb +
@@ -364,14 +420,29 @@ export class AttachmentsService {
             );
         }
 
-        const affected = await this.attachments.softDelete(att.id);
-        if (affected === 0) {
-            // A concurrent delete removed it between the gate and the write.
-            throw AppError.notFound(
-                "attachment.not_found",
-                `Attachment ${input.id} does not exist`,
+        // Team-access P3: the removal + its audit row commit together; the
+        // thrown 404 on the concurrent-delete race rolls the row back too.
+        await this.db.transaction(async (tx) => {
+            const affected = await this.attachments.softDelete(att.id, tx);
+            if (affected === 0) {
+                // A concurrent delete removed it between the gate and the write.
+                throw AppError.notFound(
+                    "attachment.not_found",
+                    `Attachment ${input.id} does not exist`,
+                );
+            }
+            await this.activity.recordMany(
+                [
+                    {
+                        taskId: att.taskId,
+                        actorId: input.actorId,
+                        action: "attachment_removed",
+                        context: { attachment_id: att.id, name: att.name },
+                    },
+                ],
+                tx,
             );
-        }
+        });
     }
 
     /**

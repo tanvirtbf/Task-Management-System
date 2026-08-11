@@ -129,6 +129,7 @@ export class AttachmentsController {
             const attachment = await this.service.finalize({
                 id: req.params.id,
                 workspaceId: req.auth.workspaceId,
+                actorId: req.auth.sub,
                 storageKey: req.body.storage_key,
                 thumbnailKey: req.body.thumbnail_key,
             });

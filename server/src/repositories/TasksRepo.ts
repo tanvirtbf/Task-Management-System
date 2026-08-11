@@ -600,6 +600,38 @@ export class TasksRepo {
     }
 
     /**
+     * Descendants (children + grandchildren) filtered by archival state
+     * (team-access P3): the archive/unarchive cascade writes one audit row
+     * per descendant it ACTUALLY flips, so the caller reads "who is about to
+     * transition" before the cascade runs — same 2-level shape as
+     * `descendantIds` / the cascade writers.
+     */
+    async descendantIdsByArchivedState(
+        rootId: string,
+        archived: boolean,
+        exec: DbExecutor = this.db,
+    ): Promise<string[]> {
+        const stateFilter = archived
+            ? isNotNull(tasks.archivedAt)
+            : isNull(tasks.archivedAt);
+        const kids = await exec
+            .select({ id: tasks.id })
+            .from(tasks)
+            .where(eq(tasks.parentTaskId, rootId));
+        const kidIds = kids.map((k) => k.id);
+        if (kidIds.length === 0) return [];
+        const matchingKids = await exec
+            .select({ id: tasks.id })
+            .from(tasks)
+            .where(and(inArray(tasks.id, kidIds), stateFilter));
+        const grands = await exec
+            .select({ id: tasks.id })
+            .from(tasks)
+            .where(and(inArray(tasks.parentTaskId, kidIds), stateFilter));
+        return [...matchingKids.map((k) => k.id), ...grands.map((g) => g.id)];
+    }
+
+    /**
      * F15 (ISS-046): recompute a parent's `subtasks_count` /
      * `subtasks_completed` from the rows themselves.
      *

@@ -182,8 +182,8 @@ class EngineeringRepo {
      * Insert-or-update the postmortem for a task (PK = `task_id`), so a re-submit
      * replaces the prior checklist state and bumps `updated_at`/`updated_by`.
      */
-    async upsertPostmortem(taskId, items, updatedBy) {
-        await this.db
+    async upsertPostmortem(taskId, items, updatedBy, exec = this.db) {
+        await exec
             .insert(schema_1.taskPostmortems)
             .values({ taskId, items, updatedBy })
             .onDuplicateKeyUpdate({ set: { items, updatedBy } });

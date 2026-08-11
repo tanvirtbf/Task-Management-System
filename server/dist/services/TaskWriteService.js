@@ -240,8 +240,12 @@ const scalarChanges = (current, patch) => {
     // Meta/membership keys are not scalar columns: the bulk patch carries the
     // `archivedAtProvided` flag and the assignee/tag arrays, none of which
     // belong in a before/after diff (membership has its own activity rows).
+    // `archivedAt` too (team-access P3): a bulk (un)archive writes proper
+    // `task_archived`/`task_unarchived` rows now — an `archived_at` timestamp
+    // diff inside `task_updated` double-logged it, unreadably.
     const NOT_SCALAR = new Set([
         "statusId",
+        "archivedAt",
         "archivedAtProvided",
         "assigneeAdd",
         "assigneeRemove",
@@ -256,10 +260,21 @@ const scalarChanges = (current, patch) => {
         const next = norm(to);
         if (JSON.stringify(from) === JSON.stringify(next))
             continue; // no-op
-        changes[wire(key)] = { from, to: next };
+        // Team-access P3: a description edit used to write the ENTIRE old +
+        // new text into one activity row. Clip both sides — the audit answers
+        // "who, when, roughly what"; the current text lives on the task.
+        changes[wire(key)] =
+            key === "description"
+                ? { from: clipDiffText(from), to: clipDiffText(next) }
+                : { from, to: next };
     }
     return changes;
 };
+/** Max characters a text value may occupy inside a `task_updated` diff. */
+const DIFF_TEXT_LIMIT = 280;
+const clipDiffText = (v) => typeof v === "string" && v.length > DIFF_TEXT_LIMIT
+    ? `${v.slice(0, DIFF_TEXT_LIMIT)}…`
+    : v;
 class TaskWriteService {
     db;
     lists;
@@ -273,9 +288,16 @@ class TaskWriteService {
     notifications;
     attachmentsRepo;
     workspaces;
+    wsActivity;
     reads;
     logger;
-    constructor(db, lists, statuses, taskTypes, tasks, membership, users, tags, activity, notifications, attachmentsRepo, workspaces, reads, logger) {
+    constructor(db, lists, statuses, taskTypes, tasks, membership, users, tags, activity, notifications, attachmentsRepo, workspaces, 
+    /**
+     * Team-access P3: the hard-delete trail. `task_activity` rows die in
+     * the FK cascade with their task, so the deletion event has to live
+     * in the workspace-level log (entity_type 'task', upgrades/017).
+     */
+    wsActivity, reads, logger) {
         this.db = db;
         this.lists = lists;
         this.statuses = statuses;
@@ -288,6 +310,7 @@ class TaskWriteService {
         this.notifications = notifications;
         this.attachmentsRepo = attachmentsRepo;
         this.workspaces = workspaces;
+        this.wsActivity = wsActivity;
         this.reads = reads;
         this.logger = logger;
     }
@@ -851,7 +874,17 @@ class TaskWriteService {
                         taskId: current.id,
                         actorId: input.actorId,
                         action: "status_changed",
-                        context: { from: current.statusId, to: p.statusId },
+                        // Team-access P3: names DENORMALISED into the row —
+                        // a rename (or a cross-list move in the history) must
+                        // not turn old rows into "(deleted status)". Ids stay
+                        // for machines; names are what the audit log shows.
+                        context: {
+                            from: current.statusId,
+                            to: p.statusId,
+                            from_name: listStatuses.find((s) => s.id === current.statusId)?.name ?? null,
+                            to_name: listStatuses.find((s) => s.id === p.statusId)
+                                ?.name ?? null,
+                        },
                     });
                     // F19 (D6 / ISS-072): `status_change` finally has a
                     // producer. Recipients: assignees + watchers, minus the
@@ -941,19 +974,32 @@ class TaskWriteService {
         await this.assertTaskScope("task.archive", task); // F8 — same key as archive
         await this.db.transaction(async (tx) => {
             const transitioned = await this.tasks.unarchive(task.id, tx);
+            // Team-access P3: mirror of the archive cascade — every descendant
+            // the restore flips gets its own row (captured pre-flip).
+            const flipped = await this.tasks.descendantIdsByArchivedState(task.id, true, tx);
             await this.tasks.unarchiveDescendants(task.id, tx);
             // F15 (ISS-046): an unarchived child rejoins the parent's count.
             if (task.parentTaskId) {
                 await this.tasks.recomputeSubtaskCounters(task.parentTaskId, tx);
             }
+            const rows = [];
             if (transitioned) {
-                await this.activity.recordMany([
-                    {
-                        taskId: task.id,
-                        actorId: input.actorId,
-                        action: "task_unarchived",
-                    },
-                ], tx);
+                rows.push({
+                    taskId: task.id,
+                    actorId: input.actorId,
+                    action: "task_unarchived",
+                });
+            }
+            for (const id of flipped) {
+                rows.push({
+                    taskId: id,
+                    actorId: input.actorId,
+                    action: "task_unarchived",
+                    context: { via_parent: task.id },
+                });
+            }
+            if (rows.length > 0) {
+                await this.activity.recordMany(rows, tx);
             }
         });
     }
@@ -1010,6 +1056,23 @@ class TaskWriteService {
                 await this.notifications.deleteByEntity("task", subtree, tx);
                 const keys = await this.attachmentsRepo.storageKeysByTasks(subtree, tx);
                 await this.attachmentsRepo.enqueueR2Purge(keys, tx);
+                // Team-access P3: the ONE row that survives. The task's own
+                // task_activity trail is about to cascade away with it, so
+                // the deletion event — who, what, when — is written to the
+                // workspace-level log FIRST, in the same transaction.
+                await this.wsActivity.record({
+                    workspaceId: input.workspaceId,
+                    actorId: input.actorId,
+                    entityType: "task",
+                    entityId: task.id,
+                    action: "task_hard_deleted",
+                    context: {
+                        name: task.name,
+                        custom_id: task.customId ?? null,
+                        list_id: task.primaryListId,
+                        subtree_count: subtree.length,
+                    },
+                }, tx);
                 await this.tasks.hardDelete(task.id, tx);
                 // F15 (ISS-046): the child is gone from the parent's count.
                 if (task.parentTaskId) {
@@ -1046,13 +1109,31 @@ class TaskWriteService {
             assigneeIds: assignees.get(task.id) ?? [],
         });
     }
-    /** Archive `taskId` + descendants + one gated `task_archived` row, atomically. */
+    /** Archive `taskId` + descendants + gated `task_archived` rows, atomically. */
     async archiveInTx(taskId, actorId, parentTaskId) {
         await this.db.transaction(async (tx) => {
             const transitioned = await this.tasks.archive(taskId, tx);
+            // Team-access P3: the cascade used to flip every descendant with
+            // NO trace on the descendants themselves — a subtask's own audit
+            // log claimed it was never archived. Capture who is about to be
+            // flipped (still live) BEFORE the cascade, then write one row per
+            // descendant that actually transitioned.
+            const flipped = await this.tasks.descendantIdsByArchivedState(taskId, false, tx);
             await this.tasks.archiveDescendants(taskId, tx);
+            const rows = [];
             if (transitioned) {
-                await this.activity.recordMany([{ taskId, actorId, action: "task_archived" }], tx);
+                rows.push({ taskId, actorId, action: "task_archived" });
+            }
+            for (const id of flipped) {
+                rows.push({
+                    taskId: id,
+                    actorId,
+                    action: "task_archived",
+                    context: { via_parent: taskId },
+                });
+            }
+            if (rows.length > 0) {
+                await this.activity.recordMany(rows, tx);
             }
             // F15 (ISS-046): an archived child leaves the parent's count.
             if (parentTaskId) {
@@ -1184,12 +1265,17 @@ class TaskWriteService {
         }
         // 2. Validate references in the patch.
         let newGroup;
+        // Team-access P3: the landing status's NAME rides into every bulk
+        // `status_changed` row (names denormalised — a later rename must not
+        // blank the history).
+        let newStatusName = null;
         if (p.statusId !== undefined) {
             const st = await this.statuses.findByIdInWorkspace(p.statusId, input.workspaceId);
             if (!st) {
                 throw errors_1.AppError.unprocessable("task.invalid_status", `${p.statusId} is not a status in this workspace`, [{ field: "patch.status_id", issue: "is not a status in this workspace" }]);
             }
             newGroup = st.statusGroup;
+            newStatusName = st.name;
         }
         // F22 (ISS-011): the same completion guard the single PATCH has —
         // fail-atomic, matching every other bulk validation: one blocked
@@ -1259,6 +1345,32 @@ class TaskWriteService {
                 dbPatch.reviewedBy = null;
             }
         }
+        // Team-access P3 (plan G13): the bulk membership writes used to go
+        // straight to the repo, so reassigning 50 tasks was INVISIBLE to the
+        // audit log. Capture the pre-state (the F21 pattern — same timing as
+        // `found`) so each task logs only what actually changed for IT, with
+        // the same row shapes the single-target endpoints write.
+        const wantsAssigneeAudit = assigneeAdd.length > 0 || assigneeRemove.length > 0;
+        const wantsTagAudit = tagAdd.length > 0 || tagRemove.length > 0;
+        const preAssignees = wantsAssigneeAudit
+            ? await this.tasks.assigneesByTask(ids)
+            : new Map();
+        const preTags = wantsTagAudit
+            ? await this.tasks.tagsByTask(ids)
+            : new Map();
+        const tagNames = new Map();
+        if (wantsTagAudit) {
+            for (const t of await this.tags.listByWorkspace(input.workspaceId)) {
+                tagNames.set(t.id, t.name);
+            }
+        }
+        // Old-status names for the bulk `status_changed` rows — one query for
+        // the distinct set, not one per task.
+        const oldStatusNames = p.statusId !== undefined
+            ? await this.statuses.namesByIds([
+                ...new Set(found.map((t) => t.statusId)),
+            ])
+            : new Map();
         // 4. Atomic write (batched: bulk operations instead of per-task loop).
         try {
             await this.db.transaction(async (tx) => {
@@ -1278,22 +1390,111 @@ class TaskWriteService {
                         await this.tasks.recomputeSubtaskCounters(parentId, tx);
                     }
                 }
+                const bulkRows = [];
                 if (assigneeAdd.length > 0) {
                     await this.membership.addAssigneesBulk(ids, assigneeAdd, input.actorId, tx);
                     await this.membership.addWatchersBulk(ids, assigneeAdd, tx);
+                    // Team-access P3: same shape as the single-target path —
+                    // one row per (task, user) that ACTUALLY gained them.
+                    for (const t of found) {
+                        const had = new Set(preAssignees.get(t.id) ?? []);
+                        for (const userId of assigneeAdd) {
+                            if (had.has(userId))
+                                continue;
+                            bulkRows.push({
+                                taskId: t.id,
+                                actorId: input.actorId,
+                                action: "assignee_added",
+                                context: { user_id: userId, bulk: true },
+                            });
+                        }
+                    }
                 }
-                if (assigneeRemove.length > 0)
+                if (assigneeRemove.length > 0) {
                     await this.membership.removeAssigneesBulk(ids, assigneeRemove, tx);
-                if (tagAdd.length > 0)
+                    for (const t of found) {
+                        const had = new Set(preAssignees.get(t.id) ?? []);
+                        for (const userId of assigneeRemove) {
+                            if (!had.has(userId))
+                                continue;
+                            bulkRows.push({
+                                taskId: t.id,
+                                actorId: input.actorId,
+                                action: "assignee_removed",
+                                context: { user_id: userId, bulk: true },
+                            });
+                        }
+                    }
+                }
+                if (tagAdd.length > 0) {
                     await this.membership.addTagsBulk(ids, tagAdd, tx);
-                if (tagRemove.length > 0)
+                    for (const t of found) {
+                        const had = new Set(preTags.get(t.id) ?? []);
+                        for (const tagId of tagAdd) {
+                            if (had.has(tagId))
+                                continue;
+                            bulkRows.push({
+                                taskId: t.id,
+                                actorId: input.actorId,
+                                action: "tag_added",
+                                context: {
+                                    tag_id: tagId,
+                                    name: tagNames.get(tagId) ?? null,
+                                    bulk: true,
+                                },
+                            });
+                        }
+                    }
+                }
+                if (tagRemove.length > 0) {
                     await this.membership.removeTagsBulk(ids, tagRemove, tx);
+                    for (const t of found) {
+                        const had = new Set(preTags.get(t.id) ?? []);
+                        for (const tagId of tagRemove) {
+                            if (!had.has(tagId))
+                                continue;
+                            bulkRows.push({
+                                taskId: t.id,
+                                actorId: input.actorId,
+                                action: "tag_removed",
+                                context: {
+                                    tag_id: tagId,
+                                    name: tagNames.get(tagId) ?? null,
+                                    bulk: true,
+                                },
+                            });
+                        }
+                    }
+                }
+                // Team-access P3: a bulk (un)archive now writes the SAME
+                // semantic rows the single-target endpoints write — only for
+                // tasks whose archival state actually flips.
+                if (p.archivedAtProvided) {
+                    const archiving = !!p.archivedAt;
+                    for (const t of found) {
+                        if (archiving && t.archivedAt === null) {
+                            bulkRows.push({
+                                taskId: t.id,
+                                actorId: input.actorId,
+                                action: "task_archived",
+                                context: { bulk: true },
+                            });
+                        }
+                        else if (!archiving && t.archivedAt !== null) {
+                            bulkRows.push({
+                                taskId: t.id,
+                                actorId: input.actorId,
+                                action: "task_unarchived",
+                                context: { bulk: true },
+                            });
+                        }
+                    }
+                }
                 // F21 (ISS-049): a 200-task bulk used to leave 200 rows saying
                 // only `{"bulk":true}`. Each row now records the per-task
                 // before/after (compared against ITS OWN pre-update values in
                 // `found`), and a task the patch did not actually change gets
                 // no row at all.
-                const bulkRows = [];
                 for (const t of found) {
                     const changes = scalarChanges(t, p);
                     const statusMoved = p.statusId !== undefined && p.statusId !== t.statusId;
@@ -1302,7 +1503,13 @@ class TaskWriteService {
                             taskId: t.id,
                             actorId: input.actorId,
                             action: "status_changed",
-                            context: { from: t.statusId, to: p.statusId },
+                            // P3: names denormalised, like the single path.
+                            context: {
+                                from: t.statusId,
+                                to: p.statusId,
+                                from_name: oldStatusNames.get(t.statusId) ?? null,
+                                to_name: newStatusName,
+                            },
                         });
                     }
                     if (Object.keys(changes).length > 0) {

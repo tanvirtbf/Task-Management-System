@@ -77,6 +77,7 @@ export class ChecklistsController {
             const checklist = await this.service.updateChecklist({
                 id: req.params.id,
                 workspaceId: req.auth.workspaceId,
+                actorId: req.auth.sub,
                 name,
                 position,
             });

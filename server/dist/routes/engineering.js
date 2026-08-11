@@ -9,6 +9,7 @@ const EngineeringService_1 = require("../services/EngineeringService");
 const EngineeringRepo_1 = require("../repositories/EngineeringRepo");
 const TaskWriteService_1 = require("../services/TaskWriteService");
 const WorkspaceRepo_1 = require("../repositories/WorkspaceRepo");
+const WorkspaceActivityRepo_1 = require("../repositories/WorkspaceActivityRepo");
 const TasksService_1 = require("../services/TasksService");
 const UsersRepo_1 = require("../repositories/UsersRepo");
 const TasksRepo_1 = require("../repositories/TasksRepo");
@@ -42,9 +43,9 @@ const activityRepo = new TaskActivityRepo_1.TaskActivityRepo(db);
 const notificationsRepo = new NotificationsRepo_1.NotificationsRepo(db);
 const tagsRepo = new TagsRepo_1.TagsRepo(db);
 const tasksService = new TasksService_1.TasksService(listsRepo, tasksRepo);
-const taskWriteService = new TaskWriteService_1.TaskWriteService(db, listsRepo, statusesRepo, taskTypesRepo, tasksRepo, membershipRepo, usersRepo, tagsRepo, activityRepo, notificationsRepo, new AttachmentsRepo_1.AttachmentsRepo(db), new WorkspaceRepo_1.WorkspaceRepo(db), tasksService, logger_1.default);
+const taskWriteService = new TaskWriteService_1.TaskWriteService(db, listsRepo, statusesRepo, taskTypesRepo, tasksRepo, membershipRepo, usersRepo, tagsRepo, activityRepo, notificationsRepo, new AttachmentsRepo_1.AttachmentsRepo(db), new WorkspaceRepo_1.WorkspaceRepo(db), new WorkspaceActivityRepo_1.WorkspaceActivityRepo(db), tasksService, logger_1.default);
 const engRepo = new EngineeringRepo_1.EngineeringRepo(db);
-const service = new EngineeringService_1.EngineeringService(engRepo, taskWriteService, tasksRepo, usersRepo, logger_1.default);
+const service = new EngineeringService_1.EngineeringService(db, engRepo, taskWriteService, tasksRepo, activityRepo, usersRepo, logger_1.default);
 const controller = new EngineeringController_1.EngineeringController(service, logger_1.default);
 // ─── POST /api/v1/eng/report-bug ──────────────────────────────────────────────
 // 🔐 any authenticated member (every team can report a bug). The router declares

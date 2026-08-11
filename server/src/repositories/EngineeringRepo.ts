@@ -26,6 +26,7 @@ import {
     type TaskPostmortem,
 } from "../db/schema";
 import { dhakaToday } from "../utils/dhakaTime";
+import type { DbExecutor } from "./types";
 
 /** Status groups that count as "closed work" — excluded from the open rollups. */
 const DONE_GROUPS = ["done", "closed"] as const;
@@ -298,8 +299,9 @@ export class EngineeringRepo {
         taskId: string,
         items: Record<string, boolean>,
         updatedBy: string,
+        exec: DbExecutor = this.db,
     ): Promise<void> {
-        await this.db
+        await exec
             .insert(taskPostmortems)
             .values({ taskId, items, updatedBy })
             .onDuplicateKeyUpdate({ set: { items, updatedBy } });

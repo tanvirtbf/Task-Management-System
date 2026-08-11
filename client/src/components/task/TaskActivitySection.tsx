@@ -55,6 +55,13 @@ const VERBS: Record<string, string> = {
     created_from_template: "created this task from a template",
     custom_field_value_set: "set a custom field",
     custom_field_value_cleared: "cleared a custom field",
+    // Team-access P3 — the operations that used to be invisible.
+    comment_updated: "edited a comment",
+    comment_deleted: "deleted a comment",
+    attachment_added: "attached a file",
+    attachment_removed: "removed a file",
+    checklist_renamed: "renamed a checklist",
+    postmortem_submitted: "filled in the postmortem",
 };
 
 const verb = (action: string): string =>
@@ -188,10 +195,17 @@ const contextDetail = (
 ): string | null => {
     if (!context) return null;
     if (action === "status_changed") {
+        // P3: names are denormalised into the row (`from_name`/`to_name` →
+        // camelized) — rename-proof and correct across list moves. Older rows
+        // predate that; fall back to the drawer's status map.
         const from =
-            maps.statuses.get(String(context.from))?.name ?? "(old status)";
+            (typeof context.fromName === "string" && context.fromName) ||
+            maps.statuses.get(String(context.from))?.name ||
+            "(old status)";
         const to =
-            maps.statuses.get(String(context.to))?.name ?? "(new status)";
+            (typeof context.toName === "string" && context.toName) ||
+            maps.statuses.get(String(context.to))?.name ||
+            "(new status)";
         return `${from} → ${to}`;
     }
     if (
@@ -199,6 +213,47 @@ const contextDetail = (
         typeof context.userId === "string"
     ) {
         return fullName(maps.users.get(context.userId)) ?? "a member";
+    }
+    if (action === "comment_deleted" && typeof context.authorId === "string") {
+        const author = fullName(maps.users.get(context.authorId));
+        return author ? `by ${author}` : null;
+    }
+    if (action === "checklist_renamed") {
+        return `"${String(context.from ?? "")}" → "${String(context.to ?? "")}"`;
+    }
+    if (action === "checklist_item_updated") {
+        if (
+            typeof context.textFrom === "string" &&
+            typeof context.textTo === "string"
+        ) {
+            return `"${context.textFrom}" → "${context.textTo}"`;
+        }
+        if (Array.isArray(context.fields)) {
+            return (context.fields as string[]).join(", ");
+        }
+    }
+    if (action === "custom_field_value_set") {
+        const field =
+            typeof context.fieldName === "string" ? context.fieldName : null;
+        const value =
+            context.value === null || context.value === undefined
+                ? null
+                : typeof context.value === "object"
+                  ? JSON.stringify(context.value)
+                  : String(context.value);
+        if (field) return value !== null ? `${field}: ${value}` : field;
+    }
+    if (
+        action === "custom_field_value_cleared" &&
+        typeof context.fieldName === "string"
+    ) {
+        return context.fieldName;
+    }
+    if (
+        (action === "task_archived" || action === "task_unarchived") &&
+        context.viaParent
+    ) {
+        return "with its parent task";
     }
     if (typeof context.name === "string") return `"${context.name}"`;
     if (typeof context.text === "string") return `"${context.text}"`;
@@ -286,8 +341,8 @@ export const TaskActivitySection = ({
                             isUpdate && entry.context
                                 ? diffRows(entry.context, maps)
                                 : [];
-                        const isBulk =
-                            isUpdate && entry.context?.bulk === true;
+                        // P3: bulk assignee/tag/archive rows carry the flag too.
+                        const isBulk = entry.context?.bulk === true;
                         return (
                             <div
                                 key={entry.id}

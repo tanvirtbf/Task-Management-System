@@ -155,6 +155,21 @@ class StatusesRepo {
         return row ?? null;
     }
     /**
+     * Names for a set of status ids, one query (team-access P3): the bulk
+     * `status_changed` audit rows denormalise the OLD status name per task.
+     * No workspace clamp needed — callers pass ids read off rows already
+     * workspace-scoped, and a name is not an oracle.
+     */
+    async namesByIds(statusIds, exec = this.db) {
+        if (statusIds.length === 0)
+            return new Map();
+        const rows = await exec
+            .select({ id: schema_1.statuses.id, name: schema_1.statuses.name })
+            .from(schema_1.statuses)
+            .where((0, drizzle_orm_1.inArray)(schema_1.statuses.id, statusIds));
+        return new Map(rows.map((r) => [r.id, r.name]));
+    }
+    /**
      * Apply a partial update (`name` / `color` / `status_group`) to a status and
      * return it in the wire projection. Only the supplied fields are written;
      * `updated_at` auto-bumps via the column's `ON UPDATE`. The row is

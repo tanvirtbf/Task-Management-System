@@ -143,7 +143,20 @@ class CommentsService {
             throw errors_1.AppError.forbidden("comment.edit_window_expired", "The 15-minute edit window for this comment has passed");
         }
         const editedAt = new Date();
-        await this.comments.updateBody(comment.id, input.body, editedAt);
+        // Team-access P3 (plan G13): an edit used to leave NO trace — the
+        // audit log claimed the original text was never touched. Same-tx row,
+        // like create's `comment_posted`.
+        await this.db.transaction(async (tx) => {
+            await this.comments.updateBody(comment.id, input.body, editedAt, tx);
+            await this.activity.recordMany([
+                {
+                    taskId: comment.taskId,
+                    actorId: input.actorId,
+                    action: "comment_updated",
+                    context: { comment_id: comment.id },
+                },
+            ], tx);
+        });
         return (0, commentSerializer_1.toWireComment)({ ...comment, body: input.body, editedAt });
     }
     /** DELETE — soft-delete (author or admin/owner); idempotent tombstone. */
@@ -161,7 +174,23 @@ class CommentsService {
         if (!isAuthor && !isAdmin) {
             throw errors_1.AppError.forbidden("comment.forbidden_delete", "Only the author or an admin can delete a comment");
         }
-        await this.comments.softDelete(comment.id, new Date());
+        // Team-access P3 (plan G13): a deletion — especially an ADMIN deleting
+        // someone else's words — must be attributable. `author_id` rides in
+        // the context so "whose comment" survives the tombstone.
+        await this.db.transaction(async (tx) => {
+            await this.comments.softDelete(comment.id, new Date(), tx);
+            await this.activity.recordMany([
+                {
+                    taskId: comment.taskId,
+                    actorId: input.actorId,
+                    action: "comment_deleted",
+                    context: {
+                        comment_id: comment.id,
+                        author_id: comment.authorId,
+                    },
+                },
+            ], tx);
+        });
     }
     // ─── helpers ──────────────────────────────────────────────────────────────
     /** Resolve `:id` (internal id or custom_id) to a task in the workspace. */

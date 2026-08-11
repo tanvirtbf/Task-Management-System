@@ -200,9 +200,20 @@ describe("POST /api/v1/templates/:id/apply", () => {
             );
             expect(created).toBeDefined();
             expect(created?.actorId).toBe(actor.id);
-            expect(
-                (created?.context as { templateId?: string })?.templateId,
-            ).toBe(tpl.id);
+            // P3: context keys are snake_case now, like every other producer;
+            // `name` carries the template's name for the renderer.
+            expect(created?.context).toMatchObject({
+                template_id: tpl.id,
+                name: tpl.name ?? expect.anything(),
+            });
+            // P3: the template's checklist is audited into being too.
+            const checklistRow = acts.find(
+                (a) => a.action === "checklist_created",
+            );
+            expect(checklistRow).toBeDefined();
+            expect(checklistRow?.context).toMatchObject({
+                via_template: tpl.id,
+            });
         });
 
         it("attaches the template's tags to the spawned task", async () => {

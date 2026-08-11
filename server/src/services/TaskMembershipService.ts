@@ -433,6 +433,18 @@ export class TaskMembershipService {
             );
         }
 
+        // Team-access P3: the tag NAME rides in the row (denormalised) — a
+        // rename or delete later must not blank the history. Looked up BEFORE
+        // the transaction: names don't depend on tx state, and a read inside
+        // the row-lock window would stretch the critical section for nothing
+        // (25 parallel applies serialize on that lock).
+        const tagNames = new Map(
+            (await this.tags.listByWorkspace(workspaceId)).map((t) => [
+                t.id,
+                t.name,
+            ]),
+        );
+
         return this.db.transaction(async (tx) => {
             await this.tasks.lockById(taskId, tx);
 
@@ -450,7 +462,10 @@ export class TaskMembershipService {
                     taskId,
                     actorId,
                     action: "tag_added",
-                    context: { tag_id: tagId },
+                    context: {
+                        tag_id: tagId,
+                        name: tagNames.get(tagId) ?? null,
+                    },
                 })),
                 tx,
             );
@@ -488,6 +503,13 @@ export class TaskMembershipService {
         // F34 (ISS-095): same gate as applying one.
         await this.assertTagScope(task);
 
+        // Team-access P3: name denormalised, like tag_added — looked up
+        // BEFORE the transaction (see addTags: no reads under the row lock).
+        const removedName =
+            (await this.tags.listByWorkspace(workspaceId)).find(
+                (t) => t.id === tagId,
+            )?.name ?? null;
+
         return this.db.transaction(async (tx) => {
             await this.tasks.lockById(taskId, tx);
 
@@ -505,7 +527,7 @@ export class TaskMembershipService {
                         taskId,
                         actorId,
                         action: "tag_removed",
-                        context: { tag_id: tagId },
+                        context: { tag_id: tagId, name: removedName },
                     },
                 ],
                 tx,

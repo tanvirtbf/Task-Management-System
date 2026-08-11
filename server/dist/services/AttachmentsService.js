@@ -10,12 +10,16 @@ const utils_1 = require("../utils");
 const attachmentSerializer_1 = require("../serializers/attachmentSerializer");
 const attachmentPolicy_1 = require("./attachmentPolicy");
 class AttachmentsService {
+    db;
     attachments;
     tasksRepo;
+    activity;
     r2;
-    constructor(attachments, tasksRepo, r2) {
+    constructor(db, attachments, tasksRepo, activity, r2) {
+        this.db = db;
         this.attachments = attachments;
         this.tasksRepo = tasksRepo;
+        this.activity = activity;
         this.r2 = r2;
     }
     /**
@@ -101,9 +105,21 @@ class AttachmentsService {
             uploadedBy: input.uploaderId,
         });
         await this.r2.putObject(storageKey, input.body, input.mimeType);
-        await this.attachments.markComplete(id, {
-            thumbnailKey: null,
-            sizeBytes: size,
+        // Team-access P3: the completion + its audit row commit together (R2
+        // stays outside the transaction — an external PUT cannot roll back).
+        await this.db.transaction(async (tx) => {
+            await this.attachments.markComplete(id, {
+                thumbnailKey: null,
+                sizeBytes: size,
+            }, tx);
+            await this.activity.recordMany([
+                {
+                    taskId: task.id,
+                    actorId: input.uploaderId,
+                    action: "attachment_added",
+                    context: { attachment_id: id, name: input.filename },
+                },
+            ], tx);
         });
         const updated = await this.attachments.findByIdInWorkspace(id, input.workspaceId);
         if (!updated) {
@@ -155,9 +171,28 @@ class AttachmentsService {
         }
         const thumbnailKey = input.thumbnailKey ?? null;
         const realSize = head.sizeBytes != null ? BigInt(head.sizeBytes) : undefined;
-        await this.attachments.markComplete(att.id, {
-            thumbnailKey,
-            sizeBytes: realSize,
+        // Team-access P3: the FIRST finalize is the moment the file becomes
+        // real to the task — that transition gets the audit row. A re-finalize
+        // (idempotent re-verify of an already-complete row) writes nothing.
+        const firstFinalize = att.uploadStatus !== "complete";
+        await this.db.transaction(async (tx) => {
+            await this.attachments.markComplete(att.id, {
+                thumbnailKey,
+                sizeBytes: realSize,
+            }, tx);
+            if (firstFinalize) {
+                await this.activity.recordMany([
+                    {
+                        taskId: att.taskId,
+                        actorId: input.actorId,
+                        action: "attachment_added",
+                        context: {
+                            attachment_id: att.id,
+                            name: att.name,
+                        },
+                    },
+                ], tx);
+            }
         });
         // Re-read so the response reflects the persisted state (status + thumb +
         // reconciled size).
@@ -201,11 +236,23 @@ class AttachmentsService {
         if (!isOwner && !isAdmin) {
             throw errors_1.AppError.forbidden("auth.forbidden", "Only the uploader or an admin can delete this attachment");
         }
-        const affected = await this.attachments.softDelete(att.id);
-        if (affected === 0) {
-            // A concurrent delete removed it between the gate and the write.
-            throw errors_1.AppError.notFound("attachment.not_found", `Attachment ${input.id} does not exist`);
-        }
+        // Team-access P3: the removal + its audit row commit together; the
+        // thrown 404 on the concurrent-delete race rolls the row back too.
+        await this.db.transaction(async (tx) => {
+            const affected = await this.attachments.softDelete(att.id, tx);
+            if (affected === 0) {
+                // A concurrent delete removed it between the gate and the write.
+                throw errors_1.AppError.notFound("attachment.not_found", `Attachment ${input.id} does not exist`);
+            }
+            await this.activity.recordMany([
+                {
+                    taskId: att.taskId,
+                    actorId: input.actorId,
+                    action: "attachment_removed",
+                    context: { attachment_id: att.id, name: att.name },
+                },
+            ], tx);
+        });
     }
     /**
      * Resolve a fresh signed GET URL for an attachment so the caller can be

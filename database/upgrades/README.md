@@ -39,6 +39,7 @@
 | `014_overdue_alerts.sql` | ✅ 2026-08-08 | ✅ 2026-08-08 | ⏳ pending (no prod yet) |
 | `015_push_subscriptions.sql` | ✅ 2026-08-08 | ✅ 2026-08-08 | ⏳ pending (no prod yet) |
 | `016_team_membership.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 | ⏳ pending (no prod yet) |
+| `017_task_audit.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 | ⏳ pending (no prod yet) |
 
 > `005` ships with the F3 clock fix and is only correct alongside it. If you apply
 > `005`, the app's `DB_TIMEZONE` **must** be `+00:00` (see `server/.env.example`).
@@ -61,6 +62,11 @@
 > `overdue` ENUM value that `009` removed — legitimately this time, because the job is
 > its producer. Gated + re-runnable. Remember the new cron line
 > (`deploy/cron/bbtasks-jobs`: `*/10` overdue-alert) when rolling prod.
+>
+> `017` ships with team-access Phase 3 (audit-log completion, 2026-08-11): appends
+> `'task'` to `workspace_activity.entity_type` so a HARD-deleted task leaves a trail
+> there (its own `task_activity` rows die in the FK cascade). END-append, gated by
+> being a same-definition no-op on re-run; apply **before or with** that server build.
 >
 > `016` ships with team-access Phase 1 (TEAM_ACCESS_AND_AUDIT_PLAN.md, 2026-08-11):
 > adds `users.primary_space_id` (home team) and backfills the G2 landmine — every

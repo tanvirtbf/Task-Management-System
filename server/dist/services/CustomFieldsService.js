@@ -34,6 +34,25 @@ const KNOWN_CURRENCIES = (() => {
 })();
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}/;
 /**
+ * Team-access P3: bound what a value may occupy inside an audit row — a long
+ * text field must not turn one activity row into an essay. Objects (dropdown
+ * envelopes, date envelopes, …) pass through when compact, else clip their
+ * JSON form.
+ */
+const AUDIT_VALUE_LIMIT = 280;
+const clipAuditValue = (v) => {
+    if (typeof v === "string" && v.length > AUDIT_VALUE_LIMIT) {
+        return `${v.slice(0, AUDIT_VALUE_LIMIT)}…`;
+    }
+    if (typeof v === "object" && v !== null) {
+        const s = JSON.stringify(v);
+        return s.length > AUDIT_VALUE_LIMIT
+            ? `${s.slice(0, AUDIT_VALUE_LIMIT)}…`
+            : v;
+    }
+    return v;
+};
+/**
  * §17 Custom Fields business logic. Field DEFINITION CRUD (#1–#5) is
  * workspace-admin work (👑) that pairs each write with a `workspace_activity`
  * audit row; per-task VALUE writes (#6/#7) are member work (🔐) that lock the
@@ -205,7 +224,14 @@ class CustomFieldsService {
                     taskId: task.id,
                     actorId: input.actorId,
                     action: "custom_field_value_set",
-                    context: { field_id: field.id },
+                    // Team-access P3 (plan G13): record WHICH field by
+                    // name (denormalised — a later rename must not blank
+                    // the history) and WHAT value landed, clipped.
+                    context: {
+                        field_id: field.id,
+                        field_name: field.name,
+                        value: clipAuditValue(normalized),
+                    },
                 },
             ], tx);
             await this.tasksRepo.touchUpdatedAt(task.id, tx);
@@ -251,7 +277,11 @@ class CustomFieldsService {
                     taskId: task.id,
                     actorId: input.actorId,
                     action: "custom_field_value_cleared",
-                    context: { field_id: field.id },
+                    // Team-access P3: name denormalised, like `set`.
+                    context: {
+                        field_id: field.id,
+                        field_name: field.name,
+                    },
                 },
             ], tx);
             await this.tasksRepo.touchUpdatedAt(task.id, tx);

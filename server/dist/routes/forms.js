@@ -27,6 +27,7 @@ const NotificationsRepo_1 = require("../repositories/NotificationsRepo");
 const TasksService_1 = require("../services/TasksService");
 const TaskWriteService_1 = require("../services/TaskWriteService");
 const WorkspaceRepo_1 = require("../repositories/WorkspaceRepo");
+const WorkspaceActivityRepo_1 = require("../repositories/WorkspaceActivityRepo");
 const FormsService_1 = require("../services/FormsService");
 const FormsController_1 = require("../controllers/FormsController");
 const forms_1 = require("../validators/forms");
@@ -57,7 +58,7 @@ const notificationsRepo = new NotificationsRepo_1.NotificationsRepo(db);
 // so it reuses the §10 TaskWriteService (own transaction, default status/type
 // resolution, activity + notifications).
 const tasksReadService = new TasksService_1.TasksService(listsRepo, tasksRepo);
-const taskWriteService = new TaskWriteService_1.TaskWriteService(db, listsRepo, statusesRepo, taskTypesRepo, tasksRepo, membershipRepo, usersRepo, tagsRepo, activityRepo, notificationsRepo, new AttachmentsRepo_1.AttachmentsRepo(db), new WorkspaceRepo_1.WorkspaceRepo(db), tasksReadService, logger_1.default);
+const taskWriteService = new TaskWriteService_1.TaskWriteService(db, listsRepo, statusesRepo, taskTypesRepo, tasksRepo, membershipRepo, usersRepo, tagsRepo, activityRepo, notificationsRepo, new AttachmentsRepo_1.AttachmentsRepo(db), new WorkspaceRepo_1.WorkspaceRepo(db), new WorkspaceActivityRepo_1.WorkspaceActivityRepo(db), tasksReadService, logger_1.default);
 const formsService = new FormsService_1.FormsService(db, formsRepo, formFieldsRepo, formSubmissionsRepo, customFieldsRepo, listsRepo, taskWriteService, notificationsRepo, logger_1.default);
 const controller = new FormsController_1.FormsController(formsService, logger_1.default);
 const admin = (0, requirePermission_1.requirePermission)("form.manage");

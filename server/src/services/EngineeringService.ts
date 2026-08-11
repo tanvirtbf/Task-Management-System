@@ -1,4 +1,6 @@
 import type { Logger } from "winston";
+import type { MySql2Database } from "drizzle-orm/mysql2";
+import type * as schema from "../db/schema";
 import { AppError } from "../errors";
 import { Roles, type Role } from "../constants";
 import {
@@ -11,6 +13,7 @@ import { runWithPrincipal } from "../rbac/context";
 import { bugIntakePrincipal } from "../rbac/principals";
 import type { EngineeringRepo } from "../repositories/EngineeringRepo";
 import type { TasksRepo } from "../repositories/TasksRepo";
+import type { TaskActivityRepo } from "../repositories/TaskActivityRepo";
 import type { UsersRepo } from "../repositories/UsersRepo";
 import type { TaskWriteService } from "./TaskWriteService";
 import { toWireTask, type WireTask } from "../serializers/taskSerializer";
@@ -164,9 +167,12 @@ const isTask = (t: WireTask | null): t is WireTask => t !== null;
  */
 export class EngineeringService {
     constructor(
+        /** Team-access P3: postmortem save + its audit row commit together. */
+        private db: MySql2Database<typeof schema>,
         private repo: EngineeringRepo,
         private taskWrite: TaskWriteService,
         private tasksRepo: TasksRepo,
+        private taskActivity: TaskActivityRepo,
         private usersRepo: UsersRepo,
         private logger: Logger,
     ) {}
@@ -371,7 +377,34 @@ export class EngineeringService {
             );
         }
 
-        await this.repo.upsertPostmortem(state.id, input.items, input.actorId);
+        // Team-access P3 (plan G13): the postmortem save was invisible to the
+        // task's audit log (a winston debug line was the only witness). The
+        // upsert + its row + the ETag bump commit together; `revised` says
+        // whether this replaced an earlier submission.
+        const existed = (await this.repo.findPostmortem(state.id)) !== null;
+        await this.db.transaction(async (tx) => {
+            await this.repo.upsertPostmortem(
+                state.id,
+                input.items,
+                input.actorId,
+                tx,
+            );
+            await this.taskActivity.recordMany(
+                [
+                    {
+                        taskId: state.id,
+                        actorId: input.actorId,
+                        action: "postmortem_submitted",
+                        context: {
+                            items: Object.keys(input.items).length,
+                            revised: existed,
+                        },
+                    },
+                ],
+                tx,
+            );
+            await this.tasksRepo.touchUpdatedAt(state.id, tx);
+        });
         const row = await this.repo.findPostmortem(state.id);
         if (!row) {
             throw AppError.internal("Failed to persist the postmortem");

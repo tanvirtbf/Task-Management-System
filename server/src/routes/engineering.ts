@@ -8,6 +8,7 @@ import { EngineeringService } from "../services/EngineeringService";
 import { EngineeringRepo } from "../repositories/EngineeringRepo";
 import { TaskWriteService } from "../services/TaskWriteService";
 import { WorkspaceRepo } from "../repositories/WorkspaceRepo";
+import { WorkspaceActivityRepo } from "../repositories/WorkspaceActivityRepo";
 import { TasksService } from "../services/TasksService";
 import { UsersRepo } from "../repositories/UsersRepo";
 import { TasksRepo } from "../repositories/TasksRepo";
@@ -65,14 +66,17 @@ const taskWriteService = new TaskWriteService(
     notificationsRepo,
     new AttachmentsRepo(db),
     new WorkspaceRepo(db),
+    new WorkspaceActivityRepo(db),
     tasksService,
     logger,
 );
 const engRepo = new EngineeringRepo(db);
 const service = new EngineeringService(
+    db,
     engRepo,
     taskWriteService,
     tasksRepo,
+    activityRepo,
     usersRepo,
     logger,
 );

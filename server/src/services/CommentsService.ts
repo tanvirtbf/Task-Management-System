@@ -223,7 +223,28 @@ export class CommentsService {
             );
         }
         const editedAt = new Date();
-        await this.comments.updateBody(comment.id, input.body, editedAt);
+        // Team-access P3 (plan G13): an edit used to leave NO trace — the
+        // audit log claimed the original text was never touched. Same-tx row,
+        // like create's `comment_posted`.
+        await this.db.transaction(async (tx) => {
+            await this.comments.updateBody(
+                comment.id,
+                input.body,
+                editedAt,
+                tx,
+            );
+            await this.activity.recordMany(
+                [
+                    {
+                        taskId: comment.taskId,
+                        actorId: input.actorId,
+                        action: "comment_updated",
+                        context: { comment_id: comment.id },
+                    },
+                ],
+                tx,
+            );
+        });
         return toWireComment({ ...comment, body: input.body, editedAt });
     }
 
@@ -249,7 +270,26 @@ export class CommentsService {
                 "Only the author or an admin can delete a comment",
             );
         }
-        await this.comments.softDelete(comment.id, new Date());
+        // Team-access P3 (plan G13): a deletion — especially an ADMIN deleting
+        // someone else's words — must be attributable. `author_id` rides in
+        // the context so "whose comment" survives the tombstone.
+        await this.db.transaction(async (tx) => {
+            await this.comments.softDelete(comment.id, new Date(), tx);
+            await this.activity.recordMany(
+                [
+                    {
+                        taskId: comment.taskId,
+                        actorId: input.actorId,
+                        action: "comment_deleted",
+                        context: {
+                            comment_id: comment.id,
+                            author_id: comment.authorId,
+                        },
+                    },
+                ],
+                tx,
+            );
+        });
     }
 
     // ─── helpers ──────────────────────────────────────────────────────────────

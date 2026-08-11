@@ -15,6 +15,7 @@ import { AttachmentsRepo } from "../repositories/AttachmentsRepo";
 import { ListsRepo } from "../repositories/ListsRepo";
 import { TaskMembershipRepo } from "../repositories/TaskMembershipRepo";
 import { TaskActivityRepo } from "../repositories/TaskActivityRepo";
+import { WorkspaceActivityRepo } from "../repositories/WorkspaceActivityRepo";
 import { NotificationsRepo } from "../repositories/NotificationsRepo";
 import { StatusesRepo } from "../repositories/StatusesRepo";
 import { TaskTypesRepo } from "../repositories/TaskTypesRepo";
@@ -133,6 +134,7 @@ const taskWriteService = new TaskWriteService(
     notificationsRepo,
     new AttachmentsRepo(db),
     new WorkspaceRepo(db),
+    new WorkspaceActivityRepo(db),
     tasksService,
     logger,
 );

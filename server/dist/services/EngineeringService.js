@@ -85,15 +85,21 @@ const isTask = (t) => t !== null;
  * §22 Engineering specials — domain logic.
  */
 class EngineeringService {
+    db;
     repo;
     taskWrite;
     tasksRepo;
+    taskActivity;
     usersRepo;
     logger;
-    constructor(repo, taskWrite, tasksRepo, usersRepo, logger) {
+    constructor(
+    /** Team-access P3: postmortem save + its audit row commit together. */
+    db, repo, taskWrite, tasksRepo, taskActivity, usersRepo, logger) {
+        this.db = db;
         this.repo = repo;
         this.taskWrite = taskWrite;
         this.tasksRepo = tasksRepo;
+        this.taskActivity = taskActivity;
         this.usersRepo = usersRepo;
         this.logger = logger;
     }
@@ -241,7 +247,26 @@ class EngineeringService {
         if (!POSTMORTEM_STATUS_GROUPS.has(state.statusGroup)) {
             throw errors_1.AppError.conflict("incident.not_resolved", "Postmortems can only be submitted on a resolved (done or closed) Incident");
         }
-        await this.repo.upsertPostmortem(state.id, input.items, input.actorId);
+        // Team-access P3 (plan G13): the postmortem save was invisible to the
+        // task's audit log (a winston debug line was the only witness). The
+        // upsert + its row + the ETag bump commit together; `revised` says
+        // whether this replaced an earlier submission.
+        const existed = (await this.repo.findPostmortem(state.id)) !== null;
+        await this.db.transaction(async (tx) => {
+            await this.repo.upsertPostmortem(state.id, input.items, input.actorId, tx);
+            await this.taskActivity.recordMany([
+                {
+                    taskId: state.id,
+                    actorId: input.actorId,
+                    action: "postmortem_submitted",
+                    context: {
+                        items: Object.keys(input.items).length,
+                        revised: existed,
+                    },
+                },
+            ], tx);
+            await this.tasksRepo.touchUpdatedAt(state.id, tx);
+        });
         const row = await this.repo.findPostmortem(state.id);
         if (!row) {
             throw errors_1.AppError.internal("Failed to persist the postmortem");
