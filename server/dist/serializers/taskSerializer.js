@@ -58,6 +58,8 @@ const toWireTask = (t, h) => ({
     subtasks_completed: t.subtasksCompleted,
     comments_count: t.commentsCount,
     attachments_count: t.attachmentsCount,
+    checklist_items_total: t.checklistItemsTotal,
+    checklist_items_done: t.checklistItemsDone,
     sprint_id: t.sprintId,
     story_points: t.storyPoints,
     reviewer_id: t.reviewerId,

@@ -98,6 +98,14 @@ exports.tasks = (0, mysql_core_1.mysqlTable)("tasks", {
     attachmentsCount: (0, mysql_core_1.int)("attachments_count", { unsigned: true })
         .notNull()
         .default(0),
+    // Checklist rollup (upgrades/022) — items across ALL the task's
+    // checklists, app-maintained per item write (absolute recompute).
+    checklistItemsTotal: (0, mysql_core_1.int)("checklist_items_total", { unsigned: true })
+        .notNull()
+        .default(0),
+    checklistItemsDone: (0, mysql_core_1.int)("checklist_items_done", { unsigned: true })
+        .notNull()
+        .default(0),
     // ─── Engineering-only fields (NULL for operational tasks) ────────────
     sprintId: (0, mysql_core_1.varchar)("sprint_id", { length: _shared_1.ID_LENGTH }),
     storyPoints: (0, mysql_core_1.tinyint)("story_points", { unsigned: true }),

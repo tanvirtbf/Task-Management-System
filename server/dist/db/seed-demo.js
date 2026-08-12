@@ -564,6 +564,23 @@ const seed = async () => {
         engineerId: U[10],
         createdBy: U[2],
     });
+    // ── 12b. checklist rollup counters (upgrades/022) ────────────────────────
+    // The seed writes checklist items straight to the repo, bypassing
+    // ChecklistsService's per-write recompute — one absolute backfill keeps
+    // the task rows' 3/7 chips truthful.
+    await pool.query(`
+        UPDATE tasks t
+          LEFT JOIN (
+                SELECT cl.task_id AS tid,
+                       COUNT(*) AS cnt,
+                       SUM(ci.is_completed) AS done_cnt
+                  FROM checklist_items ci
+                  JOIN checklists cl ON cl.id = ci.checklist_id
+                 GROUP BY cl.task_id
+            ) agg ON agg.tid = t.id
+           SET t.checklist_items_total = COALESCE(agg.cnt, 0),
+               t.checklist_items_done = COALESCE(agg.done_cnt, 0)
+    `);
     // ── 13. RBAC bootstrap (catalog + system roles + assignments) ────────────
     // Also derives a starting space-membership map from who is assigned tasks,
     // so the demo workspace is ready for an admin to tighten access.

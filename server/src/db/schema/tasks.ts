@@ -137,6 +137,14 @@ export const tasks = mysqlTable(
         attachmentsCount: int("attachments_count", { unsigned: true })
             .notNull()
             .default(0),
+        // Checklist rollup (upgrades/022) — items across ALL the task's
+        // checklists, app-maintained per item write (absolute recompute).
+        checklistItemsTotal: int("checklist_items_total", { unsigned: true })
+            .notNull()
+            .default(0),
+        checklistItemsDone: int("checklist_items_done", { unsigned: true })
+            .notNull()
+            .default(0),
 
         // ─── Engineering-only fields (NULL for operational tasks) ────────────
         sprintId: varchar("sprint_id", { length: ID_LENGTH }),

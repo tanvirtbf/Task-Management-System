@@ -175,6 +175,9 @@ export interface Task {
     subtasksCompleted: number;
     commentsCount: number;
     attachmentsCount: number;
+    /** Checklist rollup (upgrades/022) — items across ALL the task's checklists. */
+    checklistItemsTotal: number;
+    checklistItemsDone: number;
     createdAt: string;
     updatedAt: string;
     createdBy: string;

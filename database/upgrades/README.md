@@ -44,6 +44,7 @@
 | `019_visibility_switch.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 (first) | ⏳ pending (no prod yet) |
 | `020_edit_rights.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 (first) | ⏳ pending (no prod yet) |
 | `021_assignment_approval.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 (first, re-apply proven) | ⏳ pending (no prod yet) |
+| `022_checklist_counters.sql` | ✅ 2026-08-12 | ✅ 2026-08-12 (first, re-apply proven) | ⏳ pending (no prod yet) |
 
 > `005` ships with the F3 clock fix and is only correct alongside it. If you apply
 > `005`, the app's `DB_TIMEZONE` **must** be `+00:00` (see `server/.env.example`).
@@ -66,6 +67,13 @@
 > `overdue` ENUM value that `009` removed — legitimately this time, because the job is
 > its producer. Gated + re-runnable. Remember the new cron line
 > (`deploy/cron/bbtasks-jobs`: `*/10` overdue-alert) when rolling prod.
+>
+> `022` = checklist rollup counters (2026-08-12): `tasks.checklist_items_total`
+> + `tasks.checklist_items_done`, feeding the row/board "3/7" chip and the
+> drawer's aggregate %. App-maintained (`TasksRepo.recomputeChecklistCounters`
+> in every ChecklistsService write tx — absolute recompute, no triggers);
+> the in-file backfill is an absolute recompute too, safe to re-run any time.
+> Ships WITH the build that maintains it. Rollback = two DROP COLUMNs.
 >
 > `021` = cross-team assignment approval (team-access P8, 2026-08-11): the
 > `task_assignment_requests` + `task_assignment_request_events` tables and three

@@ -80,6 +80,8 @@ const TASK_KEYS = [
     "subtasks_completed",
     "comments_count",
     "attachments_count",
+    "checklist_items_total",
+    "checklist_items_done",
     "sprint_id",
     "story_points",
     "reviewer_id",

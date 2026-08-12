@@ -208,6 +208,8 @@ export class ChecklistsService {
                 ],
                 tx,
             );
+            // upgrades/022: the cascade just removed this checklist's items.
+            await this.tasks.recomputeChecklistCounters(checklist.taskId, tx);
         });
     }
 
@@ -259,6 +261,8 @@ export class ChecklistsService {
                 ],
                 tx,
             );
+            // upgrades/022: keep the task's checklist rollup true.
+            await this.tasks.recomputeChecklistCounters(checklist.taskId, tx);
             return row;
         });
         return toWireItem(created);
@@ -302,6 +306,8 @@ export class ChecklistsService {
                 })),
                 tx,
             );
+            // upgrades/022: keep the task's checklist rollup true.
+            await this.tasks.recomputeChecklistCounters(checklist.taskId, tx);
             return rows;
         });
         return created.map(toWireItem);
@@ -403,6 +409,8 @@ export class ChecklistsService {
                 ],
                 tx,
             );
+            // upgrades/022: the done-count just moved.
+            await this.tasks.recomputeChecklistCounters(checklist.taskId, tx);
         });
         return toWireItem({ ...item, isCompleted, completedAt, completedBy });
     }
@@ -431,6 +439,8 @@ export class ChecklistsService {
                 ],
                 tx,
             );
+            // upgrades/022: keep the task's checklist rollup true.
+            await this.tasks.recomputeChecklistCounters(checklist.taskId, tx);
         });
     }
 

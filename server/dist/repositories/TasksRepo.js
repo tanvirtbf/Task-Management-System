@@ -476,6 +476,31 @@ class TasksRepo {
         `);
     }
     /**
+     * Checklist rollup for one task (upgrades/022): items across ALL of its
+     * checklists → `checklist_items_total` / `checklist_items_done`. Same
+     * ABSOLUTE-recompute design as `recomputeSubtaskCounters` above (whatever
+     * a caller misses, the next call repairs; derived-table JOIN for the same
+     * error-1093 reason). Called by every ChecklistsService write that can
+     * change either number, inside that write's transaction.
+     */
+    async recomputeChecklistCounters(taskId, exec = this.db) {
+        await exec.execute((0, drizzle_orm_1.sql) `
+            UPDATE ${schema_1.tasks} t
+              LEFT JOIN (
+                    SELECT cl.task_id AS tid,
+                           COUNT(*) AS cnt,
+                           SUM(ci.is_completed) AS done_cnt
+                      FROM ${schema_1.checklistItems} ci
+                      JOIN ${schema_1.checklists} cl ON cl.id = ci.checklist_id
+                     WHERE cl.task_id = ${taskId}
+                     GROUP BY cl.task_id
+                ) agg ON agg.tid = t.id
+               SET t.checklist_items_total = COALESCE(agg.cnt, 0),
+                   t.checklist_items_done = COALESCE(agg.done_cnt, 0)
+             WHERE t.id = ${taskId}
+        `);
+    }
+    /**
      * The space each task lives in (via its primary list), keyed by task id.
      * F8's scope guard builds its `PermissionContext` from this — tasks carry
      * no space column of their own, so the one-hop join lives here rather than

@@ -732,6 +732,17 @@ Flips `is_completed`. Records `completed_by` + `completed_at`.
 ### DELETE `/api/v1/checklist-items/:id`
 **204.**
 
+### Checklist rollup on the task (upgrades/022, 2026-08-12)
+Every item write (add / bulk / toggle / delete, and checklist delete) keeps
+`tasks.checklist_items_total` + `tasks.checklist_items_done` true via an absolute
+recompute inside the same transaction — the two ride the Task wire beside the other
+counters and feed the row/board **"3/7" chip** and the drawer section's aggregate
+`done/total · %`. Since team-access P7 every mutation here requires `task.edit`
+reach on the task (assignees / creator / owning team's Head / admins); the client
+now surfaces a refused write's human message instead of failing silently, and the
+drawer offers click-to-edit for the checklist NAME and each item's TEXT plus a
+per-item delete — the wrong-text-can't-be-fixed gap is closed.
+
 ---
 
 ## 16. Attachments

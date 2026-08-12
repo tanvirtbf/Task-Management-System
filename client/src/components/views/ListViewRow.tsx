@@ -1,6 +1,7 @@
 import { Checkbox, Dropdown } from "antd";
 import {
     GripVertical,
+    ListChecks,
     MessageSquare,
     Paperclip,
     MoreHorizontal,
@@ -202,7 +203,9 @@ export const ListViewRow = ({
             </div>
 
             {/* Activity indicators */}
-            {(task.commentsCount > 0 || task.attachmentsCount > 0) && (
+            {(task.commentsCount > 0 ||
+                task.attachmentsCount > 0 ||
+                task.checklistItemsTotal > 0) && (
                 <div
                     style={{
                         display: "flex",
@@ -212,6 +215,25 @@ export const ListViewRow = ({
                         flexShrink: 0,
                     }}
                 >
+                    {task.checklistItemsTotal > 0 && (
+                        <span
+                            title="Checklist items done"
+                            style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: 3,
+                                color:
+                                    task.checklistItemsDone ===
+                                    task.checklistItemsTotal
+                                        ? tokens.colors.success
+                                        : undefined,
+                            }}
+                        >
+                            <ListChecks size={11} strokeWidth={1.75} />
+                            {task.checklistItemsDone}/
+                            {task.checklistItemsTotal}
+                        </span>
+                    )}
                     {task.commentsCount > 0 && (
                         <span
                             style={{

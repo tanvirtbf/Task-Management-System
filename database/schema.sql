@@ -508,6 +508,12 @@ CREATE TABLE tasks (
     subtasks_completed   INT UNSIGNED NOT NULL DEFAULT 0,
     comments_count       INT UNSIGNED NOT NULL DEFAULT 0,
     attachments_count    INT UNSIGNED NOT NULL DEFAULT 0,
+    -- Checklist rollup (upgrades/022): items across ALL of the task's
+    -- checklists, app-maintained in the same tx as every item write
+    -- (TasksRepo.recomputeChecklistCounters — absolute recompute, no drift).
+    -- Feeds the row/board "3/7" chip and the drawer's aggregate %.
+    checklist_items_total INT UNSIGNED NOT NULL DEFAULT 0,
+    checklist_items_done  INT UNSIGNED NOT NULL DEFAULT 0,
 
     -- ─── Engineering-only fields (NULL for operational tasks) ────────────
     sprint_id            VARCHAR(64)  NULL,

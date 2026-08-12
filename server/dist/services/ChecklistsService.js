@@ -104,6 +104,8 @@ class ChecklistsService {
                     },
                 },
             ], tx);
+            // upgrades/022: the cascade just removed this checklist's items.
+            await this.tasks.recomputeChecklistCounters(checklist.taskId, tx);
         });
     }
     /** POST — add a single item, appended after the checklist's existing items. */
@@ -141,6 +143,8 @@ class ChecklistsService {
                     },
                 },
             ], tx);
+            // upgrades/022: keep the task's checklist rollup true.
+            await this.tasks.recomputeChecklistCounters(checklist.taskId, tx);
             return row;
         });
         return (0, checklistSerializer_1.toWireItem)(created);
@@ -169,6 +173,8 @@ class ChecklistsService {
                     bulk: true,
                 },
             })), tx);
+            // upgrades/022: keep the task's checklist rollup true.
+            await this.tasks.recomputeChecklistCounters(checklist.taskId, tx);
             return rows;
         });
         return created.map(checklistSerializer_1.toWireItem);
@@ -244,6 +250,8 @@ class ChecklistsService {
                     },
                 },
             ], tx);
+            // upgrades/022: the done-count just moved.
+            await this.tasks.recomputeChecklistCounters(checklist.taskId, tx);
         });
         return (0, checklistSerializer_1.toWireItem)({ ...item, isCompleted, completedAt, completedBy });
     }
@@ -265,6 +273,8 @@ class ChecklistsService {
                     },
                 },
             ], tx);
+            // upgrades/022: keep the task's checklist rollup true.
+            await this.tasks.recomputeChecklistCounters(checklist.taskId, tx);
         });
     }
     // ─── helpers ──────────────────────────────────────────────────────────────

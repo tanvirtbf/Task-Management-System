@@ -1,4 +1,4 @@
-import { MessageSquare, Paperclip } from "lucide-react";
+import { ListChecks, MessageSquare, Paperclip } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { AssigneeStack } from "../ui/AssigneeStack";
 import { DueDateBadge } from "../ui/DueDateBadge";
@@ -106,7 +106,9 @@ export const TaskRow = ({
                     {task.name}
                 </div>
                 {showMeta &&
-                    (task.commentsCount > 0 || task.attachmentsCount > 0) && (
+                    (task.commentsCount > 0 ||
+                        task.attachmentsCount > 0 ||
+                        task.checklistItemsTotal > 0) && (
                         <div
                             style={{
                                 display: "flex",
@@ -115,6 +117,28 @@ export const TaskRow = ({
                                 color: tokens.colors.textMuted,
                             }}
                         >
+                            {task.checklistItemsTotal > 0 && (
+                                <span
+                                    title="Checklist items done"
+                                    style={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: 3,
+                                        color:
+                                            task.checklistItemsDone ===
+                                            task.checklistItemsTotal
+                                                ? tokens.colors.success
+                                                : undefined,
+                                    }}
+                                >
+                                    <ListChecks
+                                        size={11}
+                                        strokeWidth={1.75}
+                                    />
+                                    {task.checklistItemsDone}/
+                                    {task.checklistItemsTotal}
+                                </span>
+                            )}
                             {task.commentsCount > 0 && (
                                 <span
                                     style={{

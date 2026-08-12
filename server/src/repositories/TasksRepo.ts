@@ -17,6 +17,8 @@ import {
 import { MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "../db/schema";
 import {
+    checklistItems,
+    checklists,
     customFields,
     lists,
     spaces,
@@ -679,6 +681,35 @@ export class TasksRepo {
                SET p.subtasks_count = COALESCE(agg.cnt, 0),
                    p.subtasks_completed = COALESCE(agg.done_cnt, 0)
              WHERE p.id = ${parentId}
+        `);
+    }
+
+    /**
+     * Checklist rollup for one task (upgrades/022): items across ALL of its
+     * checklists → `checklist_items_total` / `checklist_items_done`. Same
+     * ABSOLUTE-recompute design as `recomputeSubtaskCounters` above (whatever
+     * a caller misses, the next call repairs; derived-table JOIN for the same
+     * error-1093 reason). Called by every ChecklistsService write that can
+     * change either number, inside that write's transaction.
+     */
+    async recomputeChecklistCounters(
+        taskId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<void> {
+        await exec.execute(sql`
+            UPDATE ${tasks} t
+              LEFT JOIN (
+                    SELECT cl.task_id AS tid,
+                           COUNT(*) AS cnt,
+                           SUM(ci.is_completed) AS done_cnt
+                      FROM ${checklistItems} ci
+                      JOIN ${checklists} cl ON cl.id = ci.checklist_id
+                     WHERE cl.task_id = ${taskId}
+                     GROUP BY cl.task_id
+                ) agg ON agg.tid = t.id
+               SET t.checklist_items_total = COALESCE(agg.cnt, 0),
+                   t.checklist_items_done = COALESCE(agg.done_cnt, 0)
+             WHERE t.id = ${taskId}
         `);
     }
 

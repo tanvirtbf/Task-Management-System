@@ -1,8 +1,17 @@
 import { useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Skeleton, Checkbox, Progress, Button, Input, Select } from "antd";
-import { ChevronDown, ChevronRight, ListChecks, Plus, Trash2 } from "lucide-react";
+import {
+    Skeleton,
+    Checkbox,
+    Progress,
+    Button,
+    Input,
+    Select,
+    App as AntApp,
+} from "antd";
+import { ChevronDown, ChevronRight, ListChecks, Pencil, Plus, Trash2 } from "lucide-react";
 import { checklistsApi, usersApi } from "../../http/api";
+import { getApiErrorMessage } from "../../http/client";
 import { tokens } from "../../theme";
 import type { Checklist } from "../../types/extras";
 
@@ -15,11 +24,21 @@ export const ChecklistsSection = ({ taskId }: ChecklistsSectionProps) => {
     const [creating, setCreating] = useState(false);
     const [newName, setNewName] = useState("");
     const qc = useQueryClient();
+    const { message } = AntApp.useApp();
 
     const { data: checklists = [], isLoading } = useQuery({
         queryKey: ["checklists", taskId],
         queryFn: () => checklistsApi.byTask(taskId),
     });
+
+    // upgrades/022 — the task-level rollup shown beside the section title.
+    const totalAll = checklists.reduce((n, c) => n + c.items.length, 0);
+    const doneAll = checklists.reduce(
+        (n, c) => n + c.items.filter((i) => i.isCompleted).length,
+        0,
+    );
+    const pctAll =
+        totalAll > 0 ? Math.round((doneAll / totalAll) * 100) : 0;
 
     const createChecklist = useMutation({
         mutationFn: (name: string) => checklistsApi.create(taskId, name),
@@ -28,6 +47,7 @@ export const ChecklistsSection = ({ taskId }: ChecklistsSectionProps) => {
             setNewName("");
             setCreating(false);
         },
+        onError: (err) => message.error(getApiErrorMessage(err)),
     });
 
     return (
@@ -71,6 +91,23 @@ export const ChecklistsSection = ({ taskId }: ChecklistsSectionProps) => {
                         }}
                     >
                         {checklists.length}
+                    </span>
+                )}
+                {totalAll > 0 && (
+                    <span
+                        style={{
+                            marginLeft: 8,
+                            color:
+                                pctAll === 100
+                                    ? tokens.colors.success
+                                    : tokens.colors.textSecondary,
+                            fontFamily: tokens.typography.fontFamilyMono,
+                            textTransform: "none",
+                            letterSpacing: 0,
+                        }}
+                        title="Checklist items done across this task"
+                    >
+                        {doneAll}/{totalAll} · {pctAll}%
                     </span>
                 )}
             </button>
@@ -167,15 +204,55 @@ const ChecklistView = ({
     taskId: string;
 }) => {
     const qc = useQueryClient();
+    const { message } = AntApp.useApp();
     const [addingItem, setAddingItem] = useState(false);
     const [itemText, setItemText] = useState("");
+    // click-to-edit state: the checklist name, and one item's text at a time
+    const [editingName, setEditingName] = useState(false);
+    const [nameDraft, setNameDraft] = useState(checklist.name);
+    const [editingItemId, setEditingItemId] = useState<string | null>(null);
+    const [itemDraft, setItemDraft] = useState("");
 
-    const invalidate = () =>
+    // Item writes move the task's rollup counters (upgrades/022) — refresh
+    // the drawer header, the open task and the row chips along with the list.
+    const invalidate = () => {
         qc.invalidateQueries({ queryKey: ["checklists", taskId] });
+        qc.invalidateQueries({ queryKey: ["task", taskId] });
+        qc.invalidateQueries({ queryKey: ["tasks-by-list"] });
+    };
+    // A refused write must say WHY (the server's human message — e.g. the
+    // team-access edit rule), never fail silently.
+    const onError = (err: unknown) => message.error(getApiErrorMessage(err));
 
     const toggle = useMutation({
         mutationFn: (id: string) => checklistsApi.toggleItem(id),
         onSuccess: invalidate,
+        onError,
+    });
+
+    const rename = useMutation({
+        mutationFn: (name: string) => checklistsApi.rename(checklist.id, name),
+        onSuccess: () => {
+            invalidate();
+            setEditingName(false);
+        },
+        onError,
+    });
+
+    const editItem = useMutation({
+        mutationFn: (input: { id: string; text: string }) =>
+            checklistsApi.updateItem(input.id, { text: input.text }),
+        onSuccess: () => {
+            invalidate();
+            setEditingItemId(null);
+        },
+        onError,
+    });
+
+    const removeItem = useMutation({
+        mutationFn: (id: string) => checklistsApi.deleteItem(id),
+        onSuccess: invalidate,
+        onError,
     });
 
     /**
@@ -205,6 +282,7 @@ const ChecklistView = ({
                 assigneeId: input.assigneeId,
             }),
         onSuccess: invalidate,
+        onError,
     });
 
     // Only ACTIVE members can hold an item — the server refuses an `invited`
@@ -241,6 +319,7 @@ const ChecklistView = ({
             setSubItemFor(null);
             setSubItemText("");
         },
+        onError,
     });
 
     /** Flat array -> tree, preserving the server's `position` order. */
@@ -267,20 +346,59 @@ const ChecklistView = ({
                         checked={item.isCompleted}
                         onChange={() => toggle.mutate(item.id)}
                     />
-                    <span
-                        style={{
-                            flex: 1,
-                            fontSize: tokens.typography.fontSize.sm,
-                            color: item.isCompleted
-                                ? tokens.colors.textMuted
-                                : tokens.colors.textPrimary,
-                            textDecoration: item.isCompleted
-                                ? "line-through"
-                                : "none",
-                        }}
-                    >
-                        {item.text}
-                    </span>
+                    {editingItemId === item.id ? (
+                        <Input
+                            size="small"
+                            autoFocus
+                            value={itemDraft}
+                            style={{ flex: 1 }}
+                            maxLength={500}
+                            onChange={(e) => setItemDraft(e.target.value)}
+                            onPressEnter={() => {
+                                if (itemDraft.trim())
+                                    editItem.mutate({
+                                        id: item.id,
+                                        text: itemDraft.trim(),
+                                    });
+                            }}
+                            onBlur={() => {
+                                if (
+                                    itemDraft.trim() &&
+                                    itemDraft.trim() !== item.text
+                                )
+                                    editItem.mutate({
+                                        id: item.id,
+                                        text: itemDraft.trim(),
+                                    });
+                                else setEditingItemId(null);
+                            }}
+                            onKeyDown={(e) => {
+                                if (e.key === "Escape")
+                                    setEditingItemId(null);
+                            }}
+                        />
+                    ) : (
+                        <span
+                            onClick={() => {
+                                setEditingItemId(item.id);
+                                setItemDraft(item.text);
+                            }}
+                            title="Click to edit"
+                            style={{
+                                flex: 1,
+                                cursor: "text",
+                                fontSize: tokens.typography.fontSize.sm,
+                                color: item.isCompleted
+                                    ? tokens.colors.textMuted
+                                    : tokens.colors.textPrimary,
+                                textDecoration: item.isCompleted
+                                    ? "line-through"
+                                    : "none",
+                            }}
+                        >
+                            {item.text}
+                        </span>
+                    )}
                     <Select
                         size="small"
                         allowClear
@@ -307,6 +425,13 @@ const ChecklistView = ({
                             setSubItemFor(item.id);
                             setSubItemText("");
                         }}
+                    />
+                    <Button
+                        type="text"
+                        size="small"
+                        icon={<Trash2 size={11} strokeWidth={1.5} />}
+                        title="Delete this item"
+                        onClick={() => removeItem.mutate(item.id)}
                     />
                 </div>
                 {subItemFor === item.id && (
@@ -349,6 +474,7 @@ const ChecklistView = ({
     const deleteList = useMutation({
         mutationFn: () => checklistsApi.deleteChecklist(checklist.id),
         onSuccess: invalidate,
+        onError,
     });
 
     const done = checklist.items.filter((i) => i.isCompleted).length;
@@ -373,16 +499,56 @@ const ChecklistView = ({
                     marginBottom: tokens.spacing[2],
                 }}
             >
-                <span
-                    style={{
-                        fontWeight: 600,
-                        fontSize: tokens.typography.fontSize.sm,
-                        color: tokens.colors.textPrimary,
-                        flex: 1,
-                    }}
-                >
-                    {checklist.name}
-                </span>
+                {editingName ? (
+                    <Input
+                        size="small"
+                        autoFocus
+                        value={nameDraft}
+                        style={{ flex: 1 }}
+                        maxLength={120}
+                        onChange={(e) => setNameDraft(e.target.value)}
+                        onPressEnter={() => {
+                            if (nameDraft.trim())
+                                rename.mutate(nameDraft.trim());
+                        }}
+                        onBlur={() => {
+                            if (
+                                nameDraft.trim() &&
+                                nameDraft.trim() !== checklist.name
+                            )
+                                rename.mutate(nameDraft.trim());
+                            else setEditingName(false);
+                        }}
+                        onKeyDown={(e) => {
+                            if (e.key === "Escape") setEditingName(false);
+                        }}
+                    />
+                ) : (
+                    <span
+                        onClick={() => {
+                            setEditingName(true);
+                            setNameDraft(checklist.name);
+                        }}
+                        title="Click to rename"
+                        style={{
+                            fontWeight: 600,
+                            fontSize: tokens.typography.fontSize.sm,
+                            color: tokens.colors.textPrimary,
+                            flex: 1,
+                            cursor: "text",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 5,
+                        }}
+                    >
+                        {checklist.name}
+                        <Pencil
+                            size={10}
+                            strokeWidth={1.75}
+                            color={tokens.colors.textMuted}
+                        />
+                    </span>
+                )}
                 <span
                     style={{
                         fontSize: 11,

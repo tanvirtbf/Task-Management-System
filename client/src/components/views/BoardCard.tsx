@@ -1,7 +1,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useSearchParams } from "react-router-dom";
-import { MessageSquare, Paperclip, GitBranch } from "lucide-react";
+import { MessageSquare, Paperclip, GitBranch, ListChecks } from "lucide-react";
 import type { Task } from "../../types";
 import { useTagMap, useTaskTypeMap, useUserMap } from "../../hooks/useReferenceData";
 import { AssigneeStack } from "../ui/AssigneeStack";
@@ -195,7 +195,8 @@ export const BoardCard = ({
                 {/* Activity counts */}
                 {(task.commentsCount > 0 ||
                     task.attachmentsCount > 0 ||
-                    task.subtasksCount > 0) && (
+                    task.subtasksCount > 0 ||
+                    task.checklistItemsTotal > 0) && (
                     <div
                         style={{
                             display: "flex",
@@ -215,6 +216,25 @@ export const BoardCard = ({
                             >
                                 <GitBranch size={10} strokeWidth={1.75} />
                                 {task.subtasksCompleted}/{task.subtasksCount}
+                            </span>
+                        )}
+                        {task.checklistItemsTotal > 0 && (
+                            <span
+                                title="Checklist items done"
+                                style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 2,
+                                    color:
+                                        task.checklistItemsDone ===
+                                        task.checklistItemsTotal
+                                            ? tokens.colors.success
+                                            : undefined,
+                                }}
+                            >
+                                <ListChecks size={10} strokeWidth={1.75} />
+                                {task.checklistItemsDone}/
+                                {task.checklistItemsTotal}
                             </span>
                         )}
                         {task.commentsCount > 0 && (

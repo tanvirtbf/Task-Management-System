@@ -43,6 +43,9 @@ export interface WireTask {
     subtasks_completed: number;
     comments_count: number;
     attachments_count: number;
+    /** upgrades/022 — items across ALL the task's checklists (rollup). */
+    checklist_items_total: number;
+    checklist_items_done: number;
     sprint_id: string | null;
     story_points: number | null;
     reviewer_id: string | null;
@@ -133,6 +136,8 @@ export const toWireTask = (t: TaskRow, h: TaskHydration): WireTask => ({
     subtasks_completed: t.subtasksCompleted,
     comments_count: t.commentsCount,
     attachments_count: t.attachmentsCount,
+    checklist_items_total: t.checklistItemsTotal,
+    checklist_items_done: t.checklistItemsDone,
     sprint_id: t.sprintId,
     story_points: t.storyPoints,
     reviewer_id: t.reviewerId,
