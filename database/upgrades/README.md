@@ -23,29 +23,36 @@
 
 | Script | dev (`taskmanagement`) | `taskmanagement_qa` | prod |
 |---|---|---|---|
-| `001_dept_head_enums.sql` | ✅ 2026-07-22 | ✅ 2026-07-22 | ⏳ pending (no prod yet) |
-| `002_task_reviews.sql` | ✅ 2026-07-22 | ✅ 2026-07-22 | ⏳ pending (no prod yet) |
-| `003_department_reports.sql` | ✅ 2026-07-22 | ✅ 2026-07-22 | ⏳ pending (no prod yet) |
-| `004_rbac.sql` | ✅ 2026-07-25 | ✅ 2026-07-25 | ⏳ pending (no prod yet) |
-| `005_clock_views.sql` | ✅ 2026-08-03 | ✅ 2026-08-03 | ⏳ pending (no prod yet) |
-| `006_counters.sql` | ✅ 2026-08-05 | ✅ 2026-08-05 | ⏳ pending (no prod yet) |
-| `007_orphans_and_cascades.sql` | ✅ 2026-08-06 | ✅ 2026-08-06 | ⏳ pending (no prod yet) |
-| `008_form_submission_retention.sql` | ✅ 2026-08-06 | ✅ 2026-08-06 | ⏳ pending (no prod yet) |
-| `009_notification_types.sql` | ✅ 2026-08-06 | ✅ 2026-08-06 | ⏳ pending (no prod yet) |
-| `010_name_uniqueness.sql` | ✅ 2026-08-06 | ✅ 2026-08-06 ⚠️ after renaming 6 dupes | ⏳ pending (no prod yet) |
-| `011_guest_role_tightening.sql` | ✅ 2026-08-06 | ✅ 2026-08-06 | ⏳ pending (no prod yet) |
-| `012_drop_fiscal_year.sql` | ✅ 2026-08-06 | ✅ 2026-08-06 | ⏳ pending (no prod yet) |
-| `013_perf_indexes.sql` | ✅ 2026-08-06 | ✅ 2026-08-06 | ⏳ pending (no prod yet) |
-| `014_overdue_alerts.sql` | ✅ 2026-08-08 | ✅ 2026-08-08 | ⏳ pending (no prod yet) |
-| `015_push_subscriptions.sql` | ✅ 2026-08-08 | ✅ 2026-08-08 | ⏳ pending (no prod yet) |
-| `016_team_membership.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 | ⏳ pending (no prod yet) |
-| `017_task_audit.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 | ⏳ pending (no prod yet) |
-| `018_space_visibility_grants.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 | ⏳ pending (no prod yet) |
-| `019_visibility_switch.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 (first) | ⏳ pending (no prod yet) |
-| `020_edit_rights.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 (first) | ⏳ pending (no prod yet) |
-| `021_assignment_approval.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 (first, re-apply proven) | ⏳ pending (no prod yet) |
-| `022_checklist_counters.sql` | ✅ 2026-08-12 | ✅ 2026-08-12 (first, re-apply proven) | ⏳ pending (no prod yet) |
+| `001_dept_head_enums.sql` | ✅ 2026-07-22 | ✅ 2026-07-22 | ✅ 2026-08-11 (Phase A) |
+| `002_task_reviews.sql` | ✅ 2026-07-22 | ✅ 2026-07-22 | ✅ 2026-08-11 (Phase A) |
+| `003_department_reports.sql` | ✅ 2026-07-22 | ✅ 2026-07-22 | ✅ 2026-08-11 (Phase A) |
+| `004_rbac.sql` | ✅ 2026-07-25 | ✅ 2026-07-25 | ✅ 2026-08-11 (Phase A) |
+| `005_clock_views.sql` | ✅ 2026-08-03 | ✅ 2026-08-03 | ✅ 2026-08-11 (Phase A) |
+| `006_counters.sql` | ✅ 2026-08-05 | ✅ 2026-08-05 | ✅ 2026-08-11 (Phase A) |
+| `007_orphans_and_cascades.sql` | ✅ 2026-08-06 | ✅ 2026-08-06 | ✅ 2026-08-11 (Phase A) |
+| `008_form_submission_retention.sql` | ✅ 2026-08-06 | ✅ 2026-08-06 | ✅ 2026-08-11 (Phase A) |
+| `009_notification_types.sql` | ✅ 2026-08-06 | ✅ 2026-08-06 | ✅ 2026-08-11 (Phase A) |
+| `010_name_uniqueness.sql` | ✅ 2026-08-06 | ✅ 2026-08-06 ⚠️ after renaming 6 dupes | ✅ 2026-08-11 (Phase A) |
+| `011_guest_role_tightening.sql` | ✅ 2026-08-06 | ✅ 2026-08-06 | ✅ 2026-08-11 (Phase A) |
+| `012_drop_fiscal_year.sql` | ✅ 2026-08-06 | ✅ 2026-08-06 | ✅ 2026-08-11 (Phase A) |
+| `013_perf_indexes.sql` | ✅ 2026-08-06 | ✅ 2026-08-06 | ✅ 2026-08-11 (Phase A) |
+| `014_overdue_alerts.sql` | ✅ 2026-08-08 | ✅ 2026-08-08 | ✅ 2026-08-11 (Phase A) |
+| `015_push_subscriptions.sql` | ✅ 2026-08-08 | ✅ 2026-08-08 | ✅ 2026-08-11 (Phase A) |
+| `016_team_membership.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 | ✅ 2026-08-11 (Phase A) |
+| `017_task_audit.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 | ✅ 2026-08-11 (Phase A) |
+| `018_space_visibility_grants.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 | ✅ 2026-08-11 (Phase A) |
+| `019_visibility_switch.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 (first) | ⏳ awaiting the Phase C flip |
+| `020_edit_rights.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 (first) | ⏳ awaiting the Phase C flip |
+| `021_assignment_approval.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 (first, re-apply proven) | ✅ 2026-08-11 (Phase A) |
+| `022_checklist_counters.sql` | ✅ 2026-08-12 | ✅ 2026-08-12 (first, re-apply proven) | ✅ 2026-08-12 |
 
+> **prod = `tasks.beautybooth.com.bd`.** Phase A of `LIVE_ROLLOUT_TEAM_ACCESS.md`
+> landed 001–018 + 021 on 2026-08-11 and `022` on 2026-08-12; every one of them was
+> re-verified against the live schema on 2026-08-12 (46 tables / 5 views / 9 triggers,
+> 56 permission rows). `019` + `020` are the DELIBERATE hold: they are Phase C, the
+> operator-approved visibility flip, and stay unapplied until every live team has a
+> Head (the runbook's gate 2).
+>
 > `005` ships with the F3 clock fix and is only correct alongside it. If you apply
 > `005`, the app's `DB_TIMEZONE` **must** be `+00:00` (see `server/.env.example`).
 >
