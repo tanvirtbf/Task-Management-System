@@ -195,9 +195,16 @@ describe("POST /api/v1/users/invite", () => {
             await client.post(PATH).send(validBody());
 
             expect(mailSpy).toHaveBeenCalledTimes(1);
-            const [to, acceptUrl] = mailSpy.mock.calls[0];
+            const [to, acceptUrl, ctx] = mailSpy.mock.calls[0];
             expect(to).toBe("newhire@seed.test");
             expect(acceptUrl).toContain("/invitation/");
+            // 2026-08-12: the mail goes out AS the inviting admin (that shape
+            // is what keeps Gmail from filing it under Promotions), so the
+            // service must hand MailService the human + the invitee's name.
+            expect(ctx?.inviterEmail).toBeTruthy();
+            expect(ctx?.inviterName).toBeTruthy();
+            expect(ctx?.inviteeFirstName).toBe("Rahim");
+            expect(ctx?.refId).toBeTruthy();
             // The raw token (not its hash) is the URL's last segment, and the
             // persisted hash is sha256 of it.
             const token = String(acceptUrl).split("/invitation/")[1];

@@ -336,7 +336,22 @@ export class UserService {
         //    invitation — log and return 201.
         const acceptUrl = `${Config.FRONTEND_URL ?? ""}/invitation/${rawToken}`;
         try {
-            await this.mail.sendInvitation(input.email, acceptUrl);
+            // The invite goes out AS THE INVITER (name on the From, their
+            // mailbox on Reply-To) — it is a person-to-person message, and
+            // dressing it as one is what keeps Gmail from filing it under
+            // Promotions (see MailService.sendInvitation). A failed lookup
+            // only costs the personalisation, never the invite.
+            const inviter = await this.users
+                .findByIdInWorkspace(input.actorId, input.workspaceId)
+                .catch(() => null);
+            await this.mail.sendInvitation(input.email, acceptUrl, {
+                inviterName: inviter
+                    ? `${inviter.firstName} ${inviter.lastName}`.trim()
+                    : null,
+                inviterEmail: inviter?.email ?? null,
+                inviteeFirstName: input.firstName,
+                refId: invitationId,
+            });
         } catch (err: unknown) {
             this.logger.warn("users.invite.email_failed", {
                 userId,

@@ -24,6 +24,8 @@ class MailService {
     logger;
     transporter;
     from;
+    /** The bare envelope address, for messages that override the display name. */
+    fromAddress;
     constructor(logger) {
         this.logger = logger;
         const host = config_1.Config.SMTP_HOST;
@@ -33,6 +35,7 @@ class MailService {
         const fromAddress = config_1.Config.EMAIL_FROM || user || "no-reply@localhost";
         const fromName = config_1.Config.EMAIL_FROM_NAME || "BeautyBooth";
         this.from = `${fromName} <${fromAddress}>`;
+        this.fromAddress = fromAddress;
         // Real SMTP only when fully configured and NOT under test. Otherwise a
         // log transport (no network) — preserves the prior dev/test behaviour.
         const usable = config_1.Config.NODE_ENV !== "test" && Boolean(host && user && pass);
@@ -63,14 +66,68 @@ class MailService {
             text: `We received a request to reset your password. Use this single-use link (it expires soon):\n\n${resetUrl}\n\nIf you didn't request this, you can safely ignore this email.`,
         });
     }
-    /** Deliver a workspace-invitation link to `to`. */
-    async sendInvitation(to, acceptUrl) {
+    /**
+     * Deliver a workspace-invitation link to `to`.
+     *
+     * ⚠️ INBOX PLACEMENT (2026-08-12): this was the ONE message the office
+     * kept finding under Gmail's **Promotions** tab while every other mail
+     * (assignment, overdue, approval) landed in Primary. Gmail sorts largely
+     * on content + who the message appears to come from, and the old invite
+     * was the only one that read like a campaign: an impersonal subject
+     * ("You're invited to BeautyBooth"), brand-blast copy, a big CTA button
+     * on the marketing shell, no human anywhere, and a first-ever contact
+     * with that address (no interaction history to lean on).
+     *
+     * So the invite is now a PERSON-TO-PERSON letter, which is also what it
+     * genuinely is:
+     *   · From:  "<Inviter> via BeautyBooth Tasks" (the Slack/Notion shape),
+     *   · Reply-To: the inviter's real mailbox — a reply reaches a colleague,
+     *   · Subject: "<Inviter> added you to BeautyBooth Tasks",
+     *   · a plain, addressed-by-name body on `letter()` — no brand bar, no
+     *     campaign button, the URL visible as text,
+     *   · transactional headers (`Auto-Submitted`, `X-Auto-Response-Suppress`,
+     *     `X-Entity-Ref-ID`) and deliberately NO `List-Unsubscribe`, which
+     *     would mark it as bulk marketing.
+     *
+     * What code cannot decide: SPF/DKIM/DMARC alignment for the sending
+     * domain and the recipient's own history. Those stay operator work.
+     */
+    async sendInvitation(to, acceptUrl, ctx) {
         this.logger.debug("mail.invitation.sending", { to, acceptUrl });
+        const inviter = cleanHeaderText(ctx?.inviterName) || null;
+        const greetName = cleanHeaderText(ctx?.inviteeFirstName) || null;
+        const subject = inviter
+            ? `${inviter} added you to BeautyBooth Tasks`
+            : "Your BeautyBooth Tasks account — set your password";
+        const intro = inviter
+            ? `${inviter} set up a BeautyBooth Tasks account for you.`
+            : "A BeautyBooth Tasks account has been set up for you.";
         await this.send({
             to,
-            subject: "You're invited to BeautyBooth",
-            html: inviteHtml(acceptUrl),
-            text: `You've been invited to join your team's workspace on BeautyBooth. Accept your invitation:\n\n${acceptUrl}`,
+            subject,
+            // "<name> via BeautyBooth Tasks" — the message really is from them.
+            from: inviter
+                ? {
+                    name: `${inviter} via BeautyBooth Tasks`,
+                    address: this.fromAddress,
+                }
+                : undefined,
+            // A reply should reach the colleague who invited them, not /dev/null.
+            replyTo: cleanHeaderText(ctx?.inviterEmail) || undefined,
+            headers: {
+                "Auto-Submitted": "auto-generated",
+                "X-Auto-Response-Suppress": "All",
+                ...(ctx?.refId
+                    ? { "X-Entity-Ref-ID": cleanHeaderText(ctx.refId) }
+                    : {}),
+            },
+            html: inviteHtml({ intro, greetName, acceptUrl }),
+            text: `${greetName ? `Hi ${greetName},\n\n` : ""}${intro} ` +
+                "Use the link below to choose your password and sign in. " +
+                "It works once and expires in 7 days.\n\n" +
+                `${acceptUrl}\n\n` +
+                "আপনার অ্যাকাউন্ট তৈরি হয়েছে — উপরের লিংক থেকে পাসওয়ার্ড সেট করে সাইন ইন করুন।\n\n" +
+                "If you weren't expecting this, you can ignore this email.",
         });
     }
     /**
@@ -148,11 +205,15 @@ class MailService {
             return;
         }
         const info = await this.transporter.sendMail({
-            from: this.from,
+            // Object form when overridden: nodemailer encodes the display name
+            // safely (a name with a comma or quote cannot break the header).
+            from: msg.from ?? this.from,
             to: msg.to,
             subject: msg.subject,
             html: msg.html,
             text: msg.text,
+            ...(msg.replyTo ? { replyTo: msg.replyTo } : {}),
+            ...(msg.headers ? { headers: msg.headers } : {}),
         });
         this.logger.info("mail.sent", {
             to: msg.to,
@@ -162,6 +223,19 @@ class MailService {
     }
 }
 exports.MailService = MailService;
+/**
+ * Header-safe single line: no CR/LF (injection), no control characters,
+ * trimmed and bounded. Used for anything a human typed that ends up in a
+ * From / Reply-To / Subject.
+ */
+const cleanHeaderText = (s) => {
+    let out = "";
+    for (const ch of s ?? "") {
+        const code = ch.codePointAt(0);
+        out += code !== undefined && (code < 0x20 || code === 0x7f) ? " " : ch;
+    }
+    return out.replace(/\s+/g, " ").trim().slice(0, 120);
+};
 // ─── HTML templates ───────────────────────────────────────────────────────────
 // Inline-styled, table-based layout for broad email-client compatibility.
 const shell = (heading, body, cta) => `<!doctype html>
@@ -184,9 +258,28 @@ const shell = (heading, body, cta) => `<!doctype html>
   </body>
 </html>`;
 const resetHtml = (url) => shell("Reset your password", "We received a request to reset your password. Click the button below to choose a new one. This link is single-use and expires soon. If you didn't request it, you can safely ignore this email.", { url, label: "Reset password" });
-const inviteHtml = (url) => shell("You're invited", "You've been invited to join your team's workspace on BeautyBooth. Click below to accept the invitation and set up your account.", { url, label: "Accept invitation" });
+/**
+ * The invite is deliberately NOT on `shell` (see `sendInvitation`): a plain,
+ * addressed-by-name letter — no brand bar, no campaign button, the URL
+ * visible as text — because the marketing-shaped version is what Gmail kept
+ * filing under Promotions. Every interpolated value is escaped: the inviter
+ * and invitee names are user input.
+ */
+const inviteHtml = (p) => `<!doctype html>
+<html>
+  <body style="margin:0;padding:24px;background:#ffffff;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#1f2328;">
+    <div style="max-width:520px;">
+      ${p.greetName ? `<p style="margin:0 0 14px;">Hi ${escapeHtml(p.greetName)},</p>` : ""}
+      <p style="margin:0 0 14px;">${escapeHtml(p.intro)} Use the link below to choose your password and sign in. It works once and expires in 7 days.</p>
+      <p style="margin:0 0 14px;"><a href="${p.acceptUrl}" style="color:#1a56db;">Set your password</a></p>
+      <p style="margin:0 0 14px;color:#5b616e;font-size:13px;word-break:break-all;">${p.acceptUrl}</p>
+      <p style="margin:0 0 14px;">আপনার অ্যাকাউন্ট তৈরি হয়েছে — উপরের লিংক থেকে পাসওয়ার্ড সেট করে সাইন ইন করুন।</p>
+      <p style="margin:0;color:#5b616e;font-size:13px;">If you weren't expecting this, you can ignore this email.</p>
+    </div>
+  </body>
+</html>`;
 // Task names (and assigner names) are USER input interpolated into HTML —
-// escape them. The reset/invite templates above interpolate only our own URLs.
+// escape them. The reset template above interpolates only our own URL.
 const escapeHtml = (s) => s
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
