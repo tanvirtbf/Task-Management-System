@@ -76,6 +76,7 @@ SHOW TABLES LIKE 'push_subscriptions';           -- 015
 SHOW COLUMNS FROM users LIKE 'primary_space_id'; -- 016
 SHOW TABLES LIKE 'space_visibility_grants';      -- 018
 SHOW TABLES LIKE 'task_assignment_requests';     -- 021
+SHOW COLUMNS FROM tasks LIKE 'checklist_items_total';  -- 022 (checklist chip)
 ```
 
 Build the **pending list** = every script in `database/upgrades/` from the first
