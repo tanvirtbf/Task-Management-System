@@ -55,12 +55,13 @@ export class AssistantService {
     async ask(
         history: ChatTurn[],
         message: string,
-        opts: { tools?: ToolBridge } = {},
+        opts: { tools?: ToolBridge; callerBlock?: string } = {},
     ): Promise<string> {
         const startedAt = Date.now();
         const messages = buildMessages(
             history,
             message,
+            opts.callerBlock,
         ) as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
         const maxRounds = opts.tools ? MAX_TOOL_ROUNDS : 1;
 
@@ -184,11 +185,13 @@ export class AssistantService {
             onDelta: (delta: string) => void;
             signal: AbortSignal;
             tools?: ToolBridge;
+            callerBlock?: string;
         },
     ): Promise<void> {
         const messages = buildMessages(
             history,
             message,
+            opts.callerBlock,
         ) as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
 
         const maxRounds = opts.tools ? MAX_TOOL_ROUNDS : 1;

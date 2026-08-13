@@ -22,6 +22,8 @@ const TaskActivityRepo_1 = require("../repositories/TaskActivityRepo");
 const TaskMembershipRepo_1 = require("../repositories/TaskMembershipRepo");
 const TaskTypesRepo_1 = require("../repositories/TaskTypesRepo");
 const UsersRepo_1 = require("../repositories/UsersRepo");
+const SpacesRepo_1 = require("../repositories/SpacesRepo");
+const UserRolesRepo_1 = require("../repositories/UserRolesRepo");
 const WorkspaceActivityRepo_1 = require("../repositories/WorkspaceActivityRepo");
 const TasksService_1 = require("../services/TasksService");
 const TaskWriteService_1 = require("../services/TaskWriteService");
@@ -71,7 +73,15 @@ else {
         taskWrite: new TaskWriteService_1.TaskWriteService(db, listsRepo, new StatusesRepo_1.StatusesRepo(db), new TaskTypesRepo_1.TaskTypesRepo(db), tasksRepo, new TaskMembershipRepo_1.TaskMembershipRepo(db), usersRepo, new TagsRepo_1.TagsRepo(db), new TaskActivityRepo_1.TaskActivityRepo(db), new NotificationsRepo_1.NotificationsRepo(db), new AttachmentsRepo_1.AttachmentsRepo(db), new WorkspaceRepo_1.WorkspaceRepo(db), new WorkspaceActivityRepo_1.WorkspaceActivityRepo(db), tasksService, logger_1.default),
         users: usersRepo,
     };
-    const controller = new AssistantController_1.AssistantController(assistantService, chatRepo, toolServices, logger_1.default);
+    // Deep-plan P2 (D11): team NAMES are not on the resolved actor, so the
+    // caller block needs the membership rows plus the (already scope-filtered)
+    // space list. Two cheap reads per chat request.
+    const callerDeps = {
+        users: usersRepo,
+        spaces: new SpacesRepo_1.SpacesRepo(db),
+        userRoles: new UserRolesRepo_1.UserRolesRepo(db),
+    };
+    const controller = new AssistantController_1.AssistantController(assistantService, chatRepo, toolServices, callerDeps, logger_1.default);
     // The assistant is a permission now, not a given (RBAC §34). All four
     // seeded roles hold `assistant.use`, so nothing changes today — but an
     // admin who takes it away from a role actually gets what they asked for,

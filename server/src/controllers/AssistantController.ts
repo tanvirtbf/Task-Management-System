@@ -8,6 +8,10 @@ import {
     makeAssistantToolExecutor,
     type ToolServices,
 } from "../assistant/tools";
+import {
+    buildCallerBlock,
+    type CallerContextDeps,
+} from "../assistant/callerContext";
 import type { AssistantChatRequest } from "../types/assistant";
 import type { AuthRequest } from "../types";
 
@@ -28,6 +32,9 @@ export class AssistantController {
         private assistantService: AssistantService,
         private chatRepo: ChatRepo,
         private toolServices: ToolServices,
+        /** Deep-plan P2 (D9): only this layer holds the request, so only it
+         *  can describe the caller. Built once per request, never persisted. */
+        private callerDeps: CallerContextDeps,
         private logger: Logger,
     ) {}
 
@@ -98,7 +105,12 @@ export class AssistantController {
             // The executor is built per REQUEST: it carries the double-create
             // guard (a duplicated create_task call in one message returns the
             // first result instead of writing twice).
+            const callerBlock = await buildCallerBlock(this.callerDeps, {
+                userId,
+                workspaceId,
+            });
             const reply = await this.assistantService.ask(history ?? [], message, {
+                callerBlock,
                 tools: {
                     definitions: ASSISTANT_TOOL_DEFS,
                     execute: makeAssistantToolExecutor(
@@ -161,9 +173,14 @@ export class AssistantController {
         };
 
         try {
+            const callerBlock = await buildCallerBlock(this.callerDeps, {
+                userId,
+                workspaceId,
+            });
             await this.assistantService.streamReply(history ?? [], message, {
                 onDelta: sendDelta,
                 signal: ac.signal,
+                callerBlock,
                 tools: {
                     definitions: ASSISTANT_TOOL_DEFS,
                     execute: makeAssistantToolExecutor(

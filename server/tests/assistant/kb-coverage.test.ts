@@ -535,12 +535,43 @@ describe("KB coverage — P4: every destination is a link", () => {
         // Paid for partly by trimming genuinely dead text (the "brand-new
         // empty workspace" setup walkthrough — this workspace is long past
         // that) and by compressing P1's own prose once it was written.
-        // ~42.5k today; the ceiling leaves room for P2's <=400-char caller
-        // block without another decision. It is NOT a licence to grow: P7
-        // (guidance polish) owns a read-the-whole-KB pass for fat, and any
-        // phase that needs more space writes its reason here first.
+        // ~42.5k after P1; the ceiling left room for P2's <=400-char caller
+        // block. It is NOT a licence to grow: P7 (guidance polish) owns a
+        // read-the-whole-KB pass for fat, and any phase that needs more space
+        // writes its reason here first.
+        //
+        // Raised 44k → 46k by P2 (2026-08-13). The caller BLOCK came in on
+        // budget (<=400, enforced in code and tested), but P2 also had to
+        // teach the bot what to DO with it — role-aware guidance and the
+        // honest-denial wording — and those rules are the whole point of the
+        // phase: they are what turns "permission nei" from silence into an
+        // answer. Written, then compressed ~20% once they existed on the page.
         const sys = buildMessages([], "x")[0].content as string;
-        expect(sys.length).toBeLessThan(44000);
+        expect(sys.length).toBeLessThan(46000);
+    });
+
+    it("costs nothing extra when there is no caller block (the degraded path)", () => {
+        // `buildCallerBlock` returns "" on any failure, and the prompt must
+        // then read exactly as it did before — no stray blank line, no
+        // dangling "You are talking to".
+        // NB: the prompt's own rule QUOTES the phrase ("the line starting
+        // 'You are talking to ...'"), so the test must look for a LINE that
+        // starts with it — a plain substring check passes vacuously.
+        const callerLine = (msg: string): string | undefined =>
+            msg.split("\n").find((l) => l.startsWith("You are talking to"));
+
+        const bare = buildMessages([], "x")[0].content as string;
+        expect(callerLine(bare)).toBeUndefined();
+
+        const withBlock = buildMessages(
+            [],
+            "x",
+            "You are talking to A B — Member, teams: X.",
+        )[0].content as string;
+        expect(callerLine(withBlock)).toBe(
+            "You are talking to A B — Member, teams: X.",
+        );
+        expect(withBlock.length).toBeGreaterThan(bare.length);
     });
 });
 

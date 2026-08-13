@@ -115,7 +115,13 @@
 - **Tests:** kb-coverage pins for every corrected fact; route-parity stays green.
 - **DoD:** audit table in BUILD_LOG (claim → verdict → fix), jest + eval green.
 
-### P2 — Caller context + honest-denial foundation (G1, G8 groundwork)
+### P2 — Caller context + honest-denial foundation (G1, G8 groundwork) — ✅ **COMPLETE 2026-08-13**
+> `assistant/callerContext.ts` builds the ≤400-char caller line (enforced) from `currentActor()`
+> + the two D11 reads; controller-built per D9/D10; prompt gained WHO-YOU-ARE-TALKING-TO and
+> WHEN-SOMETHING-IS-REFUSED. jest 155 → **163** (new `caller-context.test.ts`, incl. no-PII and
+> two-callers-do-not-blur). Live: the same question now answers differently for a Member vs an
+> Admin, and a Member asking for weekly reports gets an honest "পারবেন না" + who can. Eval
+> **PERFECT ×3**. Budget 44k → 46k (decision in the test).
 - `buildMessages.ts`: after the "Today is" line, inject a per-request CALLER block built
   from `currentActor()` + the JWT: display name, legacy role, space-scoped teams (names),
   and a compact capability summary (the ~10 permissions that matter to guidance: task

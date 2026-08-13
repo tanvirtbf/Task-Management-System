@@ -33,7 +33,7 @@ class AssistantService {
      */
     async ask(history, message, opts = {}) {
         const startedAt = Date.now();
-        const messages = (0, buildMessages_1.buildMessages)(history, message);
+        const messages = (0, buildMessages_1.buildMessages)(history, message, opts.callerBlock);
         const maxRounds = opts.tools ? MAX_TOOL_ROUNDS : 1;
         for (let round = 0; round < maxRounds; round++) {
             const useTools = !!opts.tools && round < maxRounds - 1;
@@ -125,7 +125,7 @@ class AssistantService {
      * client disconnected), it returns quietly without throwing.
      */
     async streamReply(history, message, opts) {
-        const messages = (0, buildMessages_1.buildMessages)(history, message);
+        const messages = (0, buildMessages_1.buildMessages)(history, message, opts.callerBlock);
         const maxRounds = opts.tools ? MAX_TOOL_ROUNDS : 1;
         for (let round = 0; round < maxRounds; round++) {
             const useTools = !!opts.tools && round < maxRounds - 1;

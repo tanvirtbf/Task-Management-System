@@ -11,7 +11,17 @@ const dhakaTime_1 = require("../utils/dhakaTime");
  * joined once at module load; the date line is prepended per call.
  */
 const STATIC_CONTENT = `${systemPrompt_1.SYSTEM_PROMPT}\n\n# KNOWLEDGE BASE\n${knowledgeBase_1.KNOWLEDGE_BASE}`;
-const systemContent = () => `Today is ${(0, dhakaTime_1.dhakaToday)()} (Asia/Dhaka).\n\n${STATIC_CONTENT}`;
+/**
+ * `callerBlock` (deep-plan P2) is the one-sentence description of WHO is
+ * asking — built by the controller, which is the only layer holding the
+ * request (D9). Empty string when it could not be built; the prompt then
+ * reads exactly as it did before.
+ */
+const systemContent = (callerBlock) => {
+    const date = `Today is ${(0, dhakaTime_1.dhakaToday)()} (Asia/Dhaka).`;
+    const who = callerBlock ? `\n${callerBlock}` : "";
+    return `${date}${who}\n\n${STATIC_CONTENT}`;
+};
 /**
  * Keep only the most recent turns — a cost guard (caps tokens per call) and a
  * focus guard (old context rarely matters for a help bot).
@@ -21,10 +31,10 @@ exports.MAX_HISTORY_TURNS = 12;
  * Build the message array for an OpenAI chat completion:
  *   [ system(prompt + knowledge base), ...recent history, user(message) ]
  */
-const buildMessages = (history, userMessage) => {
+const buildMessages = (history, userMessage, callerBlock) => {
     const recent = history.slice(-exports.MAX_HISTORY_TURNS);
     return [
-        { role: "system", content: systemContent() },
+        { role: "system", content: systemContent(callerBlock) },
         ...recent.map((t) => ({ role: t.role, content: t.content })),
         { role: "user", content: userMessage },
     ];

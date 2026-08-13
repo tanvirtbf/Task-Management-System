@@ -1383,3 +1383,77 @@ eval gate **PERFECT ×3 consecutively**, and better than the P0 baseline on two 
 
 **Verdict: Deep P1 COMPLETE — the knowledge base now matches the system that exists, and the bot
 writes Bangla in Bangla. Ready for "AI deep phase 2 koren" (caller context + honest denials).**
+
+---
+
+## Deep P2 — the bot learns WHO is asking — ✅ COMPLETE (2026-08-13)
+
+Until now the assistant knew the system but not the person, so every answer was written for a
+generic user. It could not say "that step is Admin-only **for you**", could not answer "ami ki ki
+korte pari?", and had no vocabulary for an honest refusal. P2 adds the missing half.
+
+### Shipped
+- **`assistant/callerContext.ts` (new)** — builds one factual sentence about the caller:
+  `You are talking to <Name> — <Role>, teams: <names, Head marked>. They can: … They CANNOT: …
+  Tailor every answer to this person.`
+  Identity and grants come from the JWT-resolved actor (`currentActor()` + `entryFor`), never from
+  anything the model said. Reach words are the KB's own vocabulary — **everywhere / their teams /
+  own only** — so the prompt and the service can never describe reach differently.
+- **Wiring per D9/D10/D11** — the CONTROLLER builds it (the only layer holding the request) and
+  passes it down; `buildMessages` stays pure and gained an optional third argument; it is built
+  once per request, never per tool round, and never persisted into chat history, so a permission
+  change takes effect on the caller's very next question. Team NAMES come from the two cheap reads
+  P0 identified (membership rows ∩ the already-scope-filtered space list) — not from
+  `TeamMembershipService.directory()`, which is the whole unscoped org chart.
+- **`systemPrompt.ts`** — two new rule blocks: **WHO YOU ARE TALKING TO** (write the steps THEY
+  can take; if a step needs something on their CANNOT list, name who can do it instead; answer
+  "what may I do?" straight from the line, including their teams; never recite permission keys or
+  discuss anyone else's access; team names are exact labels) and **WHEN SOMETHING IS REFUSED**
+  (a permission error means it did NOT happen — say so and name who can grant it; a "not found"
+  must NOT be turned into "it exists but is hidden", because that leaks what the permission
+  protects).
+
+### Guarantees held in code, not hoped for
+`CALLER_BLOCK_MAX = 400` is **enforced**, not documented: the builder drops the CANNOT half first
+and truncates as a last resort. Any failure returns `""` and the prompt reads exactly as before —
+a chat must never break because we could not describe the user.
+
+### Tests — `caller-context.test.ts` (new, 7) + 1 in kb-coverage
+They read the SYSTEM MESSAGE the model was handed (the boundary), not the reply: a member's line
+carries their real reach (`see tasks (their teams)`, `edit tasks (own only)`) · an owner's says
+`everywhere` and has no CANNOT half · a department **Head is marked** · someone on no team reads
+`teams: none yet` — the answer to "why do I see nothing?" · **no email, no user id, no workspace
+id, no space id** · the ceiling holds for a 5-team actor · and **two callers in sequence do not
+blur** (if the block were cached or shared, the second would inherit the first's team). The
+kb-coverage addition pins the degraded path: no caller block ⇒ the prompt is byte-identical to
+before. *(That last test first passed vacuously — the prompt's own rule quotes the phrase "You are
+talking to", so a substring check could never fail. It now matches a LINE that starts with it.)*
+
+### Live proof — the same question, four different people
+| asker | question | answer |
+|---|---|---|
+| Sumaiya (Member, 2 teams) | "amar role ki? ami ki ki korte pari?" | names her, **Member**, both teams, then her real reaches — own-only viewing/editing, create+assign everywhere — and what she cannot do |
+| Farhana (**Admin**) | same question | everything "সব জায়গায়", no CANNOT list — a visibly different answer to the identical question |
+| Sumaiya | "ami ki weekly report dekhte pari?" | **"দুঃখিত… পারবেন না"** + who can (Owner/Admin/Head) — the honest denial, from the block alone |
+| Nusrat (Member, Marketing only) | "ami ki Customer Service team er kaj dekhte pari?" | no — with how to fix it (join the team) and the [Teams](/settings/teams) link |
+
+Each claim was checked against the database rather than believed: Sumaiya's "create/assign
+everywhere" looked wrong until `role_permissions` confirmed the Member role really does grant
+`task.create` / `task.assign` at `all` while `task.view` / `task.edit` are `own`. The bot was
+right and the reviewer's instinct was wrong — worth recording, because the opposite assumption
+would have "fixed" a correct answer.
+
+One real defect the probes caught: the model split **"Social Media & Content"** into two teams.
+Pinned with a prompt rule (*team names are exact labels, never translated, never split*) and
+re-probed: `Marketing এবং Social Media & Content`.
+
+### Verified
+`jest.assistant` **10 suites / 163 tests** ✅ (was 155) · server `tsc` + build clean ✅ · system
+message **44,526** chars, ceiling 44k → **46k** with the decision in the budget test (the block
+came in on budget at ≤400; the *rules teaching the bot what to do with it* are what grew, and they
+are the phase's entire point — written first, then compressed ~20%) · eval gate **PERFECT ×3
+consecutively**.
+
+**Verdict: Deep P2 COMPLETE — the assistant now answers as if it knows the person, and refuses
+without lying. Ready for "AI deep phase 3 koren" (the "my work" tools: assigned tasks, task
+details).**

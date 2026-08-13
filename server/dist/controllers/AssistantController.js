@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AssistantController = void 0;
 const errors_1 = require("../errors");
 const tools_1 = require("../assistant/tools");
+const callerContext_1 = require("../assistant/callerContext");
 /** Derive a short conversation title from the first question. */
 const titleFromMessage = (msg) => {
     const t = msg.trim().replace(/\s+/g, " ");
@@ -19,11 +20,16 @@ class AssistantController {
     assistantService;
     chatRepo;
     toolServices;
+    callerDeps;
     logger;
-    constructor(assistantService, chatRepo, toolServices, logger) {
+    constructor(assistantService, chatRepo, toolServices, 
+    /** Deep-plan P2 (D9): only this layer holds the request, so only it
+     *  can describe the caller. Built once per request, never persisted. */
+    callerDeps, logger) {
         this.assistantService = assistantService;
         this.chatRepo = chatRepo;
         this.toolServices = toolServices;
+        this.callerDeps = callerDeps;
         this.logger = logger;
     }
     // ─── persistence helpers (best-effort) ──────────────────────────────────
@@ -73,7 +79,12 @@ class AssistantController {
             // The executor is built per REQUEST: it carries the double-create
             // guard (a duplicated create_task call in one message returns the
             // first result instead of writing twice).
+            const callerBlock = await (0, callerContext_1.buildCallerBlock)(this.callerDeps, {
+                userId,
+                workspaceId,
+            });
             const reply = await this.assistantService.ask(history ?? [], message, {
+                callerBlock,
                 tools: {
                     definitions: tools_1.ASSISTANT_TOOL_DEFS,
                     execute: (0, tools_1.makeAssistantToolExecutor)(toolCtx, this.toolServices),
@@ -120,9 +131,14 @@ class AssistantController {
             res.write(`data: ${JSON.stringify({ delta })}\n\n`);
         };
         try {
+            const callerBlock = await (0, callerContext_1.buildCallerBlock)(this.callerDeps, {
+                userId,
+                workspaceId,
+            });
             await this.assistantService.streamReply(history ?? [], message, {
                 onDelta: sendDelta,
                 signal: ac.signal,
+                callerBlock,
                 tools: {
                     definitions: tools_1.ASSISTANT_TOOL_DEFS,
                     execute: (0, tools_1.makeAssistantToolExecutor)(toolCtx, this.toolServices),

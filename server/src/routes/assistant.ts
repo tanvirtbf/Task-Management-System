@@ -21,6 +21,8 @@ import { TaskActivityRepo } from "../repositories/TaskActivityRepo";
 import { TaskMembershipRepo } from "../repositories/TaskMembershipRepo";
 import { TaskTypesRepo } from "../repositories/TaskTypesRepo";
 import { UsersRepo } from "../repositories/UsersRepo";
+import { SpacesRepo } from "../repositories/SpacesRepo";
+import { UserRolesRepo } from "../repositories/UserRolesRepo";
 import { WorkspaceActivityRepo } from "../repositories/WorkspaceActivityRepo";
 import { TasksService } from "../services/TasksService";
 import { TaskWriteService } from "../services/TaskWriteService";
@@ -113,10 +115,19 @@ if (!openai) {
         ),
         users: usersRepo,
     };
+    // Deep-plan P2 (D11): team NAMES are not on the resolved actor, so the
+    // caller block needs the membership rows plus the (already scope-filtered)
+    // space list. Two cheap reads per chat request.
+    const callerDeps = {
+        users: usersRepo,
+        spaces: new SpacesRepo(db),
+        userRoles: new UserRolesRepo(db),
+    };
     const controller = new AssistantController(
         assistantService,
         chatRepo,
         toolServices,
+        callerDeps,
         logger,
     );
 
