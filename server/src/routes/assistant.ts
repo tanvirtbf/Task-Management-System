@@ -24,6 +24,12 @@ import { UsersRepo } from "../repositories/UsersRepo";
 import { SpacesRepo } from "../repositories/SpacesRepo";
 import { UserRolesRepo } from "../repositories/UserRolesRepo";
 import { WorkspaceActivityRepo } from "../repositories/WorkspaceActivityRepo";
+import { AssignmentRequestsRepo } from "../repositories/AssignmentRequestsRepo";
+import { DepartmentReportsRepo } from "../repositories/DepartmentReportsRepo";
+import { SlaRepo } from "../repositories/SlaRepo";
+import { AssignmentRequestsService } from "../services/AssignmentRequestsService";
+import { SlaService } from "../services/SlaService";
+import { getPolicy } from "../rbac/policy";
 import { TasksService } from "../services/TasksService";
 import { TaskWriteService } from "../services/TaskWriteService";
 import {
@@ -115,6 +121,32 @@ if (!openai) {
         ),
         users: usersRepo,
         tasks: tasksRepo,
+        // Deep-plan P4–P6: people/teams, approvals, reports and SLA reads.
+        // The requests service is READ-ONLY here (listFor) — no delivery arm.
+        spaces: new SpacesRepo(db),
+        userRoles: new UserRolesRepo(db),
+        requests: new AssignmentRequestsService(
+            db,
+            new AssignmentRequestsRepo(db),
+            tasksRepo,
+            new TaskMembershipRepo(db),
+            new TaskActivityRepo(db),
+            new NotificationsRepo(db),
+            usersRepo,
+            new UserRolesRepo(db),
+            getPolicy(),
+            logger,
+        ),
+        reports: new DepartmentReportsRepo(db),
+        sla: new SlaService(
+            db,
+            new SlaRepo(db),
+            tasksRepo,
+            usersRepo,
+            new TaskActivityRepo(db),
+            tasksService,
+            logger,
+        ),
     };
     // Deep-plan P2 (D11): team NAMES are not on the resolved actor, so the
     // caller block needs the membership rows plus the (already scope-filtered)

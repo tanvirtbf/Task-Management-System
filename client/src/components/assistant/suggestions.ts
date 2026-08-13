@@ -12,6 +12,8 @@ export interface SuggestionAudience {
     canSeeDept: boolean;
     /** Can open Roles & permissions. */
     canManageRoles: boolean;
+    /** Heads at least one team (deep-plan P7 — the approvals "team" box). */
+    isHead: boolean;
 }
 
 export interface Suggestion {
@@ -21,13 +23,24 @@ export interface Suggestion {
 }
 
 export const SUGGESTIONS: Suggestion[] = [
+    // Deep-plan P3/P5: the bot now ANSWERS these with live data — they lead,
+    // because "ask instead of hunting" is the behaviour worth teaching.
+    { q: "আমি কী কী task-এ assign আছি?" },
+    { q: "আমার কোনো কাজ কি overdue হয়ে গেছে?" },
+    { q: "আমার কাছে কি কোনো approval request pending আছে?" },
     { q: "কীভাবে একটা নতুন task বানাবো?" },
     { q: "কাউকে task assign করব কীভাবে?" },
-    { q: "Board / Calendar view কীভাবে দেখব?" },
+    { q: "আমার team-এ কে কে আছে?" },
     { q: "কীভাবে comment বা checklist যোগ করব?" },
-    { q: "আমার আজকে কী কী কাজ due আছে?" },
-    { q: "কীভাবে search করব?" },
     { q: "পাসওয়ার্ড কীভাবে বদলাবো?" },
+    {
+        q: "আমার team-এর requests গুলোর কী অবস্থা?",
+        show: (a) => a.isHead,
+    },
+    {
+        q: "এই সপ্তাহের report ready হয়েছে?",
+        show: (a) => a.canSeeDept,
+    },
     {
         q: "Department review আর weekly report কোথায়?",
         show: (a) => a.canSeeDept,

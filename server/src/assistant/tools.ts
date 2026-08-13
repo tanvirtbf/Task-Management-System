@@ -1,12 +1,20 @@
 import type OpenAI from "openai";
 import type { Role } from "../constants";
 import { AppError } from "../errors";
+import { denyMessage, holds, permissionErrorCode } from "../rbac/can";
+import { currentActor } from "../rbac/context";
+import type { PermissionKey } from "../rbac/catalog";
 import type { UsersRepo } from "../repositories/UsersRepo";
 import type { MyTaskBucket } from "../repositories/HomeRepo";
 import type { TasksRepo } from "../repositories/TasksRepo";
+import type { SpacesRepo } from "../repositories/SpacesRepo";
+import type { UserRolesRepo } from "../repositories/UserRolesRepo";
+import type { DepartmentReportsRepo } from "../repositories/DepartmentReportsRepo";
 import type { HomeService } from "../services/HomeService";
 import type { SearchService } from "../services/SearchService";
 import type { TaskWriteService } from "../services/TaskWriteService";
+import type { AssignmentRequestsService } from "../services/AssignmentRequestsService";
+import type { SlaService } from "../services/SlaService";
 
 /**
  * TOOLS the assistant can call (see AI_ASSISTANT_PLAN.md, Phase 8 —
@@ -45,6 +53,15 @@ export interface ToolServices {
     users: UsersRepo;
     /** Scoped task reads for `get_task_details` (deep-plan P3). */
     tasks: TasksRepo;
+    /** People & teams (deep-plan P4) — scoped spaces + membership rows. */
+    spaces: SpacesRepo;
+    userRoles: UserRolesRepo;
+    /** Approvals (deep-plan P5) — relationship-scoped in the service. */
+    requests: AssignmentRequestsService;
+    /** Weekly reports (deep-plan P6) — the tool gates, then reads the repo. */
+    reports: DepartmentReportsRepo;
+    /** SLA breaches (deep-plan P6) — the repo predicate is caller-scoped. */
+    sla: SlaService;
 }
 
 export const ASSISTANT_TOOL_DEFS: OpenAI.Chat.Completions.ChatCompletionTool[] =
@@ -140,6 +157,76 @@ export const ASSISTANT_TOOL_DEFS: OpenAI.Chat.Completions.ChatCompletionTool[] =
                         },
                     },
                     required: ["query"],
+                    additionalProperties: false,
+                },
+            },
+        },
+        {
+            type: "function",
+            function: {
+                name: "get_people",
+                description:
+                    'People and teams. action="my_teams": the user\'s own teams with each head. action="team_roster": who is on a NAMED team (needs team_name). action="find_person": which team(s) a NAMED person is on (needs person_name; "@me" allowed). action="person_workload": how many open tasks a person has, counted only across what the ASKER can see (needs person_name). Use for "amar team e ke ke", "X kon team e", "Y er koyta kaj cholche", "amader head ke".',
+                parameters: {
+                    type: "object",
+                    properties: {
+                        action: {
+                            type: "string",
+                            enum: [
+                                "my_teams",
+                                "team_roster",
+                                "find_person",
+                                "person_workload",
+                            ],
+                        },
+                        team_name: { type: "string" },
+                        person_name: { type: "string" },
+                    },
+                    required: ["action"],
+                    additionalProperties: false,
+                },
+            },
+        },
+        {
+            type: "function",
+            function: {
+                name: "get_my_approvals",
+                description:
+                    'Cross-team assignment approval requests involving the user. box="received" (default): requests THEY must accept or decline. box="sent": requests they raised for someone else. box="team": requests targeting members of teams they HEAD. Use for "amar kache ki approval pending", "amar request er ki obostha". Deciding happens in the app — point them at Inbox → Requests.',
+                parameters: {
+                    type: "object",
+                    properties: {
+                        box: {
+                            type: "string",
+                            enum: ["received", "sent", "team"],
+                        },
+                    },
+                    additionalProperties: false,
+                },
+            },
+        },
+        {
+            type: "function",
+            function: {
+                name: "get_report_status",
+                description:
+                    "ALWAYS call this when asked whether a weekly department report is ready, when it covers, or who has seen it. Do NOT decide from the role rules in the knowledge base and do NOT refuse on your own: a team's HEAD may read their own team's reports without holding any admin permission, and only this tool can tell whether this caller qualifies. Optional team_name narrows to one team. It returns youCanReadReports plus the reports, or a permission error if they truly cannot — relay whichever comes back.",
+                parameters: {
+                    type: "object",
+                    properties: { team_name: { type: "string" } },
+                    additionalProperties: false,
+                },
+            },
+        },
+        {
+            type: "function",
+            function: {
+                name: "get_sla_breaches",
+                description:
+                    "Bugs/complaints past their SLA deadline and not done, newest breach first — only ones the user can see. Use for 'kono task SLA miss korse?', 'deadline par hoye gese kongula?'.",
+                parameters: {
+                    type: "object",
+                    properties: {},
                     additionalProperties: false,
                 },
             },
@@ -326,6 +413,71 @@ export async function executeAssistantTool(
                 spaces: r.spaces.slice(0, 5).map((s) => ({ name: s.name })),
             };
         }
+        case "get_people":
+            return peopleTool(args, ctx, services);
+        case "get_my_approvals": {
+            const box =
+                args.box === "sent" || args.box === "team"
+                    ? args.box
+                    : "received";
+            const rows = await services.requests.listFor({
+                workspaceId: ctx.workspaceId,
+                actorId: ctx.userId,
+                actorRole: ctx.role,
+                box,
+                onlyPending: true,
+            });
+            const shown = rows.slice(0, 10);
+            return {
+                box,
+                count: shown.length,
+                more: rows.length > 10,
+                decideAt: "/inbox",
+                requests: shown.map((r) => {
+                    const who = (id: string | null): string => {
+                        const u = id ? r.usersById.get(id) : undefined;
+                        return u
+                            ? `${u.firstName} ${u.lastName}`.trim()
+                            : "unknown";
+                    };
+                    return {
+                        task: r.task?.name ?? "(task no longer visible)",
+                        url: r.task ? `/t/${r.task.id}` : null,
+                        team: r.task?.spaceName ?? null,
+                        list: r.task?.listName ?? null,
+                        dueDate: dateOnly(r.task?.dueDate ?? null),
+                        requestedBy: who(r.request.requestedBy),
+                        target: who(r.request.targetUserId),
+                        status: r.request.status,
+                        expiresAt: r.request.expiresAt
+                            ? String(r.request.expiresAt.toISOString()).slice(0, 10)
+                            : null,
+                    };
+                }),
+            };
+        }
+        case "get_report_status":
+            return reportStatusTool(args, ctx, services);
+        case "get_sla_breaches": {
+            const rows = await services.sla.listBreached({
+                workspaceId: ctx.workspaceId,
+                filters: {},
+            });
+            const shown = rows.slice(0, 10);
+            return {
+                count: shown.length,
+                more: rows.length > 10,
+                queue: "/sla",
+                breaches: shown.map((b) => ({
+                    task: b.name,
+                    url: `/t/${b.task_id}`,
+                    hoursLate: Math.round(b.minutes_breached / 60),
+                    assignees: b.assignees.map((a) =>
+                        `${a.first_name} ${a.last_name}`.trim(),
+                    ),
+                })),
+            };
+        }
         case "create_task": {
             try {
                 return await createTaskTool(args, ctx, services);
@@ -500,6 +652,329 @@ const normalizeName = (s: string): string =>
         .replace(/\s+/g, " ");
 
 /**
+ * The honest-denial payload (deep-plan doctrine 4): the standard shape the
+ * prompt knows how to render — permission named, action NOT performed. Used by
+ * every tool whose surface the HTTP routes gate with `requirePermission`,
+ * because the tool path never passes through those routes.
+ */
+const denied = (key: PermissionKey) => ({
+    error: denyMessage(key, "no_grant"),
+    code: permissionErrorCode(key),
+    permission: key,
+    reason: "no_grant",
+});
+
+/**
+ * Resolve ONE person by name against the member directory — the logic
+ * `create_task` grew (full string, then surname fallback, then exact match),
+ * extracted so `get_people` answers with the same behaviour. "@me" resolves to
+ * the caller (the model never knows their real name).
+ *
+ * Returns `{ person }` or `{ failure }` — the failure is a ready-made tool
+ * result (missing → ask for the exact name; ambiguous → candidates).
+ */
+const resolvePerson = async (
+    wanted: string,
+    ctx: ToolContext,
+    services: ToolServices,
+): Promise<
+    | { person: { id: string; name: string }; failure?: undefined }
+    | { person?: undefined; failure: Record<string, unknown> }
+> => {
+    if (wanted.trim().toLowerCase() === "@me") {
+        const me = await services.users.findByIdInWorkspace(
+            ctx.userId,
+            ctx.workspaceId,
+        );
+        return {
+            person: {
+                id: ctx.userId,
+                name: me ? `${me.firstName} ${me.lastName}`.trim() : "you",
+            },
+        };
+    }
+    let rows = await services.users.listByWorkspace({
+        workspaceId: ctx.workspaceId,
+        q: wanted.trim(),
+        status: "active",
+        limit: 6,
+    });
+    const words = wanted.trim().split(/\s+/);
+    if (rows.length === 0 && words.length > 1) {
+        rows = await services.users.listByWorkspace({
+            workspaceId: ctx.workspaceId,
+            q: words[words.length - 1],
+            status: "active",
+            limit: 6,
+        });
+    }
+    const named = rows.map((u) => ({
+        id: u.id,
+        name: `${u.firstName} ${u.lastName}`.trim(),
+    }));
+    const person =
+        exactMatch(named, wanted) ?? (named.length === 1 ? named[0] : null);
+    if (person) return { person };
+    return {
+        failure:
+            named.length === 0
+                ? {
+                      error: `No active member matching "${wanted}" was found. Ask the user for the exact name.`,
+                  }
+                : {
+                      error: `More than one person matches "${wanted}". Ask the user which one they mean.`,
+                      candidates: named.map((p) => p.name),
+                  },
+    };
+};
+
+/**
+ * `get_people` (deep-plan P4). EVERY mode requires `member.view` — the same
+ * gate `GET /teams` carries — asserted HERE because the HTTP gate never runs
+ * on the tool path. This is also the fix for finding G7: the directory used
+ * to be reachable through `create_task` with only `assistant.use`.
+ *
+ * All space reads go through the SCOPED `SpacesRepo.listByWorkspace`, so a
+ * team the caller cannot see stays invisible: its roster answers the same
+ * ambiguous not-found as a team that does not exist.
+ */
+async function peopleTool(
+    args: Record<string, unknown>,
+    ctx: ToolContext,
+    services: ToolServices,
+): Promise<unknown> {
+    if (!holds(await currentActor(), "member.view")) {
+        return denied("member.view");
+    }
+
+    const action = String(args.action ?? "my_teams");
+    const visible = await services.spaces.listByWorkspace(ctx.workspaceId, {
+        includeArchived: false,
+    });
+    const visibleById = new Map(visible.map((s) => [s.id, s]));
+
+    if (action === "my_teams") {
+        const mine = new Set(
+            await services.userRoles.spaceIdsForUser(
+                ctx.userId,
+                ctx.workspaceId,
+            ),
+        );
+        const teams = visible.filter((s) => mine.has(s.id));
+        const headIds = [
+            ...new Set(
+                teams
+                    .map((t) => t.headUserId)
+                    .filter((h): h is string => !!h),
+            ),
+        ];
+        const heads =
+            headIds.length > 0
+                ? await services.users.findManyByIdsInWorkspace(
+                      headIds,
+                      ctx.workspaceId,
+                  )
+                : [];
+        const headName = new Map(
+            heads.map((h) => [h.id, `${h.firstName} ${h.lastName}`.trim()]),
+        );
+        return {
+            count: teams.length,
+            teams: teams.map((t) => ({
+                team: t.name,
+                head: t.headUserId
+                    ? (headName.get(t.headUserId) ?? null)
+                    : null,
+                youAreHead: t.headUserId === ctx.userId,
+            })),
+            manageAt: "/settings/teams",
+        };
+    }
+
+    if (action === "team_roster") {
+        const teamName =
+            typeof args.team_name === "string" ? args.team_name.trim() : "";
+        if (!teamName)
+            return { error: "Which team? Ask the user for the team's name." };
+        const named = visible.map((s) => ({ id: s.id, name: s.name }));
+        const team =
+            exactMatch(named, teamName) ??
+            (named.filter((s) =>
+                normalizeName(s.name).includes(normalizeName(teamName)),
+            ).length === 1
+                ? named.find((s) =>
+                      normalizeName(s.name).includes(normalizeName(teamName)),
+                  )!
+                : null);
+        if (!team) {
+            const close = named.filter((s) =>
+                normalizeName(s.name).includes(normalizeName(teamName)),
+            );
+            return close.length > 1
+                ? {
+                      error: `More than one team matches "${teamName}". Ask the user which one they mean.`,
+                      candidates: close.map((c) => c.name),
+                  }
+                : {
+                      error: "not_found",
+                      code: "space.not_found",
+                      say: "No such team is visible to this user — do not claim it exists.",
+                  };
+        }
+        const assignments = await services.userRoles.listBySpace(
+            team.id,
+            ctx.workspaceId,
+        );
+        const ids = [...new Set(assignments.map((a) => a.userId))];
+        const people =
+            ids.length > 0
+                ? await services.users.findManyByIdsInWorkspace(
+                      ids,
+                      ctx.workspaceId,
+                  )
+                : [];
+        const headId = visibleById.get(team.id)?.headUserId ?? null;
+        const active = people.filter((p) => p.status !== "deactivated");
+        const shown = active.slice(0, 10);
+        return {
+            team: team.name,
+            count: active.length,
+            more: active.length > shown.length,
+            head: headId
+                ? (() => {
+                      const h = people.find((p) => p.id === headId);
+                      return h
+                          ? `${h.firstName} ${h.lastName}`.trim()
+                          : null;
+                  })()
+                : null,
+            members: shown.map((p) => ({
+                name: `${p.firstName} ${p.lastName}`.trim(),
+                isHead: p.id === headId,
+            })),
+        };
+    }
+
+    const personName =
+        typeof args.person_name === "string" ? args.person_name.trim() : "";
+    if (!personName)
+        return { error: "Which person? Ask the user for their name." };
+    const resolved = await resolvePerson(personName, ctx, services);
+    if (resolved.failure) return resolved.failure;
+    const person = resolved.person;
+
+    if (action === "person_workload") {
+        const open = await services.tasks.countOpenAssignedVisible(
+            person.id,
+            ctx.workspaceId,
+        );
+        return {
+            person: person.name,
+            openTasksYouCanSee: open,
+            note: "counted only across tasks the asker can see",
+        };
+    }
+
+    // find_person — team names go through the CALLER's visible set only; a
+    // hidden team becomes a count, never a name (anti-enumeration).
+    const theirSpaceIds = await services.userRoles.spaceIdsForUser(
+        person.id,
+        ctx.workspaceId,
+    );
+    const primaryId = await services.users.primarySpaceIdOf(
+        person.id,
+        ctx.workspaceId,
+    );
+    const visibleTeams = theirSpaceIds
+        .filter((id) => visibleById.has(id))
+        .map((id) => {
+            const s = visibleById.get(id)!;
+            return {
+                team: s.name,
+                head: s.headUserId === person.id,
+                home: id === primaryId,
+            };
+        });
+    return {
+        person: person.name,
+        teams: visibleTeams,
+        hiddenTeams: theirSpaceIds.length - visibleTeams.length,
+    };
+}
+
+/**
+ * `get_report_status` (deep-plan P6). Mirrors `ReportsService.list`'s
+ * visibility EXACTLY: an Owner/Admin whose role holds `report.view` sees every
+ * department; everyone else sees the departments they currently HEAD. A caller
+ * with neither gets the honest denial, and never learns whether reports exist.
+ */
+async function reportStatusTool(
+    args: Record<string, unknown>,
+    ctx: ToolContext,
+    services: ToolServices,
+): Promise<unknown> {
+    const actor = await currentActor();
+    const visible = await services.spaces.listByWorkspace(ctx.workspaceId, {
+        includeArchived: false,
+    });
+    const headedIds = visible
+        .filter((s) => s.headUserId === ctx.userId)
+        .map((s) => s.id);
+    const isAdminish = ctx.role === "owner" || ctx.role === "admin";
+    const seesAll = isAdminish && holds(actor, "report.view");
+    if (!seesAll && headedIds.length === 0) {
+        return denied("report.view");
+    }
+
+    let spaceId: string | undefined;
+    const teamName =
+        typeof args.team_name === "string" ? args.team_name.trim() : "";
+    if (teamName) {
+        const named = visible.map((s) => ({ id: s.id, name: s.name }));
+        const team = exactMatch(named, teamName);
+        if (!team) {
+            return {
+                error: "not_found",
+                code: "space.not_found",
+                say: "No such team is visible to this user — do not claim it exists.",
+            };
+        }
+        spaceId = team.id;
+    }
+
+    const rows = await services.reports.list({
+        workspaceId: ctx.workspaceId,
+        spaceId,
+        headVisibility: seesAll
+            ? undefined
+            : { userId: ctx.userId, headedSpaceIds: headedIds },
+        limit: 6,
+    });
+    const nameOf = new Map(visible.map((s) => [s.id, s.name]));
+    return {
+        // A live probe had the model turn an EMPTY list into "you do not have
+        // permission" — told a department Head she could not read her own
+        // team's reports, when the truth was that none had been generated yet.
+        // Passing the permission verdict explicitly leaves nothing to guess.
+        youCanReadReports: true,
+        ...(rows.length === 0
+            ? {
+                  note: "This user CAN read reports; none have been generated yet. Reports are created automatically every Monday.",
+              }
+            : {}),
+        count: Math.min(rows.length, 5),
+        reports: rows.slice(0, 5).map((r) => ({
+            team: nameOf.get(r.spaceId) ?? "(team)",
+            week: `${r.weekStart} – ${r.weekEnd}`,
+            generatedAt: String(r.generatedAt.toISOString()).slice(0, 10),
+            seen: !!r.acknowledgedBy,
+            hasHeadNote: !!r.headNote,
+        })),
+        readAt: "/reports",
+    };
+}
+
+/**
  * A shorter query that is still a CONTIGUOUS substring of the intended name —
  * the words before the first punctuation mark, capped at four. Used only after
  * the full phrase found nothing, because search is a plain `LIKE %q%` and one
@@ -573,64 +1048,28 @@ async function createTaskTool(
     // Resolve ASSIGNEES by name against the member directory. Any ambiguity
     // or miss aborts the create — a task quietly assigned to the wrong Rahim
     // is worse than a follow-up question.
+    //
+    // G7 fix (deep-plan P4): naming an assignee READS the member directory, so
+    // it now requires `member.view` — the same gate the Members page and the
+    // people tool carry. Without it, `assistant.use` alone was a name-existence
+    // oracle. "@me" stays allowed: it reads nothing but the caller's own row.
     const assigneeIds: string[] = [];
     const pendingNames: string[] = [];
     const rawNames = Array.isArray(args.assignee_names)
         ? args.assignee_names.filter((n): n is string => typeof n === "string")
         : [];
+    const onlySelf = rawNames.every(
+        (n) => n.trim().toLowerCase() === "@me",
+    );
+    if (rawNames.length > 0 && !onlySelf) {
+        if (!holds(await currentActor(), "member.view")) {
+            return denied("member.view");
+        }
+    }
     for (const wanted of rawNames.slice(0, 10)) {
-        // "@me" = the chatting user themselves. The model does not know their
-        // real name (identity lives in the JWT, not the prompt), so "assign it
-        // to me" resolves here instead of failing a directory lookup.
-        if (wanted.trim().toLowerCase() === "@me") {
-            if (!assigneeIds.includes(ctx.userId)) {
-                const me = await services.users.findByIdInWorkspace(
-                    ctx.userId,
-                    ctx.workspaceId,
-                );
-                assigneeIds.push(ctx.userId);
-                pendingNames.push(
-                    me ? `${me.firstName} ${me.lastName}`.trim() : "you",
-                );
-            }
-            continue;
-        }
-        // The directory's q filter matches per COLUMN (first name, last name,
-        // email) — a full "Rahim Uddin" matches neither column alone. Try the
-        // full string first, then fall back to the last word (the surname)
-        // and let the exact full-name match below disambiguate.
-        let rows = await services.users.listByWorkspace({
-            workspaceId: ctx.workspaceId,
-            q: wanted.trim(),
-            status: "active",
-            limit: 6,
-        });
-        const words = wanted.trim().split(/\s+/);
-        if (rows.length === 0 && words.length > 1) {
-            rows = await services.users.listByWorkspace({
-                workspaceId: ctx.workspaceId,
-                q: words[words.length - 1],
-                status: "active",
-                limit: 6,
-            });
-        }
-        const named = rows.map((u) => ({
-            id: u.id,
-            name: `${u.firstName} ${u.lastName}`.trim(),
-        }));
-        const person =
-            exactMatch(named, wanted) ??
-            (named.length === 1 ? named[0] : null);
-        if (!person) {
-            return named.length === 0
-                ? {
-                      error: `No active member matching "${wanted}" was found. Ask the user for the exact name.`,
-                  }
-                : {
-                      error: `More than one person matches "${wanted}". Ask the user which one they mean.`,
-                      candidates: named.map((p) => p.name),
-                  };
-        }
+        const resolved = await resolvePerson(wanted, ctx, services);
+        if (resolved.failure) return resolved.failure;
+        const person = resolved.person;
         // Two spellings of the same person ("Sadia", "Sadia Islam") resolve to
         // one id — the service dedupes ids anyway, but the NAME list must not
         // report the same person twice.

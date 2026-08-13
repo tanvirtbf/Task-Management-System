@@ -1537,3 +1537,78 @@ examples).
 **Verdict: Deep P3 COMPLETE — "ami ki ki task e assign asi?" now answers with the actual tasks,
 correctly scoped, correctly linked. Ready for "AI deep phase 4 koren" (people & teams, plus the
 G7 directory gate).**
+
+---
+
+## Deep P4–P7 — people, approvals, reports, SLA + the guidance polish — ✅ COMPLETE (2026-08-13)
+
+Run as one batch at the user's request. Four tools, one security fix, and the starter questions
+rebuilt around what the bot can now actually answer. **4 tools → 10.**
+
+### Shipped
+| tool | answers | gate |
+|---|---|---|
+| **`get_people`** | `my_teams` (teams + heads) · `team_roster` · `find_person` · `person_workload` | **`member.view`, asserted in the tool** — the same gate `GET /teams` carries |
+| **`get_my_approvals`** | boxes `received` / `sent` / `team` (Head) | relationship-scoped by `AssignmentRequestsService.listFor`; deciding stays in [Inbox](/inbox) |
+| **`get_report_status`** | latest weekly reports, week, seen, head-note flag | mirrors `ReportsService.list` exactly: admin **with** `report.view`, or the caller's **headed** spaces |
+| **`get_sla_breaches`** | breached tasks, hours late, assignees | the SlaRepo predicate is already caller-scoped |
+
+**G7 CLOSED** (the finding P0 made): naming an assignee in `create_task` READS the member
+directory, so it now requires `member.view` too. `"@me"` still works without it — that reads only
+the caller's own row. The name-resolution logic is extracted (`resolvePerson`) so `get_people` and
+`create_task` cannot drift apart.
+
+**P7 polish:** starter questions are rebuilt — the three data questions the bot can now answer
+LEAD the list, a **Head** additionally gets "আমার team-এর requests গুলোর কী অবস্থা?", and the
+report question follows the Department gate. `ASSISTANT_TEAM_NOTE.md` (the Bangla note for the
+office) rewritten around the six things it now does, including the privacy sentence that matters:
+*it looks on your behalf, not with powers of its own — and it will not even tell you that a task
+exists but is hidden from you, because saying that is already a leak.*
+
+### Anti-enumeration, held everywhere
+A team the caller cannot see refuses **exactly like a team that does not exist**, and
+`find_person` returns hidden memberships as a COUNT, never a name. Proved live: Sumaiya
+(Marketing) asking where Rakib works gets *"বর্তমানে কোনো টিমে নেই… সম্ভবত এমন টিমে আছেন যা আপনার
+জন্য দৃশ্যমান নয়"* — true, and it names nothing. Her request for the Customer Service roster is
+refused the same way.
+
+### 🐞 The defect this batch existed to catch
+Asked *"ei shoptaher report ready hoyeche?"*, **Nusrat — the Head of Marketing — was told she did
+not have permission.** She does; the real `/reports` endpoint lets her in. Two separate bugs,
+found by not accepting the first explanation:
+1. The model never called the tool. It read the KB's role rule ("reports are for Owners, Admins
+   and Heads"), decided a Member could not qualify, and refused on its own. Fixed by making the
+   tool description imperative (*always call this; do not decide from the role rules — a Head
+   qualifies and only this tool knows*) plus a prompt rule: **never refuse a data question
+   yourself.**
+2. Once it did call, the tool returned an empty list (no reports exist in the dev database yet)
+   and the model turned *empty* into *forbidden*. Fixed at the source: the result now carries
+   `youCanReadReports: true` and an explicit note, so there is nothing left to guess.
+
+Re-probed: the Head gets *"এখনও তৈরি হয়নি… প্রতি সোমবার স্বয়ংক্রিয়ভাবে তৈরি হয়"*; a plain Member
+asking the same question is still correctly refused.
+
+### Verified
+`jest.assistant` **13 suites / 200 tests** ✅ (was 184; new `team-data-tools.test.ts` 14 + 2 budget
+pins). Those 14 include: **every `get_people` mode refused without `member.view`, naming the
+permission** · `person_workload` counts 1, not 2, when one of the colleague's tasks is in a team
+the asker cannot see · `create_task` with a named assignee refused without `member.view` while
+`"@me"` still succeeds · the approval target/requester/stranger boxes · **a Head reads their own
+team's report with no admin permission, and an Owner sees every team's** · and the empty-report
+case that the live probe exposed.
+
+Client `vitest` **7 files / 47** ✅ · server `tsc` + both builds clean ✅ · **eval gate PERFECT ×3,
+15/15 on links every run**.
+
+**Budgets, both now pinned:** the system message went 46k → **47k** (46,272 today) — but P3 and
+this batch each paid their own way first: the Sidebar/Where-things-live duplication, the Search
+and Assigning sections and the roles walkthrough were all compressed rather than the ceiling
+moved, and the last 1k is the two rules that each exist because a live probe failed without them.
+The **tool definitions** — which ride every request and had **no guard at all** while doubling
+from 3,143 to ~7k — now have their own ceiling plus a test that every description says WHEN to
+use it, because a tool the model never calls is worse than no tool: it answers from the knowledge
+base instead and can contradict the person's real permissions. That is exactly how the Nusrat bug
+happened.
+
+**Verdict: Deep P4–P7 COMPLETE. Ready for "AI deep phase 8 koren" (teach the grader the
+permission surface) and then P9, the ship gate.**

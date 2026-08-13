@@ -25,6 +25,12 @@ const UsersRepo_1 = require("../repositories/UsersRepo");
 const SpacesRepo_1 = require("../repositories/SpacesRepo");
 const UserRolesRepo_1 = require("../repositories/UserRolesRepo");
 const WorkspaceActivityRepo_1 = require("../repositories/WorkspaceActivityRepo");
+const AssignmentRequestsRepo_1 = require("../repositories/AssignmentRequestsRepo");
+const DepartmentReportsRepo_1 = require("../repositories/DepartmentReportsRepo");
+const SlaRepo_1 = require("../repositories/SlaRepo");
+const AssignmentRequestsService_1 = require("../services/AssignmentRequestsService");
+const SlaService_1 = require("../services/SlaService");
+const policy_1 = require("../rbac/policy");
 const TasksService_1 = require("../services/TasksService");
 const TaskWriteService_1 = require("../services/TaskWriteService");
 const openaiClient_1 = require("../services/openaiClient");
@@ -73,6 +79,13 @@ else {
         taskWrite: new TaskWriteService_1.TaskWriteService(db, listsRepo, new StatusesRepo_1.StatusesRepo(db), new TaskTypesRepo_1.TaskTypesRepo(db), tasksRepo, new TaskMembershipRepo_1.TaskMembershipRepo(db), usersRepo, new TagsRepo_1.TagsRepo(db), new TaskActivityRepo_1.TaskActivityRepo(db), new NotificationsRepo_1.NotificationsRepo(db), new AttachmentsRepo_1.AttachmentsRepo(db), new WorkspaceRepo_1.WorkspaceRepo(db), new WorkspaceActivityRepo_1.WorkspaceActivityRepo(db), tasksService, logger_1.default),
         users: usersRepo,
         tasks: tasksRepo,
+        // Deep-plan P4–P6: people/teams, approvals, reports and SLA reads.
+        // The requests service is READ-ONLY here (listFor) — no delivery arm.
+        spaces: new SpacesRepo_1.SpacesRepo(db),
+        userRoles: new UserRolesRepo_1.UserRolesRepo(db),
+        requests: new AssignmentRequestsService_1.AssignmentRequestsService(db, new AssignmentRequestsRepo_1.AssignmentRequestsRepo(db), tasksRepo, new TaskMembershipRepo_1.TaskMembershipRepo(db), new TaskActivityRepo_1.TaskActivityRepo(db), new NotificationsRepo_1.NotificationsRepo(db), usersRepo, new UserRolesRepo_1.UserRolesRepo(db), (0, policy_1.getPolicy)(), logger_1.default),
+        reports: new DepartmentReportsRepo_1.DepartmentReportsRepo(db),
+        sla: new SlaService_1.SlaService(db, new SlaRepo_1.SlaRepo(db), tasksRepo, usersRepo, new TaskActivityRepo_1.TaskActivityRepo(db), tasksService, logger_1.default),
     };
     // Deep-plan P2 (D11): team NAMES are not on the resolved actor, so the
     // caller block needs the membership rows plus the (already scope-filtered)

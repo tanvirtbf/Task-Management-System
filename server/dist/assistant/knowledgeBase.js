@@ -86,9 +86,7 @@ To open a task: find it in a List (from the **Sidebar**), on [Home](/) under you
 - **Archive / Delete:** archive a task to hide it without deleting, or delete it.
 
 ## Assigning and following work
-- To assign a task, open it (from a List in the **Sidebar**, from [Home](/), or via [Search](/search)) and set the **Assignee** in Properties — or edit it inline in List view. The assigned person gets a notification in their [Inbox](/inbox).
-- To follow a task without being assigned, become a **watcher** of it.
-- To see everything assigned to YOU, go to [Home](/) — the cards and today's agenda are all yours.
+Open the task — from its List in the **Sidebar**, from [Home](/), or via [Search](/search) — and set the **Assignee** in Properties (or inline in List view); they get a notification in their [Inbox](/inbox). To follow a task you are not assigned to, become a **watcher**. Everything assigned to YOU is on [Home](/) — and you can simply ask me for it.
 
 ## Inbox and notifications
 - The **Notification bell** in the Topbar shows your unread count. Click it, or open [**Inbox**](/inbox) in the Sidebar.
@@ -103,9 +101,7 @@ To open a task: find it in a List (from the **Sidebar**), on [Home](/) under you
 - On an **iPhone or iPad**, first open the site in Safari, tap **Share**, then **Add to Home Screen**, and open the app from that icon — Apple only delivers notifications to a site added this way.
 
 ## Search
-- Open [**Search**](/search) from the left Sidebar, or click the **Search box** in the Topbar.
-- It searches across Tasks, Lists, Spaces, People and Comments at once.
-- Click a result to jump straight to it.
+Open [**Search**](/search) from the Sidebar, or the **Search box** in the Topbar. It covers Tasks, Lists, Spaces, People and Comments at once; click a result to jump to it.
 
 ## Forms (collect work from outside the app)
 Forms let people submit information that automatically becomes a task (for example a complaint intake form).
@@ -197,13 +193,7 @@ may be shorter than this one:
 What each role may do is **configurable** — an admin edits it, and can also create new roles. Setup and management actions (creating spaces, inviting members, editing workspace settings, managing task types/tags/custom fields) are limited to whoever has been given those permissions, which by default means Owners and Admins. Everyday task work is open to everyone.
 
 ### Editing what a role can do — [Roles & permissions](/settings/roles)
-This page is where an admin decides what each role may do. It needs the "Create and edit roles" permission, so normally only an Owner or Admin can open it.
-1. The left panel lists every role with how many people hold it.
-2. Click a role to see its **permission grid** on the right — every ability in the system, grouped (Workspace, Members, Spaces, Lists & statuses, Tasks, Task content, Catalog & settings, Forms, Engineering, Department review & reports, Insights, Roles & permissions).
-3. Tick a box to grant an ability, untick to remove it. Risky ones (deleting things, changing roles, deactivating people) are shown in **red**.
-4. Press **Save changes**. The change takes effect on that person's very next click — nobody has to sign out and back in.
-- **New role** (top right) creates your own role, for example "Marketing Manager" or "Intern". It starts with nothing ticked, so you choose exactly what it may do. Your own roles can be deleted; the four built-in ones cannot.
-- The **Owner** role is shown but cannot be edited — that is deliberate, so nobody can accidentally lock the workspace out of its own settings.
+Where an admin decides what each role may do (needs the "Create and edit roles" permission, so normally Owner/Admin only). The left panel lists every role with how many people hold it; click one to open its **permission grid** — every ability, grouped, with the risky ones (deleting, role changes, deactivating people) in **red**. Tick or untick, then **Save changes**; it takes effect on that person's very next click, with no sign-out. **New role** (top right) starts empty, so you pick exactly what it may do — your own roles can be deleted, the four built-in ones cannot. The **Owner** role is shown but cannot be edited, deliberately, so the workspace can never be locked out of its own settings.
 
 ### How far a permission reaches — the scope
 This is the important idea. Next to a ticked ability, if it can be limited, you pick **how far it reaches**:
@@ -252,7 +242,9 @@ If a page says access is not available, or an action is refused, it is not a bug
   Never send them to [Members](/settings/members) for team membership; that page has no team control.
 - **Where do I see everything assigned to me?** [Home](/) — the cards count your open, due-today, overdue and awaiting-review tasks, and today's agenda lists them. You can also just ask me here and I will read your live numbers.
 - **What is past its deadline right now?** [SLA breaches](/sla) — bugs and complaints past their SLA, newest first. Anyone can open it.
-- **Which team am I on, and who is my Head?** [Teams](/settings/teams) shows every team, its members and its head.
+- **Which team am I on, and who is my Head?** Just ask me ("amar team e ke ke ase?") — I can read the roster live. Or open [Teams](/settings/teams), which shows every team, its members and its head.
+- **Do I have any approval requests waiting?** Ask me ("amar kache ki approval pending?") and I will list them — then decide from [Inbox](/inbox) → the **Requests** tab (a Head sees their whole team's requests there too).
+- **Is this week's report ready? Who has seen it?** Owners/Admins and each team's Head can ask me directly; the reports themselves live at [Reports](/reports).
 - **Can I add or rename a status?** Not yet — [Statuses](/settings/statuses) lets you SEE and drag-reorder a List's statuses, nothing else. Every List keeps the 5 it was created with.
 - **Can I import from ClickUp, or export everything?** Not yet — [Import / Export](/settings/import-export) is still a placeholder; the importers say "coming soon" and the export buttons produce no file. Ask an admin if you need a copy of the data.
 - **What can a Guest do?** View, comment, use this assistant and report a bug — that is all. Guests cannot create or edit tasks, upload files, or read form submissions.

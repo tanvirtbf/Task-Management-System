@@ -166,6 +166,17 @@
 - **DoD:** live probes as a member: "ami ki ki task e assign asi?", "'Eid banner' task er
   obostha ki?" — correct, linked, Bangla; eval PERFECT.
 
+### P4–P7 — ✅ **COMPLETE 2026-08-13** (run as one batch at the user's request)
+> `get_people` · `get_my_approvals` · `get_report_status` · `get_sla_breaches` shipped — **4 tools
+> → 10** — each asserting its own permission because the HTTP gate never runs on the tool path.
+> **G7 closed**: naming an assignee in `create_task` now needs `member.view` (`"@me"` still free).
+> P7: starter questions rebuilt (data questions lead; Head gets the team-requests one) and
+> `ASSISTANT_TEAM_NOTE.md` rewritten. jest 184 → **200**, client vitest 47, eval **PERFECT ×3 with
+> links 15/15**. Caught live: a department **Head told she had no permission to read her own
+> team's report** — the model had refused without calling the tool, and then read an empty list as
+> a denial; both fixed at the source. System budget 46k → 47k (after compressing three real
+> duplications), and the **tool definitions got their first budget** (they had doubled unguarded).
+
 ### P4 — People & teams tool (G4) + the directory oracle fix (G7)
 - Tool `get_people`: modes `my_teams` (my spaces + their heads), `team_roster` (members
   of a named team), `find_person` (name → team(s), head-or-member, active status),

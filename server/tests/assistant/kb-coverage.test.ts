@@ -1,6 +1,7 @@
 import { KNOWLEDGE_BASE } from "../../src/assistant/knowledgeBase";
 import { SYSTEM_PROMPT } from "../../src/assistant/systemPrompt";
 import { buildMessages } from "../../src/assistant/buildMessages";
+import { ASSISTANT_TOOL_DEFS } from "../../src/assistant/tools";
 
 /**
  * KB FRESHNESS GUARDRAIL (AI_ASSISTANT_UPGRADE_PLAN.md — created P1, grown in
@@ -546,8 +547,40 @@ describe("KB coverage — P4: every destination is a link", () => {
         // honest-denial wording — and those rules are the whole point of the
         // phase: they are what turns "permission nei" from silence into an
         // answer. Written, then compressed ~20% once they existed on the page.
+        //
+        // Raised 46k → 47k by P4–P7 (2026-08-13), which took the bot from 4
+        // tools to 10 (people, approvals, reports, SLA). P3 and this phase
+        // BOTH paid their own way first — the Sidebar/Where-things-live
+        // duplication, the Search and Assigning sections, and the roles
+        // walkthrough were all compressed rather than the budget moved — and
+        // the last 1k is two rules that each exist because a live probe
+        // failed without them: never refuse a data question from the role
+        // rules (it told a department Head she could not read her own team's
+        // reports), and an empty result is not a permission problem.
         const sys = buildMessages([], "x")[0].content as string;
-        expect(sys.length).toBeLessThan(46000);
+        expect(sys.length).toBeLessThan(47000);
+    });
+
+    it("keeps the TOOL DEFINITIONS inside their own budget", () => {
+        // The defs ride every request in the `tools` parameter — they are NOT
+        // inside the system message, so the budget above never saw them, and
+        // they more than doubled (3,143 → ~7k) when P4–P6 added six tools.
+        // Pinned here so the next tool is a decision, not a drift.
+        expect(JSON.stringify(ASSISTANT_TOOL_DEFS).length).toBeLessThan(8000);
+    });
+
+    it("every tool description says WHEN to use it, not just what it is", () => {
+        // The routing failure this catches: a tool the model never calls is
+        // worse than no tool, because the model answers from the KB instead
+        // and can contradict the person's real permissions.
+        // The union type also allows a "custom" tool shape; ours are all
+        // function tools, which this narrowing asserts in passing.
+        for (const t of ASSISTANT_TOOL_DEFS) {
+            expect(t.type).toBe("function");
+            const fn = (t as { function: { description?: string } }).function;
+            expect(fn.description ?? "").toMatch(/use|call/i);
+            expect((fn.description ?? "").length).toBeGreaterThan(60);
+        }
     });
 
     it("costs nothing extra when there is no caller block (the degraded path)", () => {

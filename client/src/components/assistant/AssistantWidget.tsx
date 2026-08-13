@@ -138,6 +138,7 @@ export const AssistantWidget = () => {
     const suggestions = pickSuggestions({
         canSeeDept: holds("review.read") || holds("report.view") || headsAny,
         canManageRoles: holds("role.manage"),
+        isHead: headsAny,
     });
 
     const userInitial = (

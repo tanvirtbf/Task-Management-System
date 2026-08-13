@@ -35,6 +35,22 @@ class TasksRepo {
         return row ?? null;
     }
     /**
+     * How many OPEN tasks `userId` is assigned to, counted only across tasks
+     * THE CALLER may see (deep-plan P4, decision D5 — a colleague's workload
+     * is a NUMBER, and only the visible part of it). No own-escape here on
+     * purpose: the caller is asking about someone else, so their "my own
+     * items" reach must not widen the count.
+     */
+    async countOpenAssignedVisible(userId, workspaceId) {
+        const [row] = await this.db
+            .select({ cnt: (0, drizzle_orm_1.count)() })
+            .from(schema_1.tasks)
+            .innerJoin(schema_1.taskAssignees, (0, drizzle_orm_1.eq)(schema_1.taskAssignees.taskId, schema_1.tasks.id))
+            .innerJoin(schema_1.statuses, (0, drizzle_orm_1.eq)(schema_1.statuses.id, schema_1.tasks.statusId))
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId), (0, drizzle_orm_1.eq)(schema_1.taskAssignees.userId, userId), (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt), (0, drizzle_orm_1.notInArray)(schema_1.statuses.statusGroup, ["done", "closed"]), await (0, context_1.listScopeFilter)(schema_1.tasks.primaryListId)));
+        return row?.cnt ?? 0;
+    }
+    /**
      * THE ASSISTANT'S TASK-DETAIL READ (deep-plan P3).
      *
      * Same visibility contract as `findByIdOrCustomIdInWorkspace` — scope
