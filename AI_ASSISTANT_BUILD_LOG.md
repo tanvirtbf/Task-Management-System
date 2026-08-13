@@ -1256,3 +1256,59 @@ raised 38k → 39k with the decision recorded in the test (each create rule exis
 probe failed without it) · eval gate: **PERFECT — links 14/15 · steps 12/12 · Bangla 15/15 · data
 10/10 · fabricated 0 · forbidden 0** · server tsc + build clean · all 19 probe tasks hard-removed
 from the dev DB (the API's DELETE archives; probes were purged by SQL).
+
+> ⚠️ **Corrected the same day by DEEP PLAN P0:** that PERFECT reading was partly luck. Re-run
+> three times, the Bangla metric fails in **2 of 3 runs** on one question — the bot answers in
+> romanized Banglish instead of Bangla script. See DEFECT-1 below; the honest baseline lives in
+> `AI_ASSISTANT_DEEP_PLAN.md` §5.
+
+---
+
+# 🧭 DEEP PLAN (accurate · easy · permission-scoped) — `AI_ASSISTANT_DEEP_PLAN.md`
+
+Protocol: the user says **"AI deep phase N koren"** → only that phase → build → test → log here.
+
+## Deep P0 — decisions locked, design code-verified, honest baseline — ✅ COMPLETE (2026-08-13)
+
+**No product change by design.** P0 exists so P2/P3/P4 build what was designed instead of what
+was remembered, and so every later phase has a real number to diff against.
+
+### Baseline
+system message **38,272 chars** (budget 39,000 → **728 headroom**) · tool defs **3,143 chars**,
+4 tools · `jest.assistant` **9 suites / 145** · eval **not reliably PERFECT** (see DEFECT-1).
+
+### Design verified in the code, not assumed
+| claim the plan rests on | verdict |
+|---|---|
+| `currentActor()` reaches inside a tool | ✅ ALS store from the global v1 chain; carries `isOwner`, `legacyRole`, `perms` |
+| a capability summary needs no new query | ✅ `entryFor(actor, key)` → the four reach flags |
+| team NAMES available cheaply | ⚠️ **not** from the actor (space **ids** only) → **D11**: `SpacesRepo.listByWorkspace` (already scope-filtered) ∩ `UserRolesRepo.spaceIdsForUser`; explicitly NOT `TeamMembershipService.directory()`, which is the whole unscoped org chart |
+| denials can carry a real message + code | ✅ `denyMessage` + `permissionErrorCode` + reasons `no_grant / out_of_scope / not_own` |
+| `member.view` is the right gate for the P4 people tool | ✅ `routes/teams.ts` gates `GET /teams` on exactly that — mirror the HTTP surface, don't invent a rule |
+| G7 is real | ✅ `UsersRepo` imports no scope filter at all — the directory is an existence oracle on the tool path |
+
+Three decisions were **added** because the verification asked questions the plan had left
+implicit: **D9** the CONTROLLER builds the caller block (`buildMessages` has no request context)
+and stays pure; **D10** the block is never persisted into chat history, so a permission change
+takes effect on the next question; **D11** as above.
+
+### Shipped
+`systemPrompt.ts` — a **P2 SPEC comment block** (caller-block format + sources + hard limits +
+privacy rule; the denial payload shape; the anti-enumeration split between a category denial and
+an ambiguous object miss). It sits OUTSIDE the template literal: re-measured at **38,272 chars —
+zero wire cost, zero behaviour change**. Plan file: decisions 🔒 locked, D9–D11 added, §5
+execution record.
+
+### 🐞 DEFECT-1 — the bot mirrors Banglish (handed to P1)
+The gate's Bangla metric failed 2-of-3 runs, always on *"ekjon ke shudhu Marketing space er
+access dite chai, kivabe?"*. The metric was suspected first (five prior wrong-measuring-stick
+incidents) — so the answer was read instead of guessed at, and the metric was RIGHT: **3 Bengali
+letters vs 329 Latin, ratio 0.009**, a fully romanized reply. Re-measured: that question flips
+**2 of 3 times** (0, 0.733, 0) while other Banglish questions hold (0.677 / 0.790 / 0.985) — so
+it is question-specific and reproducible, not temperature noise. The prompt says "reply in
+Bangla" but never *Bangla SCRIPT, never romanized*, and **this office writes Banglish**, so a
+large share of real questions arrive romanized. Also flagged for the P1 audit: the same answer's
+*"See spaces" / "Their spaces"* claim looks like a fabrication. **Deliberately NOT fixed here** —
+a prompt rule is behaviour, and behaviour belongs to P1.
+
+**Verdict: Deep P0 COMPLETE. Ready for "AI deep phase 1 koren" — which starts with DEFECT-1.**

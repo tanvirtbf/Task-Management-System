@@ -9,6 +9,57 @@
  *
  * Plain text — NO backtick or dollar-brace sequences inside the literal.
  */
+
+/* ===========================================================================
+ * P2 SPEC — CALLER CONTEXT + HONEST DENIAL   (AI_ASSISTANT_DEEP_PLAN.md, P0)
+ * NOT ACTIVE YET. This is the agreed shape, written down at P0 so P2 builds
+ * the thing that was designed instead of the thing that was remembered. It is
+ * a comment: it costs nothing on the wire and changes no behaviour.
+ *
+ * ── D2. The caller block ────────────────────────────────────────────────────
+ * Injected by the CONTROLLER (it owns req.auth and can await currentActor());
+ * buildMessages stays pure and takes it as an argument. Built ONCE per
+ * request — never per tool round — and never persisted into chat history.
+ * It goes directly after the "Today is ..." line:
+ *
+ *   You are talking to Sumaiya Haque - Member, teams: Marketing, Social Media.
+ *   They can: see tasks (own), create tasks (their teams), edit tasks (own),
+ *   see members. They CANNOT: review work, read reports, manage roles.
+ *   Tailor every answer to this person.
+ *
+ * Sources (all verified at P0):
+ *   name        users row (first + last)                    - no email, no ids
+ *   role        actor.isOwner ? Owner : actor.legacyRole
+ *   teams       SpacesRepo.listByWorkspace (already scope-filtered)
+ *               INTERSECT UserRolesRepo.spaceIdsForUser  -> names, plus a
+ *               "(Head)" marker where spaces.head_user_id is them
+ *   can/cannot  entryFor(actor, key) for a FIXED list of 10 keys:
+ *               task.view, task.create, task.edit, task.assign, member.view,
+ *               review.read, report.view, space.create, role.manage,
+ *               space.members_manage
+ *   reach word  all -> "everywhere" | spaceIds -> "their teams" |
+ *               own/ownSpaceIds -> "own only"
+ *
+ * Hard limits: <= 400 chars, <= 6 "can" entries, <= 4 "cannot" entries, teams
+ * truncated to 3 + "and N more". PRIVACY: name, role, team names and
+ * capability words only - never emails, ids, or another person's data.
+ *
+ * ── D3. What a denied tool returns, and how to say it ───────────────────────
+ * A tool that refuses returns DATA, never a throw:
+ *   { error: <denyMessage(key, reason)>, code: <permissionErrorCode(key)>,
+ *     permission: <key>, reason: <no_grant|out_of_scope|not_own> }
+ *
+ * The bot renders it in Bangla, always in this shape:
+ *   দুঃখিত - এটা দেখার জন্য আপনার যথেষ্ট permission নেই। আপনার Admin (বা আপনার
+ *   টিমের Head) এই access দিতে পারেন।   + the nearest useful link
+ *
+ * ANTI-ENUMERATION (doctrine 5, non-negotiable): the wording above is for a
+ * CATEGORY the caller cannot reach ("another team's reports"). When a specific
+ * OBJECT is missing or invisible, the tool returns the AMBIGUOUS shape instead
+ * - { error: "not found or not visible to this user", code: "not_found" } -
+ * and the bot says "খুঁজে পাইনি, অথবা এটা দেখার অনুমতি আপনার নেই।" A denial
+ * must never confirm that something the caller cannot see EXISTS.
+ * =========================================================================== */
 export const SYSTEM_PROMPT = `
 You are "সহায়ক" (Sahayok), the friendly in-app help assistant for the BeautyBooth Task Management System — an internal tool used by about 100 staff at a Bangladeshi beauty and skincare e-commerce company. Most users are new and not very technical.
 

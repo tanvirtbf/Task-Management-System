@@ -87,6 +87,11 @@
 - **DoD:** decisions written into this file's §3; no behavior change; all green.
 
 ### P1 — KB nirbhul audit (ask #1: correct information, always)
+- **Starts with DEFECT-1 (§5): the Banglish-mirroring bug.** Fix the language rule so the
+  reply is always Bangla SCRIPT even when the question is romanized, re-measure the failing
+  question ≥5 times (it flips 2-in-3 today), and pin it with a test + an eval row so it
+  cannot come back. Audit the same answer's *"See spaces / Their spaces"* claim, which may
+  be a fabrication.
 - Line-by-line re-verification of every KB claim against the CURRENT system — the same
   discipline as the P2 audit of 2026-07-23, which found 7 wrong facts.
 - Known suspects from the scan: checklist editing + the task progress chip (022), the
@@ -224,10 +229,14 @@
 
 ---
 
-## 3) Decision log (defaults locked at P0 unless the user overrides)
+## 3) Decision log — 🔒 **LOCKED at P0 (2026-08-13)**
 
-| # | Decision | Default (recommendation) |
-|---|----------|--------------------------|
+The user invoked P0 without overrides, so the recommended defaults below are now the
+agreed contract (same protocol as the first assistant plan's P0). D9–D11 were added **by
+P0's code verification** — they are answers to questions the plan had left implicit.
+
+| # | Decision | Locked value |
+|---|----------|--------------|
 | D1 | New tools are read-only; deciding/acting stays in the UI | **Yes** — `create_task` stays the only write |
 | D2 | Caller-context format | One block after "Today is": `You are talking to <First Last> — role <Owner/Admin/Member/Guest>, teams: <names or "none">. They can: <compact capability list>. Tailor every answer to this person.` |
 | D3 | Standard denial wording (tool `rbac.forbidden`) | «দুঃখিত — এটা দেখার জন্য আপনার যথেষ্ট permission নেই। আপনার Admin (বা আপনার টিমের Head) এই access দিতে পারেন।» + relevant settings/inbox link; object-level misses use the ambiguous «খুঁজে পাইনি বা আপনার দেখার অনুমতি নেই» |
@@ -236,6 +245,9 @@
 | D6 | Size budgets | System message stays < 39k unless a phase writes a new decision; tool defs get their own pinned budget in P8 |
 | D7 | Phase order | P1 (truth) before P2 (context) before data tools — accuracy first, then identity, then reach |
 | D8 | No new DB objects | All reads use existing tables/queries + one new scoped my-tasks query — no migration in this plan |
+| D9 | **Who builds the caller block** (P0 finding: `buildMessages` has no request context, and `AssistantService` has no `req`) | The **controller** builds it (it owns `req.auth` and can `await currentActor()`) and passes it as an argument; `buildMessages` stays pure and unit-testable. Built ONCE per request, never per tool round |
+| D10 | Is the caller block persisted? | **No.** `ChatRepo` stores only the user text and the assistant reply; the system message never enters history. A later message re-derives it, so a permission change takes effect on the next question |
+| D11 | Where team NAMES come from (P0 finding: `currentActor()` carries space **ids** only) | `SpacesRepo.listByWorkspace` (already `spaceScopeFilter`-ed) ∩ `UserRolesRepo.spaceIdsForUser` — two cheap scoped reads. **Not** `TeamMembershipService.directory()`: that is the whole org chart, unscoped by design, and far too heavy for every chat message |
 
 ---
 
@@ -250,3 +262,83 @@ Per role, in Bangla/Banglish, every one must be correct or correctly denied:
 9. "kono task SLA miss korse?" · 10. "amar ki ki korar onumoti ache?" ·
 11. a dept-only user asking for another team's roster/tasks → denial, zero leaked names ·
 12. "notun task kivabe banai?" / "password bodlai kivabe?" (regression: guidance intact)
+
+---
+
+## 5) P0 execution record — ✅ COMPLETE (2026-08-13)
+
+### Baseline (every later phase diffs against these)
+
+| measure | value | note |
+|---|---|---|
+| system message | **38,272 chars** | budget 39,000 → **728 chars of headroom** |
+| tool definitions | **3,143 chars**, 4 tools | rides every request as `tools`, NOT inside the 39k |
+| `jest.assistant` | **9 suites / 145 tests** | green |
+| eval gate | **NOT reliably PERFECT** — see the defect below | links 13–14/15 · steps 11–12/12 · **Bangla 14/15 in 2 of 3 runs** · data 10/10 · fabricated 0 · forbidden 0 |
+
+**Consequence for P1 and P2, stated now so neither phase is surprised:** the caller block
+is capped at 400 chars, which leaves ~330 for anything P1 adds to the KB. If the nirbhul
+audit needs more room, the budget moves to 39.5k **with a written decision in the test** —
+compressing behaviour rules to dodge a number is the wrong trade (the same reasoning that
+took it 38k → 39k for `create_task`).
+
+### Design verified against the code (not assumed)
+
+| claim the plan rests on | verdict |
+|---|---|
+| `currentActor()` reaches inside a tool and returns the caller's resolved grants | ✅ `rbac/context.ts` — ALS store installed by the global v1 chain; `ActorPermissions` carries `isOwner`, `legacyRole`, and `perms: Map<key, {all, spaceIds, own, ownSpaceIds}>` |
+| A capability summary can be derived without new queries | ✅ `entryFor(actor, key)` (owner floor included) → the four reach flags |
+| Team NAMES are available cheaply | ⚠️ **not** from the actor (ids only) → **D11**: two scoped reads |
+| The denial payload can carry a real message + code | ✅ `denyMessage(key, reason)` + `permissionErrorCode(key)` + reasons `no_grant / out_of_scope / not_own`; `forbiddenFor` already packs permission+reason into `details` |
+| `member.view` is the right gate for the people tool (P4) | ✅ `routes/teams.ts` gates `GET /teams` on exactly that — the tool mirrors the HTTP surface instead of inventing a rule |
+| G7 is real (the directory is an existence oracle on the tool path) | ✅ `UsersRepo` contains **no** `listScopeFilter` / `spaceScopeFilter` / context import at all |
+| `TeamMembershipService.directory()` is unscoped | ✅ workspace-wide by design (admin org chart) — so P4 must gate + filter, never pass it through |
+
+### Shipped in P0
+- `systemPrompt.ts` — the **P2 SPEC comment block**: the caller-block format with its
+  exact sources, hard limits and privacy rule; the denial payload shape; and the
+  anti-enumeration split (category denial vs ambiguous object miss). A comment, outside
+  the template literal: **zero wire cost, zero behaviour change** (re-measured: still
+  38,272).
+- This file — decisions **locked**, D9/D10/D11 added from the verification above.
+
+### 🐞 DEFECT-1 found while taking the baseline — **the bot mirrors Banglish** (hand to P1)
+
+Running the gate three times showed the Bangla metric failing in **2 of 3 runs**, always on
+the same question. Rather than shrug at "model variance" (this project has recorded five
+wrong-measuring-stick incidents, so the metric is suspect first), the answer itself was
+read. The metric was RIGHT and the bot was wrong:
+
+> **Q** (romanized Bangla): *"ekjon ke shudhu Marketing space er access dite chai, kivabe?"*
+> **A**: *"Marketing space-এ shudhu ekjon ke access dite hole, Admin বা Owner er dorkar
+> hobe. Ekhane ki korben: 1. [Settings → Teams](/settings/teams) page-e jan…"*
+> Bengali letters **3**, Latin **329** — **ratio 0.009**.
+
+The bot answered in **romanized Banglish**, not Bangla script, mirroring the question's
+romanization. Measured: that question flips **2 of 3 times** (ratios 0, 0.733, 0), while
+other Banglish questions stay correct (0.677 / 0.790 / 0.985) — so it is question-specific
+and reproducible, **not** temperature noise.
+
+Why it matters more than the score: **this office writes in Banglish** (the user does, in
+every message), so a large share of real questions arrive romanized. The prompt says
+"reply in Bangla" but never says *Bangla SCRIPT, never romanized* — the rule has a hole,
+and a Banglish wall of text is exactly the "confusing" experience ask #2 is meant to kill.
+
+Also flagged from the same answer, for the P1 audit: the claim that access follows a
+*"See spaces" option set to "Their spaces"* — unverified wording that may be a
+fabrication, and the roster step reads garbled.
+
+**Not fixed here by design** — a prompt/KB rule change is behaviour, which belongs to P1
+(and the ⚠️ honest note: today's earlier "eval PERFECT" readings were partly luck; this is
+the true starting line).
+
+### Verified after the change
+`jest.assistant` **9 suites / 145** ✅ · server `tsc --noEmit` clean ✅ · `npm run build`
+clean ✅ · system message **unchanged at 38,272** ✅ (proof the spec comment costs nothing
+on the wire) · eval: no metric moved because of P0 — the prompt string is byte-identical.
+
+**Verdict: P0 COMPLETE — nothing behavioural changed; the three things P2/P3/P4 could have
+gotten wrong (who builds the caller block, where team names come from, which gate the
+people tool uses) are settled in code-verified writing; and the baseline is honest,
+including a real defect the previous green runs had hidden. Ready for "AI deep phase 1
+koren" — which now starts with DEFECT-1.**
