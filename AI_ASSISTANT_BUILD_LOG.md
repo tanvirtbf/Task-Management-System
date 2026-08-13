@@ -1155,3 +1155,57 @@ thing it grades.**
 
 **Verdict: Phase 11 COMPLETE — 🏁 the assistant does what it was built for: it teaches a confused,
 non-technical person how to use this system, in Bangla, and takes them to the page.**
+
+---
+
+## Addendum — `create_task`: the assistant's FIRST write tool — ✅ SHIPPED (2026-08-13)
+
+User ask: *"kono member or admin chatbot e prompt er maddhome task create korte parbe"* — create a
+real task from chat. This deliberately breaks the "read-only" rule above, for exactly ONE verb, and
+keeps every safety property by construction.
+
+### Design (the safety story)
+- **The tool goes through the real `TaskWriteService.create`** inside the authenticated request —
+  the same code path as the New-task button. So the chatting user's own RBAC decides everything:
+  ALS `rbacContext` scopes list resolution, `task.create` is enforced by the service, the
+  **team-access P8 approval gate** still converts a cross-team assignee into a pending request, the
+  audit trail (`task_created`) carries the real actor, and assignment emails/push fire post-commit
+  exactly as from the UI. The model supplies only *intent* (names); identity comes from the JWT.
+- **Names, not IDs, at the boundary.** `list_name` resolves via the RBAC-scoped `search` (exact
+  match → unique candidate → else a readable error listing candidates); `assignee_names` resolve via
+  `UsersRepo.listByWorkspace` with a **surname fallback** (the repo's `q` filter matches per-column,
+  so "First Last" strings never match directly). Ambiguity or a miss **aborts the create** — never
+  the wrong Rahim.
+- **In-tool calendar validation** for `due_date` (the HTTP validator is bypassed on this path);
+  `2026-02-30` is refused before anything is written.
+- **Errors are data**: every refusal returns `{error, code}` as the tool result — the model is
+  instructed a tool error means NOT created, relay the reason, never claim success, never retry
+  with guessed values.
+
+### Shipped
+`tools.ts` (`create_task` def + handler, `ToolServices` + `taskWrite`/`users`) ·
+`routes/assistant.ts` (6th `TaskWriteService` wiring site) · `systemPrompt.ts` (CREATING A TASK
+section: explicit-ask-only, named list → call immediately, dates from the "Today is" line,
+pendingApproval is normal-not-error) · `buildMessages.ts` (prepends `Today is <dhakaToday>
+(Asia/Dhaka).` per call) · `knowledgeBase.ts` (+1 FAQ) · `ASSISTANT_TEAM_NOTE.md` (Bangla note
+updated — capability #4).
+
+### Tests — `tests/assistant/create-task-tool.test.ts` (7, same harness as scoping.test.ts)
+Real create as the chatting user (row + `createdBy` + priority + dueDate + `task_created` audit) ·
+invisible list refused (visibility boundary) · no `task.create` → real-service refusal, no row ·
+ambiguous list name asks with candidates · unknown assignee aborts · **cross-team assignee →
+`created:true` + `pendingApproval:[name]` + a pending `task_assignment_requests` row (P8)** ·
+non-calendar date refused pre-write.
+
+### Verified
+`jest.assistant` **9 suites / 140 tests** ✅ (was 8/133) · server `tsc` + build clean ✅ · client
+build clean (no client change needed — the widget already renders `/t/:id` links in-app) ✅ ·
+**live probe against real gpt-4o-mini** on the dev stack: Bangla prompt → task created with due
+date + priority, confirmed with a working `/t/…` link; unknown assignee refused with a question;
+known assignee handled (instant path — target's `task.view` reach = all, the Q11 dormancy carve;
+the gate path is pinned by jest). One prompt iteration was needed live: the model asked "which
+list?" even when the list WAS named — fixed with an explicit "already named → call immediately"
+rule, re-verified first-try.
+
+**The bot remains read-only for everything else — edit/assign/complete/delete still get steps, not
+actions.**

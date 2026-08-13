@@ -1,16 +1,25 @@
 import type OpenAI from "openai";
 import type { Role } from "../constants";
+import { AppError } from "../errors";
+import type { UsersRepo } from "../repositories/UsersRepo";
 import type { HomeService } from "../services/HomeService";
 import type { SearchService } from "../services/SearchService";
+import type { TaskWriteService } from "../services/TaskWriteService";
 
 /**
- * Read-only TOOLS the assistant can call to answer questions about the user's
- * OWN live data (see AI_ASSISTANT_PLAN.md, Phase 8 — data-aware / agentic).
+ * TOOLS the assistant can call (see AI_ASSISTANT_PLAN.md, Phase 8 —
+ * data-aware / agentic; `create_task` added 2026-08-12).
  *
- * SECURITY: the model only supplies intent params (e.g. a search query); the
- * executor injects the caller's `userId` / `workspaceId` / `role` from the JWT,
- * so the model can NEVER reach another user's or workspace's data. All tools are
- * read-only — the assistant cannot mutate anything.
+ * SECURITY: the model only supplies intent params (e.g. a search query, a task
+ * name); the executor injects the caller's `userId` / `workspaceId` / `role`
+ * from the JWT, so the model can NEVER reach another user's or workspace's
+ * data. The read tools stay read-only. The ONE write tool, `create_task`,
+ * goes through the REAL `TaskWriteService.create` under the caller's own
+ * request context — so it can do exactly what that person could do with the
+ * New-task button, nothing more: their `task.create` reach is asserted, a
+ * cross-team assignee still becomes an approval request (team-access P8), the
+ * audit row and notifications fire, and every validation (dates, list, names)
+ * answers as a readable error the model must relay, never act around.
  *
  * REACH (team-access P5): every query behind these tools runs under the
  * caller's own RBAC visibility (the repos apply `listScopeFilter` /
@@ -29,6 +38,9 @@ export interface ToolContext {
 export interface ToolServices {
     home: HomeService;
     search: SearchService;
+    /** The write path — the same service the New-task button uses. */
+    taskWrite: TaskWriteService;
+    users: UsersRepo;
 }
 
 export const ASSISTANT_TOOL_DEFS: OpenAI.Chat.Completions.ChatCompletionTool[] =
@@ -79,6 +91,51 @@ export const ASSISTANT_TOOL_DEFS: OpenAI.Chat.Completions.ChatCompletionTool[] =
                         },
                     },
                     required: ["query"],
+                    additionalProperties: false,
+                },
+            },
+        },
+        {
+            type: "function",
+            function: {
+                name: "create_task",
+                description:
+                    "Create a REAL task in this workspace, as the current user, with all their normal permissions. Call it ONLY when the user explicitly asks to create/add a task AND has told you which list it belongs in — if no list was named, ask them first (the `search` tool can show matching list names). Assigning someone from another team does not assign them instantly: it opens an approval request they must accept (report that from the result's pendingApproval). If the result contains `error`, the task was NOT created — explain the error simply and never claim success.",
+                parameters: {
+                    type: "object",
+                    properties: {
+                        name: {
+                            type: "string",
+                            description:
+                                "The task title, exactly as the user wants it (max 500 chars)",
+                        },
+                        list_name: {
+                            type: "string",
+                            description:
+                                "The name of the list the task goes in, as the user said it",
+                        },
+                        description: {
+                            type: "string",
+                            description: "Optional longer details",
+                        },
+                        due_date: {
+                            type: "string",
+                            description:
+                                "Optional due date, YYYY-MM-DD (resolve words like 'tomorrow' using today's date from the system prompt)",
+                        },
+                        priority: {
+                            type: "integer",
+                            description:
+                                "Optional 0-4 (0 none, 1 urgent, 2 high, 3 normal, 4 low)",
+                        },
+                        assignee_names: {
+                            type: "array",
+                            items: { type: "string" },
+                            description:
+                                "Optional people to assign, by name as the user said them",
+                        },
+                    },
+                    required: ["name", "list_name"],
                     additionalProperties: false,
                 },
             },
@@ -151,7 +208,193 @@ export async function executeAssistantTool(
                 spaces: r.spaces.slice(0, 5).map((s) => ({ name: s.name })),
             };
         }
+        case "create_task": {
+            try {
+                return await createTaskTool(args, ctx, services);
+            } catch (err) {
+                // The model must RELAY a refusal, never crash the chat or act
+                // around it. AppError messages are already human-readable
+                // (validation, permissions, the team-access rules).
+                if (err instanceof AppError) {
+                    return { error: err.message, code: err.code };
+                }
+                throw err;
+            }
+        }
         default:
             return { error: `Unknown tool: ${name}` };
     }
+}
+
+/** Case-insensitive exact-name pick from `candidates`, else null. */
+const exactMatch = <T extends { name: string }>(
+    candidates: T[],
+    wanted: string,
+): T | null => {
+    const lc = wanted.trim().toLowerCase();
+    const hits = candidates.filter((c) => c.name.trim().toLowerCase() === lc);
+    return hits.length === 1 ? hits[0] : null;
+};
+
+/**
+ * `create_task` — the assistant's ONE write. Everything the model supplies is
+ * intent; identity comes from the JWT context, and the create itself is the
+ * REAL `TaskWriteService.create` running inside this authenticated request —
+ * so the caller's `task.create` reach is asserted, a cross-team assignee
+ * becomes a pending approval request (team-access P8), the audit row is
+ * written, and the assignment notifications/emails fire exactly as if they
+ * had used the New-task button.
+ */
+async function createTaskTool(
+    args: Record<string, unknown>,
+    ctx: ToolContext,
+    services: ToolServices,
+): Promise<unknown> {
+    const name = typeof args.name === "string" ? args.name.trim() : "";
+    const listName =
+        typeof args.list_name === "string" ? args.list_name.trim() : "";
+    if (!name) return { error: "The task needs a name." };
+    if (name.length > 500)
+        return { error: "The task name is too long (max 500 characters)." };
+    if (!listName)
+        return {
+            error: "No list was named. Ask the user which list the task belongs in.",
+        };
+
+    // Resolve the LIST by name through the user's OWN search (scope-filtered:
+    // a team-scoped member can only ever land a task in a list they can see).
+    const found = await services.search.search({
+        workspaceId: ctx.workspaceId,
+        role: ctx.role,
+        q: listName,
+        limit: 8,
+    });
+    const lists = found.lists.map((l) => ({ id: l.id, name: l.name }));
+    const list =
+        exactMatch(lists, listName) ?? (lists.length === 1 ? lists[0] : null);
+    if (!list) {
+        return lists.length === 0
+            ? {
+                  error: `No list matching "${listName}" is visible to this user. Ask them for the exact list name.`,
+              }
+            : {
+                  error: `More than one list matches "${listName}". Ask the user which one they mean.`,
+                  candidates: lists.map((l) => l.name),
+              };
+    }
+
+    // Resolve ASSIGNEES by name against the member directory. Any ambiguity
+    // or miss aborts the create — a task quietly assigned to the wrong Rahim
+    // is worse than a follow-up question.
+    const assigneeIds: string[] = [];
+    const pendingNames: string[] = [];
+    const rawNames = Array.isArray(args.assignee_names)
+        ? args.assignee_names.filter((n): n is string => typeof n === "string")
+        : [];
+    for (const wanted of rawNames.slice(0, 10)) {
+        // The directory's q filter matches per COLUMN (first name, last name,
+        // email) — a full "Rahim Uddin" matches neither column alone. Try the
+        // full string first, then fall back to the last word (the surname)
+        // and let the exact full-name match below disambiguate.
+        let rows = await services.users.listByWorkspace({
+            workspaceId: ctx.workspaceId,
+            q: wanted.trim(),
+            status: "active",
+            limit: 6,
+        });
+        const words = wanted.trim().split(/\s+/);
+        if (rows.length === 0 && words.length > 1) {
+            rows = await services.users.listByWorkspace({
+                workspaceId: ctx.workspaceId,
+                q: words[words.length - 1],
+                status: "active",
+                limit: 6,
+            });
+        }
+        const named = rows.map((u) => ({
+            id: u.id,
+            name: `${u.firstName} ${u.lastName}`.trim(),
+        }));
+        const person =
+            exactMatch(named, wanted) ??
+            (named.length === 1 ? named[0] : null);
+        if (!person) {
+            return named.length === 0
+                ? {
+                      error: `No active member matching "${wanted}" was found. Ask the user for the exact name.`,
+                  }
+                : {
+                      error: `More than one person matches "${wanted}". Ask the user which one they mean.`,
+                      candidates: named.map((p) => p.name),
+                  };
+        }
+        assigneeIds.push(person.id);
+        pendingNames.push(person.name);
+    }
+
+    // Date FORMAT is normally the HTTP validator's job — this path skips the
+    // route validator, so the tool guards it itself (a real calendar day,
+    // YYYY-MM-DD), or garbage like "kal" would reach the DATE column.
+    let dueDate: string | null = null;
+    if (typeof args.due_date === "string" && args.due_date.trim() !== "") {
+        const raw = args.due_date.trim();
+        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+        const asDate = m
+            ? new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])))
+            : null;
+        const valid =
+            !!m &&
+            !!asDate &&
+            asDate.getUTCFullYear() === Number(m![1]) &&
+            asDate.getUTCMonth() === Number(m![2]) - 1 &&
+            asDate.getUTCDate() === Number(m![3]);
+        if (!valid) {
+            return {
+                error: `The due date must be a real calendar day in YYYY-MM-DD form (got "${raw}"). Work it out from today's date and try again, or ask the user.`,
+            };
+        }
+        dueDate = raw;
+    }
+
+    const created = await services.taskWrite.create({
+        workspaceId: ctx.workspaceId,
+        actorId: ctx.userId,
+        role: ctx.role,
+        primaryListId: list.id,
+        name,
+        description:
+            typeof args.description === "string"
+                ? args.description.slice(0, 10_000)
+                : null,
+        dueDate,
+        priority:
+            typeof args.priority === "number" &&
+            Number.isInteger(args.priority) &&
+            args.priority >= 0 &&
+            args.priority <= 4
+                ? args.priority
+                : undefined,
+        assignees: assigneeIds,
+    });
+
+    // Team-access P8: a cross-team pick is NOT on the task — it became a
+    // pending approval request. Tell the model who is actually on vs waiting.
+    const onTask = new Set(created.assignees);
+    const assigned: string[] = [];
+    const pendingApproval: string[] = [];
+    assigneeIds.forEach((id, i) => {
+        (onTask.has(id) ? assigned : pendingApproval).push(pendingNames[i]);
+    });
+
+    return {
+        created: true,
+        id: created.id,
+        name: created.name,
+        url: `/t/${created.id}`,
+        list: list.name,
+        dueDate: created.due_date,
+        priority: created.priority,
+        assigned,
+        pendingApproval,
+    };
 }

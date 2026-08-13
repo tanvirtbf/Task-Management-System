@@ -13,6 +13,18 @@ const WorkspaceRepo_1 = require("../repositories/WorkspaceRepo");
 const SearchService_1 = require("../services/SearchService");
 const SearchRepo_1 = require("../repositories/SearchRepo");
 const TasksRepo_1 = require("../repositories/TasksRepo");
+const AttachmentsRepo_1 = require("../repositories/AttachmentsRepo");
+const ListsRepo_1 = require("../repositories/ListsRepo");
+const NotificationsRepo_1 = require("../repositories/NotificationsRepo");
+const StatusesRepo_1 = require("../repositories/StatusesRepo");
+const TagsRepo_1 = require("../repositories/TagsRepo");
+const TaskActivityRepo_1 = require("../repositories/TaskActivityRepo");
+const TaskMembershipRepo_1 = require("../repositories/TaskMembershipRepo");
+const TaskTypesRepo_1 = require("../repositories/TaskTypesRepo");
+const UsersRepo_1 = require("../repositories/UsersRepo");
+const WorkspaceActivityRepo_1 = require("../repositories/WorkspaceActivityRepo");
+const TasksService_1 = require("../services/TasksService");
+const TaskWriteService_1 = require("../services/TaskWriteService");
 const openaiClient_1 = require("../services/openaiClient");
 const client_1 = require("../db/client");
 const logger_1 = __importDefault(require("../config/logger"));
@@ -44,11 +56,20 @@ else {
     const db = (0, client_1.getDb)();
     const assistantService = new AssistantService_1.AssistantService(openaiClient_1.openai, openaiClient_1.ASSISTANT_MODEL, openaiClient_1.ASSISTANT_MAX_OUTPUT_TOKENS, logger_1.default);
     const chatRepo = new ChatRepo_1.ChatRepo(db);
-    // Read-only data tools (Phase 8): reuse HomeService (KPIs/agenda) + SearchService.
+    // Data tools (Phase 8): HomeService (KPIs/agenda) + SearchService reads,
+    // and — 2026-08-12 — the ONE write, `create_task`, through the full
+    // task-write stack (the forms/engineering wiring precedent). It runs
+    // inside the authenticated request, so the chatting user's own RBAC
+    // reach, the team-access approval gate and the audit trail all apply.
     const tasksRepo = new TasksRepo_1.TasksRepo(db);
+    const listsRepo = new ListsRepo_1.ListsRepo(db);
+    const usersRepo = new UsersRepo_1.UsersRepo(db);
+    const tasksService = new TasksService_1.TasksService(listsRepo, tasksRepo);
     const toolServices = {
         home: new HomeService_1.HomeService(new HomeRepo_1.HomeRepo(db), tasksRepo, new WorkspaceRepo_1.WorkspaceRepo(db)),
         search: new SearchService_1.SearchService(new SearchRepo_1.SearchRepo(db), tasksRepo),
+        taskWrite: new TaskWriteService_1.TaskWriteService(db, listsRepo, new StatusesRepo_1.StatusesRepo(db), new TaskTypesRepo_1.TaskTypesRepo(db), tasksRepo, new TaskMembershipRepo_1.TaskMembershipRepo(db), usersRepo, new TagsRepo_1.TagsRepo(db), new TaskActivityRepo_1.TaskActivityRepo(db), new NotificationsRepo_1.NotificationsRepo(db), new AttachmentsRepo_1.AttachmentsRepo(db), new WorkspaceRepo_1.WorkspaceRepo(db), new WorkspaceActivityRepo_1.WorkspaceActivityRepo(db), tasksService, logger_1.default),
+        users: usersRepo,
     };
     const controller = new AssistantController_1.AssistantController(assistantService, chatRepo, toolServices, logger_1.default);
     // The assistant is a permission now, not a given (RBAC §34). All four

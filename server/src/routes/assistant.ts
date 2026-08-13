@@ -12,6 +12,18 @@ import { WorkspaceRepo } from "../repositories/WorkspaceRepo";
 import { SearchService } from "../services/SearchService";
 import { SearchRepo } from "../repositories/SearchRepo";
 import { TasksRepo } from "../repositories/TasksRepo";
+import { AttachmentsRepo } from "../repositories/AttachmentsRepo";
+import { ListsRepo } from "../repositories/ListsRepo";
+import { NotificationsRepo } from "../repositories/NotificationsRepo";
+import { StatusesRepo } from "../repositories/StatusesRepo";
+import { TagsRepo } from "../repositories/TagsRepo";
+import { TaskActivityRepo } from "../repositories/TaskActivityRepo";
+import { TaskMembershipRepo } from "../repositories/TaskMembershipRepo";
+import { TaskTypesRepo } from "../repositories/TaskTypesRepo";
+import { UsersRepo } from "../repositories/UsersRepo";
+import { WorkspaceActivityRepo } from "../repositories/WorkspaceActivityRepo";
+import { TasksService } from "../services/TasksService";
+import { TaskWriteService } from "../services/TaskWriteService";
 import {
     openai,
     ASSISTANT_MODEL,
@@ -70,11 +82,36 @@ if (!openai) {
         logger,
     );
     const chatRepo = new ChatRepo(db);
-    // Read-only data tools (Phase 8): reuse HomeService (KPIs/agenda) + SearchService.
+    // Data tools (Phase 8): HomeService (KPIs/agenda) + SearchService reads,
+    // and — 2026-08-12 — the ONE write, `create_task`, through the full
+    // task-write stack (the forms/engineering wiring precedent). It runs
+    // inside the authenticated request, so the chatting user's own RBAC
+    // reach, the team-access approval gate and the audit trail all apply.
     const tasksRepo = new TasksRepo(db);
+    const listsRepo = new ListsRepo(db);
+    const usersRepo = new UsersRepo(db);
+    const tasksService = new TasksService(listsRepo, tasksRepo);
     const toolServices = {
         home: new HomeService(new HomeRepo(db), tasksRepo, new WorkspaceRepo(db)),
         search: new SearchService(new SearchRepo(db), tasksRepo),
+        taskWrite: new TaskWriteService(
+            db,
+            listsRepo,
+            new StatusesRepo(db),
+            new TaskTypesRepo(db),
+            tasksRepo,
+            new TaskMembershipRepo(db),
+            usersRepo,
+            new TagsRepo(db),
+            new TaskActivityRepo(db),
+            new NotificationsRepo(db),
+            new AttachmentsRepo(db),
+            new WorkspaceRepo(db),
+            new WorkspaceActivityRepo(db),
+            tasksService,
+            logger,
+        ),
+        users: usersRepo,
     };
     const controller = new AssistantController(
         assistantService,

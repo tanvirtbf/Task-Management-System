@@ -256,6 +256,7 @@ If a page says access is not available, or an action is refused, it is not a bug
 - **Why does it say I don't have permission?** That ability is not in your role. Ask an Owner or Admin to add it in [Roles & permissions](/settings/roles).
 - **Who is on call, and how do I set it?** [On-call rotation](/eng/on-call), or the on-call badge in the Topbar.
 - **How do I search?** Open [Search](/search), or click the Search box in the Topbar.
+- **Can the assistant create a task for me?** Yes — just ask it in the chat, naming the task and the LIST it belongs in (for example: "Eid Campaign 2026 list-e 'banner reviewer khoja' name ekta task banao, due kal"). The task is created as YOU, with your normal permissions — assigning someone from another team still goes through their approval. The assistant can only CREATE tasks; editing, completing or deleting still happens in the app.
 - **How do I attach a file?** Open the task, go to **Attachments**, and click **Upload** (or drag files in).
 - **Who reviews my completed tasks?** Your Space's **Head** — they use [Department](/dept) to approve or flag them (Owners/Admins/Heads only).
 - **Where are the weekly department reports?** [Reports](/reports) — for Owners, Admins and Heads.
