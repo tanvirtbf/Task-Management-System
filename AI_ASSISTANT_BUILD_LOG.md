@@ -1312,3 +1312,74 @@ large share of real questions arrive romanized. Also flagged for the P1 audit: t
 a prompt rule is behaviour, and behaviour belongs to P1.
 
 **Verdict: Deep P0 COMPLETE. Ready for "AI deep phase 1 koren" — which starts with DEFECT-1.**
+
+---
+
+## Deep P1 — the nirbhul audit — ✅ COMPLETE (2026-08-13)
+
+Ask #1 was *"chatbot jeno obosshoi amar system niye nirvul information dey"*. So every claim in
+the knowledge base was re-checked against the code that implements it. **Nine were wrong** — and
+the bot had been answering all nine confidently.
+
+### The audit table
+
+| # | KB claim | verdict | evidence | fix |
+|---|---|---|---|---|
+| 1 | *"A Guest is NOT read-only… can create, edit, archive and delete tasks; the only thing they lack is attachment upload"* | ❌ **WRONG, and it described a fixed security hole** | `rbac/bootstrap.ts` — `GUEST_GRANTS` is **7 keys**: view spaces/tasks/members/activity, comment, assistant.use, bug.report. F28/D12.1 cut it from 19 *because* a guest could delete any task and read every public-form submission | rewritten to the real 7; the old sentence is now pinned as forbidden |
+| 2 | *Statuses — "manage the workflow statuses of a List and reorder them"* | ❌ WRONG | `StatusesSettings.tsx` has exactly one mutation: `reorder`. Its own comment says "read-only summary today" | "see and reorder; creating/renaming/deleting is NOT available yet" |
+| 3 | *Import / Export — "bring data in, or take it out"* | ❌ WRONG on **both** halves | every importer answers `"… importer — coming soon"`; the export button only fires a toast: *"file would download here"* | "not working yet — never tell anyone to move real data with it" |
+| 4 | *Templates — "apply them to a List to create tasks quickly"* | ❌ WRONG | `POST /templates/:id/apply` exists in `http/api.ts` with **no caller anywhere**; the Templates page's own subtitle advertises an "Apply template" button that no page renders | "create and edit templates; the Apply button is not in the app yet" |
+| 5 | *Team access — "Since the team-access update the workspace is TEAM-SCOPED"* | ❌ WRONG **for the office reading it** | upgrades **019/020 are deliberately held** pending the operator's flip, so on the live system nothing is scoped yet — the bot was quoting rules that do not bite | rewritten as the **two modes** it really has, with "never assert which mode someone is in" + how to tell from the Sidebar |
+| 6 | *"giving someone a role inside only one Space cannot be done from Settings yet"* | ❌ half WRONG, and **self-contradictory** | the team-access Teams page grants exactly that (space-scoped seeded Member role) while two other KB sections described it. The half that is still true: `rbacApi.assignRole` has no caller, so no UI gives ONE person a CUSTOM role | rewritten as the real two steps; the still-true half kept |
+| 7 | *"Notifications refresh about once a minute, not instantly"* | ❌ stale (pre-SSE) and contradicted line 111 of the same file | SSE live inbox shipped 2026-08-08 | removed |
+| 8 | *Checklists — "items you can tick off; shows progress"* | ⚠️ incomplete | rename-by-click on names AND item text, item delete, done/total + % on the task and its card (upgrade 022) shipped | expanded |
+| 9 | Invite email | ⚠️ incomplete | the sender/subject changed to the inviter's name (Gmail Promotions fix) | tell people to search the inviter's name and check Promotions/Spam |
+
+**Verified as already CORRECT** (checked, not assumed, so nobody re-audits them): the 5 default
+statuses and their names · the 7 task types · `/sla` open to everyone (no `requirePermission` on
+the GET) · Reviewer really is a task property (`InlineReviewerEdit`) · Search really covers People
+(`SearchRepo.searchUsers`) · recurrence still has no spawn job (`src/jobs/` has 9 jobs, none) ·
+the "View only" notice really exists (`TaskDetailDrawer` line 368) · Report-a-Bug really is open
+to everyone (`bug.report` is in both EVERYONE and GUEST_GRANTS).
+
+### DEFECT-1 (the Banglish mirroring) — fixed and measured
+
+The LANGUAGE rule said "reply in Bangla" and never said **script**. Added: *write Bangla in the
+BENGALI SCRIPT, never Roman letters*, with the failing answer shown as the wrong-vs-right example.
+
+| | before | after |
+|---|---|---|
+| the failing question, Bengali-letter ratio | **0 · 0.733 · 0** (2 of 3 runs romanized) | **0.736 · 0.782 · 0.749 · 0.729 · 0.770 · 0.654** — 6 of 6 correct |
+| eval "answers in Bangla" | 14/15, failing 2 of 3 gate runs | **15/15 in 5 consecutive runs** |
+
+### A second live defect, found by probing the fix
+
+With the script fixed, the same question's *content* was still wrong: the bot invented a UI —
+*"Members → the row → **Edit** → a **Teams** section"* — none of which exists, and linked
+`/settings/members` instead of `/settings/teams`. Root cause: fix #6 above (the KB contradicted
+itself), plus no quick-answer matching how people actually phrase it. Added an explicit quick
+answer + "⚠️ never send someone to Members to change a team", and re-probed: both phrasings now
+give the real steps. A third probe then caught the bot saying *"type Rakib's email address"* —
+`TeamsSettings` uses a **person dropdown**, not an email box — so that was pinned down too.
+
+### Verified
+`jest.assistant` **9 suites / 155 tests** ✅ (was 145: +10 pins, and **two OLD pins had to be
+reversed** — the Guest one and the per-space-role one, each with the reason written into the
+test, because both were true when written and silently went false) · server `tsc` + build clean ✅
+· system message **42,907** chars, ceiling raised 39k → **44k** with the decision recorded in the
+budget test (paid for partly by deleting the "brand-new empty workspace" walkthrough) ·
+eval gate **PERFECT ×3 consecutively**, and better than the P0 baseline on two axes:
+
+| metric | P0 baseline | after P1 |
+|---|---|---|
+| answers with a clickable route | 13–14/15 | **15/15** |
+| answers in Bangla | 14/15 (failed 2 of 3 runs) | **15/15 every run** |
+
+### Product gaps this audit uncovered (NOT fixed — they are product work, not KB work)
+1. **Statuses cannot be created/renamed/deleted** from Settings — only reordered.
+2. **Import/Export is a mockup** — importers say "coming soon"; the export button downloads nothing.
+3. **"Apply template" has no button** — the API exists, the Templates page advertises the button, no page renders it.
+4. **No UI assigns a custom role to a person** (`rbacApi.assignRole` has no caller).
+
+**Verdict: Deep P1 COMPLETE — the knowledge base now matches the system that exists, and the bot
+writes Bangla in Bangla. Ready for "AI deep phase 2 koren" (caller context + honest denials).**

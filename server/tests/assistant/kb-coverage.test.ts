@@ -54,6 +54,112 @@ describe("KB coverage — P1 core refresh", () => {
     });
 });
 
+/**
+ * DEEP PLAN P1 — the nirbhul audit (2026-08-13).
+ *
+ * Every assertion below is a claim that was WRONG in the knowledge base and is
+ * now fixed. They are pinned because a stale fact is invisible: the bot keeps
+ * answering confidently, and nobody finds out until someone in the office acts
+ * on it. Each `not.toMatch` is the old, false sentence.
+ */
+describe("KB coverage — DEEP P1 nirbhul audit", () => {
+    it("describes the CURRENT Guest, not the pre-F28 one that could delete tasks", () => {
+        // GUEST_GRANTS (rbac/bootstrap.ts) = view spaces/tasks/members/activity,
+        // comment, assistant.use, bug.report. Nothing else. The KB used to say a
+        // Guest could "create, edit, archive and delete tasks".
+        expect(KNOWLEDGE_BASE).not.toMatch(
+            /Guest is NOT read-only|Guest can view the workspace and create, edit, archive and delete/i,
+        );
+        expect(KNOWLEDGE_BASE).toMatch(
+            /Guest CANNOT create, edit, assign, archive or delete tasks/,
+        );
+        expect(KNOWLEDGE_BASE).toMatch(/cannot read form submissions/i);
+    });
+
+    it("does not promise status create/rename/delete — the page only reorders", () => {
+        // StatusesSettings.tsx carries exactly one mutation: reorder.
+        expect(KNOWLEDGE_BASE).not.toMatch(
+            /manage the workflow statuses of a List and reorder/,
+        );
+        expect(KNOWLEDGE_BASE).toMatch(
+            /Creating, renaming or deleting a status is NOT available/,
+        );
+    });
+
+    it("says Import / Export does not work yet, instead of offering it", () => {
+        // Every importer answers "coming soon"; the export button only shows a
+        // success toast and produces no file.
+        expect(KNOWLEDGE_BASE).toMatch(/Import \/ Export.*not working yet/s);
+        expect(KNOWLEDGE_BASE).not.toMatch(
+            /Import \/ Export\]\(\/settings\/import-export\) — bring data in/,
+        );
+    });
+
+    it("teaches that checklists and their items can be RENAMED, and shows progress", () => {
+        // Upgrade 022 + the checklist edit work: click-to-edit name and item
+        // text, delete an item, done/total + % on the task and its card.
+        expect(KNOWLEDGE_BASE).toMatch(/to rename it/);
+        expect(KNOWLEDGE_BASE).toMatch(/done\/total with a percentage/);
+    });
+
+    it("presents team access as TWO modes and refuses to assert which one is live", () => {
+        // 019/020 are a deliberate operator decision. Until they are applied the
+        // scoped rules do not bite, so stating them as fact was wrong for every
+        // reader in an open workspace.
+        expect(KNOWLEDGE_BASE).not.toMatch(
+            /Since the team-access update \(August 2026\) the workspace is TEAM-SCOPED/,
+        );
+        expect(KNOWLEDGE_BASE).toMatch(/setting an Admin turns on/);
+        expect(KNOWLEDGE_BASE).toMatch(/never assert which mode someone is in/);
+        // the reader must be given a way to work out the mode for themselves
+        expect(KNOWLEDGE_BASE).toMatch(/How to tell:.*Sidebar Space tree/s);
+    });
+
+    it("no longer claims a per-space role cannot be given (the Teams page does exactly that)", () => {
+        expect(KNOWLEDGE_BASE).not.toMatch(
+            /giving someone a role inside only one Space, \*\*cannot be done from Settings yet\*\*/,
+        );
+        // ...while keeping the part that is still true: no UI assigns a CUSTOM
+        // role to one person (rbacApi.assignRole has no caller in any page).
+        expect(KNOWLEDGE_BASE).toMatch(
+            /no screen yet for giving a custom role to a person/,
+        );
+    });
+
+    it("does not promise the Apply-template button, which no page renders", () => {
+        // `POST /templates/:id/apply` exists in http/api.ts with no caller
+        // anywhere; the Templates settings page's own subtitle advertises the
+        // button. The KB must not repeat the product's own wrong promise.
+        expect(KNOWLEDGE_BASE).not.toMatch(
+            /apply them to a List to create tasks quickly/,
+        );
+        expect(KNOWLEDGE_BASE).toMatch(/not in the app yet/);
+    });
+
+    it("drops the pre-SSE 'notifications refresh about once a minute' claim", () => {
+        expect(KNOWLEDGE_BASE).not.toMatch(/refresh about once a minute/i);
+        expect(KNOWLEDGE_BASE).toMatch(/updates live, no refresh needed/);
+    });
+});
+
+/**
+ * DEFECT-1 (deep P0): the bot answered in ROMAN letters when the question was
+ * typed in Roman letters — measured at 2 failures in 3 runs on one question,
+ * ratio 0.009 Bengali. This office types Banglish, so the rule has to be
+ * explicit about SCRIPT, not just about language.
+ */
+describe("System prompt — Bangla SCRIPT, never romanized (DEFECT-1)", () => {
+    it("names the Bengali script requirement explicitly", () => {
+        expect(SYSTEM_PROMPT).toMatch(/BENGALI SCRIPT/);
+        expect(SYSTEM_PROMPT).toMatch(/never in Roman letters/i);
+    });
+
+    it("shows the wrong-vs-right example, so the rule is demonstrated not just stated", () => {
+        expect(SYSTEM_PROMPT).toMatch(/is WRONG, no matter how the question was typed/);
+        expect(SYSTEM_PROMPT).toMatch(/[ঀ-৿]/); // real Bangla in the example
+    });
+});
+
 describe("KB coverage — P2 Department Review + Reports", () => {
     it("references the /dept and /reports page paths", () => {
         expect(KNOWLEDGE_BASE).toMatch(/\/dept\b/);
@@ -191,14 +297,23 @@ describe("KB accuracy — P2: no false claims", () => {
         expect(KNOWLEDGE_BASE).toMatch(/no way to delete the workspace/i);
     });
 
-    it("does NOT describe Guest as read-only (the seeded Guest role holds 19 permissions)", () => {
-        // A Guest can create, edit, archive and delete tasks and comment; the
-        // only thing they lack that a Member has is attachment upload. Again the
-        // assertion targets the claim — "Guest is NOT read-only" must survive.
-        expect(KNOWLEDGE_BASE).not.toMatch(/mostly read.?only/i);
-        expect(KNOWLEDGE_BASE).not.toMatch(/Guest[^\n]*?\bis read.?only/i);
-        expect(KNOWLEDGE_BASE).toMatch(/Guest is NOT read-only/i);
-        expect(KNOWLEDGE_BASE).toMatch(/cannot do that a Member can is upload attachments/i);
+    it("describes the Guest the seeded role ACTUALLY grants (7 keys, not the old 19)", () => {
+        // ⚠️ REVERSED by DEEP P1 (2026-08-13). This assertion used to demand the
+        // OPPOSITE — "Guest is NOT read-only… the only thing they lack is
+        // attachment upload" — which was true when it was written and became
+        // false when F28/D12.1 cut GUEST_GRANTS from 19 keys to 7 after finding
+        // that a guest could delete any task and read every public-form
+        // submission. The KB kept the old sentence for months, so the bot was
+        // telling admins that Guests could delete work. The pin now follows
+        // `rbac/bootstrap.ts`: view spaces/tasks/members/activity, comment,
+        // assistant.use, bug.report — and nothing else.
+        expect(KNOWLEDGE_BASE).not.toMatch(/Guest is NOT read-only/i);
+        expect(KNOWLEDGE_BASE).not.toMatch(
+            /cannot do that a Member can is upload attachments/i,
+        );
+        expect(KNOWLEDGE_BASE).toMatch(
+            /Guest CANNOT create, edit, assign, archive or delete tasks/,
+        );
     });
 
     it("lists the Roles & permissions settings page (the live nav has 10 sections, not 9)", () => {
@@ -297,13 +412,21 @@ describe("KB coverage — P3: roles & permissions", () => {
         expect(KNOWLEDGE_BASE).toMatch(/Owner\*\* role is shown but cannot be edited/i);
     });
 
-    it("is HONEST that per-space and custom-role assignment has no UI yet", () => {
-        // `MembersSettings.tsx` hardcodes ["admin","member","guest"] and nothing
-        // in the client calls the assignment API. Promising a screen that does
-        // not exist is exactly the failure P2 cleaned up.
-        expect(KNOWLEDGE_BASE).toMatch(/cannot be done from Settings yet/i);
+    it("is HONEST about custom-role assignment — but no longer denies PER-SPACE roles", () => {
+        // ⚠️ HALF-REVERSED by DEEP P1. Both halves were true when written; the
+        // team-access Teams page then shipped, and putting someone on a team IS
+        // granting them the seeded Member role scoped to that space — so
+        // "per-space cannot be done" became false while "no UI gives ONE person
+        // a CUSTOM role" stayed true (`rbacApi.assignRole` still has no caller
+        // in any page; MembersSettings hardcodes admin/member/guest). The KB
+        // contradicted itself for a while, which is the likeliest reason the
+        // live bot produced a garbled answer to this exact question.
+        expect(KNOWLEDGE_BASE).not.toMatch(/cannot be done from Settings yet/i);
         expect(KNOWLEDGE_BASE).toMatch(
-            /can only set someone to \*\*Admin\*\*, \*\*Member\*\* or \*\*Guest\*\*/i,
+            /no screen yet for giving a custom role to a person/,
+        );
+        expect(KNOWLEDGE_BASE).toMatch(
+            /only offers \*\*Admin\*\*, \*\*Member\*\* or \*\*Guest\*\*/i,
         );
     });
 
@@ -400,8 +523,24 @@ describe("KB coverage — P4: every destination is a link", () => {
         // list, unasked self-assign, absolute-domain links). Compressing
         // behaviour rules to dodge a budget is the wrong trade; the budget
         // moves, with this paper trail, instead.
+        //
+        // Raised 39k → 43k by DEEP PLAN P1 (2026-08-13), the nirbhul audit.
+        // The growth is corrections, not padding, and two items dominate it:
+        //   · team access is now described as the TWO MODES it really has
+        //     (open vs team-scoped, decided by role reach) instead of
+        //     asserting the scoped one — the KB was telling the office rules
+        //     that are not switched on for them yet;
+        //   · the Banglish rule, which exists because the bot demonstrably
+        //     answered in Roman letters 2 times out of 3 on one question.
+        // Paid for partly by trimming genuinely dead text (the "brand-new
+        // empty workspace" setup walkthrough — this workspace is long past
+        // that) and by compressing P1's own prose once it was written.
+        // ~42.5k today; the ceiling leaves room for P2's <=400-char caller
+        // block without another decision. It is NOT a licence to grow: P7
+        // (guidance polish) owns a read-the-whole-KB pass for fat, and any
+        // phase that needs more space writes its reason here first.
         const sys = buildMessages([], "x")[0].content as string;
-        expect(sys.length).toBeLessThan(39000);
+        expect(sys.length).toBeLessThan(44000);
     });
 });
 

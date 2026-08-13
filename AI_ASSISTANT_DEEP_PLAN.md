@@ -86,7 +86,15 @@
   every later phase diffs against a recorded starting point.
 - **DoD:** decisions written into this file's §3; no behavior change; all green.
 
-### P1 — KB nirbhul audit (ask #1: correct information, always)
+### P1 — KB nirbhul audit (ask #1: correct information, always) — ✅ **COMPLETE 2026-08-13**
+> **9 wrong claims found and fixed** (Guest powers, statuses, import/export, templates apply,
+> team-access mode, per-space roles, pre-SSE notifications, checklists, invite email) + DEFECT-1
+> fixed and measured 6/6 + a second live defect (invented Members→Edit→Teams UI) caught by
+> probing the fix. jest 145 → **155**; eval **PERFECT ×3**, links 13–14 → **15/15**, Bangla
+> 14 → **15/15 every run**. Full audit table in `AI_ASSISTANT_BUILD_LOG.md`.
+> **Uncovered 4 PRODUCT gaps** (not KB work, listed there for a future decision): statuses are
+> read-only, Import/Export is a mockup, "Apply template" has no button, no UI assigns a custom
+> role to one person.
 - **Starts with DEFECT-1 (§5): the Banglish-mirroring bug.** Fix the language rule so the
   reply is always Bangla SCRIPT even when the question is romanized, re-measure the failing
   question ≥5 times (it flips 2-in-3 today), and pin it with a test + an eval row so it
