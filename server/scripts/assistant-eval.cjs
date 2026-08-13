@@ -154,23 +154,36 @@ const ask = async (token, message) => {
  * Every STATIC route the app really has — taken from `client/src/router.tsx`,
  * not from memory. Anything else inside a link is fabricated.
  *
- * Dynamic routes (`/s/:spaceId`, `/t/:taskKey`, `/reports/:reportId`, …) are
- * deliberately absent: the bot cannot know an id, so it must never link to one.
- * A link to any of those would show up here as fabricated, which is correct.
+ * (2026-08-13) `/settings/teams` added — the team-access build shipped the
+ * page and the KB links it, but this list was not updated, so a CORRECT
+ * answer graded as a fabrication (the sixth wrong-measuring-stick incident
+ * of this plan; see the P11 log entry).
+ *
+ * Dynamic routes (`/s/:spaceId`, `/reports/:reportId`, …) stay deliberately
+ * absent: the bot cannot know those ids, so it must never link to one.
+ * EXCEPTION — `/t/<id>`: since `create_task` (2026-08-13) the bot receives
+ * REAL task ids in tool results (create, agenda, search) and is instructed to
+ * link them, so a well-formed /t/ link is legitimate; `isTaskLink` below
+ * covers it. A /t/ link with a made-up id cannot be told apart statically —
+ * the create-task jest suite pins that the url comes from the tool result.
  *
  * `/settings` is the index (it redirects to `/settings/profile`) — a real
  * destination, and leaving it out made a correct answer score as a fabrication.
  */
 const REAL_ROUTES = [
     "/", "/login", "/forgot-password",
-    "/inbox", "/search", "/dept", "/reports", "/forms",
+    "/inbox", "/search", "/dept", "/reports", "/sla", "/forms",
     "/eng", "/eng/sprint", "/eng/on-call",
     "/settings",
     "/settings/profile", "/settings/workspace", "/settings/members",
+    "/settings/teams",
     "/settings/roles", "/settings/task-types", "/settings/tags",
     "/settings/statuses", "/settings/custom-fields", "/settings/templates",
     "/settings/import-export",
 ];
+
+/** A task link the bot could only have gotten from a tool result. */
+const isTaskLink = (l) => /^\/t\/[\w-]+$/.test(l);
 
 /**
  * Is this answer written in Bangla?
@@ -195,7 +208,9 @@ const isBangla = (text) => {
 
 const grade = (text) => {
     const links = [...text.matchAll(/\]\((\/[^)\s]*)\)/g)].map((m) => m[1]);
-    const fabricated = links.filter((l) => !REAL_ROUTES.includes(l));
+    const fabricated = links.filter(
+        (l) => !REAL_ROUTES.includes(l) && !isTaskLink(l),
+    );
     const numbered = /(^|\n)\s*(\d+[.)]|[০-৯][.)])/.test(text);
     const bulleted = /(^|\n)\s*[-*•]\s/.test(text);
     return {
@@ -215,6 +230,24 @@ if (
     !isBangla("[Settings → Profile](/settings/profile) খুলুন, তারপর পাসওয়ার্ড বদলান।")
 ) {
     throw new Error("isBangla() is broken — it must reject English and accept Bangla");
+}
+
+// Same discipline for the fabrication detector — its allowlist has now been
+// stale once (/settings/teams, incident six): it must still FLAG an invented
+// route, and must ACCEPT the two shapes that burned us.
+{
+    const links = (t) => [...t.matchAll(/\]\((\/[^)\s]*)\)/g)].map((m) => m[1]);
+    const fab = (t) =>
+        links(t).filter((l) => !REAL_ROUTES.includes(l) && !isTaskLink(l));
+    if (
+        fab("[x](/settings/nonsense)").length !== 1 ||
+        fab("[x](/settings/teams)").length !== 0 ||
+        fab("[x](/t/t-Abc123_xyz)").length !== 0
+    ) {
+        throw new Error(
+            "the fabrication detector is broken — it must flag an invented route and accept /settings/teams and tool-result /t/ links",
+        );
+    }
 }
 
 const pad = (s, n) => String(s).padEnd(n);

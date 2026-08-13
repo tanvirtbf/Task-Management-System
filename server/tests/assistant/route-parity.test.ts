@@ -147,6 +147,33 @@ describe("route parity — the bot must know every page the app has", () => {
         expect(dynamic).toEqual([]);
     });
 
+    it("the EVAL script's allowlist knows every page too (incident six)", () => {
+        // `scripts/assistant-eval.cjs` grades "fabricated routes" against its
+        // own hardcoded REAL_ROUTES list. That list went stale twice
+        // (/settings/teams shipped by team-access, /sla by F28) and a CORRECT
+        // live answer graded as a fabrication. This pins the list to the same
+        // router-derived map the rest of this file uses — ship a page, and
+        // BOTH the KB and the grader must learn it before the build goes
+        // green.
+        const evalSrc = fs.readFileSync(
+            path.resolve(__dirname, "../../scripts/assistant-eval.cjs"),
+            "utf8",
+        );
+        const m = evalSrc.match(/const REAL_ROUTES = \[([\s\S]*?)\];/);
+        expect(m).not.toBeNull();
+        const listed = new Set(
+            [...(m as RegExpMatchArray)[1].matchAll(/"([^"]+)"/g)].map(
+                (x) => x[1],
+            ),
+        );
+        const missing = [...new Set(Object.values(SEGMENT_TO_ROUTE))].filter(
+            (r) => !listed.has(r),
+        );
+        expect({ routesTheEvalWouldCallFabricated: missing }).toEqual({
+            routesTheEvalWouldCallFabricated: [],
+        });
+    });
+
     it("the router really does have dynamic routes, so the exclusion is meaningful", () => {
         // If this ever returns nothing, the exclusion above has quietly become
         // a no-op and the L4 guard is guarding nothing.

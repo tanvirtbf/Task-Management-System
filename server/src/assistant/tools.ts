@@ -132,7 +132,7 @@ export const ASSISTANT_TOOL_DEFS: OpenAI.Chat.Completions.ChatCompletionTool[] =
                             type: "array",
                             items: { type: "string" },
                             description:
-                                "Optional people to assign, by name as the user said them",
+                                'Optional people to assign, by name as the user said them. When the user wants the task assigned to THEMSELVES ("assign it to me"), pass the literal string "@me" — never guess their name.',
                         },
                     },
                     required: ["name", "list_name"],
@@ -141,6 +141,41 @@ export const ASSISTANT_TOOL_DEFS: OpenAI.Chat.Completions.ChatCompletionTool[] =
             },
         },
     ];
+
+/**
+ * Per-REQUEST tool executor. Same contract as `executeAssistantTool`, plus one
+ * guard that needs request-lifetime state: if the model asks to create the
+ * SAME task twice in one message (gpt-4o-mini sometimes emits duplicate
+ * parallel tool calls, or re-calls after already succeeding), the second call
+ * returns the FIRST call's result instead of writing a second row. Distinct
+ * name/list pairs still create separately — "make two tasks: A and B" works.
+ * Only successes are memoised, so a failed attempt may be retried with
+ * corrected arguments.
+ */
+export function makeAssistantToolExecutor(
+    ctx: ToolContext,
+    services: ToolServices,
+): (name: string, args: Record<string, unknown>) => Promise<unknown> {
+    const createdThisRequest = new Map<string, unknown>();
+    return async (name, args) => {
+        if (name !== "create_task") {
+            return executeAssistantTool(name, args, ctx, services);
+        }
+        const key = [
+            typeof args.name === "string" ? args.name.trim().toLowerCase() : "",
+            typeof args.list_name === "string"
+                ? args.list_name.trim().toLowerCase()
+                : "",
+        ].join(" ");
+        const prior = createdThisRequest.get(key);
+        if (prior !== undefined) return prior;
+        const result = await executeAssistantTool(name, args, ctx, services);
+        if ((result as { created?: boolean } | null)?.created === true) {
+            createdThisRequest.set(key, result);
+        }
+        return result;
+    };
+}
 
 /**
  * Execute a tool by name. `ctx` is the authenticated caller (never client
@@ -292,6 +327,22 @@ async function createTaskTool(
         ? args.assignee_names.filter((n): n is string => typeof n === "string")
         : [];
     for (const wanted of rawNames.slice(0, 10)) {
+        // "@me" = the chatting user themselves. The model does not know their
+        // real name (identity lives in the JWT, not the prompt), so "assign it
+        // to me" resolves here instead of failing a directory lookup.
+        if (wanted.trim().toLowerCase() === "@me") {
+            if (!assigneeIds.includes(ctx.userId)) {
+                const me = await services.users.findByIdInWorkspace(
+                    ctx.userId,
+                    ctx.workspaceId,
+                );
+                assigneeIds.push(ctx.userId);
+                pendingNames.push(
+                    me ? `${me.firstName} ${me.lastName}`.trim() : "you",
+                );
+            }
+            continue;
+        }
         // The directory's q filter matches per COLUMN (first name, last name,
         // email) — a full "Rahim Uddin" matches neither column alone. Try the
         // full string first, then fall back to the last word (the surname)
@@ -328,8 +379,13 @@ async function createTaskTool(
                       candidates: named.map((p) => p.name),
                   };
         }
-        assigneeIds.push(person.id);
-        pendingNames.push(person.name);
+        // Two spellings of the same person ("Sadia", "Sadia Islam") resolve to
+        // one id — the service dedupes ids anyway, but the NAME list must not
+        // report the same person twice.
+        if (!assigneeIds.includes(person.id)) {
+            assigneeIds.push(person.id);
+            pendingNames.push(person.name);
+        }
     }
 
     // Date FORMAT is normally the HTTP validator's job — this path skips the
@@ -356,6 +412,25 @@ async function createTaskTool(
         dueDate = raw;
     }
 
+    // A provided-but-invalid priority must REFUSE, not silently fall back to
+    // the default — the model would otherwise confirm "high" while the task
+    // ended up priority-none.
+    let priority: number | undefined;
+    if (args.priority !== undefined && args.priority !== null) {
+        const p = args.priority;
+        if (
+            typeof p !== "number" ||
+            !Number.isInteger(p) ||
+            p < 0 ||
+            p > 4
+        ) {
+            return {
+                error: `priority must be a whole number 0-4 (0 none, 1 urgent, 2 high, 3 normal, 4 low) — got ${JSON.stringify(p)}.`,
+            };
+        }
+        priority = p;
+    }
+
     const created = await services.taskWrite.create({
         workspaceId: ctx.workspaceId,
         actorId: ctx.userId,
@@ -367,13 +442,7 @@ async function createTaskTool(
                 ? args.description.slice(0, 10_000)
                 : null,
         dueDate,
-        priority:
-            typeof args.priority === "number" &&
-            Number.isInteger(args.priority) &&
-            args.priority >= 0 &&
-            args.priority <= 4
-                ? args.priority
-                : undefined,
+        priority,
         assignees: assigneeIds,
     });
 

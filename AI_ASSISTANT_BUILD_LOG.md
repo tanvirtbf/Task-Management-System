@@ -1209,3 +1209,50 @@ rule, re-verified first-try.
 
 **The bot remains read-only for everything else — edit/assign/complete/delete still get steps, not
 actions.**
+
+### Professional pass (same day, on the user's demand for a full re-scan + re-test)
+
+A second, adversarial pass over the whole chatbot — code re-scan, four hardenings, a 13-scenario
+live matrix against the real model, and the formal eval gate. It found real defects; all fixed.
+
+**Hardenings from the code re-scan**
+1. **Per-request duplicate-create guard** (`makeAssistantToolExecutor`): gpt-4o-mini sometimes
+   emits the same tool call twice in one round; the second identical create now returns the FIRST
+   result instead of writing a second row. Distinct names still create separately ("make two
+   tasks: A and B" works — proven live, T11/S1).
+2. **"@me" self-assign**: the model does not know the user's name (identity lives in the JWT), so
+   "amake assign koro" used to fail a directory lookup. A literal "@me" now resolves to the caller.
+3. **Same person named twice** ("Sadia", then "@me" resolving to the same id) is assigned once and
+   reported once.
+4. **Out-of-range priority now refuses** instead of silently defaulting — the bot could otherwise
+   confirm "high" while the task landed priority-none.
+   (Also verified during the re-scan, no change needed: SearchRepo already excludes archived
+   lists/spaces from resolution, and `TaskWriteService.create` already dedupes assignee ids.)
+
+**Live matrix (13 scenarios, real gpt-4o-mini, dev stack) — found two PROMPT defects**
+- ✅ create with "kal" → due 2026-08-14, "urgent"→1, "normal"→3, description, English prompt,
+  same-team assign direct (Q11 membership), **cross-team assign → pending request row for Sadia +
+  correct Bangla approval explanation (P8 live-proven through chat)**, no-list→asks,
+  unknown-list/person→readable refusal, vague hint→no create, delete request→steps only,
+  two-distinct-tasks→both created, SSE transport streams the same tool path.
+- 🐞 **Fabricated domain**: confirming TWO tasks at once, the model wrapped the links as
+  https://beautybooth.com/t/… — an invented domain. Prompt now pins: the link is the result's url
+  field verbatim, RELATIVE, never a domain. Re-probed: relative.
+- 🐞 **Unasked self-assign**: the model passed "@me" on nearly every create the user never asked to
+  assign (proved model-side: the service does NOT auto-assign creators — T3/T4 rows). Prompt now
+  pins: no assignee_names unless the user asked. Re-probed: unassigned.
+
+**The eval gate — and the SIXTH wrong-measuring-stick incident**
+First run: `fabricated routes = 1` — but the "fabrication" was `/settings/teams`, a REAL page
+(router.tsx) the eval's own `REAL_ROUTES` allowlist never learned when team-access shipped it.
+`/sla` (F28) was missing too. Fixed the allowlist, taught it that `/t/<id>` links are now
+legitimate (they come from tool results), gave the fabrication detector its own self-check, and —
+the systemic fix — **route-parity.test.ts now pins the eval allowlist to the router**, so a new
+page fails the build until BOTH the KB and the grader know it.
+
+**Verified after all fixes**
+`jest.assistant` **9 suites / 145 tests** ✅ (route-parity 6→7, create-task 7→11) · size budget
+raised 38k → 39k with the decision recorded in the test (each create rule exists because a live
+probe failed without it) · eval gate: **PERFECT — links 14/15 · steps 12/12 · Bangla 15/15 · data
+10/10 · fabricated 0 · forbidden 0** · server tsc + build clean · all 19 probe tasks hard-removed
+from the dev DB (the API's DELETE archives; probes were purged by SQL).

@@ -394,8 +394,14 @@ describe("KB coverage — P4: every destination is a link", () => {
         // the approval flow are now the app's OPERATING MODEL — "why can't I
         // see/edit/assign" is exactly what the office will ask this bot, and
         // ~1k extra tokens on gpt-4o-mini is the cheap side of that trade.
+        // Raised 38k → 39k for create_task (2026-08-13): the CREATING A TASK
+        // section is the bot's only write authority, and each of its rules
+        // exists because a live probe failed without it (re-asking a named
+        // list, unasked self-assign, absolute-domain links). Compressing
+        // behaviour rules to dodge a budget is the wrong trade; the budget
+        // moves, with this paper trail, instead.
         const sys = buildMessages([], "x")[0].content as string;
-        expect(sys.length).toBeLessThan(38000);
+        expect(sys.length).toBeLessThan(39000);
     });
 });
 

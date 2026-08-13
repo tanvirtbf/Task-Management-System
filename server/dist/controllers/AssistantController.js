@@ -70,10 +70,13 @@ class AssistantController {
             // Same tools as the SSE path (P9 / decision D-9): a contract that
             // answers "how many tasks do I have" over one transport and not the
             // other is a bug waiting for its first non-browser client.
+            // The executor is built per REQUEST: it carries the double-create
+            // guard (a duplicated create_task call in one message returns the
+            // first result instead of writing twice).
             const reply = await this.assistantService.ask(history ?? [], message, {
                 tools: {
                     definitions: tools_1.ASSISTANT_TOOL_DEFS,
-                    execute: (name, args) => (0, tools_1.executeAssistantTool)(name, args, toolCtx, this.toolServices),
+                    execute: (0, tools_1.makeAssistantToolExecutor)(toolCtx, this.toolServices),
                 },
             });
             await this.saveMessage(convId, "assistant", reply);
@@ -122,7 +125,7 @@ class AssistantController {
                 signal: ac.signal,
                 tools: {
                     definitions: tools_1.ASSISTANT_TOOL_DEFS,
-                    execute: (name, args) => (0, tools_1.executeAssistantTool)(name, args, toolCtx, this.toolServices),
+                    execute: (0, tools_1.makeAssistantToolExecutor)(toolCtx, this.toolServices),
                 },
             });
             if (ac.signal.aborted) {

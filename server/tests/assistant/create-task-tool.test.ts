@@ -54,34 +54,39 @@ beforeAll(() => {
     resetAssignmentGate();
 });
 
-/** Make the model ask for `create_task` with `args`, then answer "ok". */
-const modelCalling = (args: Record<string, unknown>) => {
+/**
+ * Make the model ask for `create_task` with `args` (`times` parallel calls in
+ * ONE round — the duplicated-tool-call shape gpt-4o-mini sometimes emits),
+ * then answer "ok". Captures EVERY tool result the model is shown.
+ */
+const modelCalling = (args: Record<string, unknown>, times = 1) => {
     const seen: string[] = [];
     mockCreate.mockReset();
     mockCreate.mockImplementation(
         (params: { messages?: { role: string; content?: string }[] }) => {
-            const toolMsg = (params.messages ?? []).find(
+            const toolMsgs = (params.messages ?? []).filter(
                 (m) => m.role === "tool",
             );
-            if (!toolMsg) {
+            if (toolMsgs.length === 0) {
                 return Promise.resolve(
                     (async function* () {
                         yield {
                             choices: [
                                 {
                                     delta: {
-                                        tool_calls: [
-                                            {
-                                                index: 0,
-                                                id: "call_1",
+                                        tool_calls: Array.from(
+                                            { length: times },
+                                            (_, i) => ({
+                                                index: i,
+                                                id: `call_${i + 1}`,
                                                 type: "function",
                                                 function: {
                                                     name: "create_task",
                                                     arguments:
                                                         JSON.stringify(args),
                                                 },
-                                            },
-                                        ],
+                                            }),
+                                        ),
                                     },
                                 },
                             ],
@@ -89,7 +94,7 @@ const modelCalling = (args: Record<string, unknown>) => {
                     })(),
                 );
             }
-            seen.push(String(toolMsg.content ?? ""));
+            toolMsgs.forEach((m) => seen.push(String(m.content ?? "")));
             return Promise.resolve(
                 (async function* () {
                     yield { choices: [{ delta: { content: "ok" } }] };
@@ -103,13 +108,14 @@ const modelCalling = (args: Record<string, unknown>) => {
 const ask = async (
     client: LoggedInClient,
     seen: string[],
+    expectedResults = 1,
 ): Promise<Record<string, unknown>> => {
     const res = await client
         .post(CHAT)
         .set("Accept", "text/event-stream")
         .send({ message: "ekta task banao" });
     expect(res.status).toBe(200);
-    expect(seen).toHaveLength(1);
+    expect(seen).toHaveLength(expectedResults);
     return JSON.parse(seen[0]) as Record<string, unknown>;
 };
 
@@ -299,5 +305,86 @@ describe("create_task — the assistant's one write, under the caller's own rule
         expect(result.created).toBeUndefined();
         expect(String(result.error)).toContain("real calendar day");
         expect(await taskRowsByName("bad date task")).toHaveLength(0);
+    });
+
+    it("a DUPLICATED create call in one message writes ONE row and reuses the result", async () => {
+        const s = await seed();
+        const seen = modelCalling(
+            { name: "double-fired task", list_name: "Eid Campaign 2026" },
+            2, // the model emits the same call twice, in parallel
+        );
+        const result = await ask(s.member.client, seen, 2);
+
+        const second = JSON.parse(seen[1]) as Record<string, unknown>;
+        expect(result.created).toBe(true);
+        expect(second.created).toBe(true);
+        expect(second.id).toBe(result.id); // memoised, not re-created
+        expect(await taskRowsByName("double-fired task")).toHaveLength(1);
+    });
+
+    it('"@me" assigns the chatting user themselves — no directory guess', async () => {
+        const s = await seed();
+        const seen = modelCalling({
+            name: "self assigned task",
+            list_name: "Eid Campaign 2026",
+            assignee_names: ["@me"],
+        });
+        const result = await ask(s.member.client, seen);
+
+        expect(result.created).toBe(true);
+        expect(result.pendingApproval).toEqual([]); // self-assign is instant (Q11)
+        expect(Array.isArray(result.assigned)).toBe(true);
+        expect((result.assigned as string[]).length).toBe(1);
+
+        const [row] = await taskRowsByName("self assigned task");
+        const assignees = await db()
+            .select()
+            .from(schema.taskAssignees)
+            .where(eq(schema.taskAssignees.taskId, row.id));
+        expect(assignees).toHaveLength(1);
+        expect(assignees[0].userId).toBe(s.member.id);
+    });
+
+    it("an out-of-range priority refuses instead of silently defaulting", async () => {
+        const s = await seed();
+        const seen = modelCalling({
+            name: "priority nine task",
+            list_name: "Eid Campaign 2026",
+            priority: 9,
+        });
+        const result = await ask(s.member.client, seen);
+
+        expect(result.created).toBeUndefined();
+        expect(String(result.error)).toContain("0-4");
+        expect(await taskRowsByName("priority nine task")).toHaveLength(0);
+    });
+
+    it("the same person named twice is assigned once and reported once", async () => {
+        const s = await seed();
+        const [named] = await db()
+            .select({
+                first: schema.users.firstName,
+                last: schema.users.lastName,
+            })
+            .from(schema.users)
+            .where(eq(schema.users.id, s.member.id));
+        const fullName = `${named.first} ${named.last}`.trim();
+
+        const seen = modelCalling({
+            name: "twice named task",
+            list_name: "Eid Campaign 2026",
+            assignee_names: [fullName, "@me"], // both resolve to the member
+        });
+        const result = await ask(s.member.client, seen);
+
+        expect(result.created).toBe(true);
+        expect(result.assigned).toEqual([fullName]); // once, not twice
+
+        const [row] = await taskRowsByName("twice named task");
+        const assignees = await db()
+            .select()
+            .from(schema.taskAssignees)
+            .where(eq(schema.taskAssignees.taskId, row.id));
+        expect(assignees).toHaveLength(1);
     });
 });

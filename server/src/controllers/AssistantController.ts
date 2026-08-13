@@ -5,7 +5,7 @@ import { ChatRepo } from "../repositories/ChatRepo";
 import { AppError } from "../errors";
 import {
     ASSISTANT_TOOL_DEFS,
-    executeAssistantTool,
+    makeAssistantToolExecutor,
     type ToolServices,
 } from "../assistant/tools";
 import type { AssistantChatRequest } from "../types/assistant";
@@ -95,16 +95,16 @@ export class AssistantController {
             // Same tools as the SSE path (P9 / decision D-9): a contract that
             // answers "how many tasks do I have" over one transport and not the
             // other is a bug waiting for its first non-browser client.
+            // The executor is built per REQUEST: it carries the double-create
+            // guard (a duplicated create_task call in one message returns the
+            // first result instead of writing twice).
             const reply = await this.assistantService.ask(history ?? [], message, {
                 tools: {
                     definitions: ASSISTANT_TOOL_DEFS,
-                    execute: (name, args) =>
-                        executeAssistantTool(
-                            name,
-                            args,
-                            toolCtx,
-                            this.toolServices,
-                        ),
+                    execute: makeAssistantToolExecutor(
+                        toolCtx,
+                        this.toolServices,
+                    ),
                 },
             });
 
@@ -166,13 +166,10 @@ export class AssistantController {
                 signal: ac.signal,
                 tools: {
                     definitions: ASSISTANT_TOOL_DEFS,
-                    execute: (name, args) =>
-                        executeAssistantTool(
-                            name,
-                            args,
-                            toolCtx,
-                            this.toolServices,
-                        ),
+                    execute: makeAssistantToolExecutor(
+                        toolCtx,
+                        this.toolServices,
+                    ),
                 },
             });
 
