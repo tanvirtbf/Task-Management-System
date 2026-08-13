@@ -84,6 +84,22 @@ router.post("/:id/deactivate", authenticate_1.default, (0, requirePermission_1.r
 // Row rules (cannot reactivate self; a pending invite is not reactivatable) are
 // enforced in the service. Returns 204.
 router.post("/:id/reactivate", authenticate_1.default, (0, requirePermission_1.requirePermission)("member.deactivate"), users_1.getUserValidator, validate_1.validate, (req, res, next) => userController.reactivate(req, res, next));
+// ─── GET /api/v1/users/:id/deletion-preflight ──────────────────────────────
+// 👑 admin/owner. Read-only: what a PERMANENT delete would hit. The UI calls it
+// before offering the irreversible action, so the admin sees "3 tasks, 5
+// comments — deactivate instead" in a dialog rather than as a 409 afterwards.
+// Same chain + `getUserValidator`. 200 { deletable, reason, blockers, user }.
+router.get("/:id/deletion-preflight", authenticate_1.default, (0, requirePermission_1.requirePermission)("member.deactivate"), users_1.getUserValidator, validate_1.validate, (req, res, next) => userController.deletionPreflight(req, res, next));
+// ─── DELETE /api/v1/users/:id ──────────────────────────────────────────────
+// 👑 owner/admin — the ONLY irreversible member action, for the "added by
+// mistake" case. `member.deactivate` is the route key (the removal family);
+// the service additionally requires a LIVE owner/admin legacy role, so a
+// custom role carrying that key cannot delete people. It refuses (409
+// `user.has_content`) the moment the person has created anything, and also
+// guards the owner, self and the last admin. Everything personal (sessions,
+// notifications, watches, assignments) goes with them by FK cascade; the
+// audit row is written before the delete. Returns 204.
+router.delete("/:id", authenticate_1.default, (0, requirePermission_1.requirePermission)("member.deactivate"), users_1.getUserValidator, validate_1.validate, (req, res, next) => userController.hardDelete(req, res, next));
 // ─── POST /api/v1/users/:id/reset-password ─────────────────────────────────
 // 👑 admin/owner. Same chain + `getUserValidator`. The active-only rule and the
 // §2 forgot-password token mint + email live in the service. Returns 202.

@@ -331,6 +331,17 @@ Updates profile fields. Users can edit themselves; admins can edit anyone in the
 
 **202.**
 
+### GET `/api/v1/users/:id/deletion-preflight` (2026-08-12)
+**Role required:** admin/owner (`member.deactivate`). Read-only — what a PERMANENT delete would hit, asked by the UI *before* the irreversible action is offered.
+**200** `{ deletable, reason, blockers: [{ kind, count }], user }` — `blockers` is an ARRAY on purpose (the client camelizes response KEYS; these kinds are data).
+
+### DELETE `/api/v1/users/:id` (2026-08-12)
+**Role required:** owner/admin — route key `member.deactivate`, plus a LIVE owner/admin legacy-role check in the service, so a custom role carrying that key still cannot delete people. **Permanently removes the member row** — for the "added by mistake" case.
+
+**A member is deletable only while they have left NOTHING behind.** Thirteen relations are `ON DELETE RESTRICT` (tasks, comments, attachments, lists, spaces, custom fields, forms, templates, dependencies, reviews, on-call shifts, invitations they sent); if any still points at them the delete is refused with a per-kind breakdown and the admin is told to deactivate instead. Everything personal cascades away with the row (sessions, notifications + prefs, push devices, watches, assignee rows, assignment requests, chat); attribution columns (`task_activity.actor_id`, `spaces.head_user_id`, …) go NULL. A pending invitation for that address is deleted in the same transaction, and a `workspace_activity` row (`entity_type: user`, action `deleted`, context = email/name/role) is written **before** the delete so the trace outlives the person.
+
+**204.** Errors: `user.not_found` 404 (also cross-workspace) · `user.cannot_delete_owner` 403 · `user.cannot_self_delete` 403 · `role.last_admin` 409 · `user.has_content` 409 (message lists the counts; the FK is the race backstop and maps to the same 409, never a 500).
+
 ---
 
 ## 5. Spaces

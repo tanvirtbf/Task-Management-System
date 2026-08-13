@@ -343,6 +343,35 @@ export const usersApi = {
     reactivate: async (id: string): Promise<void> => {
         await api.post(`/users/${id}/reactivate`);
     },
+    /**
+     * What a PERMANENT delete would hit — asked before the irreversible
+     * action is offered. `blockers` is a per-kind count of the work this
+     * person created (empty when they are safe to delete).
+     */
+    deletionPreflight: async (
+        id: string,
+    ): Promise<{
+        deletable: boolean;
+        reason: string | null;
+        blockers: { kind: string; count: number }[];
+    }> => {
+        const body = (
+            await api.get<{
+                deletable: boolean;
+                reason: string | null;
+                blockers: { kind: string; count: number }[];
+            }>(`/users/${id}/deletion-preflight`)
+        ).data;
+        return {
+            deletable: body.deletable,
+            reason: body.reason,
+            blockers: body.blockers ?? [],
+        };
+    },
+    /** PERMANENT, irreversible. Refused (409) once the person has any work. */
+    deletePermanently: async (id: string): Promise<void> => {
+        await api.delete(`/users/${id}`);
+    },
     // 202 — admin-triggered password-reset email (NOT a self change-password).
     resetPassword: async (id: string): Promise<void> => {
         await api.post(`/users/${id}/reset-password`);

@@ -284,6 +284,82 @@ export class UserController {
     }
 
     /**
+     * GET /api/v1/users/:id/deletion-preflight — what a permanent delete would
+     * hit, BEFORE the admin is offered the irreversible button. Read-only;
+     * 200 `{ deletable, reason, blockers }` (snake_case wire).
+     */
+    async deletionPreflight(
+        req: AuthRequest,
+        res: Response,
+        next: NextFunction,
+    ) {
+        try {
+            const { id } = matchedData(req, { locations: ["params"] }) as {
+                id: string;
+            };
+            const result = await this.userService.deletionPreflight({
+                workspaceId: req.auth.workspaceId,
+                actorId: req.auth.sub,
+                userId: id,
+            });
+            res.status(200).json({
+                deletable: result.deletable,
+                reason: result.reason,
+                // An ARRAY, not a keyed object: the client's response
+                // camelizer rewrites KEYS, and these kinds are data
+                // ("tasks_created"), not field names.
+                blockers: Object.entries(result.blockers).map(
+                    ([kind, count]) => ({ kind, count }),
+                ),
+                user: {
+                    id: result.user.id,
+                    email: result.user.email,
+                    first_name: result.user.firstName,
+                    last_name: result.user.lastName,
+                    role: result.user.role,
+                    status: result.user.status,
+                },
+            });
+        } catch (err) {
+            next(err);
+        }
+    }
+
+    /**
+     * DELETE /api/v1/users/:id — PERMANENTLY remove a member (👑 owner/admin).
+     *
+     * For the "added by mistake" case only: the service refuses (409
+     * `user.has_content`) the moment the person has left any work behind, and
+     * points the admin at deactivate. Every other guard (owner, self, last
+     * admin, tenant scope) lives there too. Returns 204.
+     */
+    async hardDelete(req: AuthRequest, res: Response, next: NextFunction) {
+        try {
+            const { id } = matchedData(req, { locations: ["params"] }) as {
+                id: string;
+            };
+
+            await this.userService.hardDelete({
+                workspaceId: req.auth.workspaceId,
+                actorId: req.auth.sub,
+                actorRole: req.auth.role,
+                userId: id,
+            });
+
+            this.logger.info("users.hard_delete.request_ok", {
+                requestId: req.requestId,
+                workspaceId: req.auth.workspaceId,
+                actorId: req.auth.sub,
+                userId: id,
+            });
+
+            res.sendStatus(204);
+        } catch (err) {
+            next(err);
+        }
+    }
+
+    /**
      * POST /api/v1/users/:id/reactivate — re-enable a deactivated member.
      *
      * The coarse 👑 admin/owner gate runs in the route's `canAccess`; the row

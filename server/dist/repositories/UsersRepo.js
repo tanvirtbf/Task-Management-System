@@ -349,6 +349,63 @@ class UsersRepo {
             .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.workspaceId, workspaceId), (0, drizzle_orm_1.eq)(schema_1.users.status, "active"), (0, drizzle_orm_1.inArray)(schema_1.users.role, ["owner", "admin"]), (0, drizzle_orm_1.ne)(schema_1.users.id, excludeId)));
         return row?.n ?? 0;
     }
+    /**
+     * What this person LEFT BEHIND — one row per kind, non-zero only.
+     *
+     * These are exactly the thirteen relations whose foreign key is
+     * `ON DELETE RESTRICT`: MySQL itself refuses to delete a user that any of
+     * them still references (error 1451). Rather than let that surface as a
+     * raw 500, `UserService.hardDelete` asks this first and answers with a
+     * readable "3 tasks, 5 comments — deactivate instead". Every other
+     * relation is CASCADE (their own sessions, notifications, watches,
+     * assignments — personal state that should go with them) or SET NULL
+     * (attribution), so those never block.
+     *
+     * One statement, one round trip; the id is a bound parameter throughout.
+     */
+    async countOwnedContent(userId) {
+        const rows = (await this.db.execute((0, drizzle_orm_1.sql) `
+            SELECT 'tasks_created'      AS kind, COUNT(*) AS n FROM tasks             WHERE created_by  = ${userId}
+            UNION ALL SELECT 'comments',          COUNT(*) FROM comments              WHERE author_id   = ${userId}
+            UNION ALL SELECT 'attachments',       COUNT(*) FROM attachments           WHERE uploaded_by = ${userId}
+            UNION ALL SELECT 'lists_created',     COUNT(*) FROM lists                 WHERE created_by  = ${userId}
+            UNION ALL SELECT 'spaces_created',    COUNT(*) FROM spaces                WHERE created_by  = ${userId}
+            UNION ALL SELECT 'custom_fields',     COUNT(*) FROM custom_fields         WHERE created_by  = ${userId}
+            UNION ALL SELECT 'forms',             COUNT(*) FROM forms                 WHERE created_by  = ${userId}
+            UNION ALL SELECT 'templates',         COUNT(*) FROM templates             WHERE created_by  = ${userId}
+            UNION ALL SELECT 'task_dependencies', COUNT(*) FROM task_dependencies     WHERE created_by  = ${userId}
+            UNION ALL SELECT 'reviews_given',     COUNT(*) FROM task_reviews          WHERE reviewer_id = ${userId}
+            UNION ALL SELECT 'on_call_shifts',    COUNT(*) FROM on_call_shifts        WHERE engineer_id = ${userId} OR created_by = ${userId}
+            UNION ALL SELECT 'invitations_sent',  COUNT(*) FROM invitations           WHERE invited_by  = ${userId}
+        `));
+        const out = {};
+        for (const row of rows[0] ?? []) {
+            const n = Number(row.n);
+            if (n > 0)
+                out[row.kind] = n;
+        }
+        return out;
+    }
+    /**
+     * PERMANENTLY remove the user row (workspace-pinned). Everything the
+     * schema marks CASCADE goes with it; SET NULL columns keep their rows and
+     * lose the attribution. Callers must have cleared the RESTRICT relations
+     * first (`countOwnedContent`) — the FK is the final backstop and surfaces
+     * as a duplicate/reference error the service maps to a 409, never a 500.
+     */
+    async hardDelete(userId, workspaceId, exec = this.db) {
+        const result = await exec
+            .delete(schema_1.users)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.users.id, userId), (0, drizzle_orm_1.eq)(schema_1.users.workspaceId, workspaceId)));
+        return result[0].affectedRows;
+    }
+    /** Drop every invitation addressed to this email in the workspace. */
+    async deleteInvitationsForEmail(email, workspaceId, exec = this.db) {
+        const result = await exec
+            .delete(schema_1.invitations)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.invitations.workspaceId, workspaceId), (0, drizzle_orm_1.eq)(schema_1.invitations.email, email)));
+        return result[0].affectedRows;
+    }
     async countByWorkspace(params) {
         const [row] = await this.db
             .select({ value: (0, drizzle_orm_1.count)() })

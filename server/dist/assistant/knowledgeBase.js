@@ -192,7 +192,7 @@ Open [**Settings**](/settings) in the Sidebar. You only see the sections you hav
 may be shorter than this one:
 - [**Profile**](/settings/profile) — your name, timezone, and **Change password**. (everyone)
 - [**Workspace**](/settings/workspace) — workspace name, locale, timezone, business hours, week start day.
-- [**Members**](/settings/members) — see all members; **Invite** new people (enter email, role and team); change roles; deactivate or reactivate users.
+- [**Members**](/settings/members) — see all members; **Invite** new people (enter email, role and team); change roles; deactivate or reactivate users. **Deactivate** is the normal way to remove someone: it takes their access away and keeps all their work and history. **Delete permanently** (the row menu, Owners/Admins only) exists for an account added BY MISTAKE — it works only while that person has created nothing at all; if they already have tasks, comments or files the app refuses, lists what they own, and offers Deactivate instead. Deleting cannot be undone. The workspace owner, and your own account, can never be deleted.
 - [**Teams**](/settings/teams) — which team each person belongs to, and who leads (heads) each team. Admins add/remove people on any team and set each person's home team; a team's **head** can manage their own team's roster here too. Inviting someone always asks which team they join.
 - [**Roles & permissions**](/settings/roles) — create roles and choose exactly what each one may do, then give them to people.
 - [**Task Types**](/settings/task-types) — manage the task types (Task, Bug, Feature, Campaign, Order, Complaint, Incident) with icons and colours.
@@ -252,6 +252,8 @@ If a page says access is not available, or an action is refused, it is not a bug
 - **Where are my notifications?** [Inbox](/inbox), or the bell in the Topbar.
 - **How do I change my password?** [Settings → Profile](/settings/profile), then **Change password**.
 - **How do I invite a teammate?** [Settings → Members](/settings/members), then **Invite** (Owner/Admin only).
+- **How do I remove someone who left the company?** [Settings → Members](/settings/members) → the row menu → **Deactivate**. Their access stops immediately and everything they did stays intact. (Permanent deletion is only for accounts added by mistake — see below.)
+- **I added someone by mistake — can I delete them completely?** Yes, if they have not created anything yet: [Settings → Members](/settings/members) → the row menu → **Delete permanently**, then type their email to confirm (Owner/Admin only, cannot be undone). If they have already made tasks, comments or uploads, the app will refuse and show what they own — use **Deactivate** for those people.
 - **How do I create a new role?** [Roles & permissions](/settings/roles) → **New role** → give it a name → tick the abilities it should have (and pick how far each reaches) → **Save changes**.
 - **How do I stop someone seeing other departments?** Since the team-access update this is the DEFAULT: Members and Guests already see only the team(s) they belong to on [Teams](/settings/teams). To widen it, add them to more teams or grant their team sight of another team; the underlying role switch lives in [Roles & permissions](/settings/roles) (**See spaces → Their spaces**).
 - **Why does it say I don't have permission?** That ability is not in your role. Ask an Owner or Admin to add it in [Roles & permissions](/settings/roles).

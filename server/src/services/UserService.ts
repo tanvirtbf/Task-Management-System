@@ -1,3 +1,4 @@
+import { eq, sql } from "drizzle-orm";
 import { syncUserSystemRole } from "../rbac/bootstrap";
 import { strictDecodeCursor } from "../utils/pagination";
 import { holds } from "../rbac/can";
@@ -42,6 +43,16 @@ const MAX_RESET_TX_ATTEMPTS = 3;
 
 /** Invitations are valid for 7 days (spec is silent; reset tokens are ≤30 min). */
 const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * MySQL 1451: the row is still referenced by an `ON DELETE RESTRICT` foreign
+ * key. The race-safe backstop behind `hardDelete`'s content probe (the
+ * `isDuplicateKeyError` shape, one error code over).
+ */
+const isReferencedError = (err: unknown): boolean => {
+    const e = err as { code?: string; errno?: number } | null;
+    return e?.code === "ER_ROW_IS_REFERENCED_2" || e?.errno === 1451;
+};
 
 /**
  * Admin-initiated password resets reuse the §2 forgot-password contract: a
@@ -678,6 +689,196 @@ export class UserService {
                 },
                 tx,
             );
+        });
+    }
+
+    /**
+     * What would block a PERMANENT delete of this member
+     * (`GET /api/v1/users/:id/deletion-preflight`, 👑 admin/owner).
+     *
+     * Read-only. The UI calls it before offering the irreversible action, so a
+     * person is told "3 tasks, 5 comments — deactivate instead" in a dialog
+     * rather than by a 409 after they typed a confirmation.
+     */
+    async deletionPreflight(input: AdminUserActionInput): Promise<{
+        user: UserListRow;
+        blockers: Record<string, number>;
+        deletable: boolean;
+        reason: string | null;
+    }> {
+        const target = await this.users.findByIdInWorkspace(
+            input.userId,
+            input.workspaceId,
+        );
+        if (!target) {
+            throw AppError.notFound(
+                "user.not_found",
+                `User ${input.userId} does not exist`,
+            );
+        }
+        const blockers = await this.users.countOwnedContent(input.userId);
+        const reason =
+            target.role === "owner"
+                ? "The workspace owner can never be deleted."
+                : input.actorId === input.userId
+                  ? "You cannot delete your own account."
+                  : Object.keys(blockers).length > 0
+                    ? "This person has already created work in the workspace. Deleting them would destroy it, so deactivate them instead."
+                    : null;
+        return { user: target, blockers, deletable: reason === null, reason };
+    }
+
+    /**
+     * PERMANENTLY delete a member (`DELETE /api/v1/users/:id`, 👑 admin/owner).
+     *
+     * The office's case: someone added by mistake. Deactivation keeps the row
+     * forever, which is right for a person who did work and wrong for a typo.
+     *
+     * The rule that keeps this safe on a lived-in workspace: **a member is
+     * deletable only while they have left NOTHING behind.** Thirteen relations
+     * are `ON DELETE RESTRICT` (tasks, comments, attachments, lists, spaces,
+     * custom fields, forms, templates, dependencies, reviews, on-call shifts,
+     * invitations they sent) — if any of them still points here the delete is
+     * refused with a per-kind breakdown (409 `user.has_content`) and the admin
+     * is pointed at deactivate. Everything else the schema already handles:
+     * their sessions, notifications, prefs, push devices, watches, assignee
+     * rows, assignment requests and chat are CASCADE (personal state, goes
+     * with them); attribution columns are SET NULL.
+     *
+     * Guards, in the order a caller meets them: 404 outside the workspace ·
+     * 403 the workspace owner · 403 yourself · 409 the last admin-capable
+     * account (the `deactivate` backstop, so a delete cannot lock the
+     * workspace out either) · 409 content. The audit row is written BEFORE the
+     * delete — `workspace_activity.entity_id` carries no FK, so the trace
+     * survives the person (their email + name ride in the context, since the
+     * row they name is about to vanish).
+     *
+     * The FK itself is the race backstop: if a task is created against this
+     * user between the probe and the DELETE, MySQL rejects it with
+     * `ER_ROW_IS_REFERENCED_2` and that becomes the same 409, never a 500.
+     */
+    async hardDelete(
+        input: AdminUserActionInput & { actorRole: string },
+    ): Promise<void> {
+        const legacy = await liveLegacyRole(input.actorRole);
+        if (legacy !== "owner" && legacy !== "admin") {
+            // Deleting a person outranks every other member action, so it stays
+            // owner/admin even if a custom role carries `member.deactivate`.
+            throw AppError.forbidden(
+                "auth.forbidden",
+                "Only an owner or admin can permanently delete a member",
+            );
+        }
+        if (input.actorId === input.userId) {
+            throw AppError.forbidden(
+                "user.cannot_self_delete",
+                "You cannot delete your own account",
+            );
+        }
+
+        const blockers = await this.users.countOwnedContent(input.userId);
+
+        try {
+            await this.db.transaction(async (tx) => {
+                // Row lock: a concurrent delete/deactivate of the same person
+                // serialises here, and the second call re-reads and 404s.
+                const current = await this.users.findByIdForUpdate(
+                    input.userId,
+                    input.workspaceId,
+                    tx,
+                );
+                if (!current) {
+                    throw AppError.notFound(
+                        "user.not_found",
+                        `User ${input.userId} does not exist`,
+                    );
+                }
+                if (current.role === "owner") {
+                    throw AppError.forbidden(
+                        "user.cannot_delete_owner",
+                        "The workspace owner cannot be deleted",
+                    );
+                }
+                if (current.role === "admin") {
+                    const others = await this.users.countActiveAdminCapable(
+                        input.workspaceId,
+                        input.userId,
+                        tx,
+                    );
+                    if (others === 0) {
+                        throw AppError.conflict(
+                            "role.last_admin",
+                            "This is the workspace's last active admin — deleting them would leave nobody able to administer it",
+                        );
+                    }
+                }
+                if (Object.keys(blockers).length > 0) {
+                    // The breakdown rides the MESSAGE (409 carries no details
+                    // in this taxonomy) so the admin sees exactly what holds
+                    // the row — the preflight endpoint serves it structured.
+                    const summary = Object.entries(blockers)
+                        .map(([kind, n]) => `${n} ${kind.replace(/_/g, " ")}`)
+                        .join(", ");
+                    throw AppError.conflict(
+                        "user.has_content",
+                        `This person has already created work in this workspace (${summary}), so they cannot be deleted — deactivate them instead`,
+                    );
+                }
+
+                // The trace, written while the row still exists to describe.
+                await this.activity.record(
+                    {
+                        workspaceId: input.workspaceId,
+                        actorId: input.actorId,
+                        entityType: "user",
+                        entityId: input.userId,
+                        action: "deleted",
+                        context: {
+                            email: current.email,
+                            name: `${current.firstName} ${current.lastName}`.trim(),
+                            role: current.role,
+                            status: current.status,
+                        },
+                    },
+                    tx,
+                );
+                // A pending invite for that address must not outlive them —
+                // the link would resolve to a user that no longer exists.
+                await this.users.deleteInvitationsForEmail(
+                    current.email,
+                    input.workspaceId,
+                    tx,
+                );
+                await this.users.hardDelete(
+                    input.userId,
+                    input.workspaceId,
+                    tx,
+                );
+                // Their `user_roles` rows went with them (CASCADE); bump the
+                // workspace stamp so no cached actor outlives the row.
+                await tx
+                    .update(schema.workspaces)
+                    .set({
+                        permissionsVersion: sql`${schema.workspaces.permissionsVersion} + 1`,
+                    })
+                    .where(eq(schema.workspaces.id, input.workspaceId));
+            });
+        } catch (err) {
+            if (isReferencedError(err)) {
+                // A RESTRICT relation appeared between the probe and the
+                // delete (someone created work as them mid-flight).
+                throw AppError.conflict(
+                    "user.has_content",
+                    "This person created work in this workspace while the deletion was being processed — deactivate them instead",
+                );
+            }
+            throw err;
+        }
+
+        this.logger.info("users.hard_delete.ok", {
+            workspaceId: input.workspaceId,
+            actorId: input.actorId,
+            userId: input.userId,
         });
     }
 
