@@ -2,6 +2,8 @@ import type OpenAI from "openai";
 import type { Role } from "../constants";
 import { AppError } from "../errors";
 import type { UsersRepo } from "../repositories/UsersRepo";
+import type { MyTaskBucket } from "../repositories/HomeRepo";
+import type { TasksRepo } from "../repositories/TasksRepo";
 import type { HomeService } from "../services/HomeService";
 import type { SearchService } from "../services/SearchService";
 import type { TaskWriteService } from "../services/TaskWriteService";
@@ -41,6 +43,8 @@ export interface ToolServices {
     /** The write path — the same service the New-task button uses. */
     taskWrite: TaskWriteService;
     users: UsersRepo;
+    /** Scoped task reads for `get_task_details` (deep-plan P3). */
+    tasks: TasksRepo;
 }
 
 export const ASSISTANT_TOOL_DEFS: OpenAI.Chat.Completions.ChatCompletionTool[] =
@@ -54,6 +58,51 @@ export const ASSISTANT_TOOL_DEFS: OpenAI.Chat.Completions.ChatCompletionTool[] =
                 parameters: {
                     type: "object",
                     properties: {},
+                    additionalProperties: false,
+                },
+            },
+        },
+        {
+            type: "function",
+            function: {
+                name: "get_my_tasks",
+                description:
+                    "The user's OWN tasks as a LIST of real rows (name, list, status, due date) — use this whenever they ask WHICH tasks, e.g. 'ami ki ki task e assign asi', 'amar overdue kaj kongula', 'ei shoptahe ki ki ache'. get_my_task_counts gives only NUMBERS; this gives the tasks themselves. Buckets: open (default, everything assigned to them that is not finished), overdue, due_soon (next 7 days), awaiting_review (completed work waiting for THEM to review, as a Head or named reviewer), done_recent. Capped — if the result says more:true, tell them there are others and point them at Home.",
+                parameters: {
+                    type: "object",
+                    properties: {
+                        bucket: {
+                            type: "string",
+                            enum: [
+                                "open",
+                                "overdue",
+                                "due_soon",
+                                "awaiting_review",
+                                "done_recent",
+                            ],
+                            description: "Which view; omit for open",
+                        },
+                    },
+                    additionalProperties: false,
+                },
+            },
+        },
+        {
+            type: "function",
+            function: {
+                name: "get_task_details",
+                description:
+                    "Everything about ONE task the user can see — status, assignees, due date, priority, list/space, checklist progress, review verdict. Use for 'X task er ki obostha?', 'checklist koto% hoyeche?', 'kake deya ache?'. Accepts the task's name, its id, or its custom id. If it answers not_found, do NOT conclude the task exists somewhere hidden — say it was not found or is not visible to them.",
+                parameters: {
+                    type: "object",
+                    properties: {
+                        task: {
+                            type: "string",
+                            description:
+                                "The task's name as the user said it, or its id / custom id",
+                        },
+                    },
+                    required: ["task"],
                     additionalProperties: false,
                 },
             },
@@ -206,6 +255,40 @@ export async function executeAssistantTool(
                 slaBreachesAcrossTheWholeWorkspace: k.slaBreaches.value,
             };
         }
+        case "get_my_tasks": {
+            const bucket = MY_TASK_BUCKETS.includes(args.bucket as MyTaskBucket)
+                ? (args.bucket as MyTaskBucket)
+                : "open";
+            // One over the cap, so "there are more" is a fact, not a guess.
+            const rows = await services.home.myTasks({
+                workspaceId: ctx.workspaceId,
+                userId: ctx.userId,
+                bucket,
+                limit: MY_TASKS_CAP + 1,
+            });
+            const shown = rows.slice(0, MY_TASKS_CAP);
+            return {
+                bucket,
+                count: shown.length,
+                more: rows.length > MY_TASKS_CAP,
+                tasks: shown.map((t) => ({
+                    name: t.name,
+                    url: `/t/${t.id}`,
+                    list: t.listName,
+                    team: t.spaceName,
+                    status: t.statusName,
+                    dueDate: dateOnly(t.dueDate),
+                    priority: PRIORITY_WORD[t.priority] ?? "none",
+                    checklist:
+                        t.checklistTotal > 0
+                            ? `${t.checklistDone}/${t.checklistTotal}`
+                            : null,
+                    review: t.reviewStatus,
+                })),
+            };
+        }
+        case "get_task_details":
+            return taskDetailsTool(args, ctx, services);
         case "get_my_agenda": {
             const date = typeof args.date === "string" ? args.date : undefined;
             const tasks = await services.home.agenda(
@@ -261,13 +344,182 @@ export async function executeAssistantTool(
     }
 }
 
-/** Case-insensitive exact-name pick from `candidates`, else null. */
+/** The "my work" views, and how many rows one answer may carry (D4). */
+const MY_TASK_BUCKETS: readonly MyTaskBucket[] = [
+    "open",
+    "overdue",
+    "due_soon",
+    "awaiting_review",
+    "done_recent",
+];
+const MY_TASKS_CAP = 20;
+
+/** Priority is stored 0-4; the model must never invent its own scale. */
+const PRIORITY_WORD: Record<number, string> = {
+    0: "none",
+    1: "urgent",
+    2: "high",
+    3: "normal",
+    4: "low",
+};
+
+/** A DATE column, as the calendar day it is — never a timestamp. */
+const dateOnly = (d: Date | string | null): string | null => {
+    if (!d) return null;
+    if (typeof d === "string") return d.slice(0, 10);
+    return d.toISOString().slice(0, 10);
+};
+
+/**
+ * `get_task_details` — one task, as much as the caller is allowed to see.
+ *
+ * Resolution order: an id / custom id goes through the SCOPED repo read
+ * (`listScopeFilter` + the own-escape), a name goes through the caller's own
+ * search. Both refuse identically when the task is missing OR invisible: one
+ * `not_found` shape with no name echoed back, because "it exists but you may
+ * not see it" hands an outsider the very fact the permission protects.
+ */
+async function taskDetailsTool(
+    args: Record<string, unknown>,
+    ctx: ToolContext,
+    services: ToolServices,
+): Promise<unknown> {
+    const wanted = typeof args.task === "string" ? args.task.trim() : "";
+    if (!wanted) return { error: "Which task? Ask the user for its name." };
+
+    const NOT_FOUND = {
+        error: "not_found",
+        code: "task.not_found",
+        say: "Not found, or not visible to this user — do not claim it exists.",
+    };
+
+    // 1) Try it as an id / custom id (cheap, and exact).
+    let row = await services.tasks.findDetailInWorkspace(
+        wanted,
+        ctx.workspaceId,
+    );
+
+    // 2) Otherwise resolve the NAME through the caller's own search.
+    if (!row) {
+        const byName = async (q: string) =>
+            (
+                await services.search.search({
+                    workspaceId: ctx.workspaceId,
+                    role: ctx.role,
+                    q,
+                    limit: 8,
+                })
+            ).tasks.map((t) => ({ id: t.id, name: t.name }));
+
+        let hits = await byName(wanted);
+        // The whole phrase found nothing. Search is a plain substring LIKE, so
+        // ONE character the user typed differently (a hyphen where the real
+        // name has an em dash) matches nothing at all. Retry with the words
+        // BEFORE the first punctuation — that part is almost always a
+        // contiguous substring of the real name. A person asking about their
+        // own task must never be told it does not exist because of a dash.
+        if (hits.length === 0) {
+            const loose = looseQuery(wanted);
+            if (loose) hits = await byName(loose);
+        }
+        const pick =
+            exactMatch(hits, wanted) ?? (hits.length === 1 ? hits[0] : null);
+        if (!pick) {
+            return hits.length === 0
+                ? NOT_FOUND
+                : {
+                      error: `More than one task matches "${wanted}". Ask the user which one they mean.`,
+                      candidates: hits.slice(0, 5).map((h) => h.name),
+                  };
+        }
+        row = await services.tasks.findDetailInWorkspace(
+            pick.id,
+            ctx.workspaceId,
+        );
+        if (!row) return NOT_FOUND;
+    }
+
+    const [assigneeIds, watcherIds] = await Promise.all([
+        services.tasks.assigneesByTask([row.id]),
+        services.tasks.watchersByTask([row.id]),
+    ]);
+    const ids = assigneeIds.get(row.id) ?? [];
+    const people =
+        ids.length > 0
+            ? await services.users.findManyByIdsInWorkspace(
+                  ids,
+                  ctx.workspaceId,
+              )
+            : [];
+
+    const total = row.checklistItemsTotal ?? 0;
+    const done = row.checklistItemsDone ?? 0;
+    return {
+        name: row.name,
+        url: `/t/${row.id}`,
+        id: row.customId ?? row.id,
+        status: row.statusName,
+        list: row.listName,
+        team: row.spaceName,
+        dueDate: dateOnly(row.dueDate),
+        startDate: dateOnly(row.startDate),
+        priority: PRIORITY_WORD[row.priority] ?? "none",
+        assignees: people.map((p) => `${p.firstName} ${p.lastName}`.trim()),
+        unassigned: ids.length === 0,
+        watchers: (watcherIds.get(row.id) ?? []).length,
+        checklist:
+            total > 0
+                ? {
+                      done,
+                      total,
+                      percent: Math.round((done / total) * 100),
+                  }
+                : null,
+        review: row.reviewStatus,
+        archived: !!row.archivedAt,
+        completed: !!row.completedAt,
+    };
+}
+
+/**
+ * Compare names the way a person would, not the way a database does.
+ *
+ * Real task names in this workspace carry typographic dashes ("Repeated late
+ * delivery — VIP customer") that nobody types; a live probe had a Customer
+ * Service member asking about his OWN task with a plain hyphen and being told
+ * "not found, or you do not have permission" — wrong, and alarming in exactly
+ * the wrong direction. So dashes are unified, punctuation dropped and spaces
+ * collapsed before matching.
+ */
+const normalizeName = (s: string): string =>
+    s
+        .toLowerCase()
+        .replace(/[‐-―−]/g, "-") // – — ‑ − → -
+        .replace(/[^\p{L}\p{N}]+/gu, " ")
+        .trim()
+        .replace(/\s+/g, " ");
+
+/**
+ * A shorter query that is still a CONTIGUOUS substring of the intended name —
+ * the words before the first punctuation mark, capped at four. Used only after
+ * the full phrase found nothing, because search is a plain `LIKE %q%` and one
+ * mistyped dash therefore matches zero rows.
+ */
+const looseQuery = (s: string): string | null => {
+    const head = (s.split(/[^\p{L}\p{N}\s]/u)[0] ?? "").trim();
+    const words = head.split(/\s+/).filter(Boolean);
+    if (words.length >= 2) return words.slice(0, 4).join(" ");
+    const all = s.trim().split(/\s+/).filter(Boolean);
+    return all.length > 1 ? all.slice(0, 3).join(" ") : null;
+};
+
+/** Case-insensitive, punctuation-tolerant exact-name pick, else null. */
 const exactMatch = <T extends { name: string }>(
     candidates: T[],
     wanted: string,
 ): T | null => {
-    const lc = wanted.trim().toLowerCase();
-    const hits = candidates.filter((c) => c.name.trim().toLowerCase() === lc);
+    const want = normalizeName(wanted);
+    const hits = candidates.filter((c) => normalizeName(c.name) === want);
     return hits.length === 1 ? hits[0] : null;
 };
 

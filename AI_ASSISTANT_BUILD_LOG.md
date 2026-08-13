@@ -1457,3 +1457,83 @@ consecutively**.
 **Verdict: Deep P2 COMPLETE — the assistant now answers as if it knows the person, and refuses
 without lying. Ready for "AI deep phase 3 koren" (the "my work" tools: assigned tasks, task
 details).**
+
+---
+
+## Deep P3 — "my work": WHICH tasks, not how many — ✅ COMPLETE (2026-08-13)
+
+The headline ask. *"ami ki ki task e assign asi?"* could only ever be answered with a NUMBER
+before this; now it comes back as the real tasks, each a link, in Bangla.
+
+### Shipped
+- **`get_my_tasks`** — buckets `open` (default) · `overdue` · `due_soon` (7 days) ·
+  `awaiting_review` · `done_recent`. Backed by one new query, `HomeRepo.myTasksByBucket`, that
+  carries the list / team / status NAMES so the answer can say them without a second read.
+  **"Today" is the workspace's calendar day** (`HomeService.myTasks` resolves the zone), so
+  `overdue` here and the overdue tile can never disagree by a timezone.
+- **`get_task_details`** — one task by name, id or custom id: status, list, team, assignees,
+  due/start, priority, **checklist done/total/percent**, review verdict, watcher count.
+- **Row cap 20 with `more:true`** — the bot must SAY it was capped (D4: no silent truncation).
+- Prompt: which-tool routing (counts vs list vs one task), a short numbered-list answer shape,
+  and *print only what the tool returned* — a missing due date is "due date দেওয়া নেই", never a
+  guess.
+
+### Why there is no extra visibility filter, and why that is not a hole
+Every bucket except `awaiting_review` is keyed on `task_assignees.user_id = me`, and being an
+assignee IS the own-escape — the same rule the Home tiles already use, so the bot's list and the
+dashboard can never disagree. `awaiting_review` is keyed on heading the space or being the named
+reviewer. `get_task_details` goes through a scoped read (`listScopeFilter` + own-escape) and a
+**single new repo method** rather than "check visibility, then look up the names separately",
+because that second lookup is exactly how a scoped read quietly becomes an unscoped one.
+
+### Three real defects, all found by live probing
+
+**1. The invented domain came back — and prompting could not fix it.** Task answers rendered
+`https://beautybooth.com/t/…`, a site that does not exist. The rule already existed for
+`create_task`; a second, blunter rule was added ("EVERY link is a RELATIVE path… never write
+https://") — the server was confirmed to have reloaded, and **the model still did it in every
+multi-task answer**. So it is no longer left to the prompt: `assistant/links.ts` rewrites
+`](https://any-host/t/abc)` → `](/t/abc)` on the way out, for any path this app actually serves.
+The reply STREAMS, so a link arrives in pieces (`](htt`, `ps://beauty`, `booth.com/t/ab`, `c)`) —
+`LinkSafeStream` holds back only text that could still be an unfinished link target and releases
+everything else immediately. Both transports use it. Verified live: JSON **and** SSE now emit
+relative links.
+
+**2. A permitted person was told "not found, or you do not have permission" for his OWN task.**
+Rakib (Customer Service) asked about *"Repeated late delivery - VIP customer"*; the real name has
+an **em dash**. Search is a plain `LIKE %q%`, so one mistyped character matched zero rows — and
+the honest-denial wording then implied a permission problem that did not exist. Fixed on two
+levels: names are compared with punctuation normalised (all dash characters unified), and when
+the full phrase finds nothing the tool retries with the words BEFORE the first punctuation, which
+is almost always a contiguous substring of the real name. Re-probed: **Rakib gets his task,
+Sumaiya (Marketing) asking the identical question is still refused** — the boundary intact.
+
+**3. The system prompt contradicted itself, and the eval's flaky row proved it.** The gate kept
+dipping on "how do I create a task" / "how do I assign a task" (no link) and on "how do I add
+someone to a team" (no steps). Chasing the rows instead of shrugging at "model variance" found
+the causes in our own text: the prompt's worked EXAMPLE for creating a task **ended without a
+link**, directly contradicting the always-link rule, and P1's team quick-answer was written as
+inline "(1) … (2) …" prose, which the model faithfully copied instead of writing steps. Both
+rewritten.
+
+### Verified
+`jest.assistant` **12 suites / 184 tests** ✅ (was 163: `my-work-tools.test.ts` 12 +
+`links.test.ts` 9). The tool tests read the TOOL RESULT: the caller's own rows only · two callers
+in sequence do not blur · `overdue` excludes a future date · checklist progress rides along ·
+an empty bucket is an empty list, not an error · the cap SAYS it capped · a task in an invisible
+team is `not_found` **with its name never echoed** · resolution by id · ambiguity asks ·
+the em-dash case · and a task assigned to someone in ANOTHER team is still readable (the
+own-escape — which needed a caller whose `task.view` reaches `own`, because the escape is itself
+a permission, not a freebie).
+
+Server `tsc` + build clean · system message **45,708** (ceiling 46k held **without another
+bump**: the P3 additions were paid for by deleting a real duplication — the Sidebar section had
+been re-describing every page that "Where things live" already lists) · tool defs 4,664 / 6 tools.
+
+**Eval gate: PERFECT ×5 consecutively, and `answers with a clickable route` reached 15/15 for the
+first time** (its ceiling had been 14/15 for the whole project, because of those two contradicted
+examples).
+
+**Verdict: Deep P3 COMPLETE — "ami ki ki task e assign asi?" now answers with the actual tasks,
+correctly scoped, correctly linked. Ready for "AI deep phase 4 koren" (people & teams, plus the
+G7 directory gate).**

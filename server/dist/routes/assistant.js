@@ -72,6 +72,7 @@ else {
         search: new SearchService_1.SearchService(new SearchRepo_1.SearchRepo(db), tasksRepo),
         taskWrite: new TaskWriteService_1.TaskWriteService(db, listsRepo, new StatusesRepo_1.StatusesRepo(db), new TaskTypesRepo_1.TaskTypesRepo(db), tasksRepo, new TaskMembershipRepo_1.TaskMembershipRepo(db), usersRepo, new TagsRepo_1.TagsRepo(db), new TaskActivityRepo_1.TaskActivityRepo(db), new NotificationsRepo_1.NotificationsRepo(db), new AttachmentsRepo_1.AttachmentsRepo(db), new WorkspaceRepo_1.WorkspaceRepo(db), new WorkspaceActivityRepo_1.WorkspaceActivityRepo(db), tasksService, logger_1.default),
         users: usersRepo,
+        tasks: tasksRepo,
     };
     // Deep-plan P2 (D11): team NAMES are not on the resolved actor, so the
     // caller block needs the membership rows plus the (already scope-filtered)

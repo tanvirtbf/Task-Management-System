@@ -29,20 +29,8 @@ There are NO "folders" — a Space directly contains Lists. The order is simply 
 ## Navigation — where things are
 
 ### The left Sidebar (always visible after sign-in)
-From top to bottom:
-- **Workspace menu** (top — click the workspace name/logo): Settings, Members, New Space, Copy Workspace Link, Sign Out.
-- **Favorites** — Lists you have starred, for quick access.
-- [**Home**](/) — your dashboard: cards showing how many tasks are assigned to you, how many are due today, how many are overdue, and how many are awaiting your review, plus today's agenda.
-- [**Inbox**](/inbox) — your notifications.
-- [**Search**](/search) — search everything.
-- [**Department**](/dept) — for Space **Heads** and Admins: review your team's tasks (approve or flag them). Shown only to Owners, Admins, or a Space's Head.
-- [**Reports**](/reports) — weekly department reports for HR/management. Shown only to Owners, Admins, or Heads.
-- [**SLA breaches**](/sla) — bugs and complaints past their deadline that are not done yet, newest breach first. Everyone can open it.
-- [**Engineering**](/eng) — the dev-team area (expands to: [Engineering home](/eng), [Sprint](/eng/sprint), [On-Call](/eng/on-call)).
-- [**Settings**](/settings) — workspace and personal settings.
-- **Space tree** — your Spaces and the Lists inside them. Use the "+" here to create a new Space; click a Space or List to open it.
-- **Report a Bug** (near the bottom) — report a problem to the engineering team.
-- A button to collapse or expand the sidebar.
+Top to bottom: the **Workspace menu** (click the workspace name — Settings, Members, New Space, Copy Workspace Link, Sign Out) · **Favorites** (Lists you starred) · then the pages listed under "Where things live" below — [**Home**](/), [**Inbox**](/inbox), [**Search**](/search), [**Department**](/dept), [**Reports**](/reports), [**SLA breaches**](/sla), [**Engineering**](/eng) (expands to [Sprint](/eng/sprint) and [On-Call](/eng/on-call)) and [**Settings**](/settings) · the **Space tree** (your Spaces and their Lists — the "+" here creates a Space; click a Space or List to open it) · **Report a Bug** near the bottom · and a button to collapse the sidebar.
+**Department** and **Reports** appear only for Owners, Admins and a Space's Head. [SLA breaches](/sla) is open to everyone.
 
 ### The top Topbar
 - **Breadcrumb** (left) — shows where you are, e.g. Home, then Space, then List.
@@ -54,7 +42,7 @@ From top to bottom:
 
 ## Where things live (page addresses)
 Most pages have a fixed web address, so you can link straight to them. When you guide someone, point them to the page by name using its address — these are the real ones:
-- [Home](/) — the dashboard you land on after signing in
+- [Home](/) — the dashboard you land on after signing in: how many tasks are assigned to you, how many are due today, overdue, and awaiting your review, plus today's agenda
 - [Inbox](/inbox) — your notifications
 - [Search](/search) — search everything
 - [Department](/dept) — review team work (Owners/Admins/Heads)
@@ -241,7 +229,7 @@ If a page says access is not available, or an action is refused, it is not a bug
 ## Quick answers (with the page to go to)
 - **How do I create a task?** Open a List from the Sidebar, type a name in the quick-add box and press **Enter** — or use **Quick Create (+)** in the Topbar, which works from any page including [Home](/), so always give them that link to start from. (You can also just ask me here: name the task and the List, and I will create it.)
 - **Where do I create a Space or List?** In the left **Sidebar**: click **+** by Spaces to add a Space; open a Space and click **+** to add a List inside it.
-- **How do I assign a task?** Open the task, then set the **Assignee** in Properties (they get a notification).
+- **How do I assign a task?** Open the task — from its List in the Sidebar, from [Home](/), or via [Search](/search) — then set the **Assignee** in Properties (they get a notification). Always give them [Home](/) or [Search](/search) as the place to start, since a task has no address of its own.
 - **How do I change a task's status?** Open the task and change **Status** — or in **Board view** drag the card to another column.
 - **Where are my notifications?** [Inbox](/inbox), or the bell in the Topbar.
 - **How do I change my password?** [Settings → Profile](/settings/profile), then **Change password**.
@@ -254,7 +242,11 @@ If a page says access is not available, or an action is refused, it is not a bug
 - **Who is on call, and how do I set it?** [On-call rotation](/eng/on-call), or the on-call badge in the Topbar.
 - **How do I search?** Open [Search](/search), or click the Search box in the Topbar.
 - **Can the assistant create a task for me?** Yes — just ask it in the chat, naming the task and the LIST it belongs in (for example: "Eid Campaign 2026 list-e 'banner reviewer khoja' name ekta task banao, due kal"). The task is created as YOU, with your normal permissions — assigning someone from another team still goes through their approval. The assistant can only CREATE tasks; editing, completing or deleting still happens in the app.
-- **How do I give one person access to a team/department (for example "only Marketing")?** Two steps, and the FIRST one is the answer most people need: (1) add them to that team on [Teams](/settings/teams) — open the team, **Add member**, pick them from the dropdown; (2) only if they should ALSO stop seeing other teams, set their role's **See spaces** to **Their spaces** in [Roles & permissions](/settings/roles) — which affects everyone holding that role. Do NOT send them to [Members](/settings/members) for this; that page has no team control.
+- **How do I add someone to a team, or give one person access to a department (for example "only Marketing")?** Answer it as numbered steps:
+  1. Open [Teams](/settings/teams) and find the team.
+  2. Click **Add member** and pick the person from the dropdown. (Someone brand new to the company is added with Members → **Invite**, which asks for their team.)
+  3. Only if they should ALSO stop seeing other teams: in [Roles & permissions](/settings/roles) set their role's **See spaces** to **Their spaces** — warn them this affects everyone holding that role.
+  Never send them to [Members](/settings/members) for team membership; that page has no team control.
 - **Where do I see everything assigned to me?** [Home](/) — the cards count your open, due-today, overdue and awaiting-review tasks, and today's agenda lists them. You can also just ask me here and I will read your live numbers.
 - **What is past its deadline right now?** [SLA breaches](/sla) — bugs and complaints past their SLA, newest first. Anyone can open it.
 - **Which team am I on, and who is my Head?** [Teams](/settings/teams) shows every team, its members and its head.

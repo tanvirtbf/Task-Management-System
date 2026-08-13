@@ -2,6 +2,7 @@ import {
     and,
     asc,
     count,
+    desc,
     eq,
     inArray,
     isNull,
@@ -41,6 +42,29 @@ export interface DayCount {
 
 /** The grouped-by-creation-day select shared by every KPI series query. */
 const DAY = sql<string>`DATE_FORMAT(${tasks.createdAt}, '%Y-%m-%d')`;
+
+/** The assistant's "my work" views (deep-plan P3). */
+export type MyTaskBucket =
+    | "open"
+    | "overdue"
+    | "due_soon"
+    | "awaiting_review"
+    | "done_recent";
+
+/** One row of a "my work" list — enough to name it without a second read. */
+export interface MyTaskRow {
+    id: string;
+    customId: string | null;
+    name: string;
+    dueDate: Date | string | null;
+    priority: number;
+    reviewStatus: "approved" | "flagged" | null;
+    checklistTotal: number;
+    checklistDone: number;
+    statusName: string;
+    listName: string;
+    spaceName: string;
+}
 
 export class HomeRepo {
     constructor(private db: MySql2Database<typeof schema>) {}
@@ -197,6 +221,114 @@ export class HomeRepo {
                 ),
             )
             .groupBy(DAY);
+    }
+
+    /**
+     * THE ASSISTANT'S "my work" LIST (deep-plan P3).
+     *
+     * The KPI series above answer "how many"; this answers "which ones", which
+     * is the question the office actually asks the bot ("ami ki ki task e
+     * assign asi?"). One query, one compact projection — list/space/status
+     * names come along so the answer can name them without a second read.
+     *
+     * ── WHY NO VISIBILITY FILTER (and why that is not a hole) ───────────────
+     * Every bucket except `awaiting_review` is keyed on `task_assignees.user_id
+     * = me`, and being an assignee IS the own-escape: a person can always see
+     * what is assigned to them, even outside their spaces. That is the same
+     * rule `myOpenSeries` / `overdueSeries` / `agendaTasks` already use, so the
+     * bot's list and the Home tiles can never disagree. `awaiting_review` is
+     * keyed on heading the space or being the named reviewer — also a
+     * relationship to the caller, not a browse.
+     */
+    async myTasksByBucket(input: {
+        workspaceId: string;
+        userId: string;
+        bucket: MyTaskBucket;
+        /** `YYYY-MM-DD` in the WORKSPACE's timezone (the canonical clock). */
+        today: string;
+        limit: number;
+    }): Promise<MyTaskRow[]> {
+        const { workspaceId, userId, bucket, today, limit } = input;
+
+        const projection = {
+            id: tasks.id,
+            customId: tasks.customId,
+            name: tasks.name,
+            dueDate: tasks.dueDate,
+            priority: tasks.priority,
+            reviewStatus: tasks.reviewStatus,
+            checklistTotal: tasks.checklistItemsTotal,
+            checklistDone: tasks.checklistItemsDone,
+            statusName: statuses.name,
+            listName: lists.name,
+            spaceName: spaces.name,
+        };
+
+        // `awaiting_review` is a different relationship (I review it), so it
+        // does not join the assignee table at all.
+        if (bucket === "awaiting_review") {
+            return this.db
+                .select(projection)
+                .from(tasks)
+                .innerJoin(statuses, eq(statuses.id, tasks.statusId))
+                .innerJoin(lists, eq(lists.id, tasks.primaryListId))
+                .innerJoin(spaces, eq(spaces.id, lists.spaceId))
+                .where(
+                    and(
+                        eq(tasks.workspaceId, workspaceId),
+                        isNull(tasks.archivedAt),
+                        inArray(statuses.statusGroup, CLOSED_GROUPS),
+                        isNull(tasks.reviewStatus),
+                        or(
+                            eq(spaces.headUserId, userId),
+                            eq(tasks.reviewerId, userId),
+                        ),
+                    ),
+                )
+                .orderBy(desc(tasks.completedAt))
+                .limit(limit);
+        }
+
+        const mine = and(
+            eq(tasks.workspaceId, workspaceId),
+            eq(taskAssignees.userId, userId),
+            isNull(tasks.archivedAt),
+        );
+        const open = notInArray(statuses.statusGroup, CLOSED_GROUPS);
+        const where =
+            bucket === "overdue"
+                ? and(mine, open, sql`${tasks.dueDate} < ${today}`)
+                : bucket === "due_soon"
+                  ? and(
+                        mine,
+                        open,
+                        sql`${tasks.dueDate} >= ${today}`,
+                        sql`${tasks.dueDate} <= DATE_ADD(${today}, INTERVAL 7 DAY)`,
+                    )
+                  : bucket === "done_recent"
+                    ? and(mine, inArray(statuses.statusGroup, CLOSED_GROUPS))
+                    : and(mine, open);
+
+        const q = this.db
+            .select(projection)
+            .from(tasks)
+            .innerJoin(taskAssignees, eq(taskAssignees.taskId, tasks.id))
+            .innerJoin(statuses, eq(statuses.id, tasks.statusId))
+            .innerJoin(lists, eq(lists.id, tasks.primaryListId))
+            .innerJoin(spaces, eq(spaces.id, lists.spaceId))
+            .where(where);
+
+        return bucket === "done_recent"
+            ? q.orderBy(desc(tasks.completedAt)).limit(limit)
+            : // Soonest first, and undated work last rather than first —
+              // MySQL sorts NULL before everything otherwise.
+              q
+                  .orderBy(
+                      sql`${tasks.dueDate} IS NULL`,
+                      asc(tasks.dueDate),
+                      asc(tasks.internalId),
+                  )
+                  .limit(limit);
     }
 
     /**

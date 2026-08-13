@@ -110,6 +110,76 @@ class HomeRepo {
             .groupBy(DAY);
     }
     /**
+     * THE ASSISTANT'S "my work" LIST (deep-plan P3).
+     *
+     * The KPI series above answer "how many"; this answers "which ones", which
+     * is the question the office actually asks the bot ("ami ki ki task e
+     * assign asi?"). One query, one compact projection — list/space/status
+     * names come along so the answer can name them without a second read.
+     *
+     * ── WHY NO VISIBILITY FILTER (and why that is not a hole) ───────────────
+     * Every bucket except `awaiting_review` is keyed on `task_assignees.user_id
+     * = me`, and being an assignee IS the own-escape: a person can always see
+     * what is assigned to them, even outside their spaces. That is the same
+     * rule `myOpenSeries` / `overdueSeries` / `agendaTasks` already use, so the
+     * bot's list and the Home tiles can never disagree. `awaiting_review` is
+     * keyed on heading the space or being the named reviewer — also a
+     * relationship to the caller, not a browse.
+     */
+    async myTasksByBucket(input) {
+        const { workspaceId, userId, bucket, today, limit } = input;
+        const projection = {
+            id: schema_1.tasks.id,
+            customId: schema_1.tasks.customId,
+            name: schema_1.tasks.name,
+            dueDate: schema_1.tasks.dueDate,
+            priority: schema_1.tasks.priority,
+            reviewStatus: schema_1.tasks.reviewStatus,
+            checklistTotal: schema_1.tasks.checklistItemsTotal,
+            checklistDone: schema_1.tasks.checklistItemsDone,
+            statusName: schema_1.statuses.name,
+            listName: schema_1.lists.name,
+            spaceName: schema_1.spaces.name,
+        };
+        // `awaiting_review` is a different relationship (I review it), so it
+        // does not join the assignee table at all.
+        if (bucket === "awaiting_review") {
+            return this.db
+                .select(projection)
+                .from(schema_1.tasks)
+                .innerJoin(schema_1.statuses, (0, drizzle_orm_1.eq)(schema_1.statuses.id, schema_1.tasks.statusId))
+                .innerJoin(schema_1.lists, (0, drizzle_orm_1.eq)(schema_1.lists.id, schema_1.tasks.primaryListId))
+                .innerJoin(schema_1.spaces, (0, drizzle_orm_1.eq)(schema_1.spaces.id, schema_1.lists.spaceId))
+                .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId), (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt), (0, drizzle_orm_1.inArray)(schema_1.statuses.statusGroup, CLOSED_GROUPS), (0, drizzle_orm_1.isNull)(schema_1.tasks.reviewStatus), (0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.spaces.headUserId, userId), (0, drizzle_orm_1.eq)(schema_1.tasks.reviewerId, userId))))
+                .orderBy((0, drizzle_orm_1.desc)(schema_1.tasks.completedAt))
+                .limit(limit);
+        }
+        const mine = (0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId), (0, drizzle_orm_1.eq)(schema_1.taskAssignees.userId, userId), (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt));
+        const open = (0, drizzle_orm_1.notInArray)(schema_1.statuses.statusGroup, CLOSED_GROUPS);
+        const where = bucket === "overdue"
+            ? (0, drizzle_orm_1.and)(mine, open, (0, drizzle_orm_1.sql) `${schema_1.tasks.dueDate} < ${today}`)
+            : bucket === "due_soon"
+                ? (0, drizzle_orm_1.and)(mine, open, (0, drizzle_orm_1.sql) `${schema_1.tasks.dueDate} >= ${today}`, (0, drizzle_orm_1.sql) `${schema_1.tasks.dueDate} <= DATE_ADD(${today}, INTERVAL 7 DAY)`)
+                : bucket === "done_recent"
+                    ? (0, drizzle_orm_1.and)(mine, (0, drizzle_orm_1.inArray)(schema_1.statuses.statusGroup, CLOSED_GROUPS))
+                    : (0, drizzle_orm_1.and)(mine, open);
+        const q = this.db
+            .select(projection)
+            .from(schema_1.tasks)
+            .innerJoin(schema_1.taskAssignees, (0, drizzle_orm_1.eq)(schema_1.taskAssignees.taskId, schema_1.tasks.id))
+            .innerJoin(schema_1.statuses, (0, drizzle_orm_1.eq)(schema_1.statuses.id, schema_1.tasks.statusId))
+            .innerJoin(schema_1.lists, (0, drizzle_orm_1.eq)(schema_1.lists.id, schema_1.tasks.primaryListId))
+            .innerJoin(schema_1.spaces, (0, drizzle_orm_1.eq)(schema_1.spaces.id, schema_1.lists.spaceId))
+            .where(where);
+        return bucket === "done_recent"
+            ? q.orderBy((0, drizzle_orm_1.desc)(schema_1.tasks.completedAt)).limit(limit)
+            : // Soonest first, and undated work last rather than first —
+                // MySQL sorts NULL before everything otherwise.
+                q
+                    .orderBy((0, drizzle_orm_1.sql) `${schema_1.tasks.dueDate} IS NULL`, (0, drizzle_orm_1.asc)(schema_1.tasks.dueDate), (0, drizzle_orm_1.asc)(schema_1.tasks.internalId))
+                    .limit(limit);
+    }
+    /**
      * Agenda: my open tasks due exactly on `date` (a `YYYY-MM-DD`), ordered by
      * due date then a stable internal id. Returns full task rows so the service
      * can hydrate + `toWireTask` them like any other read.

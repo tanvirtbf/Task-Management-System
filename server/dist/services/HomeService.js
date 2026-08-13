@@ -93,6 +93,18 @@ class HomeService {
      * `Task[]` (hydrated like a normal §10 read, guest custom-field redaction
      * applied). Bare array — no `{data,pagination}` envelope (per §25).
      */
+    /**
+     * The assistant's "my work" list (deep-plan P3) — WHICH tasks, not how
+     * many. Thin on purpose: the repo query is already the whole answer, and
+     * "today" must be the WORKSPACE's calendar day (the canonical clock), so
+     * `overdue` here and the overdue tile can never disagree by a timezone.
+     */
+    async myTasks(input) {
+        return this.homeRepo.myTasksByBucket({
+            ...input,
+            today: (0, dhakaTime_1.todayInZone)(await this.zoneOf(input.workspaceId)),
+        });
+    }
     async agenda(workspaceId, userId, role, date) {
         const targetDate = date ?? (0, dhakaTime_1.todayInZone)(await this.zoneOf(workspaceId));
         const rows = await this.homeRepo.agendaTasks(workspaceId, userId, targetDate);

@@ -1,5 +1,10 @@
 import { Roles, type Role } from "../constants";
-import { HomeRepo, type DayCount } from "../repositories/HomeRepo";
+import {
+    HomeRepo,
+    type DayCount,
+    type MyTaskBucket,
+    type MyTaskRow,
+} from "../repositories/HomeRepo";
 import { TasksRepo } from "../repositories/TasksRepo";
 import type { WorkspaceRepo } from "../repositories/WorkspaceRepo";
 import { toWireTask, type WireTask } from "../serializers/taskSerializer";
@@ -110,6 +115,24 @@ export class HomeService {
      * `Task[]` (hydrated like a normal §10 read, guest custom-field redaction
      * applied). Bare array — no `{data,pagination}` envelope (per §25).
      */
+    /**
+     * The assistant's "my work" list (deep-plan P3) — WHICH tasks, not how
+     * many. Thin on purpose: the repo query is already the whole answer, and
+     * "today" must be the WORKSPACE's calendar day (the canonical clock), so
+     * `overdue` here and the overdue tile can never disagree by a timezone.
+     */
+    async myTasks(input: {
+        workspaceId: string;
+        userId: string;
+        bucket: MyTaskBucket;
+        limit: number;
+    }): Promise<MyTaskRow[]> {
+        return this.homeRepo.myTasksByBucket({
+            ...input,
+            today: todayInZone(await this.zoneOf(input.workspaceId)),
+        });
+    }
+
     async agenda(
         workspaceId: string,
         userId: string,

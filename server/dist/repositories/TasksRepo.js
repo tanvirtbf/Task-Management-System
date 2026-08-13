@@ -35,6 +35,41 @@ class TasksRepo {
         return row ?? null;
     }
     /**
+     * THE ASSISTANT'S TASK-DETAIL READ (deep-plan P3).
+     *
+     * Same visibility contract as `findByIdOrCustomIdInWorkspace` — scope
+     * filter plus the own-escape, so an invisible task resolves to `null` and
+     * the tool reports "not found or not visible" without ever confirming that
+     * it exists. It differs only in bringing the STATUS, LIST and SPACE names
+     * along, because the bot has to say them out loud ("Eid Campaign 2026
+     * list-এ, In Progress") and a second lookup after a visibility check is
+     * how a scoped read quietly becomes an unscoped one.
+     */
+    async findDetailInWorkspace(idOrKey, workspaceId) {
+        const [row] = await this.db
+            .select({
+            task: schema_1.tasks,
+            statusName: schema_1.statuses.name,
+            listName: schema_1.lists.name,
+            spaceName: schema_1.spaces.name,
+        })
+            .from(schema_1.tasks)
+            .innerJoin(schema_1.statuses, (0, drizzle_orm_1.eq)(schema_1.statuses.id, schema_1.tasks.statusId))
+            .innerJoin(schema_1.lists, (0, drizzle_orm_1.eq)(schema_1.lists.id, schema_1.tasks.primaryListId))
+            .innerJoin(schema_1.spaces, (0, drizzle_orm_1.eq)(schema_1.spaces.id, schema_1.lists.spaceId))
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId), (0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.tasks.id, idOrKey), (0, drizzle_orm_1.eq)(schema_1.tasks.customId, idOrKey)), await (0, context_1.listScopeFilter)(schema_1.tasks.primaryListId, await (0, ownEscape_1.taskOwnEscape)())))
+            .orderBy((0, drizzle_orm_1.desc)((0, drizzle_orm_1.eq)(schema_1.tasks.id, idOrKey)))
+            .limit(1);
+        return row
+            ? {
+                ...row.task,
+                statusName: row.statusName,
+                listName: row.listName,
+                spaceName: row.spaceName,
+            }
+            : null;
+    }
+    /**
      * Fetch a full task row by either its internal `id` (`t-…`) or its
      * `custom_id` (`ORD-…`), scoped to the caller's workspace. Returns `null`
      * when nothing matches in that workspace — the caller renders both a missing

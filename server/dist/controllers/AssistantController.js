@@ -4,6 +4,7 @@ exports.AssistantController = void 0;
 const errors_1 = require("../errors");
 const tools_1 = require("../assistant/tools");
 const callerContext_1 = require("../assistant/callerContext");
+const links_1 = require("../assistant/links");
 /** Derive a short conversation title from the first question. */
 const titleFromMessage = (msg) => {
     const t = msg.trim().replace(/\s+/g, " ");
@@ -83,13 +84,16 @@ class AssistantController {
                 userId,
                 workspaceId,
             });
-            const reply = await this.assistantService.ask(history ?? [], message, {
+            const raw = await this.assistantService.ask(history ?? [], message, {
                 callerBlock,
                 tools: {
                     definitions: tools_1.ASSISTANT_TOOL_DEFS,
                     execute: (0, tools_1.makeAssistantToolExecutor)(toolCtx, this.toolServices),
                 },
             });
+            // Same link rewrite the streaming path does, so both transports
+            // hand back the same text (P9's one-contract rule).
+            const reply = (0, links_1.relativizeAppLinks)(raw);
             await this.saveMessage(convId, "assistant", reply);
             this.logger.debug("assistant.chat.ok", {
                 requestId: req.requestId,
@@ -113,6 +117,9 @@ class AssistantController {
         res.on("close", () => ac.abort());
         let started = false;
         let full = "";
+        // The model keeps prefixing a made-up domain onto our own paths; this
+        // rewrites them back to relative as the text streams (deep-plan P3).
+        const links = new links_1.LinkSafeStream();
         const startSse = () => {
             started = true;
             res.writeHead(200, {
@@ -124,12 +131,17 @@ class AssistantController {
             });
             res.flushHeaders();
         };
-        const sendDelta = (delta) => {
-            full += delta;
+        const emit = (text) => {
+            if (!text)
+                return;
+            full += text;
             if (!started)
                 startSse();
-            res.write(`data: ${JSON.stringify({ delta })}\n\n`);
+            res.write(`data: ${JSON.stringify({ delta: text })}\n\n`);
         };
+        const sendDelta = (delta) => emit(links.push(delta));
+        /** Release whatever the link buffer is still holding. */
+        const drain = () => emit(links.flush());
         try {
             const callerBlock = await (0, callerContext_1.buildCallerBlock)(this.callerDeps, {
                 userId,
@@ -144,6 +156,7 @@ class AssistantController {
                     execute: (0, tools_1.makeAssistantToolExecutor)(toolCtx, this.toolServices),
                 },
             });
+            drain();
             if (ac.signal.aborted) {
                 await this.saveMessage(convId, "assistant", full); // keep partial
                 if (!res.writableEnded)
@@ -162,6 +175,7 @@ class AssistantController {
             });
         }
         catch (err) {
+            drain();
             if (ac.signal.aborted) {
                 await this.saveMessage(convId, "assistant", full);
                 if (!res.writableEnded)

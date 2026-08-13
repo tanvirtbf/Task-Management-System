@@ -138,7 +138,14 @@
 - **DoD:** live probe — a dept-only member asks "amar role ki? ami ki korte pari?" and
   gets a correct, personal Bangla answer with zero tool calls; eval PERFECT.
 
-### P3 — "My work" tools (G2, G3 — the headline ask)
+### P3 — "My work" tools (G2, G3 — the headline ask) — ✅ **COMPLETE 2026-08-13**
+> `get_my_tasks` (5 buckets, cap 20 + `more`) and `get_task_details` (incl. checklist %) shipped;
+> new `HomeRepo.myTasksByBucket` + a scoped `TasksRepo.findDetailInWorkspace`. jest 163 → **184**.
+> Three live defects fixed: the invented domain (now stripped deterministically by
+> `assistant/links.ts` + `LinkSafeStream`, because two prompt rules failed), a permitted user
+> refused over an em dash, and two self-contradicting bits of our own prompt/KB. Eval **PERFECT
+> ×5** with `clickable route` at **15/15 for the first time**; budget held at 46k by deleting the
+> Sidebar/Where-things-live duplication.
 - Tool `get_my_tasks`: buckets `open | due_soon | overdue | awaiting_review | done_recent`
   (arg `bucket`, default `open`; cap 20 rows: name, custom_id/id, list, space, status,
   due, priority, review_status). New `HomeRepo` (or TasksRepo) query WITH

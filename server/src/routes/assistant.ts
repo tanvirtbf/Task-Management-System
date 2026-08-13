@@ -114,6 +114,7 @@ if (!openai) {
             logger,
         ),
         users: usersRepo,
+        tasks: tasksRepo,
     };
     // Deep-plan P2 (D11): team NAMES are not on the resolved actor, so the
     // caller block needs the membership rows plus the (already scope-filtered)
