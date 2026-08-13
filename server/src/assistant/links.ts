@@ -49,9 +49,27 @@ const ABSOLUTE_APP_LINK = new RegExp(
     "gi",
 );
 
+/**
+ * TASK LINKS, the general rule — written after chasing three variants one at a
+ * time and realising that was the wrong game. Measured on the plan's headline
+ * question ("ami ki ki task e assign asi"), the model produced:
+ *   `](https://beautybooth.com/t/t-abc)`  a domain in front of the real path
+ *   `](https://t-abc)`                    the ID pasted where a HOST goes
+ *   `](https://t/t-abc)`                  "t" as the host, ID as the path
+ * — roughly one answer in three, in some shape or other.
+ *
+ * Rather than add a fourth pattern the next time, this matches the only part
+ * that is ever RIGHT: the task id itself. Whatever surrounds it inside the
+ * link target is discarded and replaced with the address the app really
+ * serves. Idempotent — a correct `](/t/t-abc)` rewrites to itself.
+ */
+const TASK_ID_ANYWHERE = /\]\([^)\s]*?(t-[A-Za-z0-9_-]{8,})[^)\s]*?\)/g;
+
 /** Strip the invented origin from any link that points at one of our pages. */
 export const relativizeAppLinks = (text: string): string =>
-    text.replace(ABSOLUTE_APP_LINK, "]($1)");
+    text
+        .replace(ABSOLUTE_APP_LINK, "]($1)")
+        .replace(TASK_ID_ANYWHERE, "](/t/$1)");
 
 /**
  * Streaming-safe applier of `relativizeAppLinks`.

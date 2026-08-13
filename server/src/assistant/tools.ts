@@ -378,6 +378,14 @@ export async function executeAssistantTool(
             return taskDetailsTool(args, ctx, services);
         case "get_my_agenda": {
             const date = typeof args.date === "string" ? args.date : undefined;
+            // A model-invented date ("kal", "next week") used to reach the SQL
+            // and blow up, and the person got the service's last-resort
+            // "tool_execution_failed" — a dead end they could do nothing with.
+            if (date !== undefined && !isCalendarDay(date)) {
+                return {
+                    error: `"${date}" is not a date. Work the day out from today's date at the top of the prompt and pass it as YYYY-MM-DD, or omit it for today.`,
+                };
+            }
             const tasks = await services.home.agenda(
                 ctx.workspaceId,
                 ctx.userId,
@@ -513,6 +521,23 @@ const PRIORITY_WORD: Record<number, string> = {
     2: "high",
     3: "normal",
     4: "low",
+};
+
+/**
+ * Is `raw` a real calendar day in YYYY-MM-DD? The HTTP validators do this for
+ * every normal request, but the tool path never passes through them, so the
+ * tools own it. Rejects both shapes that reach us: a non-date string the model
+ * invented ("kal", "next week") and a well-formed impossible date (2026-02-30).
+ */
+const isCalendarDay = (raw: string): boolean => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+    if (!m) return false;
+    const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+    return (
+        d.getUTCFullYear() === Number(m[1]) &&
+        d.getUTCMonth() === Number(m[2]) - 1 &&
+        d.getUTCDate() === Number(m[3])
+    );
 };
 
 /** A DATE column, as the calendar day it is — never a timestamp. */
@@ -1085,17 +1110,7 @@ async function createTaskTool(
     let dueDate: string | null = null;
     if (typeof args.due_date === "string" && args.due_date.trim() !== "") {
         const raw = args.due_date.trim();
-        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
-        const asDate = m
-            ? new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])))
-            : null;
-        const valid =
-            !!m &&
-            !!asDate &&
-            asDate.getUTCFullYear() === Number(m![1]) &&
-            asDate.getUTCMonth() === Number(m![2]) - 1 &&
-            asDate.getUTCDate() === Number(m![3]);
-        if (!valid) {
+        if (!isCalendarDay(raw)) {
             return {
                 error: `The due date must be a real calendar day in YYYY-MM-DD form (got "${raw}"). Work it out from today's date and try again, or ask the user.`,
             };

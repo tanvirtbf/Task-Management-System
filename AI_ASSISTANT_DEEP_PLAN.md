@@ -237,6 +237,22 @@
   answers; route-parity green.
 - **DoD:** widget shows role-correct starters live for 3 different roles.
 
+### P8 + P9 — ✅ **COMPLETE 2026-08-13** — 🏁 **THE DEEP PLAN IS DONE**
+> **P8:** eval section C (asked as a team-scoped member) grades refusals and **foreign names
+> leaked (target 0)**, all derived from the live workspace; a transport failure now prints
+> `HTTP <status>` instead of scoring as a wrong answer. `tool-robustness.test.ts` (23) sweeps
+> every tool with garbage arguments and **fails on `tool_execution_failed`** — it found a
+> two-year-old crash in `get_my_agenda` on a non-date. The flaky "own tasks" row was a REAL
+> defect: the model mangled task links in **three** shapes, so the sanitizer was rewritten to key
+> on the task id itself — measured 10/10 clean after.
+> **P9:** `scripts/assistant-role-matrix.cjs` (new, kept) — 5 role shapes × 8 acceptance
+> questions = 40 live calls, every verdict checked against the API's truth: **ALL CELLS PASS**
+> (exact task counts per role, report gate open for owner/admin/**head** and closed for members,
+> zero leaks, zero absolute links). Guest is not covered live — no such account exists here — so
+> it rests on the jest `GUEST_GRANTS` pin, said plainly.
+> Final: **10 tools · jest 14 suites / 224 · eval PERFECT ×3 incl. section C · no DB change,
+> rollout = `git pull` + `pm2 reload`.**
+
 ### P8 — The grader learns the new surface (tests-first hardening)
 - `assistant-eval.cjs` section C "PERMISSIONS" (graded, --assert): a dept-only member
   asks (a) own assigned tasks → expects real rows, (b) another team's tasks → expects

@@ -40,6 +40,24 @@ describe("relativizeAppLinks", () => {
         expect(out).toBe("1. [A](/t/t-1)\n2. [B](/t/t-2)");
     });
 
+    it("repairs EVERY mangled task link, however the model mangled it", () => {
+        // All three shapes were observed live on the same question, in roughly
+        // one answer out of three. The rule keys on the only part that is ever
+        // right — the id — instead of on the garbage around it.
+        const id = "t-YVHky3KYncnwg307rzRGoA";
+        for (const target of [
+            `https://beautybooth.com/t/${id}`, // domain in front of the path
+            `https://${id}`, // id pasted where a host goes
+            `https://t/${id}`, // "t" as the host, id as the path
+            `${id}`, // no scheme at all
+            `/t/${id}`, // …and one that was already correct
+        ]) {
+            expect(relativizeAppLinks(`[SMS blast](${target})`)).toBe(
+                `[SMS blast](/t/${id})`,
+            );
+        }
+    });
+
     it("leaves relative links and genuinely external ones alone", () => {
         const already = "[Inbox](/inbox) ar [Home](/)";
         expect(relativizeAppLinks(already)).toBe(already);
