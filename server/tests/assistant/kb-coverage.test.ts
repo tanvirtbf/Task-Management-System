@@ -137,6 +137,21 @@ describe("KB coverage — DEEP P1 nirbhul audit", () => {
         expect(KNOWLEDGE_BASE).toMatch(/not in the app yet/);
     });
 
+    it("teaches the permanent-delete APPROVAL, not the old admin-only instant delete", () => {
+        // upgrades/023: anyone who may delete a task can now ASK; an
+        // Owner/Admin approves. The bot must not tell a member the option does
+        // not exist for them, nor imply their click destroys anything.
+        // NB: which BUTTON a person sees is computed into the caller block
+        // (see caller-context.test.ts) — telling the model to branch on the
+        // permission here did not work. The knowledge base owns what the flow
+        // MEANS, which is what these pin.
+        expect(KNOWLEDGE_BASE).toMatch(/never refuse this question/);
+        expect(KNOWLEDGE_BASE).toMatch(/Delete pending/);
+        expect(KNOWLEDGE_BASE).toMatch(/the asker can withdraw/);
+        // …and must keep the distinction from Archive, which IS reversible.
+        expect(KNOWLEDGE_BASE).toMatch(/use \*\*Archive\*\* — that is reversible/);
+    });
+
     it("drops the pre-SSE 'notifications refresh about once a minute' claim", () => {
         expect(KNOWLEDGE_BASE).not.toMatch(/refresh about once a minute/i);
         expect(KNOWLEDGE_BASE).toMatch(/updates live, no refresh needed/);
@@ -557,8 +572,16 @@ describe("KB coverage — P4: every destination is a link", () => {
         // failed without them: never refuse a data question from the role
         // rules (it told a department Head she could not read her own team's
         // reports), and an empty result is not a permission problem.
+        //
+        // Raised 47k → 48k for the permanent-delete approval (2026-08-16).
+        // The product genuinely grew a workflow the bot has to explain, and
+        // two of the added lines exist because a live probe was WRONG without
+        // them: the bot told a Member she could not delete a task at all, and
+        // told an ADMIN to file a request. Four earlier phases paid their own
+        // way by deleting real duplication; there is no fifth duplication left
+        // to spend, so the ceiling moves instead of the accuracy.
         const sys = buildMessages([], "x")[0].content as string;
-        expect(sys.length).toBeLessThan(47000);
+        expect(sys.length).toBeLessThan(48000);
     });
 
     it("keeps the TOOL DEFINITIONS inside their own budget", () => {

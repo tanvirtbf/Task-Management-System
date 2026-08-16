@@ -128,6 +128,35 @@ describe("caller context — the bot knows who is asking", () => {
         expect(line).not.toContain("edit roles and permissions");
     });
 
+    it("states which permanent-delete button THIS person has (the answer, not the rule)", async () => {
+        // upgrades/023. Four rounds of live probing proved the model cannot be
+        // told to branch on a permission: it refused a Member outright, then
+        // sent an ADMIN to go ask another admin, then hedged both ways in one
+        // reply. Computing the verdict here made it right first try, and these
+        // two assertions are what stops anyone "simplifying" it back.
+        const ws = await rbacWorkspace();
+        const owner = await userWithSystemRole(ws, "owner");
+        const marketing = await makeRbacSpace(ws.id, owner.id, "Marketing");
+        const member = await userWithPermissions(
+            ws,
+            [
+                ["space.view", "space"],
+                ["task.view", "space"],
+                ["task.delete", "own"],
+                "assistant.use",
+            ],
+            { spaceId: marketing },
+        );
+
+        const theirs = await callerLineFor(member.client);
+        expect(theirs).toContain("Request permanent delete");
+        expect(theirs).toContain("Never tell them they cannot");
+
+        const ownerLine = await callerLineFor(owner.client);
+        expect(ownerLine).toContain("THEY can do it themselves");
+        expect(ownerLine).not.toContain("Request permanent delete");
+    });
+
     it("an owner is described as reaching everywhere (the anti-lockout floor shows up here too)", async () => {
         const ws = await rbacWorkspace();
         const owner = await userWithSystemRole(ws, "owner");

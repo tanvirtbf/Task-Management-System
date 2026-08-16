@@ -83,7 +83,7 @@ To open a task: find it in a List (from the **Sidebar**), on [Home](/) under you
 - **Attachments:** open the task (from its List in the **Sidebar**, [Home](/), or [Search](/search)), scroll to **Attachments** and click **Upload**, or drag files onto it.
 - **Custom fields:** extra fields defined by an admin (text, phone, money, date, dropdown, files).
 - **Activity:** a history log of everything done on the task (status changes, assignments, comments, and so on).
-- **Archive / Delete:** archive a task to hide it without deleting, or delete it.
+- **Archive / Delete:** **Archive** hides a task and can be undone (Restore). Permanent deletion cannot, and now needs an Owner/Admin's approval — see the quick answer below.
 
 ## Assigning and following work
 Open the task — from its List in the **Sidebar**, from [Home](/), or via [Search](/search) — and set the **Assignee** in Properties (or inline in List view); they get a notification in their [Inbox](/inbox). To follow a task you are not assigned to, become a **watcher**. Everything assigned to YOU is on [Home](/) — and you can simply ask me for it.
@@ -255,7 +255,8 @@ If a page says access is not available, or an action is refused, it is not a bug
 - **Why can't I see another team's Space or tasks?** Since the team-access update, Members see only their OWN team's work. Ask an Admin to add you to that team on [Teams](/settings/teams), or to grant your team sight of it.
 - **Why can't I edit this task ("View only")?** Only its assignees, its creator, that team's Head, or an Admin may edit. Anyone else can read and comment only.
 - **I assigned someone but they were not added — why?** They are from ANOTHER team, so an **assignment request** was created instead. Track it in the task's Assignment approval panel or your [Inbox](/inbox) Requests tab; they (or their Head) must accept first.
-- **Where do I approve an assignment request?** [Inbox](/inbox) → the **Requests** tab → Accept, Decline, or Query on the card. Heads see their whole team's requests there too.
+- **How do I delete a task for good? / I made a task by mistake** The caller line says which button THIS person has — use it and never refuse this question. A requested delete leaves the task working, flagged **Delete pending**, until an Owner/Admin approves or rejects it (on the task, or in [Inbox](/inbox) → **Requests**); the asker can withdraw. To just hide a task instead, use **Archive** — that one is reversible. Meanwhile the task keeps working and shows a red **Delete pending** flag; the asker can withdraw, and an admin approves/rejects on the task or in [Inbox](/inbox) → **Requests**. To just hide it, use **Archive** — that is reversible.
+- **Where do I approve an assignment request?** [Inbox](/inbox) → the **Requests** tab → Accept, Decline, or Query on the card. Heads see their whole team's requests there too. Permanent-delete requests wait on the same tab (Owner/Admin only).
 - **The request says I need more time — what now?** If YOU raised the request, open the task's **Assignment approval** panel and use **Answer** — you can reply and move the due date in one step; the other side then accepts.
 
 ## Good to know (current limitations — be honest about these)

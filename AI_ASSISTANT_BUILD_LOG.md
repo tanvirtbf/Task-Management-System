@@ -1726,3 +1726,41 @@ clean 503 exactly as before.
 **Verdict: 🏁 THE DEEP PLAN IS COMPLETE. The assistant gives accurate information about this
 system, guides a confused person in Bangla, and answers every data question strictly within the
 asker's own permissions — refusing honestly, and without ever confirming what it is hiding.**
+
+---
+
+## Addendum — teaching it the permanent-delete approval (2026-08-16)
+
+The product grew a workflow (upgrades/023: anyone may REQUEST a permanent task delete, an
+Owner/Admin approves), so the bot had to learn it. Recorded because getting it right took four
+wrong turns and the lesson is the plan's own, re-learned.
+
+**The question**: *"vul kore ekta task baniye felechi, seta puropuri mucbo kivabe?"* — which
+button a person sees depends on ONE permission (`task.delete_hard`).
+
+| attempt | what was tried | what the bot did |
+|---|---|---|
+| 1 | KB quick answer describing both paths | told a **Member** only an Owner/Admin can delete — the old, now-wrong story |
+| 2 | + "NEVER tell a Member only an admin can delete" | refused **both** roles outright |
+| 3 | + `task.delete_hard` in the caller block as "approve permanent deletes" | **worse**: the label collided with the words people use, so the model matched the question to the *CANNOT* entry and refused; the **admin** was sent to go ask another admin |
+| 4 | + "READ THE ROLE on the caller line" | both hedged in one reply ("if you are an admin do X, otherwise ask them"), and it invented an email-confirm step that belongs to the MEMBER delete |
+
+**What worked**: stop telling the model to branch, and compute the verdict. The caller block now
+carries the answer for THAT person — *"Permanently deleting a task: THEY can do it themselves…"*
+or *"…THEY use ⋯ → Request permanent delete; an Owner/Admin then approves. Never tell them they
+cannot."* Right on the first try afterwards, and stable across four probes (2 per role).
+
+This is the third time the same shape has settled a problem in this plan: the invented task links
+(P3, sanitise instead of instruct) and the empty report list read as "forbidden" (P4–P7,
+`youCanReadReports` instead of a rule). **When the model has to branch on a fact the server
+already knows, give it the conclusion, not the rule.**
+
+Fallout handled honestly: the block's 400-char ceiling silently dropped the "They CANNOT" half
+once the delete sentence was added — the half that makes the bot redirect rather than refuse — so
+`CALLER_BLOCK_MAX` went 400 → 600 with the reason in the code. The system message ceiling went
+47k → 48k (47,337 today): four earlier phases each paid their own way by deleting real
+duplication, and there was no fifth duplication left to spend.
+
+**Verified:** `jest.assistant` **14 suites / 226** ✅ (new caller-context pin on both delete
+sentences; the KB pins moved to what the KB now owns) · eval gate **PERFECT ×2 including section
+C** · `TEAM_GUIDE.md` gained §৫ক (the Bangla walkthrough for the office) and two FAQ entries.

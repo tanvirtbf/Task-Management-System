@@ -3,8 +3,16 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.buildCallerBlock = exports.CALLER_BLOCK_MAX = void 0;
 const can_1 = require("../rbac/can");
 const context_1 = require("../rbac/context");
-/** Hard ceiling (D2). The block ships on every request; it must stay small. */
-exports.CALLER_BLOCK_MAX = 400;
+/**
+ * Hard ceiling (D2). The block ships on every request; it must stay small.
+ *
+ * 400 → 600 for upgrades/023: the computed permanent-delete sentence is ~160
+ * chars, and at 400 it silently pushed the "They CANNOT" half off the end —
+ * which is the half that makes the bot redirect someone instead of walking
+ * them into a refusal. Dropping a capability summary to keep a byte count is
+ * the wrong trade; the ceiling still bounds the block, just honestly.
+ */
+exports.CALLER_BLOCK_MAX = 600;
 const MAX_TEAMS = 3;
 const MAX_CAN = 6;
 const MAX_CANNOT = 4;
@@ -22,6 +30,15 @@ const SUMMARY_KEYS = [
     { key: "task.create", label: "create tasks", scoped: true },
     { key: "task.edit", label: "edit tasks", scoped: true },
     { key: "task.assign", label: "assign tasks", scoped: true },
+    // ⚠️ `task.delete_hard` is deliberately NOT here, and the reason is worth
+    // keeping: it was added (2026-08-16) so the bot would know which delete a
+    // person sees, and it made the answers WORSE. Listed under "They CANNOT"
+    // as "approve permanent deletes", it collided with the words people
+    // actually use — "task ta puropuri mucbo kivabe?" — and the model matched
+    // the question to the refusal instead of answering it. A member CAN start
+    // a permanent delete (it becomes a request), so any CANNOT phrasing here
+    // is a half-truth the model then rounds off to "no". The whole story is
+    // role-conditional, and the knowledge base tells it properly.
     { key: "member.view", label: "see the member list", scoped: false },
     { key: "review.read", label: "see team reviews", scoped: false },
     { key: "report.view", label: "read weekly reports", scoped: false },
@@ -90,6 +107,16 @@ const buildCallerBlock = async (deps, ctx) => {
             ? `You are talking to ${name} — ${role}`
             : `You are talking to a ${role}`;
         const parts = [`${who}, teams: ${teams}.`];
+        // upgrades/023 — the ANSWER, not the rule. Which permanent-delete
+        // button this person sees is a branch on one permission, and four
+        // rounds of live probing showed the model cannot be told to branch
+        // reliably: it refused a Member outright, then sent an ADMIN to go ask
+        // another admin, then hedged both ways in one reply. Computed here, it
+        // is simply true — the same fix the reports tool needed when an empty
+        // list was being read as "forbidden".
+        parts.push((0, can_1.holds)(actor, "task.delete_hard")
+            ? "Permanently deleting a task: THEY can do it themselves — the task's ⋯ menu has Delete permanently and it happens at once."
+            : "Permanently deleting a task: THEY use the task's ⋯ menu → Request permanent delete (with a reason); an Owner/Admin then approves. Never tell them they cannot.");
         if (can.length > 0) {
             parts.push(`They can: ${can.slice(0, MAX_CAN).join(", ")}.`);
         }
