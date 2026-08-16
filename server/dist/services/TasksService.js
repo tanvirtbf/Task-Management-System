@@ -16,9 +16,25 @@ const MAX_LIMIT = 200;
 class TasksService {
     lists;
     tasksRepo;
-    constructor(lists, tasksRepo) {
+    deleteRequests;
+    constructor(lists, tasksRepo, 
+    /**
+     * upgrades/023 — OPTIONAL on purpose. This service is constructed at a
+     * dozen wiring sites (task writes, dependencies, engineering, forms…)
+     * and only the two READ paths that feed a list view or the task drawer
+     * need the "deletion pending" flag. Absent ⇒ the flag is simply false,
+     * which is what every non-display caller wants anyway.
+     */
+    deleteRequests) {
         this.lists = lists;
         this.tasksRepo = tasksRepo;
+        this.deleteRequests = deleteRequests;
+    }
+    /** Which of these tasks carry a live delete request (empty without the repo). */
+    async pendingDeletes(taskIds) {
+        if (!this.deleteRequests || taskIds.length === 0)
+            return new Set();
+        return this.deleteRequests.pendingTaskIds(taskIds);
     }
     async listByList(input) {
         // Workspace-isolation guard: a missing or cross-workspace list id is
@@ -48,17 +64,19 @@ class TasksService {
         // see custom-field values flagged `hidden_from_guests`.
         const taskIds = page.map((row) => row.id);
         const redactGuest = input.role === constants_1.Roles.GUEST;
-        const [assignees, watchers, tags, customFieldValues] = await Promise.all([
+        const [assignees, watchers, tags, customFieldValues, pendingDeletes] = await Promise.all([
             this.tasksRepo.assigneesByTask(taskIds),
             this.tasksRepo.watchersByTask(taskIds),
             this.tasksRepo.tagsByTask(taskIds),
             this.tasksRepo.customFieldValuesByTask(taskIds, redactGuest),
+            this.pendingDeletes(taskIds),
         ]);
         const data = page.map((row) => (0, taskSerializer_1.toWireTask)(row, {
             assignees: assignees.get(row.id) ?? [],
             watchers: watchers.get(row.id) ?? [],
             tags: tags.get(row.id) ?? [],
             customFieldValues: customFieldValues.get(row.id) ?? {},
+            deleteRequestPending: pendingDeletes.has(row.id),
         }));
         const last = page[page.length - 1];
         const nextCursor = hasMore && last ? encodeCursor(last.internalId.toString()) : null;
@@ -82,17 +100,19 @@ class TasksService {
             throw errors_1.AppError.notFound("task.not_found", `Task ${input.idOrKey} does not exist`);
         }
         const redactGuest = input.role === constants_1.Roles.GUEST;
-        const [assignees, watchers, tags, customFieldValues] = await Promise.all([
+        const [assignees, watchers, tags, customFieldValues, pendingDeletes] = await Promise.all([
             this.tasksRepo.assigneesByTask([row.id]),
             this.tasksRepo.watchersByTask([row.id]),
             this.tasksRepo.tagsByTask([row.id]),
             this.tasksRepo.customFieldValuesByTask([row.id], redactGuest),
+            this.pendingDeletes([row.id]),
         ]);
         return (0, taskSerializer_1.toWireTask)(row, {
             assignees: assignees.get(row.id) ?? [],
             watchers: watchers.get(row.id) ?? [],
             tags: tags.get(row.id) ?? [],
             customFieldValues: customFieldValues.get(row.id) ?? {},
+            deleteRequestPending: pendingDeletes.has(row.id),
         });
     }
     /**

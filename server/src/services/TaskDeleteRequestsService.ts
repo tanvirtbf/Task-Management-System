@@ -284,30 +284,24 @@ export class TaskDeleteRequestsService {
             return;
         }
 
-        // The audit entry outlives both the task and (via the FK cascade) this
-        // request row — so it is written first, with everything a reader would
-        // later need to reconstruct what happened.
-        await this.activity.record({
-            workspaceId: input.workspaceId,
-            actorId: input.actorId,
-            action: "deleted",
-            entityType: "task",
-            entityId: req.taskId,
-            context: {
-                name: req.taskName,
-                via: "delete_request",
-                requested_by: req.requestedBy,
-                reason: req.reason,
-                decision_note: note,
-            },
-        });
-
+        // The evidence has to outlive the task AND (via the FK cascade) this
+        // request row. The hard delete already writes exactly such a row
+        // inside its own transaction, so the request's facts are merged INTO
+        // it rather than written as a second one — one row that explains
+        // itself beats two that each tell half the story (and the activity
+        // feed was showing the same deletion twice).
         await this.taskWrite.del({
             workspaceId: input.workspaceId,
             actorId: input.actorId,
             role: input.role,
             taskId: req.taskId,
             hard: true,
+            auditContext: {
+                via: "delete_request",
+                requested_by: req.requestedBy,
+                reason: req.reason,
+                decision_note: note,
+            },
         });
 
         this.logger.info("task_delete_requests.approved", {

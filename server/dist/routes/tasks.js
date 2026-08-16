@@ -12,6 +12,7 @@ const TaskActivityController_1 = require("../controllers/TaskActivityController"
 const TaskActivityService_1 = require("../services/TaskActivityService");
 const UsersRepo_1 = require("../repositories/UsersRepo");
 const TasksRepo_1 = require("../repositories/TasksRepo");
+const TaskDeleteRequestsRepo_1 = require("../repositories/TaskDeleteRequestsRepo");
 const AttachmentsRepo_1 = require("../repositories/AttachmentsRepo");
 const ListsRepo_1 = require("../repositories/ListsRepo");
 const TaskMembershipRepo_1 = require("../repositories/TaskMembershipRepo");
@@ -56,7 +57,10 @@ const membershipService = new TaskMembershipService_1.TaskMembershipService(db, 
 const membershipController = new TaskMembershipController_1.TaskMembershipController(membershipService, logger_1.default);
 const statusesRepo = new StatusesRepo_1.StatusesRepo(db);
 const taskTypesRepo = new TaskTypesRepo_1.TaskTypesRepo(db);
-const tasksService = new TasksService_1.TasksService(listsRepo, tasksRepo);
+// The delete-requests repo is passed HERE (and in `lists.ts`) because these
+// are the read paths a person actually looks at — the drawer and the list
+// view — and they are where the "deletion pending" flag has to appear.
+const tasksService = new TasksService_1.TasksService(listsRepo, tasksRepo, new TaskDeleteRequestsRepo_1.TaskDeleteRequestsRepo(db));
 const tasksController = new TasksController_1.TasksController(tasksService, logger_1.default);
 const taskActivityService = new TaskActivityService_1.TaskActivityService(tasksRepo, activityRepo, usersRepo);
 const taskActivityController = new TaskActivityController_1.TaskActivityController(taskActivityService, logger_1.default);

@@ -1,4 +1,4 @@
-import { ListChecks, MessageSquare, Paperclip } from "lucide-react";
+import { ListChecks, MessageSquare, Paperclip, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { AssigneeStack } from "../ui/AssigneeStack";
 import { DueDateBadge } from "../ui/DueDateBadge";
@@ -117,6 +117,21 @@ export const TaskRow = ({
                                 color: tokens.colors.textMuted,
                             }}
                         >
+                            {/* upgrades/023 — waiting on an admin's decision. */}
+                            {task.deleteRequestPending && (
+                                <span
+                                    title="Permanent delete requested — waiting for an admin"
+                                    style={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: 3,
+                                        color: tokens.colors.danger,
+                                    }}
+                                >
+                                    <Trash2 size={11} strokeWidth={2} />
+                                    delete pending
+                                </span>
+                            )}
                             {task.checklistItemsTotal > 0 && (
                                 <span
                                     title="Checklist items done"

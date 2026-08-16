@@ -1,7 +1,13 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useSearchParams } from "react-router-dom";
-import { MessageSquare, Paperclip, GitBranch, ListChecks } from "lucide-react";
+import {
+    MessageSquare,
+    Paperclip,
+    GitBranch,
+    ListChecks,
+    Trash2,
+} from "lucide-react";
 import type { Task } from "../../types";
 import { useTagMap, useTaskTypeMap, useUserMap } from "../../hooks/useReferenceData";
 import { AssigneeStack } from "../ui/AssigneeStack";
@@ -206,6 +212,22 @@ export const BoardCard = ({
                             marginLeft: 4,
                         }}
                     >
+                        {/* upgrades/023 — waiting on an admin's decision; the
+                            task itself is untouched until then. */}
+                        {task.deleteRequestPending && (
+                            <span
+                                title="Permanent delete requested — waiting for an admin"
+                                style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 2,
+                                    color: tokens.colors.danger,
+                                }}
+                            >
+                                <Trash2 size={10} strokeWidth={2} />
+                                pending
+                            </span>
+                        )}
                         {task.subtasksCount > 0 && (
                             <span
                                 style={{

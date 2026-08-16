@@ -416,6 +416,75 @@ export interface TeamDirectory {
 // admin). `{data}` envelopes; the response camelizer produces the client
 // `AssignmentRequest` shapes; the request decamelizer turns `proposedDueDate`
 // → `proposed_due_date` on the way out.
+/**
+ * upgrades/023 — a queued permanent-delete, waiting on an admin.
+ *
+ * camelCase because the response interceptor in `client.ts` renames every
+ * snake_case key on the way in. (Declaring the wire's own `requested_by` here
+ * type-checked fine and silently read `undefined` at runtime — the banner said
+ * "Someone asked" instead of naming the person.)
+ */
+export interface DeleteRequest {
+    id: string;
+    taskId: string;
+    taskName: string;
+    spaceId: string;
+    requestedBy: string;
+    reason: string | null;
+    status: "pending" | "approved" | "rejected" | "cancelled";
+    decidedBy: string | null;
+    decidedAt: string | null;
+    decisionNote: string | null;
+    createdAt: string;
+}
+
+export const deleteRequestsApi = {
+    /**
+     * Ask for a task to be permanently deleted.
+     *
+     * Returns `null` when the caller could approve it themselves — the server
+     * answers 204 and the task is ALREADY GONE. The caller must tell the person
+     * which of the two happened.
+     */
+    request: async (
+        taskId: string,
+        reason?: string,
+    ): Promise<DeleteRequest | null> => {
+        const res = await api.post<{ data: DeleteRequest } | "">(
+            `/tasks/${taskId}/delete-request`,
+            reason ? { reason } : {},
+        );
+        return res.status === 204
+            ? null
+            : ((res.data as { data: DeleteRequest }).data ?? null);
+    },
+    /** The live request on one task, or null (drawer banner). */
+    forTask: async (taskId: string): Promise<DeleteRequest | null> =>
+        (
+            await api.get<{ data: DeleteRequest | null }>(
+                `/tasks/${taskId}/delete-request`,
+            )
+        ).data.data,
+    /** box=pending is the admin queue (403 for everyone else); mine is yours. */
+    list: async (
+        box: "pending" | "mine" = "pending",
+    ): Promise<DeleteRequest[]> =>
+        (
+            await api.get<{ data: DeleteRequest[] }>("/delete-requests", {
+                params: { box },
+            })
+        ).data.data,
+    approve: async (id: string, note?: string): Promise<void> => {
+        await api.post(`/delete-requests/${id}/approve`, note ? { note } : {});
+    },
+    reject: async (id: string, note?: string): Promise<void> => {
+        await api.post(`/delete-requests/${id}/reject`, note ? { note } : {});
+    },
+    cancel: async (id: string): Promise<void> => {
+        await api.post(`/delete-requests/${id}/cancel`);
+    },
+};
+
 export const assignmentRequestsApi = {
     /** box=received (default) | sent | team (requests targeting people I head). */
     list: async (

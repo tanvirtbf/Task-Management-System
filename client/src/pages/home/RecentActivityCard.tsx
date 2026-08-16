@@ -33,6 +33,11 @@ const actionVerb = (action: string): string => {
             return "moved";
         case "priority_changed":
             return "changed priority on";
+        // upgrades/017 + /023 — the two rows a permanent task delete leaves
+        // behind. Without these they rendered as "task hard deleted an item".
+        case "task_hard_deleted":
+        case "deleted":
+            return "permanently deleted";
         default:
             return action.replace(/_/g, " ");
     }
@@ -143,7 +148,19 @@ export const RecentActivityCard = () => {
                                         </span>{" "}
                                         {actionVerb(entry.action)}{" "}
                                         <span style={{ fontWeight: 500 }}>
-                                            {entry.context?.taskName ?? "an item"}
+                                            {/* `taskName` is what the task
+                                                rows carry; the workspace-level
+                                                rows (a hard delete, a member
+                                                removal) carry `name` — reading
+                                                only the first rendered every
+                                                one of them as "an item". */}
+                                            {(entry.context?.taskName as
+                                                | string
+                                                | undefined) ??
+                                                (entry.context?.name as
+                                                    | string
+                                                    | undefined) ??
+                                                "an item"}
                                         </span>
                                         <div
                                             style={{

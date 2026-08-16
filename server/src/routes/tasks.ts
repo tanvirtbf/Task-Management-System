@@ -11,6 +11,7 @@ import { TaskActivityController } from "../controllers/TaskActivityController";
 import { TaskActivityService } from "../services/TaskActivityService";
 import { UsersRepo } from "../repositories/UsersRepo";
 import { TasksRepo } from "../repositories/TasksRepo";
+import { TaskDeleteRequestsRepo } from "../repositories/TaskDeleteRequestsRepo";
 import { AttachmentsRepo } from "../repositories/AttachmentsRepo";
 import { ListsRepo } from "../repositories/ListsRepo";
 import { TaskMembershipRepo } from "../repositories/TaskMembershipRepo";
@@ -110,7 +111,14 @@ const membershipController = new TaskMembershipController(
 );
 const statusesRepo = new StatusesRepo(db);
 const taskTypesRepo = new TaskTypesRepo(db);
-const tasksService = new TasksService(listsRepo, tasksRepo);
+// The delete-requests repo is passed HERE (and in `lists.ts`) because these
+// are the read paths a person actually looks at — the drawer and the list
+// view — and they are where the "deletion pending" flag has to appear.
+const tasksService = new TasksService(
+    listsRepo,
+    tasksRepo,
+    new TaskDeleteRequestsRepo(db),
+);
 const tasksController = new TasksController(tasksService, logger);
 const taskActivityService = new TaskActivityService(
     tasksRepo,

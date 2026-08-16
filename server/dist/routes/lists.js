@@ -15,6 +15,7 @@ const StatusesRepo_1 = require("../repositories/StatusesRepo");
 const TaskTypesRepo_1 = require("../repositories/TaskTypesRepo");
 const WorkspaceActivityRepo_1 = require("../repositories/WorkspaceActivityRepo");
 const TasksRepo_1 = require("../repositories/TasksRepo");
+const TaskDeleteRequestsRepo_1 = require("../repositories/TaskDeleteRequestsRepo");
 const client_1 = require("../db/client");
 const logger_1 = __importDefault(require("../config/logger"));
 const authenticate_1 = __importDefault(require("../middlewares/authenticate"));
@@ -35,7 +36,7 @@ const tasksRepo = new TasksRepo_1.TasksRepo(db);
 const workspaceActivityRepo = new WorkspaceActivityRepo_1.WorkspaceActivityRepo(db);
 const listService = new ListService_1.ListService(db, spacesRepo, listsRepo, statusesRepo, taskTypesRepo, tasksRepo, workspaceActivityRepo, logger_1.default);
 const listController = new ListController_1.ListController(listService, logger_1.default);
-const tasksService = new TasksService_1.TasksService(listsRepo, tasksRepo);
+const tasksService = new TasksService_1.TasksService(listsRepo, tasksRepo, new TaskDeleteRequestsRepo_1.TaskDeleteRequestsRepo(db));
 const tasksController = new TasksController_1.TasksController(tasksService, logger_1.default);
 // ─── GET /api/v1/spaces/:spaceId/lists ────────────────────────────────────────
 // Authenticated — any role may list a space's lists (only create / archive are

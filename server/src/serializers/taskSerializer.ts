@@ -46,6 +46,8 @@ export interface WireTask {
     /** upgrades/022 — items across ALL the task's checklists (rollup). */
     checklist_items_total: number;
     checklist_items_done: number;
+    /** upgrades/023 — a permanent delete is waiting on an admin's decision. */
+    delete_request_pending: boolean;
     sprint_id: string | null;
     story_points: number | null;
     reviewer_id: string | null;
@@ -75,6 +77,13 @@ export interface TaskHydration {
     watchers: string[];
     tags: string[];
     customFieldValues: Record<string, unknown>;
+    /**
+     * upgrades/023 — someone has asked for this task to be permanently deleted
+     * and an admin has not decided yet. Optional because only the read paths
+     * that feed a list view or the drawer look it up; everywhere else it is
+     * false, which is the honest default (no request is known about).
+     */
+    deleteRequestPending?: boolean;
 }
 
 /**
@@ -138,6 +147,7 @@ export const toWireTask = (t: TaskRow, h: TaskHydration): WireTask => ({
     attachments_count: t.attachmentsCount,
     checklist_items_total: t.checklistItemsTotal,
     checklist_items_done: t.checklistItemsDone,
+    delete_request_pending: h.deleteRequestPending ?? false,
     sprint_id: t.sprintId,
     story_points: t.storyPoints,
     reviewer_id: t.reviewerId,

@@ -82,6 +82,8 @@ const TASK_KEYS = [
     "attachments_count",
     "checklist_items_total",
     "checklist_items_done",
+    // upgrades/023 — a permanent delete is waiting on an admin's decision.
+    "delete_request_pending",
     "sprint_id",
     "story_points",
     "reviewer_id",

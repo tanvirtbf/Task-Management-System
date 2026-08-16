@@ -34,6 +34,9 @@ import { useAuthStore } from "../../stores/auth";
 import { useUserMap } from "../../hooks/useReferenceData";
 import { useMyAssignmentRequests } from "../../hooks/useAssignmentRequests";
 import { AssignmentRequestCard } from "../../components/task/AssignmentRequestCard";
+import { DeleteRequestCard } from "../../components/task/DeleteRequestCard";
+import { usePermissions } from "../../hooks/usePermissions";
+import { deleteRequestsApi, type DeleteRequest } from "../../http/api";
 import { LoadingState } from "../../components/shared/LoadingState";
 import { tokens } from "../../theme";
 import type {
@@ -154,15 +157,41 @@ const InboxPage = () => {
 
     const groups = useMemo(() => groupByDay(filtered), [filtered]);
 
+    // upgrades/023 — permanent-delete approvals belong on the same tab: it is
+    // the one place a person goes to answer things. Admins get the queue
+    // (`pending`); the 403 everyone else receives is swallowed, so a member
+    // simply sees their own asks and never an error they cannot act on.
+    const { holds } = usePermissions();
+    const canDecideDeletes = holds("task.delete_hard");
+    const { data: deleteQueue = [] } = useQuery({
+        queryKey: ["delete-requests", "pending"],
+        queryFn: () => deleteRequestsApi.list("pending"),
+        enabled: !!user && canDecideDeletes,
+    });
+    const { data: myDeletes = [] } = useQuery({
+        queryKey: ["delete-requests", "mine"],
+        queryFn: () => deleteRequestsApi.list("mine"),
+        enabled: !!user,
+    });
+    const deleteRequests = useMemo(() => {
+        const byId = new Map<string, DeleteRequest>();
+        for (const r of [...deleteQueue, ...myDeletes]) {
+            if (r.status === "pending") byId.set(r.id, r);
+        }
+        return [...byId.values()].sort((a, b) =>
+            b.createdAt.localeCompare(a.createdAt),
+        );
+    }, [deleteQueue, myDeletes]);
+
     const counts = useMemo(() => {
         return {
             all: notifications.length,
             unread: notifications.filter((n) => !n.isRead).length,
             mentions: notifications.filter((n) => n.type === "mentioned").length,
             assigned: notifications.filter((n) => n.type === "assigned").length,
-            requests: requests.length,
+            requests: requests.length + deleteRequests.length,
         };
-    }, [notifications, requests]);
+    }, [notifications, requests, deleteRequests]);
 
     const markAsRead = useMutation({
         mutationFn: (id: string) => notificationsApi.markRead(id),
@@ -367,7 +396,7 @@ const InboxPage = () => {
                 // Team-access P9 — PENDING cross-team assignment approvals,
                 // actioned inline (accept / decline / query / answer /
                 // withdraw). Decided history lives on each task's drawer.
-                requests.length === 0 ? (
+                requests.length === 0 && deleteRequests.length === 0 ? (
                     <Empty
                         image={
                             <UserCheck
@@ -376,7 +405,7 @@ const InboxPage = () => {
                                 color={tokens.colors.textMuted}
                             />
                         }
-                        description="No assignment requests need you right now."
+                        description="Nothing needs your decision right now."
                     />
                 ) : (
                     <div
@@ -386,6 +415,9 @@ const InboxPage = () => {
                             gap: 8,
                         }}
                     >
+                        {deleteRequests.map((r) => (
+                            <DeleteRequestCard key={r.id} request={r} />
+                        ))}
                         {requests.map((r) => (
                             <AssignmentRequestCard
                                 key={r.id}

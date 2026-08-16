@@ -202,6 +202,27 @@ export const ListViewRow = ({
                 />
             </div>
 
+            {/* upgrades/023 — a permanent delete is waiting on an admin. The
+                task itself is untouched, so this is a flag, not a state. */}
+            {task.deleteRequestPending && (
+                <span
+                    title="Permanent delete requested — waiting for an admin"
+                    style={{
+                        flexShrink: 0,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 3,
+                        fontSize: 10,
+                        padding: "1px 6px",
+                        borderRadius: 999,
+                        color: tokens.colors.danger,
+                        border: `1px solid ${tokens.colors.danger}`,
+                    }}
+                >
+                    <Trash2 size={10} strokeWidth={2} />
+                    Delete pending
+                </span>
+            )}
             {/* Activity indicators */}
             {(task.commentsCount > 0 ||
                 task.attachmentsCount > 0 ||

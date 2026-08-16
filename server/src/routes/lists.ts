@@ -14,6 +14,7 @@ import { StatusesRepo } from "../repositories/StatusesRepo";
 import { TaskTypesRepo } from "../repositories/TaskTypesRepo";
 import { WorkspaceActivityRepo } from "../repositories/WorkspaceActivityRepo";
 import { TasksRepo } from "../repositories/TasksRepo";
+import { TaskDeleteRequestsRepo } from "../repositories/TaskDeleteRequestsRepo";
 import { getDb } from "../db/client";
 import logger from "../config/logger";
 import authenticate from "../middlewares/authenticate";
@@ -62,7 +63,11 @@ const listService = new ListService(
     logger,
 );
 const listController = new ListController(listService, logger);
-const tasksService = new TasksService(listsRepo, tasksRepo);
+const tasksService = new TasksService(
+    listsRepo,
+    tasksRepo,
+    new TaskDeleteRequestsRepo(db),
+);
 const tasksController = new TasksController(tasksService, logger);
 
 // ─── GET /api/v1/spaces/:spaceId/lists ────────────────────────────────────────

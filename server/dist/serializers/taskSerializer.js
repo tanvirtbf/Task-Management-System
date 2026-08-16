@@ -60,6 +60,7 @@ const toWireTask = (t, h) => ({
     attachments_count: t.attachmentsCount,
     checklist_items_total: t.checklistItemsTotal,
     checklist_items_done: t.checklistItemsDone,
+    delete_request_pending: h.deleteRequestPending ?? false,
     sprint_id: t.sprintId,
     story_points: t.storyPoints,
     reviewer_id: t.reviewerId,

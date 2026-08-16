@@ -178,6 +178,9 @@ export interface Task {
     /** Checklist rollup (upgrades/022) — items across ALL the task's checklists. */
     checklistItemsTotal: number;
     checklistItemsDone: number;
+    /** upgrades/023 — someone asked for this to be permanently deleted and an
+     *  admin has not decided yet. The task itself is untouched meanwhile. */
+    deleteRequestPending: boolean;
     createdAt: string;
     updatedAt: string;
     createdBy: string;

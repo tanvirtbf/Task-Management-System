@@ -163,21 +163,21 @@ describe("approve / reject", () => {
                     eq(workspaceActivity.entityId, s.task.id),
                 ),
             );
-        // TWO complementary rows, and both matter. The hard-delete path has
-        // written `task_hard_deleted` since upgrades/017 (what was destroyed:
-        // name, list, subtree size) — its presence also proves approval went
-        // through the REAL delete rather than a second implementation. This
-        // feature adds WHY and WHO ASKED, which that row has no place for.
-        const mine = audit.find((a) => a.action === "deleted");
-        expect(mine).toBeDefined();
-        expect(mine!.actorId).toBe(s.admin.id);
-        expect(mine!.context).toMatchObject({
+        // ONE row, carrying both halves. The hard-delete path has written
+        // `task_hard_deleted` since upgrades/017 (WHAT was destroyed: name,
+        // list, subtree size); the approval flow merges WHO ASKED and WHY into
+        // that same row. Its presence also proves approval went through the
+        // REAL delete rather than a second implementation.
+        expect(audit).toHaveLength(1);
+        expect(audit[0].action).toBe("task_hard_deleted");
+        expect(audit[0].actorId).toBe(s.admin.id);
+        expect(audit[0].context).toMatchObject({
             name: "Wrongly created campaign task",
+            subtree_count: 1,
             via: "delete_request",
             requested_by: s.member.id,
             decision_note: "agreed, it is a duplicate",
         });
-        expect(audit.some((a) => a.action === "task_hard_deleted")).toBe(true);
 
         // …and the requester is told, pointing at the REQUEST, not the task
         // that no longer exists (a task link would navigate to a 404).

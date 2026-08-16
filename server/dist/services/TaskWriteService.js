@@ -1119,6 +1119,11 @@ class TaskWriteService {
                         custom_id: task.customId ?? null,
                         list_id: task.primaryListId,
                         subtree_count: subtree.length,
+                        // upgrades/023: when the delete came through the
+                        // approval flow, WHO asked and WHY ride along in
+                        // this same row rather than a second one — the
+                        // activity feed showed the same deletion twice.
+                        ...(input.auditContext ?? {}),
                     },
                 }, tx);
                 await this.tasks.hardDelete(task.id, tx);

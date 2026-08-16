@@ -1,4 +1,12 @@
-import { Alert, Button, Drawer, Dropdown, Modal, App as AntApp } from "antd";
+import {
+    Alert,
+    Button,
+    Drawer,
+    Dropdown,
+    Input,
+    Modal,
+    App as AntApp,
+} from "antd";
 import type { MenuProps } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -12,7 +20,8 @@ import {
     Link2,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { tasksApi } from "../../http/api";
+import { deleteRequestsApi, tasksApi } from "../../http/api";
+import { getApiErrorMessage } from "../../http/client";
 import {
     useStatusMap,
     useTaskTypeMap,
@@ -38,6 +47,7 @@ import { CustomFieldsList } from "../custom-field/CustomFieldsList";
 import { useUpdateTask } from "../../hooks/useTaskMutations";
 import { useCanEditTask } from "../../hooks/useCanEditTask";
 import { usePermissions } from "../../hooks/usePermissions";
+import { useAuthStore } from "../../stores/auth";
 import { ReviewSection } from "./ReviewSection";
 import { tokens } from "../../theme";
 
@@ -56,6 +66,8 @@ export const TaskDetailDrawer = ({
     const qc = useQueryClient();
     const { message } = AntApp.useApp();
     const { holds } = usePermissions();
+    // Only the person who raised a delete request may withdraw it.
+    const currentUserId = useAuthStore((s) => s.user?.id);
     const update = useUpdateTask(listId);
     const typeMap = useTaskTypeMap();
     const userMap = useUserMap();
@@ -117,6 +129,62 @@ export const TaskDetailDrawer = ({
             });
             message.success(`Duplicated as "${created.name}"`);
         },
+    });
+
+    // upgrades/023 — the live delete request on this task, if any. Fetched
+    // separately from the task so the banner can name WHO asked and why; the
+    // task's own `deleteRequestPending` flag is what the list badges use.
+    const { data: deleteRequest } = useQuery({
+        queryKey: ["delete-request", taskId],
+        queryFn: () =>
+            taskId ? deleteRequestsApi.forTask(taskId) : Promise.resolve(null),
+        enabled: !!taskId,
+    });
+    const afterDeleteChange = () => {
+        qc.invalidateQueries({ queryKey: ["delete-request", taskId] });
+        qc.invalidateQueries({ queryKey: ["task", taskId] });
+        qc.invalidateQueries({ queryKey: ["tasks-by-list", listId] });
+    };
+
+    const requestDelete = useMutation({
+        mutationFn: (reason?: string) =>
+            deleteRequestsApi.request(task!.id, reason),
+        onSuccess: (created) => {
+            // `null` means the caller could approve it themselves — the server
+            // already deleted it. Two outcomes, two different sentences.
+            if (created === null) {
+                message.success("Task permanently deleted");
+                onClose();
+            } else {
+                message.success("Sent — an admin will decide");
+            }
+            afterDeleteChange();
+        },
+        onError: (err) => message.error(getApiErrorMessage(err)),
+    });
+
+    const decideDelete = useMutation({
+        mutationFn: ({ id, approve }: { id: string; approve: boolean }) =>
+            approve
+                ? deleteRequestsApi.approve(id)
+                : deleteRequestsApi.reject(id),
+        onSuccess: (_r, v) => {
+            message.success(
+                v.approve ? "Task permanently deleted" : "Request rejected",
+            );
+            afterDeleteChange();
+            if (v.approve) onClose();
+        },
+        onError: (err) => message.error(getApiErrorMessage(err)),
+    });
+
+    const cancelDelete = useMutation({
+        mutationFn: (id: string) => deleteRequestsApi.cancel(id),
+        onSuccess: () => {
+            message.success("Request withdrawn");
+            afterDeleteChange();
+        },
+        onError: (err) => message.error(getApiErrorMessage(err)),
     });
 
     // F26 (SCAN-M5): the destructive entries render only for people the
@@ -193,7 +261,49 @@ export const TaskDetailDrawer = ({
                           });
                   },
               }),
-        holds("task.delete_hard") && { type: "divider" as const },
+        // upgrades/023 — everyone who may delete a task can now ASK for it to
+        // be removed for good; only an admin's approval carries it out. The
+        // two menu entries are deliberately worded differently, because they
+        // do genuinely different things.
+        holds("task.delete") && { type: "divider" as const },
+        holds("task.delete") &&
+            !holds("task.delete_hard") && {
+                key: "request-delete",
+                label: "Request permanent delete",
+                icon: <Trash2 size={13} strokeWidth={1.75} />,
+                danger: true,
+                disabled: !!task?.deleteRequestPending,
+                onClick: () => {
+                    if (!task) return;
+                    let reason = "";
+                    Modal.confirm({
+                        title: "Ask an admin to delete this permanently?",
+                        content: (
+                            <div>
+                                <p style={{ marginTop: 0 }}>
+                                    The task stays exactly as it is until an
+                                    Owner or Admin decides. To hide it yourself
+                                    instead, use <b>Archive</b> — that can be
+                                    restored.
+                                </p>
+                                <Input.TextArea
+                                    rows={2}
+                                    maxLength={500}
+                                    placeholder="Why should it be removed? (optional)"
+                                    onChange={(e) => {
+                                        reason = e.target.value;
+                                    }}
+                                />
+                            </div>
+                        ),
+                        okText: "Send request",
+                        okButtonProps: { danger: true },
+                        cancelText: "Cancel",
+                        onOk: () =>
+                            requestDelete.mutateAsync(reason.trim() || undefined),
+                    });
+                },
+            },
         holds("task.delete_hard") && {
             key: "delete",
             label: "Delete permanently",
@@ -355,6 +465,113 @@ export const TaskDetailDrawer = ({
 
                     {/* Body */}
                     <div style={{ flex: 1, overflowY: "auto" }}>
+                        {/* upgrades/023 — a permanent delete is waiting on an
+                            admin. The task is untouched; this says so, names
+                            who asked, and puts the decision right here for the
+                            people who can make it. */}
+                        {deleteRequest && (
+                            <Alert
+                                type="warning"
+                                showIcon
+                                style={{ borderRadius: 0 }}
+                                message="Permanent delete requested"
+                                description={
+                                    <div style={{ fontSize: 12 }}>
+                                        <div>
+                                            {userMap.get(
+                                                deleteRequest.requestedBy,
+                                            )?.firstName ?? "Someone"}{" "}
+                                            asked for this task to be deleted
+                                            for good. It stays exactly as it is
+                                            until an Owner or Admin decides.
+                                        </div>
+                                        {deleteRequest.reason && (
+                                            <div
+                                                style={{
+                                                    marginTop: 4,
+                                                    fontStyle: "italic",
+                                                }}
+                                            >
+                                                “{deleteRequest.reason}”
+                                            </div>
+                                        )}
+                                        <div
+                                            style={{
+                                                marginTop: 8,
+                                                display: "flex",
+                                                gap: 8,
+                                            }}
+                                        >
+                                            {holds("task.delete_hard") && (
+                                                <>
+                                                    <Button
+                                                        size="small"
+                                                        danger
+                                                        loading={
+                                                            decideDelete.isPending
+                                                        }
+                                                        onClick={() =>
+                                                            Modal.confirm({
+                                                                title: "Delete this task permanently?",
+                                                                content:
+                                                                    "This cannot be undone. Its comments, checklists and attachments go with it.",
+                                                                okText: "Delete permanently",
+                                                                okButtonProps: {
+                                                                    danger: true,
+                                                                },
+                                                                onOk: () =>
+                                                                    decideDelete.mutateAsync(
+                                                                        {
+                                                                            id: deleteRequest.id,
+                                                                            approve:
+                                                                                true,
+                                                                        },
+                                                                    ),
+                                                            })
+                                                        }
+                                                    >
+                                                        Approve
+                                                    </Button>
+                                                    <Button
+                                                        size="small"
+                                                        loading={
+                                                            decideDelete.isPending
+                                                        }
+                                                        onClick={() =>
+                                                            decideDelete.mutate(
+                                                                {
+                                                                    id: deleteRequest.id,
+                                                                    approve:
+                                                                        false,
+                                                                },
+                                                            )
+                                                        }
+                                                    >
+                                                        Reject
+                                                    </Button>
+                                                </>
+                                            )}
+                                            {deleteRequest.requestedBy ===
+                                                currentUserId && (
+                                                <Button
+                                                    size="small"
+                                                    loading={
+                                                        cancelDelete.isPending
+                                                    }
+                                                    onClick={() =>
+                                                        cancelDelete.mutate(
+                                                            deleteRequest.id,
+                                                        )
+                                                    }
+                                                >
+                                                    Withdraw my request
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </div>
+                                }
+                            />
+                        )}
                         {!canEdit && (
                             <div
                                 style={{

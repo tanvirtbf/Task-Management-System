@@ -2,6 +2,7 @@ import { AppError } from "../errors";
 import { Roles, type Role } from "../constants";
 import { ListsRepo } from "../repositories/ListsRepo";
 import { TasksRepo } from "../repositories/TasksRepo";
+import type { TaskDeleteRequestsRepo } from "../repositories/TaskDeleteRequestsRepo";
 import { toWireTask, type WireTask } from "../serializers/taskSerializer";
 import type { ListTasksFilters } from "../types/tasks";
 
@@ -49,7 +50,21 @@ export class TasksService {
     constructor(
         private lists: ListsRepo,
         private tasksRepo: TasksRepo,
+        /**
+         * upgrades/023 — OPTIONAL on purpose. This service is constructed at a
+         * dozen wiring sites (task writes, dependencies, engineering, forms…)
+         * and only the two READ paths that feed a list view or the task drawer
+         * need the "deletion pending" flag. Absent ⇒ the flag is simply false,
+         * which is what every non-display caller wants anyway.
+         */
+        private deleteRequests?: TaskDeleteRequestsRepo,
     ) {}
+
+    /** Which of these tasks carry a live delete request (empty without the repo). */
+    private async pendingDeletes(taskIds: string[]): Promise<Set<string>> {
+        if (!this.deleteRequests || taskIds.length === 0) return new Set();
+        return this.deleteRequests.pendingTaskIds(taskIds);
+    }
 
     async listByList(input: ListTasksInput): Promise<ListTasksResult> {
         // Workspace-isolation guard: a missing or cross-workspace list id is
@@ -90,12 +105,13 @@ export class TasksService {
         // see custom-field values flagged `hidden_from_guests`.
         const taskIds = page.map((row) => row.id);
         const redactGuest = input.role === Roles.GUEST;
-        const [assignees, watchers, tags, customFieldValues] =
+        const [assignees, watchers, tags, customFieldValues, pendingDeletes] =
             await Promise.all([
                 this.tasksRepo.assigneesByTask(taskIds),
                 this.tasksRepo.watchersByTask(taskIds),
                 this.tasksRepo.tagsByTask(taskIds),
                 this.tasksRepo.customFieldValuesByTask(taskIds, redactGuest),
+                this.pendingDeletes(taskIds),
             ]);
 
         const data = page.map((row) =>
@@ -104,6 +120,7 @@ export class TasksService {
                 watchers: watchers.get(row.id) ?? [],
                 tags: tags.get(row.id) ?? [],
                 customFieldValues: customFieldValues.get(row.id) ?? {},
+                deleteRequestPending: pendingDeletes.has(row.id),
             }),
         );
 
@@ -139,12 +156,13 @@ export class TasksService {
         }
 
         const redactGuest = input.role === Roles.GUEST;
-        const [assignees, watchers, tags, customFieldValues] =
+        const [assignees, watchers, tags, customFieldValues, pendingDeletes] =
             await Promise.all([
                 this.tasksRepo.assigneesByTask([row.id]),
                 this.tasksRepo.watchersByTask([row.id]),
                 this.tasksRepo.tagsByTask([row.id]),
                 this.tasksRepo.customFieldValuesByTask([row.id], redactGuest),
+                this.pendingDeletes([row.id]),
             ]);
 
         return toWireTask(row, {
@@ -152,6 +170,7 @@ export class TasksService {
             watchers: watchers.get(row.id) ?? [],
             tags: tags.get(row.id) ?? [],
             customFieldValues: customFieldValues.get(row.id) ?? {},
+            deleteRequestPending: pendingDeletes.has(row.id),
         });
     }
 

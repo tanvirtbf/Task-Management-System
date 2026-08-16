@@ -476,6 +476,14 @@ export interface DeleteTaskInput {
     taskId: string;
     /** `?hard=true` → permanent delete (👑 admin/owner); else soft (archive). */
     hard: boolean;
+    /**
+     * upgrades/023 — extra facts to merge into the surviving audit row when a
+     * hard delete arrives through the approval flow (who asked, why, what the
+     * approver said). Passed here rather than written as a SECOND row: the
+     * activity feed showed one deletion twice, and one row that explains
+     * itself beats two that half-explain it.
+     */
+    auditContext?: Record<string, unknown>;
 }
 
 export class TaskWriteService {
@@ -1588,6 +1596,11 @@ export class TaskWriteService {
                             custom_id: task.customId ?? null,
                             list_id: task.primaryListId,
                             subtree_count: subtree.length,
+                            // upgrades/023: when the delete came through the
+                            // approval flow, WHO asked and WHY ride along in
+                            // this same row rather than a second one — the
+                            // activity feed showed the same deletion twice.
+                            ...(input.auditContext ?? {}),
                         },
                     },
                     tx,
