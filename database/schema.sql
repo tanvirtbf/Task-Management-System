@@ -495,9 +495,18 @@ CREATE TABLE tasks (
     -- ──────────────────────────────────────────────────────────────────────
 
     -- Recurrence — simple per spec. cron_expression reserved for future.
+    -- upgrades/024 made it REAL: the `recurrence-spawn` job (every 15 min)
+    -- reads these and creates the next occurrence. `recurrence_time` is when,
+    -- on the WORKSPACE's clock (NULL reads as 09:00, so recurrences created
+    -- before that build start working). `recurrence_last_spawned_on` is the
+    -- idempotency claim that turns a 15-minute tick into one task per day.
+    -- `recurring_source_id` is set on the COPY and points at its template.
     recurrence_pattern   ENUM('none','daily','weekly') NOT NULL DEFAULT 'none',
     recurrence_days      SET('sun','mon','tue','wed','thu','fri','sat') NULL,
+    recurrence_time      TIME         NULL,
     recurrence_ends_at   DATE         NULL,
+    recurrence_last_spawned_on DATE   NULL,
+    recurring_source_id  VARCHAR(64)  NULL,
 
     time_estimate_seconds  INT UNSIGNED NULL,
     time_tracked_seconds   INT UNSIGNED NOT NULL DEFAULT 0,
@@ -552,6 +561,10 @@ CREATE TABLE tasks (
         REFERENCES task_types(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT fk_tasks_parent FOREIGN KEY (parent_task_id)
         REFERENCES tasks(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    -- upgrades/024. SET NULL, never CASCADE: deleting a recurring template
+    -- must not delete the occurrences — those are real work people did.
+    CONSTRAINT fk_tasks_recurring_source FOREIGN KEY (recurring_source_id)
+        REFERENCES tasks(id) ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT fk_tasks_sprint FOREIGN KEY (sprint_id)
         REFERENCES sprints(id) ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT fk_tasks_reviewer FOREIGN KEY (reviewer_id)
@@ -583,6 +596,9 @@ CREATE TABLE tasks (
     INDEX idx_tasks_severity (bug_severity, status_id),
     -- Recurring tasks scheduler scan
     INDEX idx_tasks_recurrence (recurrence_pattern, due_date),
+    -- upgrades/024 — the spawn job's real scan: live templates due to fire
+    INDEX idx_tasks_recurrence_due
+        (workspace_id, recurrence_pattern, recurrence_last_spawned_on),
     -- SLA breach scanner: tasks whose deadline passed and aren't done.
     -- Composite ordered so MySQL can range-scan sla_due_at and skip closed
     -- tasks via the second column. archived_at filter is on the index too.

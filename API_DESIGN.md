@@ -526,7 +526,9 @@ Accepts either internal `id` (`t-90042`) or `custom_id` (`ORD-1042`).
 **Body** — minimum `{ "primary_list_id", "name" }`. All other fields optional.
 Special:
 - If `parent_task_id` is provided, server enforces 2-level max nesting (`nesting_depth + 1 ≤ 2`).
-- If `recurrence_pattern != 'none'`, server schedules a cron entry.
+- If `recurrence_pattern != 'none'` the task becomes a template: no per-task cron entry is
+  written — the single `recurrence-spawn` job (§28) scans for due templates every 15 min.
+  `recurrence_time` (`HH:MM`, default `09:00`) is when the day's copy appears.
 - `custom_id` auto-generated as `<list.prefix>-<task_number>` if not provided.
 - For Bug task type, severity defaults to `S2` if omitted.
 - **F29 (ISS-039) — the type decides which engineering fields it may carry**, checked on the
@@ -1414,13 +1416,14 @@ Drop this browser's subscription (sign-out / opt-out). Body `{ "endpoint": "…"
 
 Internal — invoked by cron, not by clients. Documented for ops visibility.
 
-The EIGHT built jobs (cron cadences per `deploy/cron/bbtasks-jobs`):
+The NINE built jobs (cron cadences per `deploy/cron/bbtasks-jobs`):
 
 | Endpoint | Schedule | What it does |
 |---|---|---|
 | `POST /jobs/snooze-wake` | every 5 min | Marks snoozed notifications back as unread when their snooze elapses |
 | `POST /jobs/overdue-alert` | every 10 min | The moment a task's `due_date` has passed on the WORKSPACE's calendar (`workspaces.timezone` decides "today"), every assignee gets an `overdue` in-app notification + an email. Exactly once per task per deadline: `tasks.overdue_notified_at` is claimed in the same tx as the fanout, and any `due_date` change re-arms it. Tasks with no assignees stay unclaimed so a late assignee still alerts on the next tick |
 | `POST /jobs/assignment-request-expiry` | hourly :50 | Expires cross-team assignment requests unanswered for 7 days (team-access P8, Q6): atomic per-row claim (a racing accept wins), `expired` ledger row, `assignment_request_decided` bell to the requester. The API refuses lapsed requests even between runs, so cadence only bounds how promptly the requester hears |
+| `POST /jobs/recurrence-spawn` | every 15 min | Creates the next occurrence of a recurring task (`upgrades/024`). Per workspace, on the workspace's own clock: every daily template — and every weekly one whose `recurrence_days` contains today — whose `recurrence_time` (default `09:00`) has arrived and which has not spawned today gets ONE fresh task named `Template — 17 Aug 2026`. The copy carries the name, list and task type and NOTHING else: no assignee, no dates, no description, no checklist, no tags. `recurrence_last_spawned_on` is claimed by a conditional UPDATE in the same tx as the create, so overlapping runs cannot double-spawn; `recurring_source_id` points back at the template. Templates past `recurrence_ends_at`, archived ones, and the spawned copies themselves are skipped — a copy never recurs |
 | `POST /jobs/session-cleanup` | daily 02:10 UTC | Hard-deletes `sessions` past `expires_at + 30 d`, and revoked ones past 7 d (F10) |
 | `POST /jobs/attachment-janitor` | daily 02:20 UTC | Hard-deletes attachments whose upload never finalised after 1 h (R2 object first) |
 | `POST /jobs/r2-purge` | daily 02:30 UTC | Hard-deletes R2 objects soft-deleted > 7 days ago + drains `r2_purge_queue` (F16) |
@@ -1429,8 +1432,8 @@ The EIGHT built jobs (cron cadences per `deploy/cron/bbtasks-jobs`):
 
 All jobs accept a `?dry_run=true` query to log what they would do without writing (truthy/falsy forms per F14; a bare `?dry_run` means true). Guarded by an `X-Internal-Token` header so they can be triggered from cron but not from the public internet. A failed job still answers `200 { ok:false, error }` — cron branches on the body (`deploy/cron/run-job.sh` exits 1 on it).
 
-> Spec-era jobs still unbuilt (deferred features, not bugs): `recurrence-spawn`
-> (recurring-task instances) and `email-digest` (daily summary mail).
+> Spec-era jobs still unbuilt (deferred features, not bugs): `email-digest`
+> (daily summary mail).
 > `sla-breach-scan` in its spec form is superseded: due-date overdue alerting is
 > `overdue-alert` above; `sla_due_at` breaches surface in `GET /sla/breached` + `/sla` UI.
 

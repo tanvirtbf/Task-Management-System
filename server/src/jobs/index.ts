@@ -4,6 +4,7 @@ import { attachmentJanitor } from "./attachmentJanitor";
 import { departmentReport } from "./departmentReport";
 import { overdueAlert } from "./overdueAlert";
 import { r2Purge } from "./r2Purge";
+import { recurrenceSpawn } from "./recurrenceSpawn";
 import { sessionCleanup } from "./sessionCleanup";
 import { snoozeWake } from "./snoozeWake";
 import { formSubmissionExpiry } from "./formSubmissionExpiry";
@@ -23,6 +24,8 @@ const JOBS = {
     "department-report": departmentReport,
     "overdue-alert": overdueAlert,
     "assignment-request-expiry": assignmentRequestExpiry,
+    // upgrades/024 — creates the next occurrence of a recurring task.
+    "recurrence-spawn": recurrenceSpawn,
 } as const;
 
 export type JobName = keyof typeof JOBS;

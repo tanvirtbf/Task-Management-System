@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Popover, DatePicker, Button, Radio, Checkbox } from "antd";
+import { Popover, DatePicker, TimePicker, Button, Radio, Checkbox } from "antd";
 import { Repeat, X } from "lucide-react";
 import dayjs from "dayjs";
 import type { TaskRecurrence } from "../../types";
@@ -12,11 +12,23 @@ interface Props {
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+/** upgrades/024 — what the job assumes when no time was picked. */
+const DEFAULT_TIME = "09:00";
+
+/** "09:00" → "9:00 AM", the way the chip should read. */
+const prettyTime = (hhmm: string): string => {
+    const [h, m] = hhmm.split(":").map(Number);
+    const suffix = h < 12 ? "AM" : "PM";
+    const hour = h % 12 === 0 ? 12 : h % 12;
+    return `${hour}:${String(m).padStart(2, "0")} ${suffix}`;
+};
+
 const formatRecurrence = (r: TaskRecurrence): string => {
-    if (r.pattern === "daily") return r.interval > 1 ? `Every ${r.interval} days` : "Daily";
+    const at = ` at ${prettyTime(r.time ?? DEFAULT_TIME)}`;
+    if (r.pattern === "daily") return `Daily${at}`;
     if (r.pattern === "weekly") {
         const days = (r.daysOfWeek ?? []).map((d) => DAY_LABELS[d]).join(", ");
-        return days ? `Weekly · ${days}` : "Weekly";
+        return days ? `${days}${at}` : `Weekly${at}`;
     }
     return r.pattern;
 };
@@ -28,6 +40,7 @@ export const RecurrenceConfig = ({ value, onChange }: Props) => {
             pattern: "daily",
             interval: 1,
             daysOfWeek: [],
+            time: DEFAULT_TIME,
             endsAt: null,
             spawnOnComplete: true,
         },
@@ -96,6 +109,35 @@ export const RecurrenceConfig = ({ value, onChange }: Props) => {
                 </div>
             )}
 
+            {/* upgrades/024 — the time is the whole point now: this is when
+                the next task is actually created, on the office's clock. */}
+            <div style={{ marginBottom: 12 }}>
+                <div
+                    style={{
+                        fontSize: 11,
+                        color: tokens.colors.textMuted,
+                        marginBottom: 6,
+                        fontWeight: 500,
+                    }}
+                >
+                    At what time
+                </div>
+                <TimePicker
+                    size="small"
+                    format="h:mm A"
+                    minuteStep={15}
+                    allowClear={false}
+                    value={dayjs(draft.time ?? DEFAULT_TIME, "HH:mm")}
+                    onChange={(t) =>
+                        setDraft({
+                            ...draft,
+                            time: t ? t.format("HH:mm") : DEFAULT_TIME,
+                        })
+                    }
+                    style={{ width: "100%" }}
+                />
+            </div>
+
             <div style={{ marginBottom: 12 }}>
                 <div
                     style={{
@@ -118,6 +160,25 @@ export const RecurrenceConfig = ({ value, onChange }: Props) => {
                     }
                     style={{ width: "100%" }}
                 />
+            </div>
+
+            {/* Say plainly what will happen — this used to save a setting that
+                did nothing, so the promise has to be legible. */}
+            <div
+                style={{
+                    fontSize: 11,
+                    color: tokens.colors.textMuted,
+                    background: tokens.colors.bgPage,
+                    borderRadius: tokens.radius.sm,
+                    padding: "6px 8px",
+                    marginBottom: 10,
+                    lineHeight: 1.5,
+                }}
+            >
+                A fresh copy of this task is created{" "}
+                {draft.pattern === "daily" ? "every day" : "on those days"} at{" "}
+                <b>{prettyTime(draft.time ?? DEFAULT_TIME)}</b>, named with that
+                date. Nothing else is copied — no assignee, no dates.
             </div>
 
             <div

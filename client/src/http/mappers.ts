@@ -92,6 +92,7 @@ export type WireTask = Omit<Task, "customFields" | "recurrence"> & {
     customFieldValues?: Record<string, unknown> | null;
     recurrencePattern?: string | null;
     recurrenceDays?: string[] | null;
+    recurrenceTime?: string | null;
     recurrenceEndsAt?: string | null;
     workspaceId?: string;
     internalId?: number;
@@ -102,6 +103,7 @@ export const mapTask = (w: WireTask): Task => {
         customFieldValues,
         recurrencePattern,
         recurrenceDays,
+        recurrenceTime,
         recurrenceEndsAt,
         // dropped — not part of the FE Task type
         workspaceId: _workspaceId,
@@ -117,6 +119,7 @@ export const mapTask = (w: WireTask): Task => {
                   daysOfWeek: Array.isArray(recurrenceDays)
                       ? recurrenceDays.map(dayNameToIndex)
                       : undefined,
+                  time: recurrenceTime ?? null,
                   endsAt: recurrenceEndsAt ?? null,
                   spawnOnComplete: true,
               }
@@ -173,6 +176,11 @@ export const taskToWire = (
         out.recurrencePattern = recurrence?.pattern ?? "none";
         out.recurrenceDays =
             recurrence?.daysOfWeek?.map(dayIndexToName) ?? null;
+        // `HH:MM` — the server's validator rejects anything else, and a TIME
+        // column has no business carrying seconds nobody picked.
+        out.recurrenceTime = recurrence?.time
+            ? recurrence.time.slice(0, 5)
+            : null;
         out.recurrenceEndsAt = toDateOnly(recurrence?.endsAt ?? null);
     }
     return out;

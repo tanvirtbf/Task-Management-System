@@ -73,6 +73,9 @@ const FIRST_TIMER = [
     ["account", "amar password bhule gechi, ki korbo?", true],
     ["admin", "notun ekjon ke team e kivabe add korbo?", true],
     ["feature", "amar completed kaj ke check kore? kothay dekhbo?", false],
+    // upgrades/024. The KB said the opposite for months (honestly, then
+    // staleley) — this question exists so the reversal cannot rot back.
+    ["how-to", "protidin ekii task hate banate hoy, automatic kora jay?", true],
     ["rbac", "ekjon ke shudhu Marketing space er access dite chai, kivabe?", true],
     ["rbac", "notun ekta custom role kivabe banabo?", true],
 ];
@@ -200,8 +203,16 @@ const REAL_ROUTES = [
     "/settings/import-export",
 ];
 
-/** A task link the bot could only have gotten from a tool result. */
-const isTaskLink = (l) => /^\/t\/[\w-]+$/.test(l);
+/**
+ * A task link the bot could only have gotten from a tool result.
+ *
+ * ⚠️ The id SHAPE is part of the check, not decoration. This accepted any
+ * `/t/<anything>` and so waved through `/t/t-password` for a whole run: the
+ * link repair had turned `](/forgot-password)` into a task link, and the one
+ * detector that could have caught it was told task links are always fine.
+ * Real ids are `t-` + 22 url-safe chars; nothing short is one.
+ */
+const isTaskLink = (l) => /^\/t\/t-[\w-]{16,}$/.test(l);
 
 /**
  * Is this answer written in Bangla?
@@ -260,10 +271,12 @@ if (
     if (
         fab("[x](/settings/nonsense)").length !== 1 ||
         fab("[x](/settings/teams)").length !== 0 ||
-        fab("[x](/t/t-Abc123_xyz)").length !== 0
+        fab("[x](/t/t-YVHky3KYncnwg307rzRGoA)").length !== 0 ||
+        // the 2026-08-16 miss: a mangled page link wearing a task link's clothes
+        fab("[x](/t/t-password)").length !== 1
     ) {
         throw new Error(
-            "the fabrication detector is broken — it must flag an invented route and accept /settings/teams and tool-result /t/ links",
+            "the fabrication detector is broken — it must flag an invented route and a too-short task id, and accept /settings/teams and real tool-result /t/ links",
         );
     }
 }

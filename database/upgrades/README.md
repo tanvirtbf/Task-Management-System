@@ -41,11 +41,12 @@
 | `016_team_membership.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 | ✅ 2026-08-11 (Phase A) |
 | `017_task_audit.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 | ✅ 2026-08-11 (Phase A) |
 | `018_space_visibility_grants.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 | ✅ 2026-08-11 (Phase A) |
-| `019_visibility_switch.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 (first) | ⏳ awaiting the Phase C flip |
-| `020_edit_rights.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 (first) | ⏳ awaiting the Phase C flip |
+| `019_visibility_switch.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 (first) | ✅ 2026-08-16 (Phase C flip) |
+| `020_edit_rights.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 (first) | ✅ 2026-08-16 (Phase C flip) |
 | `021_assignment_approval.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 (first, re-apply proven) | ✅ 2026-08-11 (Phase A) |
 | `022_checklist_counters.sql` | ✅ 2026-08-12 | ✅ 2026-08-12 (first, re-apply proven) | ✅ 2026-08-12 |
 | `023_task_delete_approval.sql` | ✅ 2026-08-16 | ⏳ | ⏳ ships with the delete-approval build |
+| `024_recurrence_spawn.sql` | ✅ 2026-08-16 | ⏳ | ⏳ ships with the recurrence build (+ cron line) |
 
 > **prod = `tasks.beautybooth.com.bd`.** Phase A of `LIVE_ROLLOUT_TEAM_ACCESS.md`
 > landed 001–018 + 021 on 2026-08-11 and `022` on 2026-08-12; every one of them was
@@ -78,6 +79,13 @@
 > ENTITY type (`delete_request` — an approved delete destroys the task, so the
 > decision notice cannot point at it). ENUM appends and `CREATE TABLE IF NOT
 > EXISTS`: re-runnable. Fresh `db:setup` is now **47 tables / 5 views / 9 triggers**.
+>
+> `024` makes Recurrence actually recur. It only ADDS three nullable columns to
+> `tasks` (`recurrence_time`, `recurrence_last_spawned_on`, `recurring_source_id`),
+> one self-FK and one index — information_schema-gated, re-runnable, and harmless
+> ahead of the server build (nothing reads them until `recurrence-spawn` exists).
+> It must land WITH the new cron line, or recurring tasks stay as dead as they
+> were: `*/15 * * * * … recurrence-spawn` (see `deploy/cron/bbtasks-jobs`).
 >
 > `005` ships with the F3 clock fix and is only correct alongside it. If you apply
 > `005`, the app's `DB_TIMEZONE` **must** be `+00:00` (see `server/.env.example`).

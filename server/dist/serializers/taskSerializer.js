@@ -51,7 +51,10 @@ const toWireTask = (t, h) => ({
     recurrence_days: t.recurrenceDays && t.recurrenceDays.length > 0
         ? t.recurrenceDays
         : null,
+    // A TIME column round-trips as "HH:MM:SS"; the picker wants "HH:MM".
+    recurrence_time: t.recurrenceTime ? t.recurrenceTime.slice(0, 5) : null,
     recurrence_ends_at: toWireDate(t.recurrenceEndsAt),
+    recurring_source_id: t.recurringSourceId,
     time_estimate_seconds: t.timeEstimateSeconds,
     time_tracked_seconds: t.timeTrackedSeconds,
     subtasks_count: t.subtasksCount,

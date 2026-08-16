@@ -103,6 +103,8 @@ export interface CreateTaskBody {
     due_date?: string | null;
     recurrence_pattern?: string;
     recurrence_days?: string[] | null;
+    /** upgrades/024 — `HH:MM` (24h) on the workspace's clock. */
+    recurrence_time?: string | null;
     recurrence_ends_at?: string | null;
     time_estimate_seconds?: number | null;
     assignees?: string[];
@@ -145,6 +147,8 @@ export interface UpdateTaskBody {
     due_date?: string | null;
     recurrence_pattern?: string;
     recurrence_days?: string[] | null;
+    /** upgrades/024 — `HH:MM` (24h) on the workspace's clock. */
+    recurrence_time?: string | null;
     recurrence_ends_at?: string | null;
     time_estimate_seconds?: number | null;
     sprint_id?: string | null;

@@ -196,6 +196,12 @@ const computeSlaDueAt = (typeName, severity, now, cal) => {
  * the READ path: `MySqlDate.mapFromDriverValue` does `new Date("YYYY-MM-DD")`,
  * which is also UTC midnight. Write and read now agree by construction.
  */
+/**
+ * `HH:MM` → the `HH:MM:00` a MySQL TIME column stores (upgrades/024).
+ * Undefined and null both mean "no time set", which the spawn job reads as
+ * 09:00 — a recurrence with no time must still fire, not silently never.
+ */
+const toClockOnly = (value) => value ? `${value.slice(0, 5)}:00` : null;
 const toDateOnly = (value) => {
     if (value === null || value === undefined)
         return null;
@@ -537,6 +543,7 @@ class TaskWriteService {
                         recurrencePattern: input.recurrencePattern ?? "none",
                         recurrenceDays: (input.recurrenceDays ??
                             null),
+                        recurrenceTime: toClockOnly(input.recurrenceTime),
                         recurrenceEndsAt: toDateOnly(input.recurrenceEndsAt),
                         timeEstimateSeconds: input.timeEstimateSeconds ?? null,
                         sprintId: input.sprintId ?? null,
@@ -800,6 +807,8 @@ class TaskWriteService {
         if (p.recurrenceDays !== undefined)
             dbPatch.recurrenceDays =
                 p.recurrenceDays;
+        if (p.recurrenceTime !== undefined)
+            dbPatch.recurrenceTime = toClockOnly(p.recurrenceTime);
         if (p.recurrenceEndsAt !== undefined)
             dbPatch.recurrenceEndsAt = toDateOnly(p.recurrenceEndsAt);
         if (p.timeEstimateSeconds !== undefined)

@@ -57,6 +57,38 @@ export const zoneDateOf = (utc: Date, timeZone: string): string => {
 export const todayInZone = (timeZone: string): string =>
     zoneDateOf(new Date(), timeZone);
 
+/**
+ * The wall clock (`HH:MM`, 24h) in a zone — the day's companion to
+ * `zoneDateOf`. upgrades/024: a recurring task fires at a time the person
+ * picked, and "9:00" means nine in THEIR office, not on the API box.
+ *
+ * Falls back to the fixed Dhaka offset if the zone name is unusable, matching
+ * `zoneDateOf` — a bad timezone value must degrade, never throw inside a job.
+ */
+export const zoneClockOf = (utc: Date, timeZone: string): string => {
+    try {
+        const parts = new Intl.DateTimeFormat("en-GB", {
+            timeZone,
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+        }).formatToParts(utc);
+        const get = (type: string): string =>
+            parts.find((p) => p.type === type)?.value ?? "";
+        const clock = `${get("hour")}:${get("minute")}`;
+        if (/^\d{2}:\d{2}$/.test(clock)) return clock;
+    } catch {
+        /* fall through */
+    }
+    return new Date(utc.getTime() + DHAKA_OFFSET_MS)
+        .toISOString()
+        .slice(11, 16);
+};
+
+/** The wall clock right now, on a workspace's own calendar. */
+export const clockInZone = (timeZone: string): string =>
+    zoneClockOf(new Date(), timeZone);
+
 // ─── Week math (P18 — weekly department reports) ─────────────────────────────
 // Weeks are Dhaka-calendar Monday→Sunday (D-3). All arithmetic is pure UTC
 // day-shifting on the calendar STRINGS; instants only appear at the

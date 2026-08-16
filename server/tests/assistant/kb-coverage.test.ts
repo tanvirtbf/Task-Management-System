@@ -370,12 +370,22 @@ describe("KB accuracy — P2: no false claims", () => {
         );
     });
 
-    it("is honest that Recurrence does not create the next task yet (no job generates it)", () => {
-        // The field and its UI exist and save; nothing in `src/jobs/` acts on
-        // it, so promising repeating tasks would be a lie the user only
-        // discovers when the next task never appears.
-        expect(KNOWLEDGE_BASE).toMatch(/Recurrence is not automatic yet/i);
-        expect(KNOWLEDGE_BASE).toMatch(/does not create the next occurrence/i);
+    it("no longer claims Recurrence is dead — upgrades/024 gave it a job", () => {
+        // ⚠️ REVERSED (2026-08-16). This used to assert the OPPOSITE, and was
+        // right to: the picker saved a pattern and nothing in `src/jobs/` ever
+        // read it, so promising repeating tasks would have been a lie the user
+        // discovers when the next task never appears. `recurrence-spawn` now
+        // creates it, so the honest limitation became a stale one — the exact
+        // failure mode this file exists to catch, in the good direction.
+        expect(KNOWLEDGE_BASE).not.toMatch(/Recurrence is not automatic yet/i);
+        expect(KNOWLEDGE_BASE).not.toMatch(
+            /does not create the next occurrence/i,
+        );
+        expect(KNOWLEDGE_BASE).toMatch(/How do I make a task repeat every day/);
+        // …and the promise it replaces it with is the one the job keeps:
+        // a fresh copy, named with the date, carrying nothing.
+        expect(KNOWLEDGE_BASE).toMatch(/Stock check — 17 Aug 2026/);
+        expect(KNOWLEDGE_BASE).toMatch(/no assignee, no dates, no checklist/);
     });
 
     it("still contains no backtick or dollar-brace (the literal must stay valid)", () => {

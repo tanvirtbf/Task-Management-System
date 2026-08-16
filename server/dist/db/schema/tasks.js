@@ -80,7 +80,26 @@ exports.tasks = (0, mysql_core_1.mysqlTable)("tasks", {
         .notNull()
         .default("none"),
     recurrenceDays: (0, _shared_1.mysqlSet)("recurrence_days", _shared_1.weekDays),
+    /**
+     * upgrades/024 — WHEN in the day, on the WORKSPACE's clock. NULL on
+     * rows that predate the spawn job; it is read as 09:00 so an existing
+     * recurrence starts working instead of silently never firing.
+     */
+    recurrenceTime: (0, mysql_core_1.time)("recurrence_time"),
     recurrenceEndsAt: (0, mysql_core_1.date)("recurrence_ends_at"),
+    /**
+     * upgrades/024 — the idempotency claim. The spawn job runs every 15
+     * minutes; a conditional UPDATE on this column is what turns that into
+     * exactly ONE task per day (the `department_reports.notified_at`
+     * shape). Never written by the app's normal write paths.
+     */
+    recurrenceLastSpawnedOn: (0, mysql_core_1.date)("recurrence_last_spawned_on", {
+        mode: "string",
+    }),
+    /** upgrades/024 — set on a SPAWNED copy: which template produced it. */
+    recurringSourceId: (0, mysql_core_1.varchar)("recurring_source_id", {
+        length: _shared_1.ID_LENGTH,
+    }),
     timeEstimateSeconds: (0, mysql_core_1.int)("time_estimate_seconds", { unsigned: true }),
     timeTrackedSeconds: (0, mysql_core_1.int)("time_tracked_seconds", { unsigned: true })
         .notNull()
@@ -175,6 +194,17 @@ exports.tasks = (0, mysql_core_1.mysqlTable)("tasks", {
     parentIdx: (0, mysql_core_1.index)("idx_tasks_parent").on(t.parentTaskId),
     severityIdx: (0, mysql_core_1.index)("idx_tasks_severity").on(t.bugSeverity, t.statusId),
     recurrenceIdx: (0, mysql_core_1.index)("idx_tasks_recurrence").on(t.recurrencePattern, t.dueDate),
+    /** upgrades/024 — the spawn job's scan: live templates due to fire. */
+    recurrenceDueIdx: (0, mysql_core_1.index)("idx_tasks_recurrence_due").on(t.workspaceId, t.recurrencePattern, t.recurrenceLastSpawnedOn),
+    recurringSourceFk: (0, mysql_core_1.foreignKey)({
+        columns: [t.recurringSourceId],
+        foreignColumns: [t.id],
+        name: "fk_tasks_recurring_source",
+    })
+        // SET NULL, never CASCADE: deleting the template must not delete
+        // the work its occurrences represent — those are real tasks.
+        .onDelete("set null")
+        .onUpdate("cascade"),
     slaIdx: (0, mysql_core_1.index)("idx_tasks_sla").on(t.slaDueAt, t.completedAt, t.archivedAt),
     // F30 (ISS-088): list pagination orders by `internal_id` while every
     // index above ends in a status/date column, so the page was found by

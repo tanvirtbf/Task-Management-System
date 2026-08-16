@@ -733,6 +733,16 @@ exports.createTaskValidator = (0, express_validator_1.checkSchema)({
             errorMessage: "recurrence_ends_at must be a YYYY-MM-DD date",
         },
     },
+    // upgrades/024 — the time of day the occurrence is created, on the
+    // WORKSPACE's clock. `HH:MM` (24h); seconds are neither wanted nor stored.
+    recurrence_time: {
+        in: ["body"],
+        optional: optNullable,
+        matches: {
+            options: [/^([01]\d|2[0-3]):[0-5]\d$/],
+            errorMessage: "recurrence_time must be HH:MM (24-hour)",
+        },
+    },
     time_estimate_seconds: {
         in: ["body"],
         optional: optNullable,
@@ -997,6 +1007,16 @@ exports.updateTaskValidator = (0, express_validator_1.checkSchema)({
         isDate: {
             options: { format: "YYYY-MM-DD", strictMode: true },
             errorMessage: "recurrence_ends_at must be a YYYY-MM-DD date",
+        },
+    },
+    // upgrades/024 — the time of day the occurrence is created, on the
+    // WORKSPACE's clock. `HH:MM` (24h); seconds are neither wanted nor stored.
+    recurrence_time: {
+        in: ["body"],
+        optional: optNullable,
+        matches: {
+            options: [/^([01]\d|2[0-3]):[0-5]\d$/],
+            errorMessage: "recurrence_time must be HH:MM (24-hour)",
         },
     },
     time_estimate_seconds: {

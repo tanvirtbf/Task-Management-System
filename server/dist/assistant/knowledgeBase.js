@@ -240,6 +240,7 @@ If a page says access is not available, or an action is refused, it is not a bug
   2. Click **Add member** and pick the person from the dropdown. (Someone brand new to the company is added with Members → **Invite**, which asks for their team.)
   3. Only if they should ALSO stop seeing other teams: in [Roles & permissions](/settings/roles) set their role's **See spaces** to **Their spaces** — warn them this affects everyone holding that role.
   Never send them to [Members](/settings/members) for team membership; that page has no team control.
+- **How do I make a task repeat every day?** Open the task → **Recurrence** → **Add recurrence** → pick **Daily** (or **Weekly** and the days) and **the time**, then Save. From then on a FRESH copy is created at that time, named with the date — "Stock check — 17 Aug 2026". Nothing is copied onto it: no assignee, no dates, no checklist — it is new work waiting to be picked up. The original stays as the repeating one; to stop it, clear the recurrence or **Archive** the original.
 - **Where do I see everything assigned to me?** [Home](/) — the cards count your open, due-today, overdue and awaiting-review tasks, and today's agenda lists them. You can also just ask me here and I will read your live numbers.
 - **What is past its deadline right now?** [SLA breaches](/sla) — bugs and complaints past their SLA, newest first. Anyone can open it.
 - **Which team am I on, and who is my Head?** Just ask me ("amar team e ke ke ase?") — I can read the roster live. Or open [Teams](/settings/teams), which shows every team, its members and its head.
@@ -261,7 +262,6 @@ If a page says access is not available, or an action is refused, it is not a bug
 
 ## Good to know (current limitations — be honest about these)
 - A brand-new workspace starts empty; you create the Spaces, Lists and Tasks yourself.
-- **Recurrence is not automatic yet.** You can set a recurrence on a task and it is saved, but the system does not create the next occurrence for you — make the next task yourself for now. Say this plainly if someone asks; do not promise repeating tasks.
 - On the PUBLIC (no-login) form pages, special fields such as dropdown, date, money and files appear as simple text boxes; inside the app all field types work fully.
 - Inviting members: an Admin or Owner sends an invite from Settings, then Members, then Invite. The person receives an email with an invitation link; they open it, set a password, and are signed in automatically. The email comes from the person who invited them (the subject reads like "X added you to BeautyBooth Tasks"), so tell them to search the sender's name — and to check **Promotions** and **Spam** before asking for a re-send.
 - File attachments need the file storage to be configured; if an upload fails it is a storage/setup issue to raise with an admin.

@@ -181,6 +181,9 @@ export interface Task {
     /** upgrades/023 — someone asked for this to be permanently deleted and an
      *  admin has not decided yet. The task itself is untouched meanwhile. */
     deleteRequestPending: boolean;
+    /** upgrades/024 — set when the recurrence job created this task; points at
+     *  the repeating template it came from. */
+    recurringSourceId: string | null;
     createdAt: string;
     updatedAt: string;
     createdBy: string;
@@ -243,9 +246,19 @@ export interface TaskRecurrence {
     dayOfMonth?: number;
     /** For custom: cron expression. */
     cron?: string;
+    /**
+     * upgrades/024 — the time of day the next occurrence is created, `HH:MM`
+     * on the WORKSPACE's clock. Null on recurrences set before that build; the
+     * job reads null as 09:00 so they start working rather than never firing.
+     */
+    time?: string | null;
     /** Optional end date — recurrence stops after this. */
     endsAt?: string | null;
-    /** When true, the next instance is created automatically when the current completes. */
+    /**
+     * ⚠️ Client-only leftover from the mock era — there is no such column and
+     * no such behaviour. Occurrences are created ON SCHEDULE by the
+     * `recurrence-spawn` job, not when the previous one is completed.
+     */
     spawnOnComplete: boolean;
 }
 

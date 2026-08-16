@@ -36,7 +36,11 @@ export interface WireTask {
     sla_due_at: string | null;
     recurrence_pattern: string;
     recurrence_days: string[] | null;
+    /** upgrades/024 — `HH:MM` on the workspace's clock, or null (reads as 09:00). */
+    recurrence_time: string | null;
     recurrence_ends_at: string | null;
+    /** upgrades/024 — set when this task was CREATED by a recurring template. */
+    recurring_source_id: string | null;
     time_estimate_seconds: number | null;
     time_tracked_seconds: number;
     subtasks_count: number;
@@ -138,7 +142,10 @@ export const toWireTask = (t: TaskRow, h: TaskHydration): WireTask => ({
         t.recurrenceDays && t.recurrenceDays.length > 0
             ? t.recurrenceDays
             : null,
+    // A TIME column round-trips as "HH:MM:SS"; the picker wants "HH:MM".
+    recurrence_time: t.recurrenceTime ? t.recurrenceTime.slice(0, 5) : null,
     recurrence_ends_at: toWireDate(t.recurrenceEndsAt),
+    recurring_source_id: t.recurringSourceId,
     time_estimate_seconds: t.timeEstimateSeconds,
     time_tracked_seconds: t.timeTrackedSeconds,
     subtasks_count: t.subtasksCount,

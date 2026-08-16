@@ -840,6 +840,143 @@ export class TasksRepo {
         );
     }
 
+    /**
+     * THE RECURRENCE SPAWN SCAN (upgrades/024).
+     *
+     * Live recurring TEMPLATES in `workspaceId` whose next occurrence is due
+     * now, on the workspace's own clock:
+     *   · pattern is daily, or weekly WITH today's weekday listed;
+     *   · the picked time has arrived (`recurrence_time <= now`; a NULL time —
+     *     every row created before this build — reads as 09:00, so an existing
+     *     recurrence starts working instead of never firing);
+     *   · it has not already produced today's task
+     *     (`recurrence_last_spawned_on` is NULL or an earlier day);
+     *   · the recurrence has not ended (`recurrence_ends_at >= today`);
+     *   · the template is not archived.
+     *
+     * COMPLETED templates still spawn, deliberately: the recurrence is a
+     * schedule, not a piece of work. Ticking the template off does not mean
+     * "stop the daily stock check" — ARCHIVING it does, and that is the off
+     * switch the UI already offers.
+     */
+    async findRecurringDue(input: {
+        workspaceId: string;
+        todayYmd: string;
+        /** `HH:MM` on the workspace's clock. */
+        nowHHMM: string;
+        /** Lowercase 3-letter weekday, matching the `recurrence_days` SET. */
+        weekday: string;
+        limit: number;
+    }): Promise<
+        Array<{
+            id: string;
+            name: string;
+            primaryListId: string;
+            taskTypeId: string;
+            createdBy: string;
+            /** What the claim must be put BACK to if the create then fails. */
+            recurrenceLastSpawnedOn: string | null;
+        }>
+    > {
+        return this.db
+            .select({
+                id: tasks.id,
+                name: tasks.name,
+                primaryListId: tasks.primaryListId,
+                taskTypeId: tasks.taskTypeId,
+                createdBy: tasks.createdBy,
+                recurrenceLastSpawnedOn: tasks.recurrenceLastSpawnedOn,
+            })
+            .from(tasks)
+            .where(
+                and(
+                    eq(tasks.workspaceId, input.workspaceId),
+                    isNull(tasks.archivedAt),
+                    or(
+                        eq(tasks.recurrencePattern, "daily"),
+                        and(
+                            eq(tasks.recurrencePattern, "weekly"),
+                            sql`FIND_IN_SET(${input.weekday}, ${tasks.recurrenceDays}) > 0`,
+                        ),
+                    ),
+                    sql`COALESCE(${tasks.recurrenceTime}, '09:00:00') <= ${`${input.nowHHMM}:59`}`,
+                    or(
+                        isNull(tasks.recurrenceLastSpawnedOn),
+                        sql`${tasks.recurrenceLastSpawnedOn} < ${input.todayYmd}`,
+                    ),
+                    or(
+                        isNull(tasks.recurrenceEndsAt),
+                        sql`${tasks.recurrenceEndsAt} >= ${input.todayYmd}`,
+                    ),
+                ),
+            )
+            .orderBy(asc(tasks.internalId))
+            .limit(input.limit);
+    }
+
+    /**
+     * THE SPAWN CLAIM (upgrades/024). Marks a template as having produced
+     * `todayYmd`'s task — but only if it had not already, so the 15-minute
+     * tick, a manual re-run and two overlapping cron processes all produce
+     * exactly one. Returns false when someone else claimed it first.
+     */
+    async claimRecurrenceSpawn(
+        taskId: string,
+        todayYmd: string,
+        exec: DbExecutor = this.db,
+    ): Promise<boolean> {
+        const [result] = await exec
+            .update(tasks)
+            .set({ recurrenceLastSpawnedOn: todayYmd })
+            .where(
+                and(
+                    eq(tasks.id, taskId),
+                    or(
+                        isNull(tasks.recurrenceLastSpawnedOn),
+                        sql`${tasks.recurrenceLastSpawnedOn} < ${todayYmd}`,
+                    ),
+                ),
+            );
+        return result.affectedRows > 0;
+    }
+
+    /**
+     * Give the day BACK (upgrades/024). The claim above is committed on its own
+     * — `TaskWriteService.create` opens its own transaction, so the two cannot
+     * share one — which means a create that then fails would otherwise burn
+     * today's occurrence and the office would simply never get the task. This
+     * undoes the claim, but ONLY if it is still ours (`= todayYmd`), so a
+     * racing tick that has already spawned is never rewound into a duplicate.
+     */
+    async releaseRecurrenceSpawn(
+        taskId: string,
+        todayYmd: string,
+        previous: string | null,
+        exec: DbExecutor = this.db,
+    ): Promise<void> {
+        await exec
+            .update(tasks)
+            .set({ recurrenceLastSpawnedOn: previous })
+            .where(
+                and(
+                    eq(tasks.id, taskId),
+                    eq(tasks.recurrenceLastSpawnedOn, todayYmd),
+                ),
+            );
+    }
+
+    /** Mark a freshly spawned task as coming from its recurring template. */
+    async setRecurringSource(
+        taskId: string,
+        sourceTaskId: string,
+        exec: DbExecutor = this.db,
+    ): Promise<void> {
+        await exec
+            .update(tasks)
+            .set({ recurringSourceId: sourceTaskId })
+            .where(eq(tasks.id, taskId));
+    }
+
     /** Assignee user-ids for a page of tasks, grouped by task id. */
     /**
      * The overdue-alert job's scan (upgrades/014): open tasks in `workspaceId`

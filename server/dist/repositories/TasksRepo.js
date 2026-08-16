@@ -591,6 +591,74 @@ class TasksRepo {
             { spaceId: r.spaceId, headUserId: r.headUserId },
         ]));
     }
+    /**
+     * THE RECURRENCE SPAWN SCAN (upgrades/024).
+     *
+     * Live recurring TEMPLATES in `workspaceId` whose next occurrence is due
+     * now, on the workspace's own clock:
+     *   · pattern is daily, or weekly WITH today's weekday listed;
+     *   · the picked time has arrived (`recurrence_time <= now`; a NULL time —
+     *     every row created before this build — reads as 09:00, so an existing
+     *     recurrence starts working instead of never firing);
+     *   · it has not already produced today's task
+     *     (`recurrence_last_spawned_on` is NULL or an earlier day);
+     *   · the recurrence has not ended (`recurrence_ends_at >= today`);
+     *   · the template is not archived.
+     *
+     * COMPLETED templates still spawn, deliberately: the recurrence is a
+     * schedule, not a piece of work. Ticking the template off does not mean
+     * "stop the daily stock check" — ARCHIVING it does, and that is the off
+     * switch the UI already offers.
+     */
+    async findRecurringDue(input) {
+        return this.db
+            .select({
+            id: schema_1.tasks.id,
+            name: schema_1.tasks.name,
+            primaryListId: schema_1.tasks.primaryListId,
+            taskTypeId: schema_1.tasks.taskTypeId,
+            createdBy: schema_1.tasks.createdBy,
+            recurrenceLastSpawnedOn: schema_1.tasks.recurrenceLastSpawnedOn,
+        })
+            .from(schema_1.tasks)
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, input.workspaceId), (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt), (0, drizzle_orm_1.or)((0, drizzle_orm_1.eq)(schema_1.tasks.recurrencePattern, "daily"), (0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.recurrencePattern, "weekly"), (0, drizzle_orm_1.sql) `FIND_IN_SET(${input.weekday}, ${schema_1.tasks.recurrenceDays}) > 0`)), (0, drizzle_orm_1.sql) `COALESCE(${schema_1.tasks.recurrenceTime}, '09:00:00') <= ${`${input.nowHHMM}:59`}`, (0, drizzle_orm_1.or)((0, drizzle_orm_1.isNull)(schema_1.tasks.recurrenceLastSpawnedOn), (0, drizzle_orm_1.sql) `${schema_1.tasks.recurrenceLastSpawnedOn} < ${input.todayYmd}`), (0, drizzle_orm_1.or)((0, drizzle_orm_1.isNull)(schema_1.tasks.recurrenceEndsAt), (0, drizzle_orm_1.sql) `${schema_1.tasks.recurrenceEndsAt} >= ${input.todayYmd}`)))
+            .orderBy((0, drizzle_orm_1.asc)(schema_1.tasks.internalId))
+            .limit(input.limit);
+    }
+    /**
+     * THE SPAWN CLAIM (upgrades/024). Marks a template as having produced
+     * `todayYmd`'s task — but only if it had not already, so the 15-minute
+     * tick, a manual re-run and two overlapping cron processes all produce
+     * exactly one. Returns false when someone else claimed it first.
+     */
+    async claimRecurrenceSpawn(taskId, todayYmd, exec = this.db) {
+        const [result] = await exec
+            .update(schema_1.tasks)
+            .set({ recurrenceLastSpawnedOn: todayYmd })
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.id, taskId), (0, drizzle_orm_1.or)((0, drizzle_orm_1.isNull)(schema_1.tasks.recurrenceLastSpawnedOn), (0, drizzle_orm_1.sql) `${schema_1.tasks.recurrenceLastSpawnedOn} < ${todayYmd}`)));
+        return result.affectedRows > 0;
+    }
+    /**
+     * Give the day BACK (upgrades/024). The claim above is committed on its own
+     * — `TaskWriteService.create` opens its own transaction, so the two cannot
+     * share one — which means a create that then fails would otherwise burn
+     * today's occurrence and the office would simply never get the task. This
+     * undoes the claim, but ONLY if it is still ours (`= todayYmd`), so a
+     * racing tick that has already spawned is never rewound into a duplicate.
+     */
+    async releaseRecurrenceSpawn(taskId, todayYmd, previous, exec = this.db) {
+        await exec
+            .update(schema_1.tasks)
+            .set({ recurrenceLastSpawnedOn: previous })
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.id, taskId), (0, drizzle_orm_1.eq)(schema_1.tasks.recurrenceLastSpawnedOn, todayYmd)));
+    }
+    /** Mark a freshly spawned task as coming from its recurring template. */
+    async setRecurringSource(taskId, sourceTaskId, exec = this.db) {
+        await exec
+            .update(schema_1.tasks)
+            .set({ recurringSourceId: sourceTaskId })
+            .where((0, drizzle_orm_1.eq)(schema_1.tasks.id, taskId));
+    }
     /** Assignee user-ids for a page of tasks, grouped by task id. */
     /**
      * The overdue-alert job's scan (upgrades/014): open tasks in `workspaceId`

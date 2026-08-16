@@ -58,6 +58,26 @@ describe("relativizeAppLinks", () => {
         }
     });
 
+    it("does NOT eat /forgot-password — a page whose NAME contains 't-'", () => {
+        // Found by the eval on 2026-08-16: the password question, the one a
+        // locked-out person asks, was answering with /t/t-password. "forgo(t-
+        // password)" satisfied a rule that looked for a task id ANYWHERE in
+        // the target, so the repair itself broke the link it was repairing.
+        for (const page of [
+            "/forgot-password",
+            "/reset-password/abc123def456",
+            "/settings/notifications",
+        ]) {
+            expect(relativizeAppLinks(`[click](${page})`)).toBe(
+                `[click](${page})`,
+            );
+        }
+        // …and the absolute form of it still loses only its invented domain.
+        expect(
+            relativizeAppLinks("[reset](https://beautybooth.com/forgot-password)"),
+        ).toBe("[reset](/forgot-password)");
+    });
+
     it("leaves relative links and genuinely external ones alone", () => {
         const already = "[Inbox](/inbox) ar [Home](/)";
         expect(relativizeAppLinks(already)).toBe(already);

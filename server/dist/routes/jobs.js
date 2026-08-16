@@ -31,6 +31,10 @@ router.post("/overdue-alert", internalAuth_1.default, controller.run("overdue-al
 // Team-access P8 (Q6): expire cross-team assignment requests nobody answered
 // within 7 days + notify the requester. Cron: hourly (deploy/cron/bbtasks-jobs).
 router.post("/assignment-request-expiry", internalAuth_1.default, controller.run("assignment-request-expiry"));
-// recurrence-spawn and email-digest routes are registered here as each job is
-// built (sla-breach-scan in its spec form is superseded — see API_DESIGN §28).
+// upgrades/024: create the next occurrence of a recurring task, at the time of
+// day the person picked, on the workspace's own clock. Cron: */15
+// (deploy/cron/bbtasks-jobs).
+router.post("/recurrence-spawn", internalAuth_1.default, controller.run("recurrence-spawn"));
+// The email-digest route is registered here when that job is built
+// (sla-breach-scan in its spec form is superseded — see API_DESIGN §28).
 exports.default = router;

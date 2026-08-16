@@ -1,11 +1,11 @@
 # /etc/cron.d/bbtasks-jobs
 #
-# The eight background jobs. There is NO in-process scheduler — without this
+# The nine background jobs. There is NO in-process scheduler — without this
 # file nothing ever runs: sessions never expire, pending attachments and 90-day
 # encrypted form PII accumulate forever, snoozed notifications never wake,
 # overdue tasks never alert their assignees, unanswered cross-team assignment
-# requests never expire, and the weekly HR department report is never
-# generated.
+# requests never expire, RECURRING TASKS NEVER REPEAT, and the weekly HR
+# department report is never generated.
 #
 # Install:
 #   cp deploy/cron/bbtasks-jobs /etc/cron.d/bbtasks-jobs
@@ -29,6 +29,12 @@ PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 # deadline. Runs often so the alert lands within minutes of midnight in the
 # workspace's own timezone (the moment a due_date becomes "yesterday").
 */10 * * * * root /var/www/html/tasks-beautybooth/deploy/cron/run-job.sh overdue-alert >>/var/log/bbtasks/cron.log 2>&1
+
+# Create the next occurrence of each recurring task, at the time of day the
+# person picked, on the workspace's own clock (upgrades/024). Every 15 minutes
+# because the time is per-task: a 09:00 recurrence must fire near 09:00, not at
+# midnight. Idempotent — the claim column means a re-run creates nothing twice.
+*/15 * * * * root /var/www/html/tasks-beautybooth/deploy/cron/run-job.sh recurrence-spawn >>/var/log/bbtasks/cron.log 2>&1
 
 # Expire dead refresh sessions.                       02:10 UTC = 08:10 Dhaka
 10 2 * * * root /var/www/html/tasks-beautybooth/deploy/cron/run-job.sh session-cleanup >>/var/log/bbtasks/cron.log 2>&1

@@ -10,6 +10,7 @@ const attachmentJanitor_1 = require("./attachmentJanitor");
 const departmentReport_1 = require("./departmentReport");
 const overdueAlert_1 = require("./overdueAlert");
 const r2Purge_1 = require("./r2Purge");
+const recurrenceSpawn_1 = require("./recurrenceSpawn");
 const sessionCleanup_1 = require("./sessionCleanup");
 const snoozeWake_1 = require("./snoozeWake");
 const formSubmissionExpiry_1 = require("./formSubmissionExpiry");
@@ -27,6 +28,8 @@ const JOBS = {
     "department-report": departmentReport_1.departmentReport,
     "overdue-alert": overdueAlert_1.overdueAlert,
     "assignment-request-expiry": assignmentRequestExpiry_1.assignmentRequestExpiry,
+    // upgrades/024 — creates the next occurrence of a recurring task.
+    "recurrence-spawn": recurrenceSpawn_1.recurrenceSpawn,
 };
 exports.JOB_NAMES = Object.keys(JOBS);
 const isJobName = (s) => Object.prototype.hasOwnProperty.call(JOBS, s);

@@ -84,6 +84,9 @@ const TASK_KEYS = [
     "checklist_items_done",
     // upgrades/023 — a permanent delete is waiting on an admin's decision.
     "delete_request_pending",
+    // upgrades/024 — the recurrence that finally recurs.
+    "recurrence_time",
+    "recurring_source_id",
     "sprint_id",
     "story_points",
     "reviewer_id",

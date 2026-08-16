@@ -32,6 +32,7 @@ const NULLABLE_TASK_PATCH_FIELDS = [
     "start_date",
     "due_date",
     "recurrence_days",
+    "recurrence_time",
     "recurrence_ends_at",
     "time_estimate_seconds",
     "sprint_id",
@@ -86,6 +87,7 @@ export class TaskWriteController {
                 recurrencePattern:
                     b.recurrence_pattern as CreateTaskBody["recurrence_pattern"] as never,
                 recurrenceDays: b.recurrence_days,
+                recurrenceTime: b.recurrence_time,
                 recurrenceEndsAt: b.recurrence_ends_at,
                 timeEstimateSeconds: b.time_estimate_seconds,
                 assignees: b.assignees,
@@ -196,6 +198,7 @@ export class TaskWriteController {
                     recurrencePattern:
                         b.recurrence_pattern as UpdateTaskBody["recurrence_pattern"] as never,
                     recurrenceDays: b.recurrence_days,
+                    recurrenceTime: b.recurrence_time,
                     recurrenceEndsAt: b.recurrence_ends_at,
                     timeEstimateSeconds: b.time_estimate_seconds,
                     sprintId: b.sprint_id,

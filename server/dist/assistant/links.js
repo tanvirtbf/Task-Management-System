@@ -59,8 +59,16 @@ const ABSOLUTE_APP_LINK = new RegExp(`\\]\\((?:https?:)?//[^)\\s/]+(/(?:${APP_PA
  * that is ever RIGHT: the task id itself. Whatever surrounds it inside the
  * link target is discarded and replaced with the address the app really
  * serves. Idempotent — a correct `](/t/t-abc)` rewrites to itself.
+ *
+ * ⚠️ THE ID MUST START A PATH SEGMENT. The first version of this looked for
+ * `t-…` ANYWHERE in the target, and so ate the most-asked link in the product:
+ * `](/forgot-password)` contains "t-password" (inside "forgo**t-password**")
+ * and was rewritten to `](/t/t-password)` — a task that does not exist, handed
+ * to someone who has just been locked out. `/reset-password/:token` too. The
+ * leading `[^)\s]*[/(]` says the id may only begin right after a `/` or the
+ * opening paren, which is the only place a real one ever appears.
  */
-const TASK_ID_ANYWHERE = /\]\([^)\s]*?(t-[A-Za-z0-9_-]{8,})[^)\s]*?\)/g;
+const TASK_ID_ANYWHERE = /\]\((?:[^)\s]*[/(])?(t-[A-Za-z0-9_-]{8,})[^)\s]*?\)/g;
 /** Strip the invented origin from any link that points at one of our pages. */
 const relativizeAppLinks = (text) => text
     .replace(ABSOLUTE_APP_LINK, "]($1)")

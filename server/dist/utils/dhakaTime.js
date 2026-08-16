@@ -12,7 +12,7 @@
  * P18 extends this module with the Mon–Sun week math for weekly reports.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.addBusinessDays = exports.addBusinessMs = exports.businessDayLengthMs = exports.weekBoundsUtc = exports.previousWeekStart = exports.dhakaWeekOf = exports.isDhakaMonday = exports.addDaysYmd = exports.todayInZone = exports.zoneDateOf = exports.dhakaToday = exports.dhakaDateOf = void 0;
+exports.addBusinessDays = exports.addBusinessMs = exports.businessDayLengthMs = exports.weekBoundsUtc = exports.previousWeekStart = exports.dhakaWeekOf = exports.isDhakaMonday = exports.addDaysYmd = exports.clockInZone = exports.zoneClockOf = exports.todayInZone = exports.zoneDateOf = exports.dhakaToday = exports.dhakaDateOf = void 0;
 const DHAKA_OFFSET_MS = 6 * 60 * 60 * 1000;
 /** The Dhaka calendar date (`YYYY-MM-DD`) of a UTC instant. */
 const dhakaDateOf = (utc) => new Date(utc.getTime() + DHAKA_OFFSET_MS).toISOString().slice(0, 10);
@@ -55,6 +55,38 @@ exports.zoneDateOf = zoneDateOf;
 /** Today's date (`YYYY-MM-DD`) on a workspace's own calendar. */
 const todayInZone = (timeZone) => (0, exports.zoneDateOf)(new Date(), timeZone);
 exports.todayInZone = todayInZone;
+/**
+ * The wall clock (`HH:MM`, 24h) in a zone — the day's companion to
+ * `zoneDateOf`. upgrades/024: a recurring task fires at a time the person
+ * picked, and "9:00" means nine in THEIR office, not on the API box.
+ *
+ * Falls back to the fixed Dhaka offset if the zone name is unusable, matching
+ * `zoneDateOf` — a bad timezone value must degrade, never throw inside a job.
+ */
+const zoneClockOf = (utc, timeZone) => {
+    try {
+        const parts = new Intl.DateTimeFormat("en-GB", {
+            timeZone,
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+        }).formatToParts(utc);
+        const get = (type) => parts.find((p) => p.type === type)?.value ?? "";
+        const clock = `${get("hour")}:${get("minute")}`;
+        if (/^\d{2}:\d{2}$/.test(clock))
+            return clock;
+    }
+    catch {
+        /* fall through */
+    }
+    return new Date(utc.getTime() + DHAKA_OFFSET_MS)
+        .toISOString()
+        .slice(11, 16);
+};
+exports.zoneClockOf = zoneClockOf;
+/** The wall clock right now, on a workspace's own calendar. */
+const clockInZone = (timeZone) => (0, exports.zoneClockOf)(new Date(), timeZone);
+exports.clockInZone = clockInZone;
 // ─── Week math (P18 — weekly department reports) ─────────────────────────────
 // Weeks are Dhaka-calendar Monday→Sunday (D-3). All arithmetic is pure UTC
 // day-shifting on the calendar STRINGS; instants only appear at the

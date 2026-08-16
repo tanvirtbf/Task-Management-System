@@ -1,4 +1,5 @@
 import { Tooltip } from "antd";
+import { Link } from "react-router-dom";
 import { Clock, Timer, Eye, Calendar as CalIcon, Flag, Zap, GitPullRequest, Repeat } from "lucide-react";
 import { useUpdateTask, useTaskMembership } from "../../hooks/useTaskMutations";
 import { InlineAssigneeEdit } from "./InlineAssigneeEdit";
@@ -222,6 +223,25 @@ export const TaskPropertiesPanel = ({ task }: { task: Task }) => {
                         update.mutate({ id: task.id, patch: { recurrence: r } })
                     }
                 />
+                {/* A dated task appearing out of nowhere is unsettling until
+                    you can see WHERE it came from (upgrades/024). */}
+                {task.recurringSourceId && (
+                    <div
+                        style={{
+                            fontSize: 11,
+                            color: tokens.colors.textMuted,
+                            marginTop: 4,
+                        }}
+                    >
+                        Created automatically from a{" "}
+                        <Link
+                            to={`/t/${task.recurringSourceId}`}
+                            style={{ color: tokens.colors.primary }}
+                        >
+                            repeating task
+                        </Link>
+                    </div>
+                )}
             </PropValue>
 
             <PropLabel>Tags</PropLabel>
