@@ -1042,9 +1042,14 @@ CREATE TABLE notifications (
                         'overdue',
                         -- team-access P8 (upgrades/021) — assignment approval
                         'assignment_request','assignment_request_decided',
-                        'assignment_query') NOT NULL,
+                        'assignment_query',
+                        -- upgrades/023 — permanent-delete approval
+                        'delete_request','delete_request_decided') NOT NULL,
+    -- `delete_request` (upgrades/023) exists because an APPROVED delete
+    -- destroys the task: a notification pointing at it would navigate to a
+    -- 404 (ISS-073), so the decision notice is about the REQUEST instead.
     entity_type    ENUM('task','comment','form','automation',
-                        'incident','report') NOT NULL,
+                        'incident','report','delete_request') NOT NULL,
     entity_id      VARCHAR(64)  NOT NULL,
     actor_id       VARCHAR(64)  NULL,
     title          VARCHAR(300) NOT NULL,
@@ -1089,7 +1094,9 @@ CREATE TABLE user_notification_prefs (
                         'overdue',
                         -- upgrades/021 (must mirror notifications.type)
                         'assignment_request','assignment_request_decided',
-                        'assignment_query') NOT NULL,
+                        'assignment_query',
+                        -- upgrades/023 (must mirror notifications.type)
+                        'delete_request','delete_request_decided') NOT NULL,
     in_app_enabled  BOOLEAN     NOT NULL DEFAULT TRUE,
     updated_at      TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP
                                     ON UPDATE CURRENT_TIMESTAMP,
@@ -1653,6 +1660,61 @@ CREATE TABLE task_assignment_request_events (
     CONSTRAINT fk_tare_actor FOREIGN KEY (actor_id)
         REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,
     INDEX idx_tare_request_time (request_id, internal_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
+
+
+-- =============================================================================
+-- 45. task_delete_requests  (permanent-delete approval, upgrades/023)
+-- =============================================================================
+-- Destroying a task for good used to be admin-only and instant; everyone else
+-- could only ARCHIVE. This is the middle step: whoever may delete a task may
+-- ASK for it to be removed, and an Owner/Admin holding `task.delete_hard`
+-- approves. While a request is pending the task is COMPLETELY unchanged — a
+-- request must never be a way to make a colleague's work vanish from a board.
+--
+-- `task_name` is denormalised because the task FK cascades: approving destroys
+-- this row along with the task, so the name has to survive in the audit entry
+-- and the requester's notification, both written BEFORE the delete.
+--
+-- `pending_flag` is the §43 VIRTUAL-column trick — at most ONE live request per
+-- task, while decided history stacks freely (NULLs are distinct). Never
+-- modelled in Drizzle, never written by the app.
+CREATE TABLE task_delete_requests (
+    id             VARCHAR(64) NOT NULL,
+    internal_id    BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    workspace_id   VARCHAR(64) NOT NULL,
+    -- Owning space AT REQUEST TIME (snapshot annotation).
+    space_id       VARCHAR(64) NOT NULL,
+    task_id        VARCHAR(64) NOT NULL,
+    task_name      VARCHAR(500) NOT NULL,
+    requested_by   VARCHAR(64) NOT NULL,
+    reason         VARCHAR(500) NULL,
+    status         ENUM('pending','approved','rejected','cancelled')
+                       NOT NULL DEFAULT 'pending',
+    decided_by     VARCHAR(64) NULL,
+    decided_at     TIMESTAMP NULL,
+    decision_note  VARCHAR(500) NULL,
+    created_at     TIMESTAMP NOT NULL,
+    updated_at     TIMESTAMP NOT NULL,
+    pending_flag   TINYINT GENERATED ALWAYS AS
+                       (IF(status = 'pending', 1, NULL)) VIRTUAL,
+
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_tdr_internal_id (internal_id),
+    UNIQUE KEY uq_tdr_one_pending (task_id, pending_flag),
+    CONSTRAINT fk_tdr_ws FOREIGN KEY (workspace_id)
+        REFERENCES workspaces(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_tdr_space FOREIGN KEY (space_id)
+        REFERENCES spaces(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_tdr_task FOREIGN KEY (task_id)
+        REFERENCES tasks(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_tdr_requested_by FOREIGN KEY (requested_by)
+        REFERENCES users(id) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_tdr_decided_by FOREIGN KEY (decided_by)
+        REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,
+    INDEX idx_tdr_workspace (workspace_id, status, internal_id),
+    INDEX idx_tdr_requester (requested_by, status, internal_id),
+    INDEX idx_tdr_task (task_id, internal_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
 
 

@@ -117,7 +117,7 @@ describe("Dept Review notifications on the wire (P22)", () => {
      * `user_notification_prefs.type` row, which 500s with MySQL 1265 if the
      * second ENUM copy was ever missed — `task_reviewed` still proves that.
      */
-    it("preferences enumerate the live types (11 since upgrades/021) and a PUT for task_reviewed round-trips (the second-ENUM-copy migration, end-to-end)", async () => {
+    it("preferences enumerate the live types (13 since upgrades/023) and a PUT for task_reviewed round-trips (the second-ENUM-copy migration, end-to-end)", async () => {
         const s = await seed();
 
         const prefs = await s.assigneeClient.get(
@@ -140,6 +140,10 @@ describe("Dept Review notifications on the wire (P22)", () => {
                 "assignment_request",
                 "assignment_request_decided",
                 "assignment_query",
+                // upgrades/023 (2026-08-16): permanent-delete approval —
+                // the ask reaches the admins, the decision reaches the asker.
+                "delete_request",
+                "delete_request_decided",
             ].sort(),
         );
         expect(prefs.body.task_reviewed).toEqual({ in_app_enabled: true });

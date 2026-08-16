@@ -46,6 +46,7 @@ const sse_1 = __importDefault(require("./routes/sse"));
 const push_1 = __importDefault(require("./routes/push"));
 const jobs_1 = __importDefault(require("./routes/jobs"));
 const sla_1 = __importDefault(require("./routes/sla"));
+const taskDeleteRequests_1 = __importDefault(require("./routes/taskDeleteRequests"));
 const health_1 = __importDefault(require("./routes/health"));
 const assistant_1 = __importDefault(require("./routes/assistant"));
 const metrics_1 = require("./observability/metrics");
@@ -207,6 +208,10 @@ v1.use(comments_1.default);
 // and `/checklist-items/:id`, so it mounts at the v1 root BEFORE `/tasks` (the
 // 3-segment `/tasks/:id/checklists` resolves ahead of the tasks router's /:id).
 v1.use(checklists_1.default);
+// upgrades/023 — permanent-delete approval. Full paths spanning
+// `/delete-requests/*` and `/tasks/:id/delete-request`, so it mounts at the v1
+// root BEFORE `/tasks` (same reasoning as assignment requests).
+v1.use(taskDeleteRequests_1.default);
 // §11 Task membership — assignees / watchers / tags under the `/tasks` prefix.
 v1.use("/tasks", tasks_1.default);
 // §23 Templates — clean `/templates` prefix (no shared path segments with

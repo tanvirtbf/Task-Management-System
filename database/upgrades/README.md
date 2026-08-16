@@ -45,6 +45,7 @@
 | `020_edit_rights.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 (first) | ⏳ awaiting the Phase C flip |
 | `021_assignment_approval.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 (first, re-apply proven) | ✅ 2026-08-11 (Phase A) |
 | `022_checklist_counters.sql` | ✅ 2026-08-12 | ✅ 2026-08-12 (first, re-apply proven) | ✅ 2026-08-12 |
+| `023_task_delete_approval.sql` | ✅ 2026-08-16 | ⏳ | ⏳ ships with the delete-approval build |
 
 > **prod = `tasks.beautybooth.com.bd`.** Phase A of `LIVE_ROLLOUT_TEAM_ACCESS.md`
 > landed 001–018 + 021 on 2026-08-11 and `022` on 2026-08-12; every one of them was
@@ -52,6 +53,31 @@
 > 56 permission rows). `019` + `020` are the DELIBERATE hold: they are Phase C, the
 > operator-approved visibility flip, and stay unapplied until every live team has a
 > Head (the runbook's gate 2).
+>
+> ⚠️ **`019`/`020` rollback — read before ever reversing them.** The blocks written
+> at the bottom of those two scripts restore the SEEDED baseline (`all`), which is
+> only correct on a workspace nobody has tightened by hand. On prod (verified
+> 2026-08-16, immediately before the flip) an admin had already narrowed things
+> through Settings → Roles: member/guest `space.view` and `task.view` were already
+> `space`, and `task.archive`/`task.delete` were `space` — **not** `all`. Running
+> the in-file rollback there would have WIDENED member reach past what the office
+> actually had. Before reversing on any lived-in database, read the four scopes
+> first and restore THOSE:
+> ```sql
+> SELECT r.role_key, rp.permission_key, rp.scope FROM role_permissions rp
+>   JOIN roles r ON r.id = rp.role_id
+>  WHERE r.is_system = 1 AND r.role_key IN ('member','guest')
+>    AND rp.permission_key IN ('space.view','task.view','task.edit',
+>                              'task.archive','task.delete');
+> ```
+> (A prod-specific restore file was written on the box at the time of the flip.)
+>
+> `023` ships with the permanent-delete-approval build: the Drizzle schema reads
+> `task_delete_requests` and the routes write it, so apply it **before or with**
+> that server build. It also appends two notification types and one notification
+> ENTITY type (`delete_request` — an approved delete destroys the task, so the
+> decision notice cannot point at it). ENUM appends and `CREATE TABLE IF NOT
+> EXISTS`: re-runnable. Fresh `db:setup` is now **47 tables / 5 views / 9 triggers**.
 >
 > `005` ships with the F3 clock fix and is only correct alongside it. If you apply
 > `005`, the app's `DB_TIMEZONE` **must** be `+00:00` (see `server/.env.example`).

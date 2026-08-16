@@ -42,6 +42,7 @@ import sseRouter from "./routes/sse";
 import pushRouter from "./routes/push";
 import jobsRouter from "./routes/jobs";
 import slaRouter from "./routes/sla";
+import taskDeleteRequestsRouter from "./routes/taskDeleteRequests";
 import healthRouter from "./routes/health";
 import assistantRouter from "./routes/assistant";
 import { metricsMiddleware } from "./observability/metrics";
@@ -220,6 +221,10 @@ v1.use(commentsRouter);
 // and `/checklist-items/:id`, so it mounts at the v1 root BEFORE `/tasks` (the
 // 3-segment `/tasks/:id/checklists` resolves ahead of the tasks router's /:id).
 v1.use(checklistsRouter);
+// upgrades/023 — permanent-delete approval. Full paths spanning
+// `/delete-requests/*` and `/tasks/:id/delete-request`, so it mounts at the v1
+// root BEFORE `/tasks` (same reasoning as assignment requests).
+v1.use(taskDeleteRequestsRouter);
 // §11 Task membership — assignees / watchers / tags under the `/tasks` prefix.
 v1.use("/tasks", tasksRouter);
 // §23 Templates — clean `/templates` prefix (no shared path segments with

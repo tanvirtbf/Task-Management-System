@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.TIMEZONE_LENGTH = exports.IP_LENGTH = exports.TOKEN_HASH_LENGTH = exports.EMAIL_LENGTH = exports.URL_LENGTH = exports.SHORT_NAME_LENGTH = exports.NAME_LENGTH = exports.HEX_COLOR_LENGTH = exports.ID_LENGTH = exports.formFieldKinds = exports.weekDays = exports.workspaceActivityEntityTypes = exports.notificationEntityTypes = exports.assignmentRequestEventActions = exports.assignmentRequestStatuses = exports.notificationTypes = exports.roleScopeTypes = exports.permissionScopes = exports.reviewStatuses = exports.templateTypes = exports.dependencyTypes = exports.recurrencePatterns = exports.reporterTeams = exports.bugEnvironments = exports.bugReproducibilities = exports.bugSeverities = exports.prStatuses = exports.sprintStatuses = exports.uploadStatuses = exports.customFieldTypes = exports.customFieldScopeTypes = exports.scopeTypes = exports.DONE_STATUS_GROUPS = exports.statusGroups = exports.invitationRoles = exports.userStatuses = exports.userRoles = exports.mysqlSet = void 0;
+exports.TIMEZONE_LENGTH = exports.IP_LENGTH = exports.TOKEN_HASH_LENGTH = exports.EMAIL_LENGTH = exports.URL_LENGTH = exports.SHORT_NAME_LENGTH = exports.NAME_LENGTH = exports.HEX_COLOR_LENGTH = exports.ID_LENGTH = exports.formFieldKinds = exports.weekDays = exports.workspaceActivityEntityTypes = exports.notificationEntityTypes = exports.assignmentRequestEventActions = exports.deleteRequestStatuses = exports.assignmentRequestStatuses = exports.notificationTypes = exports.roleScopeTypes = exports.permissionScopes = exports.reviewStatuses = exports.templateTypes = exports.dependencyTypes = exports.recurrencePatterns = exports.reporterTeams = exports.bugEnvironments = exports.bugReproducibilities = exports.bugSeverities = exports.prStatuses = exports.sprintStatuses = exports.uploadStatuses = exports.customFieldTypes = exports.customFieldScopeTypes = exports.scopeTypes = exports.DONE_STATUS_GROUPS = exports.statusGroups = exports.invitationRoles = exports.userStatuses = exports.userRoles = exports.mysqlSet = void 0;
 // =============================================================================
 // Shared helpers for the Drizzle schema.
 //
@@ -115,6 +115,9 @@ exports.notificationTypes = [
     "assignment_request",
     "assignment_request_decided",
     "assignment_query",
+    // upgrades/023 — permanent-delete approval. Append-only.
+    "delete_request",
+    "delete_request_decided",
 ];
 // Team-access P8 (upgrades/021) — cross-team assignment approval.
 exports.assignmentRequestStatuses = [
@@ -122,6 +125,14 @@ exports.assignmentRequestStatuses = [
     "accepted",
     "declined",
     "expired",
+    "cancelled",
+];
+// upgrades/023 — permanent-delete approval. No `expired`: a pending delete
+// simply waits (nothing is hidden meanwhile), so nothing has to time out.
+exports.deleteRequestStatuses = [
+    "pending",
+    "approved",
+    "rejected",
     "cancelled",
 ];
 exports.assignmentRequestEventActions = [
@@ -141,6 +152,11 @@ exports.notificationEntityTypes = [
     "incident",
     // Dept Review V1 — appended at the END.
     "report",
+    // upgrades/023 — a decided delete request. Deliberately NOT "task": once
+    // the delete is approved the task is destroyed, so a notification pointing
+    // at it would navigate to a 404 (ISS-073). This notification is about the
+    // REQUEST, and says so.
+    "delete_request",
 ];
 exports.workspaceActivityEntityTypes = [
     "workspace",

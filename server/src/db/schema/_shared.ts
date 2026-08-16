@@ -125,6 +125,9 @@ export const notificationTypes = [
     "assignment_request",
     "assignment_request_decided",
     "assignment_query",
+    // upgrades/023 — permanent-delete approval. Append-only.
+    "delete_request",
+    "delete_request_decided",
 ] as const;
 
 // Team-access P8 (upgrades/021) — cross-team assignment approval.
@@ -133,6 +136,14 @@ export const assignmentRequestStatuses = [
     "accepted",
     "declined",
     "expired",
+    "cancelled",
+] as const;
+// upgrades/023 — permanent-delete approval. No `expired`: a pending delete
+// simply waits (nothing is hidden meanwhile), so nothing has to time out.
+export const deleteRequestStatuses = [
+    "pending",
+    "approved",
+    "rejected",
     "cancelled",
 ] as const;
 export const assignmentRequestEventActions = [
@@ -152,6 +163,11 @@ export const notificationEntityTypes = [
     "incident",
     // Dept Review V1 — appended at the END.
     "report",
+    // upgrades/023 — a decided delete request. Deliberately NOT "task": once
+    // the delete is approved the task is destroyed, so a notification pointing
+    // at it would navigate to a 404 (ISS-073). This notification is about the
+    // REQUEST, and says so.
+    "delete_request",
 ] as const;
 
 export const workspaceActivityEntityTypes = [

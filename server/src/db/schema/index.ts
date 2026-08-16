@@ -24,6 +24,8 @@
 //                        (Dynamic RBAC — RBAC_DYNAMIC_PLAN.md)
 //   assignment-requests.ts — task_assignment_requests + its events ledger
 //                        (team-access P8 — cross-team assignment approval)
+//   delete-requests.ts — task_delete_requests (upgrades/023 — a permanent
+//                        task delete needs an Owner/Admin approval)
 //   views.ts           — v_open_tasks, v_open_bugs, v_active_sprint,
 //                        v_current_on_call, v_breached_sla
 //   relations.ts       — relations() for the Drizzle query API
@@ -48,5 +50,6 @@ export * from "./reviews";
 export * from "./reports";
 export * from "./rbac";
 export * from "./assignment-requests";
+export * from "./delete-requests";
 export * from "./views";
 export * from "./relations";
