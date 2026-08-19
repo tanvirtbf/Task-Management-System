@@ -12,7 +12,7 @@ import {
 } from "@dnd-kit/core";
 import { ListChecks } from "lucide-react";
 import { tasksApi } from "../../http/api";
-import { useStatuses } from "../../hooks/useReferenceData";
+import { useStatuses, useWorkspace } from "../../hooks/useReferenceData";
 import { useAuthStore } from "../../stores/auth";
 import { useMultiSelect } from "../../hooks/useMultiSelect";
 import {
@@ -25,8 +25,12 @@ import {
     ListViewToolbar,
     type GroupBy,
     type SortKey,
-    type FilterState,
 } from "./ListViewToolbar";
+import {
+    EMPTY_TASK_FILTERS,
+    applyTaskFilters,
+    type TaskFilterState,
+} from "./taskFilters";
 import { ListViewGroup } from "./ListViewGroup";
 import { ListViewRow } from "./ListViewRow";
 import { BulkActionToolbar } from "../task/BulkActionToolbar";
@@ -46,10 +50,9 @@ export const ListView = ({ listId }: ListViewProps) => {
     const [showClosedTasks, setShowClosedTasks] = useState(false);
     const [sortBy, setSortBy] = useState<SortKey>("default");
     const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
-    const [filters, setFilters] = useState<FilterState>({
-        priorities: [],
-        assigneeIds: [],
-    });
+    const [filters, setFilters] = useState<TaskFilterState>(
+        EMPTY_TASK_FILTERS,
+    );
     const [activeDragTask, setActiveDragTask] = useState<Task | null>(null);
 
     const { data: tasks = [], isLoading } = useQuery({
@@ -58,6 +61,7 @@ export const ListView = ({ listId }: ListViewProps) => {
     });
 
     const { data: statuses = [] } = useStatuses(listId);
+    const { data: ws } = useWorkspace();
     const update = useUpdateTask(listId);
     const archive = useArchiveTask(listId);
     const del = useDeleteTask(listId);
@@ -74,21 +78,7 @@ export const ListView = ({ listId }: ListViewProps) => {
         if (meMode && user) {
             result = result.filter((t) => t.assignees.includes(user.id));
         }
-        const hasPriorityFilter = filters.priorities.length > 0;
-        const hasAssigneeFilter = filters.assigneeIds.length > 0;
-        if (hasPriorityFilter || hasAssigneeFilter) {
-            result = result.filter((t) => {
-                const matchesPriority = hasPriorityFilter
-                    ? filters.priorities.includes(t.priority)
-                    : true;
-                const matchesAssignee = hasAssigneeFilter
-                    ? t.assignees.some((id) =>
-                          filters.assigneeIds.includes(id),
-                      )
-                    : true;
-                return matchesPriority && matchesAssignee;
-            });
-        }
+        result = applyTaskFilters(result, filters);
         if (search.trim()) {
             const q = search.toLowerCase();
             result = result.filter(
@@ -125,8 +115,7 @@ export const ListView = ({ listId }: ListViewProps) => {
         meMode,
         search,
         user,
-        filters.priorities,
-        filters.assigneeIds,
+        filters,
         sortBy,
         sortDir,
     ]);
@@ -219,6 +208,12 @@ export const ListView = ({ listId }: ListViewProps) => {
                 onSortDirChange={setSortDir}
                 filters={filters}
                 onFiltersChange={setFilters}
+                statusOptions={statuses.map((s) => ({
+                    value: s.id,
+                    label: s.name,
+                    color: s.color,
+                }))}
+                weekStartsOn={ws?.settings.weekStartsOn ?? 0}
             />
 
             <div

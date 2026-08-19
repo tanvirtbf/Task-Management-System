@@ -7,10 +7,11 @@ import {
     Rows3,
     LayoutGrid,
     Layers,
-    ListFilter,
 } from "lucide-react";
 import { useBoardStore, type SubgroupBy } from "../../stores/board";
 import { tokens } from "../../theme";
+import { TaskFilterPopover, type StatusOption } from "./TaskFilterPopover";
+import type { TaskFilterState } from "./taskFilters";
 
 interface BoardToolbarProps {
     listId: string;
@@ -20,6 +21,10 @@ interface BoardToolbarProps {
     onMeModeChange: (v: boolean) => void;
     showClosedTasks: boolean;
     onShowClosedChange: (v: boolean) => void;
+    filters: TaskFilterState;
+    onFiltersChange: (f: TaskFilterState) => void;
+    statusOptions: StatusOption[];
+    weekStartsOn?: number;
 }
 
 const subgroupOptions = [
@@ -36,6 +41,10 @@ export const BoardToolbar = ({
     onMeModeChange,
     showClosedTasks,
     onShowClosedChange,
+    filters,
+    onFiltersChange,
+    statusOptions,
+    weekStartsOn,
 }: BoardToolbarProps) => {
     const density =
         useBoardStore((s) => s.cardDensity[listId]) ?? "compact";
@@ -79,13 +88,14 @@ export const BoardToolbar = ({
                 </Button>
             </Dropdown>
 
-            <Button
-                type="text"
-                size="small"
-                icon={<ListFilter size={13} strokeWidth={1.75} />}
-            >
-                Filter
-            </Button>
+            <TaskFilterPopover
+                filters={filters}
+                onChange={onFiltersChange}
+                statusOptions={statusOptions}
+                weekStartsOn={weekStartsOn}
+                extraActiveCount={meMode ? 1 : 0}
+                onClearExtras={() => onMeModeChange(false)}
+            />
 
             <Button
                 type="text"

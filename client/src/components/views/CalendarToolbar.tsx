@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 import { formatRangeLabel, formatMonthLabel } from "../../lib/date-utils";
 import { tokens } from "../../theme";
+import { TaskFilterPopover, type StatusOption } from "./TaskFilterPopover";
+import type { TaskFilterState } from "./taskFilters";
 
 export type CalendarMode = "month" | "week" | "day";
 
@@ -31,6 +33,10 @@ interface CalendarToolbarProps {
     onShowClosedChange: (v: boolean) => void;
     showUnscheduled: boolean;
     onShowUnscheduledChange: (v: boolean) => void;
+    filters: TaskFilterState;
+    onFiltersChange: (f: TaskFilterState) => void;
+    statusOptions: StatusOption[];
+    weekStartsOn?: number;
 }
 
 export const CalendarToolbar = ({
@@ -50,6 +56,10 @@ export const CalendarToolbar = ({
     onShowClosedChange,
     showUnscheduled,
     onShowUnscheduledChange,
+    filters,
+    onFiltersChange,
+    statusOptions,
+    weekStartsOn,
 }: CalendarToolbarProps) => {
     const label =
         mode === "month"
@@ -129,6 +139,15 @@ export const CalendarToolbar = ({
                         </button>
                     ))}
                 </div>
+
+                <TaskFilterPopover
+                    filters={filters}
+                    onChange={onFiltersChange}
+                    statusOptions={statusOptions}
+                    weekStartsOn={weekStartsOn}
+                    extraActiveCount={meMode ? 1 : 0}
+                    onClearExtras={() => onMeModeChange(false)}
+                />
 
                 <Button
                     type="text"

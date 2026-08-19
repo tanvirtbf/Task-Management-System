@@ -1,13 +1,15 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import { Folder, UserRound } from "lucide-react";
-import { App as AntApp, Avatar, Select } from "antd";
+import { App as AntApp, Avatar, Segmented, Select } from "antd";
 import { spacesApi, listsApi } from "../../http/api";
 import { getApiErrorMessage } from "../../http/client";
 import { useUsers } from "../../hooks/useReferenceData";
 import { useAuthStore } from "../../stores/auth";
 import type { Space } from "../../types";
 import { DynamicIcon } from "../../components/shared/DynamicIcon";
+import { SpaceTasksBrowser } from "../../components/views/SpaceTasksBrowser";
 import { tokens } from "../../theme";
 
 /**
@@ -159,6 +161,7 @@ const DepartmentHeadCard = ({ space }: { space: Space }) => {
 const SpacePage = () => {
     const { spaceId } = useParams();
     const navigate = useNavigate();
+    const [tab, setTab] = useState<"overview" | "tasks">("overview");
 
     const { data: space } = useQuery({
         queryKey: ["space", spaceId],
@@ -245,7 +248,20 @@ const SpacePage = () => {
             {/* Department head (Dept Review V1) */}
             <DepartmentHeadCard space={space} />
 
-            {/* Lists grid */}
+            {/* Lists ⇄ the space-wide task browser */}
+            <Segmented
+                value={tab}
+                onChange={(v) => setTab(v as "overview" | "tasks")}
+                options={[
+                    { label: "Lists", value: "overview" },
+                    { label: "All tasks", value: "tasks" },
+                ]}
+                style={{ alignSelf: "flex-start" }}
+            />
+
+            {tab === "tasks" ? (
+                <SpaceTasksBrowser lists={lists} />
+            ) : (
             <div>
                 <h2
                     style={{
@@ -363,6 +379,7 @@ const SpacePage = () => {
                     )}
                 </div>
             </div>
+            )}
         </div>
     );
 };

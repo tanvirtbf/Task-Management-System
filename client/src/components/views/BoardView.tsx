@@ -12,7 +12,11 @@ import {
 } from "@dnd-kit/core";
 import { LayoutGrid } from "lucide-react";
 import { tasksApi } from "../../http/api";
-import { useStatuses, useUserMap } from "../../hooks/useReferenceData";
+import {
+    useStatuses,
+    useUserMap,
+    useWorkspace,
+} from "../../hooks/useReferenceData";
 import { useAuthStore } from "../../stores/auth";
 import { useBoardStore } from "../../stores/board";
 import { useUpdateTask } from "../../hooks/useTaskMutations";
@@ -21,6 +25,11 @@ import { BoardCard } from "./BoardCard";
 import { BoardToolbar } from "./BoardToolbar";
 import { BoardSwimlane } from "./BoardSwimlane";
 import { EmptyState } from "../ui/EmptyState";
+import {
+    EMPTY_TASK_FILTERS,
+    applyTaskFilters,
+    type TaskFilterState,
+} from "./taskFilters";
 import { tokens } from "../../theme";
 import type { Priority, Status, Task, User } from "../../types";
 import { PRIORITY_LABELS } from "../../types";
@@ -34,6 +43,9 @@ export const BoardView = ({ listId }: BoardViewProps) => {
     const [search, setSearch] = useState("");
     const [meMode, setMeMode] = useState(false);
     const [showClosedTasks, setShowClosedTasks] = useState(false);
+    const [filters, setFilters] = useState<TaskFilterState>(
+        EMPTY_TASK_FILTERS,
+    );
     const [activeTask, setActiveTask] = useState<Task | null>(null);
 
     const density =
@@ -46,10 +58,11 @@ export const BoardView = ({ listId }: BoardViewProps) => {
     });
 
     const { data: statuses = [] } = useStatuses(listId);
+    const { data: ws } = useWorkspace();
     const userMap = useUserMap();
     const update = useUpdateTask(listId);
 
-    // Filter tasks: search + me-mode + closed
+    // Filter tasks: search + me-mode + closed + the shared filter set
     const filtered = useMemo(() => {
         let result = tasks;
         if (!showClosedTasks) {
@@ -61,6 +74,7 @@ export const BoardView = ({ listId }: BoardViewProps) => {
         if (meMode && user) {
             result = result.filter((t) => t.assignees.includes(user.id));
         }
+        result = applyTaskFilters(result, filters);
         if (search.trim()) {
             const q = search.toLowerCase();
             result = result.filter(
@@ -70,7 +84,7 @@ export const BoardView = ({ listId }: BoardViewProps) => {
             );
         }
         return result;
-    }, [tasks, statuses, showClosedTasks, meMode, search, user]);
+    }, [tasks, statuses, showClosedTasks, meMode, search, user, filters]);
 
     const sensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -188,6 +202,14 @@ export const BoardView = ({ listId }: BoardViewProps) => {
                 onMeModeChange={setMeMode}
                 showClosedTasks={showClosedTasks}
                 onShowClosedChange={setShowClosedTasks}
+                filters={filters}
+                onFiltersChange={setFilters}
+                statusOptions={statuses.map((s) => ({
+                    value: s.id,
+                    label: s.name,
+                    color: s.color,
+                }))}
+                weekStartsOn={ws?.settings.weekStartsOn ?? 0}
             />
 
             {!hasAnyTasks ? (

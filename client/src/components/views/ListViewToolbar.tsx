@@ -1,6 +1,5 @@
-import { Button, Input, Dropdown, Popover, Select } from "antd";
+import { Button, Input, Dropdown } from "antd";
 import {
-    ListFilter,
     ArrowUpDown,
     Group as GroupIcon,
     Search,
@@ -10,9 +9,9 @@ import {
     EyeOff,
 } from "lucide-react";
 import { useAuthStore } from "../../stores/auth";
-import { useUsers } from "../../hooks/useReferenceData";
 import { tokens } from "../../theme";
-import { PRIORITY_LABELS, type Priority } from "../../types";
+import { TaskFilterPopover, type StatusOption } from "./TaskFilterPopover";
+import type { TaskFilterState } from "./taskFilters";
 
 export type GroupBy = "status" | "assignee" | "priority" | "task_type" | "none";
 
@@ -23,11 +22,6 @@ export type SortKey =
     | "due_date"
     | "created_at"
     | "updated_at";
-
-export interface FilterState {
-    priorities: Priority[];
-    assigneeIds: string[];
-}
 
 interface ListViewToolbarProps {
     groupBy: GroupBy;
@@ -42,8 +36,10 @@ interface ListViewToolbarProps {
     onSortByChange: (s: SortKey) => void;
     sortDir: "asc" | "desc";
     onSortDirChange: (d: "asc" | "desc") => void;
-    filters: FilterState;
-    onFiltersChange: (f: FilterState) => void;
+    filters: TaskFilterState;
+    onFiltersChange: (f: TaskFilterState) => void;
+    statusOptions: StatusOption[];
+    weekStartsOn?: number;
 }
 
 const SORT_LABELS: Record<SortKey, string> = {
@@ -70,9 +66,10 @@ export const ListViewToolbar = ({
     onSortDirChange,
     filters,
     onFiltersChange,
+    statusOptions,
+    weekStartsOn,
 }: ListViewToolbarProps) => {
     const user = useAuthStore((s) => s.user);
-    const { data: allUsers = [] } = useUsers();
 
     const groupItems = [
         { key: "status", label: "Status" },
@@ -92,77 +89,6 @@ export const ListViewToolbar = ({
         { key: "created_at", label: SORT_LABELS.created_at },
         { key: "updated_at", label: SORT_LABELS.updated_at },
     ];
-
-    const activeFilterCount =
-        (meMode ? 1 : 0) +
-        (filters.priorities.length > 0 ? 1 : 0) +
-        (filters.assigneeIds.length > 0 ? 1 : 0);
-
-    const filterContent = (
-        <div
-            style={{
-                width: 260,
-                display: "flex",
-                flexDirection: "column",
-                gap: 10,
-            }}
-        >
-            <div>
-                <Label>Priority</Label>
-                <Select
-                    mode="multiple"
-                    value={filters.priorities}
-                    onChange={(v) =>
-                        onFiltersChange({ ...filters, priorities: v })
-                    }
-                    placeholder="Any priority"
-                    style={{ width: "100%" }}
-                    size="small"
-                    options={([1, 2, 3, 4, 0] as Priority[]).map((p) => ({
-                        value: p,
-                        label: PRIORITY_LABELS[p],
-                    }))}
-                />
-            </div>
-            <div>
-                <Label>Assignee</Label>
-                <Select
-                    mode="multiple"
-                    value={filters.assigneeIds}
-                    onChange={(v) =>
-                        onFiltersChange({ ...filters, assigneeIds: v })
-                    }
-                    placeholder="Anyone"
-                    style={{ width: "100%" }}
-                    size="small"
-                    showSearch
-                    optionFilterProp="label"
-                    options={allUsers
-                        .filter((u) => u.status === "active")
-                        .map((u) => ({
-                            value: u.id,
-                            label: `${u.firstName} ${u.lastName}`,
-                        }))}
-                />
-            </div>
-            {activeFilterCount > 0 && (
-                <Button
-                    size="small"
-                    type="link"
-                    style={{ alignSelf: "flex-start", padding: 0 }}
-                    onClick={() => {
-                        onFiltersChange({
-                            priorities: [],
-                            assigneeIds: [],
-                        });
-                        onMeModeChange(false);
-                    }}
-                >
-                    Clear all filters
-                </Button>
-            )}
-        </div>
-    );
 
     return (
         <div
@@ -201,39 +127,14 @@ export const ListViewToolbar = ({
                 </Button>
             </Dropdown>
 
-            <Popover
-                content={filterContent}
-                trigger="click"
-                placement="bottomLeft"
-                title="Filters"
-            >
-                <Button
-                    type={activeFilterCount > 0 ? "primary" : "text"}
-                    size="small"
-                    icon={<ListFilter size={13} strokeWidth={1.75} />}
-                >
-                    Filter
-                    {activeFilterCount > 0 && (
-                        <span
-                            style={{
-                                background:
-                                    activeFilterCount > 0
-                                        ? "rgba(255,255,255,0.25)"
-                                        : tokens.colors.primary,
-                                color: "#fff",
-                                fontSize: 10,
-                                fontWeight: 600,
-                                padding: "1px 5px",
-                                borderRadius: 9,
-                                marginLeft: 4,
-                                fontFamily: tokens.typography.fontFamilyMono,
-                            }}
-                        >
-                            {activeFilterCount}
-                        </span>
-                    )}
-                </Button>
-            </Popover>
+            <TaskFilterPopover
+                filters={filters}
+                onChange={onFiltersChange}
+                statusOptions={statusOptions}
+                weekStartsOn={weekStartsOn}
+                extraActiveCount={meMode ? 1 : 0}
+                onClearExtras={() => onMeModeChange(false)}
+            />
 
             <Dropdown
                 menu={{
@@ -330,18 +231,3 @@ export const ListViewToolbar = ({
     );
 };
 
-const Label = ({ children }: { children: React.ReactNode }) => (
-    <label
-        style={{
-            display: "block",
-            fontSize: 10,
-            fontWeight: 700,
-            color: tokens.colors.textMuted,
-            textTransform: "uppercase",
-            letterSpacing: "0.05em",
-            marginBottom: 4,
-        }}
-    >
-        {children}
-    </label>
-);
