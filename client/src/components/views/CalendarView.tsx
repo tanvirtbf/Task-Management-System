@@ -25,6 +25,11 @@ import type { Task } from "../../types";
 import { CalendarToolbar, type CalendarMode } from "./CalendarToolbar";
 import { CalendarMonthGrid } from "./CalendarMonthGrid";
 import { CalendarUnscheduledPanel } from "./CalendarUnscheduledPanel";
+import {
+    EMPTY_TASK_FILTERS,
+    applyTaskFilters,
+    type TaskFilterState,
+} from "./taskFilters";
 
 interface CalendarViewProps {
     listId: string;
@@ -38,6 +43,9 @@ export const CalendarView = ({ listId }: CalendarViewProps) => {
     const [meMode, setMeMode] = useState(false);
     const [showClosedTasks, setShowClosedTasks] = useState(false);
     const [showUnscheduled, setShowUnscheduled] = useState(true);
+    const [filters, setFilters] = useState<TaskFilterState>(
+        EMPTY_TASK_FILTERS,
+    );
     const [quickCreateDate, setQuickCreateDate] = useState<Date | null>(null);
     const [quickCreateName, setQuickCreateName] = useState("");
 
@@ -65,6 +73,7 @@ export const CalendarView = ({ listId }: CalendarViewProps) => {
         if (meMode && user) {
             result = result.filter((t) => t.assignees.includes(user.id));
         }
+        result = applyTaskFilters(result, filters);
         if (search.trim()) {
             const q = search.toLowerCase();
             result = result.filter(
@@ -74,7 +83,7 @@ export const CalendarView = ({ listId }: CalendarViewProps) => {
             );
         }
         return result;
-    }, [tasks, showClosedTasks, meMode, search, user, statusMap]);
+    }, [tasks, showClosedTasks, meMode, search, user, statusMap, filters]);
 
     // Group filteredTasks by day
     const { tasksByDay, unscheduledTasks } = useMemo(() => {
@@ -140,19 +149,27 @@ export const CalendarView = ({ listId }: CalendarViewProps) => {
         setQuickCreateName("");
     };
 
+    // Create a task due on a given day. Shared by the empty-cell quick-create
+    // modal and the "+N more" day panel, so both add a task the same way.
+    const createTaskOnDay = (date: Date, name: string) => {
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        create.mutate({
+            primaryListId: listId,
+            name: trimmed,
+            dueDate: new Date(
+                date.getFullYear(),
+                date.getMonth(),
+                date.getDate(),
+                12,
+                0,
+            ).toISOString(),
+        });
+    };
+
     const handleQuickCreate = () => {
         if (quickCreateDate && quickCreateName.trim()) {
-            create.mutate({
-                primaryListId: listId,
-                name: quickCreateName.trim(),
-                dueDate: new Date(
-                    quickCreateDate.getFullYear(),
-                    quickCreateDate.getMonth(),
-                    quickCreateDate.getDate(),
-                    12,
-                    0,
-                ).toISOString(),
-            });
+            createTaskOnDay(quickCreateDate, quickCreateName);
             setQuickCreateDate(null);
             setQuickCreateName("");
         }
@@ -177,6 +194,14 @@ export const CalendarView = ({ listId }: CalendarViewProps) => {
                 onShowClosedChange={setShowClosedTasks}
                 showUnscheduled={showUnscheduled}
                 onShowUnscheduledChange={setShowUnscheduled}
+                filters={filters}
+                onFiltersChange={setFilters}
+                statusOptions={[...statusMap.values()].map((s) => ({
+                    value: s.id,
+                    label: s.name,
+                    color: s.color,
+                }))}
+                weekStartsOn={ws?.settings.weekStartsOn ?? 0}
             />
 
             <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
@@ -197,6 +222,7 @@ export const CalendarView = ({ listId }: CalendarViewProps) => {
                             statusMap={statusMap}
                             weekStartsOn={ws?.settings.weekStartsOn ?? 0}
                             onCellClick={handleCellClick}
+                            onCreateTask={createTaskOnDay}
                         />
                     ) : (
                         <div

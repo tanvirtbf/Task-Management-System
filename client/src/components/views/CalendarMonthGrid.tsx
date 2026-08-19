@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
+import { Popover } from "antd";
 import {
     buildMonthGrid,
     dayKey,
@@ -8,6 +10,7 @@ import {
 } from "../../lib/date-utils";
 import type { Status, Task } from "../../types";
 import { CalendarEventCard } from "./CalendarEventCard";
+import { CalendarDayPopover } from "./CalendarDayPopover";
 import { tokens } from "../../theme";
 
 interface CalendarMonthGridProps {
@@ -16,6 +19,7 @@ interface CalendarMonthGridProps {
     statusMap: Map<string, Status>;
     weekStartsOn?: number;
     onCellClick?: (date: Date) => void;
+    onCreateTask?: (date: Date, name: string) => void;
 }
 
 export const CalendarMonthGrid = ({
@@ -24,6 +28,7 @@ export const CalendarMonthGrid = ({
     statusMap,
     weekStartsOn = 6,
     onCellClick,
+    onCreateTask,
 }: CalendarMonthGridProps) => {
     const days = buildMonthGrid(anchor, weekStartsOn);
     const dayNames = weekDayNames(weekStartsOn, true);
@@ -88,6 +93,7 @@ export const CalendarMonthGrid = ({
                         tasks={tasksByDay.get(dayKey(day)) ?? []}
                         statusMap={statusMap}
                         onClick={() => onCellClick?.(day)}
+                        onCreateTask={onCreateTask}
                     />
                 ))}
             </div>
@@ -102,6 +108,7 @@ interface DayCellProps {
     tasks: Task[];
     statusMap: Map<string, Status>;
     onClick: () => void;
+    onCreateTask?: (date: Date, name: string) => void;
 }
 
 const DayCell = ({
@@ -111,7 +118,9 @@ const DayCell = ({
     tasks,
     statusMap,
     onClick,
+    onCreateTask,
 }: DayCellProps) => {
+    const [dayPanelOpen, setDayPanelOpen] = useState(false);
     const { setNodeRef, isOver } = useDroppable({
         id: `day:${dayKey(day)}`,
         data: { type: "day", date: day.toISOString() },
@@ -125,7 +134,14 @@ const DayCell = ({
     return (
         <div
             ref={setNodeRef}
-            onClick={onClick}
+            // Quick-create fires only for the cell's own empty space. A click on
+            // the "+N more" panel trigger (a <button>) is ignored here — antd's
+            // Popover can let that click slip past stopPropagation, so the cell
+            // guards against it directly rather than trusting the event to stop.
+            onClick={(e) => {
+                if ((e.target as HTMLElement).closest("button")) return;
+                onClick();
+            }}
             data-testid={`day-${dayKey(day)}`}
             style={{
                 padding: 4,
@@ -193,16 +209,48 @@ const DayCell = ({
                     />
                 ))}
                 {overflow > 0 && (
-                    <span
-                        style={{
-                            fontSize: 10,
-                            color: tokens.colors.textMuted,
-                            padding: "1px 4px",
-                            fontWeight: 500,
-                        }}
+                    <Popover
+                        open={dayPanelOpen}
+                        onOpenChange={setDayPanelOpen}
+                        trigger="click"
+                        placement="bottomLeft"
+                        content={
+                            <CalendarDayPopover
+                                day={day}
+                                tasks={tasks}
+                                statusMap={statusMap}
+                                onCreateTask={(name) =>
+                                    onCreateTask?.(day, name)
+                                }
+                                onClose={() => setDayPanelOpen(false)}
+                            />
+                        }
                     >
-                        +{overflow} more
-                    </span>
+                        <button
+                            type="button"
+                            // stopPropagation keeps the click off the day cell
+                            // (whose handler opens the quick-create modal — the
+                            // bug this fixes). antd's own click handler is
+                            // composed onto this same button, so the panel still
+                            // toggles; only the cell is spared the event.
+                            onClick={(e) => e.stopPropagation()}
+                            style={{
+                                alignSelf: "flex-start",
+                                border: "none",
+                                background: dayPanelOpen
+                                    ? tokens.colors.bgHover
+                                    : "transparent",
+                                fontSize: 10,
+                                color: tokens.colors.textMuted,
+                                padding: "1px 4px",
+                                borderRadius: tokens.radius.sm,
+                                fontWeight: 500,
+                                cursor: "pointer",
+                            }}
+                        >
+                            +{overflow} more
+                        </button>
+                    </Popover>
                 )}
             </div>
         </div>
