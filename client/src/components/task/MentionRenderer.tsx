@@ -11,7 +11,11 @@ export const MentionRenderer = ({ body }: { body: string }) => {
     const parts = splitTokens(body);
     const matchUser = (handle: string) => {
         const lower = handle.toLowerCase();
+        // Same resolution order the server uses: email local-part is the
+        // unambiguous token the mention picker inserts; first name and raw id
+        // keep older hand-typed comments rendering.
         return (
+            users.find((u) => u.email.split("@")[0].toLowerCase() === lower) ??
             users.find((u) => u.firstName.toLowerCase() === lower) ??
             users.find((u) => u.id === handle)
         );
@@ -38,7 +42,7 @@ export const MentionRenderer = ({ body }: { body: string }) => {
                                     : `Unknown user @${p.value}`
                             }
                         >
-                            @{u ? u.firstName.toLowerCase() : p.value}
+                            @{u ? `${u.firstName} ${u.lastName}`.trim() : p.value}
                         </span>
                     );
                 }

@@ -10,6 +10,8 @@ import { CommentsRepo, type CommentRow } from "../repositories/CommentsRepo";
 import { TasksRepo } from "../repositories/TasksRepo";
 import { TaskActivityRepo } from "../repositories/TaskActivityRepo";
 import { NotificationsRepo } from "../repositories/NotificationsRepo";
+import { taskEmails } from "./TaskEmailService";
+import { pushSvc } from "./PushService";
 import {
     toCommentTree,
     toWireComment,
@@ -163,14 +165,17 @@ export class CommentsService {
                 tx,
             );
             if (visibleMentioned.length > 0) {
+                // Mention feature (2026-08-19): the entity is the TASK, not the
+                // comment — the inbox deep-links only task/report entities, so
+                // a comment-entity row was a dead end nobody could click.
                 await this.notifications.createMany(
                     visibleMentioned.map((userId) => ({
                         userId,
                         type: "mentioned",
-                        entityType: "comment",
-                        entityId: created.id,
+                        entityType: "task",
+                        entityId: task.id,
                         actorId: input.authorId,
-                        title: "mentioned you in a comment",
+                        title: `mentioned you in a comment on "${task.name}"`,
                         body: input.body.slice(0, 140),
                     })),
                     tx,
@@ -193,8 +198,10 @@ export class CommentsService {
                     attached.map((userId) => ({
                         userId,
                         type: "comment" as const,
-                        entityType: "comment" as const,
-                        entityId: created.id,
+                        // Task entity for the same click-through reason as the
+                        // mentioned rows above.
+                        entityType: "task" as const,
+                        entityId: task.id,
                         actorId: input.authorId,
                         title: `commented on "${task.name}"`,
                         body: input.body.slice(0, 140),
@@ -219,12 +226,34 @@ export class CommentsService {
             return created;
         });
 
+        // Mention feature (2026-08-19): email + web push for the mentioned,
+        // post-commit fire-and-forget (the TaskWriteService precedent) — a mail
+        // or push hiccup must never fail the comment that triggered it.
+        if (visibleMentioned.length > 0) {
+            void taskEmails().commentMention({
+                workspaceId: input.workspaceId,
+                taskId: task.id,
+                taskName: task.name,
+                recipientIds: visibleMentioned,
+                actorId: input.authorId,
+                excerpt: input.body.slice(0, 140),
+            });
+            void pushSvc().commentMention({
+                workspaceId: input.workspaceId,
+                commentId: comment.id,
+                taskId: task.id,
+                taskName: task.name,
+                recipientIds: visibleMentioned,
+                actorId: input.authorId,
+            });
+        }
+
         return toWireComment(comment);
     }
 
     /** PATCH — author edits within the 15-minute window. */
     async update(input: UpdateCommentInput): Promise<WireComment> {
-        const comment = await this.requireLiveComment(
+        const { comment, task } = await this.requireLiveComment(
             input.id,
             input.workspaceId,
         );
@@ -240,6 +269,37 @@ export class CommentsService {
                 "The 15-minute edit window for this comment has passed",
             );
         }
+
+        // Mention feature (2026-08-19): people @mentioned by the EDIT — added
+        // since the original text — get the full mention treatment. Diffing
+        // against the old body means nobody is pinged twice for one comment.
+        const oldMentioned = await this.resolveMentions(
+            comment.body,
+            input.workspaceId,
+            input.actorId,
+        );
+        const newMentioned = await this.resolveMentions(
+            input.body,
+            input.workspaceId,
+            input.actorId,
+        );
+        const oldSet = new Set(oldMentioned);
+        const addedIds = newMentioned.filter((id) => !oldSet.has(id));
+        let visibleAdded: string[] = [];
+        if (addedIds.length > 0) {
+            const [assigneeMap, watcherMap] = await Promise.all([
+                this.tasks.assigneesByTask([task.id]),
+                this.tasks.watchersByTask([task.id]),
+            ]);
+            visibleAdded = await this.filterMentionsToVisible(
+                addedIds,
+                task,
+                new Set(assigneeMap.get(task.id) ?? []),
+                new Set(watcherMap.get(task.id) ?? []),
+                input.workspaceId,
+            );
+        }
+
         const editedAt = new Date();
         // Team-access P3 (plan G13): an edit used to leave NO trace — the
         // audit log claimed the original text was never touched. Same-tx row,
@@ -262,13 +322,47 @@ export class CommentsService {
                 ],
                 tx,
             );
+            if (visibleAdded.length > 0) {
+                await this.notifications.createMany(
+                    visibleAdded.map((userId) => ({
+                        userId,
+                        type: "mentioned" as const,
+                        entityType: "task" as const,
+                        entityId: task.id,
+                        actorId: input.actorId,
+                        title: `mentioned you in a comment on "${task.name}"`,
+                        body: input.body.slice(0, 140),
+                    })),
+                    tx,
+                );
+            }
         });
+
+        if (visibleAdded.length > 0) {
+            void taskEmails().commentMention({
+                workspaceId: input.workspaceId,
+                taskId: task.id,
+                taskName: task.name,
+                recipientIds: visibleAdded,
+                actorId: input.actorId,
+                excerpt: input.body.slice(0, 140),
+            });
+            void pushSvc().commentMention({
+                workspaceId: input.workspaceId,
+                commentId: comment.id,
+                taskId: task.id,
+                taskName: task.name,
+                recipientIds: visibleAdded,
+                actorId: input.actorId,
+            });
+        }
+
         return toWireComment({ ...comment, body: input.body, editedAt });
     }
 
     /** DELETE — soft-delete (author or admin/owner); idempotent tombstone. */
     async delete(input: DeleteCommentInput): Promise<void> {
-        const comment = await this.requireLiveComment(
+        const { comment } = await this.requireLiveComment(
             input.id,
             input.workspaceId,
         );
@@ -374,7 +468,12 @@ export class CommentsService {
     private async requireLiveComment(
         id: string,
         workspaceId: string,
-    ): Promise<CommentRow> {
+    ): Promise<{
+        comment: CommentRow;
+        task: NonNullable<
+            Awaited<ReturnType<TasksRepo["findByIdInWorkspace"]>>
+        >;
+    }> {
         const comment = await this.comments.findById(id);
         if (!comment || comment.deletedAt) {
             throw AppError.notFound(
@@ -392,7 +491,7 @@ export class CommentsService {
                 `Comment ${id} does not exist`,
             );
         }
-        return comment;
+        return { comment, task };
     }
 
     /**

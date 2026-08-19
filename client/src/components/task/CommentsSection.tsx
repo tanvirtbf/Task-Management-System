@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Skeleton, Button, Input } from "antd";
+import { Skeleton, Button } from "antd";
 import { MessageSquare, Send, Trash2, CornerDownRight } from "lucide-react";
 import { commentsApi } from "../../http/api";
 import { useAuthStore } from "../../stores/auth";
@@ -8,6 +8,7 @@ import { useUserMap } from "../../hooks/useReferenceData";
 import { Avatar } from "../ui/Avatar";
 import { EmptyState } from "../ui/EmptyState";
 import { MentionRenderer } from "./MentionRenderer";
+import { MentionTextArea } from "./MentionTextArea";
 import { tokens } from "../../theme";
 
 const timeAgo = (iso: string) => {
@@ -245,17 +246,15 @@ export const CommentsSection = ({ taskId }: { taskId: string }) => {
                                         alignItems: "flex-start",
                                     }}
                                 >
-                                    <Input.TextArea
+                                    <MentionTextArea
                                         value={replyBody}
-                                        onChange={(e) =>
-                                            setReplyBody(e.target.value)
-                                        }
+                                        onChange={setReplyBody}
                                         autoFocus
                                         autoSize={{ minRows: 1, maxRows: 4 }}
                                         placeholder={`Reply to ${
                                             userMap.get(c.authorId)
                                                 ?.firstName ?? ""
-                                        }… ⌘+Enter`}
+                                        }… @ to mention, ⌘+Enter`}
                                         onKeyDown={(e) => {
                                             if (
                                                 e.key === "Enter" &&
@@ -307,10 +306,10 @@ export const CommentsSection = ({ taskId }: { taskId: string }) => {
                         size={28}
                     />
                     <div style={{ flex: 1 }}>
-                        <Input.TextArea
+                        <MentionTextArea
                             value={body}
-                            onChange={(e) => setBody(e.target.value)}
-                            placeholder="Write a comment... @mention to ping, #BUG-1042 to cross-link.  ⌘+Enter sends."
+                            onChange={setBody}
+                            placeholder="Write a comment... @ to mention someone, #BUG-1042 to cross-link.  ⌘+Enter sends."
                             autoSize={{ minRows: 2, maxRows: 8 }}
                             onKeyDown={(e) => {
                                 if (

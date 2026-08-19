@@ -112,6 +112,59 @@ export class TaskEmailService {
     }
 
     /**
+     * Email each user @mentioned in a comment (2026-08-19). Same rules as
+     * `taskAssigned`: fire-and-forget post-commit, recipients re-resolved at
+     * send time, per-recipient isolation, never throws. Recipients are exactly
+     * the visibility-filtered set the in-app `mentioned` notification reached.
+     */
+    async commentMention(input: {
+        workspaceId: string;
+        taskId: string;
+        taskName: string;
+        recipientIds: string[];
+        actorId: string;
+        excerpt: string;
+    }): Promise<void> {
+        try {
+            if (input.recipientIds.length === 0) return;
+            const ids = [...new Set([...input.recipientIds, input.actorId])];
+            const rows = await this.users.findManyByIdsInWorkspace(
+                ids,
+                input.workspaceId,
+            );
+            const byId = new Map(rows.map((r) => [r.id, r]));
+            const actor = byId.get(input.actorId);
+            const actorName = actor
+                ? `${actor.firstName} ${actor.lastName}`.trim() || "A teammate"
+                : "A teammate";
+
+            for (const id of input.recipientIds) {
+                const u = byId.get(id);
+                if (!u || u.status !== "active" || !u.email) continue;
+                try {
+                    await this.mail.sendMentionEmail(u.email, {
+                        actorName,
+                        taskName: input.taskName,
+                        taskUrl: taskUrlOf(input.taskId),
+                        excerpt: input.excerpt,
+                    });
+                } catch (err) {
+                    this.log.warn("mail.mention.fail", {
+                        taskId: input.taskId,
+                        userId: id,
+                        error: err instanceof Error ? err.message : String(err),
+                    });
+                }
+            }
+        } catch (err) {
+            this.log.warn("mail.mention.fail", {
+                taskId: input.taskId,
+                error: err instanceof Error ? err.message : String(err),
+            });
+        }
+    }
+
+    /**
      * Team-access P9 (R1.6): one of the five assignment-approval moments, to
      * exactly the recipients the in-app bell reached. Same rules as
      * `taskAssigned`: fire-and-forget post-commit, re-resolve recipients at

@@ -150,6 +150,22 @@ class MailService {
         });
     }
     /**
+     * Tell `to` someone @mentioned them in a comment (2026-08-19 feature).
+     * Fired by `TaskEmailService.commentMention` post-commit for exactly the
+     * recipients the in-app `mentioned` notification reached.
+     */
+    async sendMentionEmail(to, p) {
+        this.logger.debug("mail.mention.sending", { to, taskUrl: p.taskUrl });
+        await this.send({
+            to,
+            subject: `${p.actorName} mentioned you: ${subjectName(p.taskName)}`,
+            html: mentionHtml(p),
+            text: `${p.actorName} mentioned you in a comment on "${p.taskName}":\n\n` +
+                `"${p.excerpt}"\n\n` +
+                `আপনাকে একটি কমেন্টে mention করা হয়েছে — দেখে নিন।\n\n${p.taskUrl}`,
+        });
+    }
+    /**
      * Tell `to` their task is past its due date (overdue-alert job). Sent at
      * most once per task per deadline — the job's `overdue_notified_at` claim
      * guarantees it, so this method never needs its own dedupe.
@@ -294,6 +310,10 @@ const subjectName = (name) => {
 const taskAssignedHtml = (p) => shell("You have a new task", `<strong>${escapeHtml(p.assignerName)}</strong> assigned you a task on BeautyBooth Tasks:<br>` +
     `<strong>"${escapeHtml(p.taskName)}"</strong>${p.dueYmd ? `<br>Due date: <strong>${escapeHtml(p.dueYmd)}</strong>` : ""}<br><br>` +
     "আপনাকে একটি নতুন কাজ দেওয়া হয়েছে — দয়া করে দেখে নিন।", { url: p.taskUrl, label: "Open task" });
+const mentionHtml = (p) => shell("You were mentioned", `<strong>${escapeHtml(p.actorName)}</strong> mentioned you in a comment on ` +
+    `<strong>"${escapeHtml(p.taskName)}"</strong>:<br><br>` +
+    `<em>"${escapeHtml(p.excerpt)}"</em><br><br>` +
+    "আপনাকে একটি কমেন্টে mention করা হয়েছে — দেখে নিন।", { url: p.taskUrl, label: "Open task" });
 const taskOverdueHtml = (p) => shell("Your task is overdue", `Your task <strong>"${escapeHtml(p.taskName)}"</strong> passed its due date ` +
     `(<strong>${escapeHtml(p.dueYmd)}</strong>) and is still open.<br><br>` +
     "আপনার কাজের নির্ধারিত সময় পার হয়ে গেছে — দয়া করে যত দ্রুত সম্ভব কাজটি শেষ করুন।", { url: p.taskUrl, label: "Open task" });

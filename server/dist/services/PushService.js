@@ -64,6 +64,33 @@ class PushService {
         });
     }
     /**
+     * @mention in a comment (2026-08-19) — same recipients as the in-app
+     * `mentioned` notification (already visibility-filtered and minus the
+     * author). Tagged per comment so a re-notified device coalesces.
+     */
+    async commentMention(input) {
+        if (!this.vapidPublicKey || input.recipientIds.length === 0)
+            return;
+        let actorName = "A teammate";
+        try {
+            const [actor] = await this.users.findManyByIdsInWorkspace([input.actorId], input.workspaceId);
+            if (actor) {
+                const name = `${actor.firstName} ${actor.lastName}`.trim();
+                if (name)
+                    actorName = name;
+            }
+        }
+        catch {
+            /* the name is cosmetic — never block the push on it */
+        }
+        await this.fanout(input.recipientIds, {
+            title: `${actorName} mentioned you in a comment`,
+            body: input.taskName,
+            url: `/t/${input.taskId}`,
+            tag: `bb-mention-${input.commentId}`,
+        });
+    }
+    /**
      * Team-access P9: one of the five assignment-approval moments — same
      * recipients as the in-app bell, kind-aware copy AND link (receiver-facing
      * kinds land on the inbox Requests tab; the task itself is still 404 for

@@ -13,7 +13,7 @@ independently re-derived.
 
 **The engine is in excellent shape and is now provably so.** Schema parity is exact down to
 the column and nullability level across all 47 tables; both TypeScript projects compile clean;
-both lint clean; every one of 176 client call sites hits a real server route; there is no SQL
+both carrying pre-existing lint debt (server 70 / client 12 errors — see the corrected table in §2); every one of 176 client call sites hits a real server route; there is no SQL
 injection surface, no hardcoded secret, no TODO debt, and no unguarded endpoint. Four test
 suites run as ground truth (673 tests) came back 100% green. **The gap is still reach, plus
 one deploy-sequencing hazard that is now sharper than it was a week ago.** 29 of 178 client
@@ -60,8 +60,8 @@ Each of these was *run*, not read.
 |---|---|
 | `tsc --noEmit` (server) | **clean, exit 0** |
 | `tsc -b` (client) | **clean, exit 0** |
-| `eslint .` (server) | **clean, exit 0** |
-| `eslint .` (client) | **clean, exit 0** |
+| `eslint .` (server) | ⚠️ **CORRECTED 2026-08-19: 70 pre-existing errors** (mostly `no-unnecessary-type-assertion` in controllers + a few unsafe-`any` + untsconfig’d config files). The original “clean, exit 0” read the piped `tail`’s exit code, not eslint’s. |
+| `eslint .` (client) | ⚠️ **CORRECTED 2026-08-19: 12 pre-existing errors + 4 warnings** (react-hooks purity / set-state-in-effect rules in older components). Same misread. |
 | jest `jobs` suite | **7/7 files, 54/54 tests pass** |
 | jest `rbac` suite | **19/19 files, 345/345 tests pass** |
 | jest `assistant` suite | **14/14 files, 227/227 tests pass** (incl. the `route-parity` drift guard) |
