@@ -11,7 +11,7 @@ exports.ASSISTANT_TOOL_DEFS = [
         type: "function",
         function: {
             name: "get_my_task_counts",
-            description: "Live task counts. Returns SIX separate numbers, each named for its scope: openTasksAssignedToMe, myTasksDueToday, myTasksOverdue, tasksAwaitingMyReview, openTasksAcrossTheWholeWorkspace, slaBreachesAcrossTheWholeWorkspace. Read the key that matches what was asked — a question about the team or the workspace is NOT the same as a question about the user's own tasks. IMPORTANT: the two AcrossTheWholeWorkspace numbers cover everything THIS USER is allowed to see — for a team-scoped member that is their team(s), not the whole company; say 'across everything you can see' rather than claiming the whole company. Use whenever the user asks how many tasks there are.",
+            description: "Live task counts. Returns SIX separate numbers, each named for its scope: openTasksAssignedToMe, myTasksDueToday, myTasksOverdue, tasksAwaitingMyReview, openTasksAcrossTheWholeWorkspace, slaBreachesAcrossTheWholeWorkspace. Read the key that matches what was asked — a question about the team or the workspace is NOT the same as a question about the user's own tasks. IMPORTANT: the two AcrossTheWholeWorkspace numbers cover everything THIS USER is allowed to see — for a team-scoped member that is their team(s), not the whole company; say 'across everything you can see' rather than claiming the whole company. These are the CURRENT user's OWN numbers — this tool can NEVER report another person's tasks. Use whenever the user asks how many tasks there are.",
             parameters: {
                 type: "object",
                 properties: {},
@@ -23,7 +23,7 @@ exports.ASSISTANT_TOOL_DEFS = [
         type: "function",
         function: {
             name: "get_my_tasks",
-            description: "The user's OWN tasks as a LIST of real rows (name, list, status, due date) — use this whenever they ask WHICH tasks, e.g. 'ami ki ki task e assign asi', 'amar overdue kaj kongula', 'ei shoptahe ki ki ache'. get_my_task_counts gives only NUMBERS; this gives the tasks themselves. Buckets: open (default, everything assigned to them that is not finished), overdue, due_soon (next 7 days), awaiting_review (completed work waiting for THEM to review, as a Head or named reviewer), done_recent. Capped — if the result says more:true, tell them there are others and point them at Home.",
+            description: "The user's OWN tasks as a LIST of real rows (name, list, status, due date) — use this whenever they ask WHICH tasks, e.g. 'ami ki ki task e assign asi', 'amar overdue kaj kongula', 'ei shoptahe ki ki ache'. get_my_task_counts gives only NUMBERS; this gives the tasks themselves. Buckets: open (default, everything assigned to them that is not finished), overdue, due_soon (next 7 days), awaiting_review (completed work waiting for THEM to review, as a Head or named reviewer), done_recent. Capped — if the result says more:true, tell them there are others and point them at Home. This lists ONLY the current user's own tasks — it can NEVER show another person's; do not use it to answer what someone ELSE has.",
             parameters: {
                 type: "object",
                 properties: {
@@ -82,7 +82,7 @@ exports.ASSISTANT_TOOL_DEFS = [
         type: "function",
         function: {
             name: "search",
-            description: "Search the tasks, lists, and spaces THIS USER can see for a keyword (team-scoped members search their own teams' work, not the whole company). Use when the user asks to find or locate a specific item by name.",
+            description: "Search the tasks, lists, and spaces THIS USER can see for a keyword (team-scoped members search their own teams' work, not the whole company). It matches item NAMES and text, NOT who a task is assigned to — it cannot list a person's tasks. Use when the user asks to find or locate a specific item by name.",
             parameters: {
                 type: "object",
                 properties: {
@@ -100,7 +100,7 @@ exports.ASSISTANT_TOOL_DEFS = [
         type: "function",
         function: {
             name: "get_people",
-            description: 'People and teams. action="my_teams": the user\'s own teams with each head. action="team_roster": who is on a NAMED team (needs team_name). action="find_person": which team(s) a NAMED person is on (needs person_name; "@me" allowed). action="person_workload": how many open tasks a person has, counted only across what the ASKER can see (needs person_name). Use for "amar team e ke ke", "X kon team e", "Y er koyta kaj cholche", "amader head ke".',
+            description: 'People and teams. action="my_teams": the user\'s own teams with each head. action="team_roster": who is on a NAMED team (needs team_name). action="find_person": which team(s) a NAMED person is on (needs person_name; "@me" allowed). action="person_workload": how many open tasks a person has, counted only across what the ASKER can see (needs person_name) — ALWAYS use this for ANY question about another person\'s tasks or workload, including a request to LIST or show them, never search or get_my_* (those are the caller\'s own); it returns only a COUNT, and it is scope-limited, so a team/own-scoped asker gets 0 even when the person has work elsewhere. Use for "amar team e ke ke", "X kon team e", "Y er koyta kaj / koto kaj / kaj cholche", "X ke koto kaj diyeche", "X er task gula dekhao / list koro", "amader head ke".',
             parameters: {
                 type: "object",
                 properties: {
@@ -223,7 +223,7 @@ function makeAssistantToolExecutor(ctx, services) {
             typeof args.list_name === "string"
                 ? args.list_name.trim().toLowerCase()
                 : "",
-        ].join(" ");
+        ].join("\u0000");
         const prior = createdThisRequest.get(key);
         if (prior !== undefined)
             return prior;
@@ -722,7 +722,9 @@ async function peopleTool(args, ctx, services) {
         return {
             person: person.name,
             openTasksYouCanSee: open,
-            note: "counted only across tasks the asker can see",
+            note: open === 0
+                ? "0 counts ONLY tasks the asker may see — it can mean they truly have none OR their work is outside the asker's view. Do NOT say this person has no tasks; say you cannot see their workload from here and point to Members or the team's List."
+                : "Counts ONLY tasks the asker may see — say it as 'N open task(s) that you can see'. This is a COUNT ONLY; you CANNOT list the tasks themselves — for the actual list, tell them to open the person from Members or the team's board. They may have more outside the asker's view.",
         };
     }
     // find_person — team names go through the CALLER's visible set only; a
