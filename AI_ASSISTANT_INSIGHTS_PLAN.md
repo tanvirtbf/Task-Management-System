@@ -246,8 +246,29 @@ at 141).
 **Tests:** `kb-coverage`/`route-parity` green; client vitest green; budget assertions updated.
 **Gate:** jest.assistant + client vitest green.
 
-### P6 — The graders learn the new surface *(tests-first hardening)*
-**Goal:** regressions become impossible to miss.
+### P6 — The graders learn the new surface *(tests-first hardening)* — ✅ **COMPLETE 2026-08-19**
+
+**Shipped:** `assistant-role-matrix.cjs` gained two cells with per-asker API-swept truth
+(the asker's own scoped `/spaces → /lists → /tasks` view, so every reach shape produces
+its own expected value automatically): **person** ("<target> er hate ekhon ki kaj ache?
+list dao" — task-link count must equal the swept truth, capped 15; truth 0 ⇒ ZERO links)
+and **teamStat** ("Marketing team e last 7 dine koyta task create hoyeche?" — visible team
+⇒ the swept number; invisible ⇒ REFUSED with zero exclusive-member names).
+`assistant-eval.cjs` §B gained the same two questions with owner-swept truths (targets
+now 11 of 12).
+
+**Live results:** eval → **PERFECT** (both insights questions correct; the one absorbed
+miss was the pre-existing "team er koto gulo" phrasing variance). Matrix → **ALL CELLS
+PASS twice consecutively**; the person column reads exactly like the permission model:
+owner/admin **3/3**, head & 2-team member **0/0 with zero links** (target's team outside
+their reach — the honest can't-see answer), 1-team member (self) **3/3**; teamStat: all
+visible roles matched the swept 0, the scoped outsider got `hidden OK` (refused, no leak).
+
+**Grader gap found & fixed (§6):** both scripts' SAYS_NONE lacked **হয়নি** — the natural
+Bangla zero for "koyta create hoyeche" — scoring a verified-correct answer as a miss;
+joined in both, mirrored comments. eslint total still exactly 70.
+
+**Goal (as planned):** regressions become impossible to miss.
 **Steps:** `assistant-role-matrix.cjs` gains cells: `personTasks` ("<seeded member> er hate
 ekhon ki kaj ache? list dao") verified against the API truth per role, and `teamStats`
 ("<own team> er last 7 dine koyta task create hoise?") — the own-scoped member's foreign-team
@@ -322,6 +343,12 @@ before the phase continues. Two already found by the pre-plan scan and folded in
 rather than left as bugs: the unscoped `myTasksByBucket` reuse trap and the `@handle`
 resolution gap — see §0.)*
 
+- **P6 (2026-08-19) — the graders' SAYS_NONE missed a real Bangla zero.** Both
+  `assistant-eval.cjs` and `assistant-role-matrix.cjs` treated only নেই/নাই/শূন্য as
+  "none", so "কোনো টাস্ক তৈরি **হয়নি**" — the natural (and live-verified CORRECT) answer to
+  "koyta create hoyeche?" when the count is 0 — scored as a miss. `হয়নি` joined in both
+  scripts. The measuring stick again: a metric that maligns a right answer is worse than
+  no metric.
 - **P1 (2026-08-19) — MySQL TIMESTAMP boundary rounding.** `TIMESTAMP` columns round
   sub-second values to the nearest second, so a row written EXACTLY on a window boundary
   with a wall-clock `Date` (carrying milliseconds) can land on either side — the

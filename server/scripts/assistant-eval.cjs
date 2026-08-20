@@ -42,7 +42,9 @@ const TARGET = {
     links: 14, // of 15 — one question legitimately has no page to point at
     // steps has no fixed number: it is "all of the questions that need them".
     bangla: 15, // of 15
-    dataAnswers: 9, // of 10 — questions only a live tool can answer
+    // INSIGHTS_PLAN P6: 10 KPI questions + 2 insights questions (person /
+    // team-window), truths swept from the API. Same one-miss slack philosophy.
+    dataAnswers: 11, // of 12 — questions only a live tool can answer
     fabricatedRoutes: 0,
 };
 
@@ -110,8 +112,11 @@ const BENGALI_DIGITS = "০১২৩৪৫৬৭৮৯";
 const toAsciiDigits = (s) =>
     s.replace(/[০-৯]/g, (c) => String(BENGALI_DIGITS.indexOf(c)));
 
-/** Ways a Bangla answer says "none" without writing a zero. */
-const SAYS_NONE = /নেই|নাই|শূন্য|কোনো\s*(task|কাজ)?\s*নেই|no tasks|none/i;
+/** Ways a Bangla answer says "none" without writing a zero. `হয়নি` joined for
+ *  the INSIGHTS_PLAN P6 created-in-window question — "কোনো টাস্ক তৈরি হয়নি" is
+ *  the natural zero for "how many were created", verified against a live
+ *  correct answer the old pattern scored as a miss. */
+const SAYS_NONE = /নেই|নাই|শূন্য|হয়নি|কোনো\s*(task|কাজ)?\s*নেই|no tasks|none/i;
 
 /**
  * Bangla ways of saying "no, you may not" — the shapes the honest-denial rules
@@ -329,13 +334,69 @@ const pad = (s, n) => String(s).padEnd(n);
         })
     ).json();
     const truthOf = (key) => String(kpi[key]?.value ?? "");
+
+    // INSIGHTS_PLAN P6 — truths for the person/team tools, swept from the
+    // same scoped API the tools read. The eval runs as the owner (full
+    // reach), so this sweep IS the whole truth for these two questions.
+    const apiGet = (path) =>
+        fetch(`${API}${path}`, {
+            headers: { Authorization: `Bearer ${token}` },
+        }).then((r) => r.json());
+    const insightsDir = (await apiGet("/teams")).data ?? [];
+    const evalTarget = insightsDir
+        .flatMap((d) => d.members.map((m) => m.user))
+        .find((u) => u.email === "arif@beautybooth.com.bd");
+    let personOpen = 0;
+    let teamCreated7 = 0;
+    const sinceMs = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    for (const sp of (await apiGet("/spaces")).data ?? []) {
+        for (const l of (await apiGet(`/spaces/${sp.id}/lists`)).data ?? []) {
+            const sts = await apiGet(`/lists/${l.id}/statuses`);
+            const closed = new Set(
+                (Array.isArray(sts) ? sts : sts.data ?? [])
+                    .filter((s) => ["done", "closed"].includes(s.status_group))
+                    .map((s) => s.id),
+            );
+            for (const tk of (await apiGet(`/lists/${l.id}/tasks`)).data ?? []) {
+                if (
+                    evalTarget &&
+                    !closed.has(tk.status_id) &&
+                    (tk.assignees ?? []).includes(evalTarget.id)
+                ) {
+                    personOpen++;
+                }
+                if (
+                    sp.name === "Marketing" &&
+                    new Date(tk.created_at).getTime() >= sinceMs
+                ) {
+                    teamCreated7++;
+                }
+            }
+        }
+    }
+    const INSIGHTS_QUESTIONS = evalTarget
+        ? [
+              [
+                  `${evalTarget.first_name} ${evalTarget.last_name} er hate ekhon koyta open task ache?`,
+                  String(personOpen),
+              ],
+              [
+                  "Marketing team e last 7 dine koyta task create hoyeche?",
+                  String(teamCreated7),
+              ],
+          ]
+        : [];
+
     console.log(
-        `\nB. LIVE DATA (truth: my=${truthOf("myTasks")} due=${truthOf("dueToday")} overdue=${truthOf("overdue")} review=${truthOf("awaitingReview")} team=${truthOf("openTeamTasks")} sla=${truthOf("slaBreaches")})`,
+        `\nB. LIVE DATA (truth: my=${truthOf("myTasks")} due=${truthOf("dueToday")} overdue=${truthOf("overdue")} review=${truthOf("awaitingReview")} team=${truthOf("openTeamTasks")} sla=${truthOf("slaBreaches")} person=${personOpen} mkt7d=${teamCreated7})`,
     );
     let answered = 0;
-    for (const [q, key] of DATA_QUESTIONS) {
+    const ALL_DATA = [
+        ...DATA_QUESTIONS.map(([q, key]) => [q, truthOf(key)]),
+        ...INSIGHTS_QUESTIONS,
+    ];
+    for (const [q, want] of ALL_DATA) {
         const { text } = await ask(token, q);
-        const want = truthOf(key);
         const ascii = toAsciiDigits(text);
         // Standalone numbers only — "2" inside "2026" or a list's "1." must not count.
         const found = [...ascii.matchAll(/(?<![\d\w])(\d{1,4})(?![\d\w.)])/g)].map(
@@ -448,7 +509,7 @@ const pad = (s, n) => String(s).padEnd(n);
         ["answers with a clickable route", links, n, TARGET.links],
         ["actionable answers with steps", steps, stepsNeeded, stepsNeeded],
         ["answers in Bangla", bangla, n, TARGET.bangla],
-        ["data questions answered", answered, DATA_QUESTIONS.length, TARGET.dataAnswers],
+        ["data questions answered", answered, ALL_DATA.length, TARGET.dataAnswers],
         ["permission questions refused", refusals, 2, 2],
         ["scoped member's own data right", scopedOk, 1, 1],
     ];

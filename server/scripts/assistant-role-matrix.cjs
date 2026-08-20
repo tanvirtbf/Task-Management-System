@@ -78,9 +78,66 @@ const ask = async (token, message) => {
 const pad = (s, n) => String(s).padEnd(n);
 const mark = (ok) => (ok ? "OK  " : "FAIL");
 
+// ── INSIGHTS_PLAN P6 — truths for the person/team cells ─────────────────────
+// Swept from the ASKER'S OWN API view (scoped /spaces → /lists → /tasks), so
+// every reach shape produces its own truth automatically. Known delta: the
+// tool's own-escape can include a co-assigned task in a space the sweep can't
+// list; the demo data has none, and a FAIL here is the cue to look.
+const BN_DIGITS = "০১২৩৪৫৬৭৮৯";
+const toAscii = (s) => s.replace(/[০-৯]/g, (c) => String(BN_DIGITS.indexOf(c)));
+const standaloneNumbers = (s) =>
+    [...toAscii(s).matchAll(/(?<![\d\w])(\d{1,4})(?![\d\w.)])/g)].map((m) => m[1]);
+// `হয়নি` — the natural zero for "koyta create hoyeche" (mirrors the eval's
+// SAYS_NONE, verified against a live correct answer).
+const SAYS_NONE = /নেই|নাই|শূন্য|হয়নি|no tasks|none/i;
+
+/** The asker's visible open tasks assigned to `userId`, and the 7-day created
+ *  count for `teamName` (null when the team is not visible to them). */
+const sweep = async (token, userId, teamName) => {
+    const spaces = (await get(token, "/spaces")).data ?? [];
+    const team = spaces.find((s) => s.name === teamName) ?? null;
+    let personOpen = 0;
+    let teamCreated = team ? 0 : null;
+    const since = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    for (const sp of spaces) {
+        const lists = (await get(token, `/spaces/${sp.id}/lists`)).data ?? [];
+        for (const l of lists) {
+            const statuses = await get(token, `/lists/${l.id}/statuses`);
+            const closed = new Set(
+                (Array.isArray(statuses) ? statuses : statuses.data ?? [])
+                    .filter((st) => ["done", "closed"].includes(st.status_group))
+                    .map((st) => st.id),
+            );
+            const tasks = (await get(token, `/lists/${l.id}/tasks`)).data ?? [];
+            for (const tk of tasks) {
+                const open = !closed.has(tk.status_id);
+                if (open && (tk.assignees ?? []).includes(userId)) personOpen++;
+                if (
+                    team &&
+                    sp.id === team.id &&
+                    new Date(tk.created_at).getTime() >= since
+                ) {
+                    teamCreated++;
+                }
+            }
+        }
+    }
+    return { personOpen, teamCreated };
+};
+
 (async () => {
     const ownerToken = await login("owner@company.local");
     const directory = (await get(ownerToken, "/teams")).data ?? [];
+
+    // INSIGHTS_PLAN P6 — the person cell's fixed target: a member every seed
+    // ships (falls back to the first member found so a reorg cannot break the
+    // matrix harness itself).
+    const allMembers = directory.flatMap((d) => d.members.map((m) => m.user));
+    const target =
+        allMembers.find((u) => u.email === "arif@beautybooth.com.bd") ??
+        allMembers[0];
+    const targetName = `${target.first_name} ${target.last_name}`.trim();
+    const STATS_TEAM = "Marketing";
 
     console.log("P9 SHIP MATRIX -> " + API + "\n");
     console.log(
@@ -93,9 +150,11 @@ const mark = (ok) => (ok ? "OK  " : "FAIL");
             pad("sla", 6) +
             pad("noLeak", 8) +
             pad("howto", 7) +
+            pad("person", 9) +
+            pad("teamStat", 9) +
             "absLink",
     );
-    console.log("-".repeat(90));
+    console.log("-".repeat(108));
 
     let failures = 0;
     for (const [label, email] of USERS) {
@@ -138,6 +197,16 @@ const mark = (ok) => (ok ? "OK  " : "FAIL");
         if (foreign) {
             await A("leak", `${foreign.name} team e ke ke ase? list dao`);
         }
+        // INSIGHTS_PLAN P6 — the two new families, truth swept per asker.
+        const truths = await sweep(t, target.id, STATS_TEAM);
+        await A(
+            "person",
+            `${targetName} er hate ekhon ki kaj ache? list dao`,
+        );
+        await A(
+            "teamStat",
+            `${STATS_TEAM} team e last 7 dine koyta task create hoyeche?`,
+        );
 
         // ── verdicts, each against live truth ───────────────────────────────
         const want = Number(kpi?.myTasks?.value ?? 0);
@@ -170,7 +239,39 @@ const mark = (ok) => (ok ? "OK  " : "FAIL");
             : true;
         const howtoOk = /\]\(\//.test(answers.howto);
 
-        for (const ok of [tasksOk, roleOk, teamsOk, approvOk, reportOk, slaOk, leakOk, howtoOk])
+        // INSIGHTS_PLAN P6 — person cell: the listed links must equal the
+        // asker's own swept truth (capped at the tool's 15); a truth of 0 must
+        // produce ZERO task links — the honest can't-see answer, never rows.
+        const personWant = truths.personOpen;
+        const personLinks = [
+            ...answers.person.matchAll(/\]\(\/t\/[^)]+\)/g),
+        ].length;
+        const personOk =
+            personWant > 0
+                ? personLinks === Math.min(personWant, 15)
+                : personLinks === 0;
+
+        // teamStat cell: a visible team's answer must carry the swept created
+        // count; an invisible team must be refused/not-found with ZERO names
+        // of its exclusive members leaked.
+        const statsExclusive = directory
+            .filter((d) => d.space.name === STATS_TEAM)
+            .flatMap((d) => d.members)
+            .filter((m) => !myPeople.has(m.user.id))
+            .map((m) => `${m.user.first_name} ${m.user.last_name}`.trim());
+        let teamStatOk;
+        if (truths.teamCreated === null) {
+            teamStatOk =
+                REFUSED.test(answers.teamStat) &&
+                !statsExclusive.some((nm) => answers.teamStat.includes(nm));
+        } else {
+            const nums = standaloneNumbers(answers.teamStat);
+            teamStatOk =
+                nums.includes(String(truths.teamCreated)) ||
+                (truths.teamCreated === 0 && SAYS_NONE.test(answers.teamStat));
+        }
+
+        for (const ok of [tasksOk, roleOk, teamsOk, approvOk, reportOk, slaOk, leakOk, howtoOk, personOk, teamStatOk])
             if (!ok) failures++;
         if (absLinks > 0) failures++;
 
@@ -184,6 +285,12 @@ const mark = (ok) => (ok ? "OK  " : "FAIL");
                 pad(mark(slaOk), 6) +
                 pad(foreign ? mark(leakOk) : "n/a ", 8) +
                 pad(mark(howtoOk), 7) +
+                pad(`${personLinks}/${personWant} ${personOk ? "" : "!"}`, 9) +
+                pad(
+                    (truths.teamCreated === null ? "hidden " : `${truths.teamCreated} `) +
+                        mark(teamStatOk).trim(),
+                    9,
+                ) +
                 absLinks,
         );
     }
