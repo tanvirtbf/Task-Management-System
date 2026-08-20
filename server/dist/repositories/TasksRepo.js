@@ -807,6 +807,140 @@ class TasksRepo {
             ? (0, drizzle_orm_1.gt)(schema_1.tasks.internalId, BigInt(params.afterId))
             : undefined);
     }
+    // ─── Assistant insights (AI_ASSISTANT_INSIGHTS_PLAN P1) ─────────────────
+    /**
+     * ANOTHER person's tasks, seen through the ASKER's eyes.
+     *
+     * ⚠️ This is deliberately NOT `HomeRepo.myTasksByBucket` with a different
+     * user id: that query carries no visibility filter, which is safe only
+     * because its user id is always the caller's own. Here the target is
+     * someone else, so the WHERE composes `listScopeFilter` + the asker's
+     * `taskOwnEscape` (ALS-keyed) — the exact filter every scoped task read
+     * uses. An own-scoped asker therefore gets only the target's tasks they
+     * could already see in the UI: shared-space rows plus rows the ASKER is
+     * personally attached to.
+     *
+     * Buckets mirror the "my work" ones the office already knows, with
+     * `completed` windowed on `completed_at` for "last N days" history.
+     * Dates: `todayYmd` is the WORKSPACE's calendar day (canonical clock);
+     * `since`/`untilExclusive` are real instants computed by the caller.
+     */
+    async personTasksVisible(input) {
+        const visible = await (0, context_1.listScopeFilter)(schema_1.tasks.primaryListId, await (0, ownEscape_1.taskOwnEscape)());
+        const base = (0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, input.workspaceId), (0, drizzle_orm_1.eq)(schema_1.taskAssignees.userId, input.targetUserId), (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt), visible);
+        const open = (0, drizzle_orm_1.notInArray)(schema_1.statuses.statusGroup, ["done", "closed"]);
+        const where = input.bucket === "overdue"
+            ? (0, drizzle_orm_1.and)(base, open, (0, drizzle_orm_1.sql) `${schema_1.tasks.dueDate} < ${input.todayYmd}`)
+            : input.bucket === "due_soon"
+                ? (0, drizzle_orm_1.and)(base, open, (0, drizzle_orm_1.sql) `${schema_1.tasks.dueDate} >= ${input.todayYmd}`, (0, drizzle_orm_1.sql) `${schema_1.tasks.dueDate} <= DATE_ADD(${input.todayYmd}, INTERVAL 7 DAY)`)
+                : input.bucket === "completed"
+                    ? (0, drizzle_orm_1.and)(base, (0, drizzle_orm_1.inArray)(schema_1.statuses.statusGroup, ["done", "closed"]), input.since
+                        ? (0, drizzle_orm_1.sql) `${schema_1.tasks.completedAt} >= ${input.since}`
+                        : undefined, input.untilExclusive
+                        ? (0, drizzle_orm_1.sql) `${schema_1.tasks.completedAt} < ${input.untilExclusive}`
+                        : undefined)
+                    : (0, drizzle_orm_1.and)(base, open);
+        const q = this.db
+            .select({
+            id: schema_1.tasks.id,
+            name: schema_1.tasks.name,
+            priority: schema_1.tasks.priority,
+            dueDate: schema_1.tasks.dueDate,
+            completedAt: schema_1.tasks.completedAt,
+            reviewStatus: schema_1.tasks.reviewStatus,
+            checklistTotal: schema_1.tasks.checklistItemsTotal,
+            checklistDone: schema_1.tasks.checklistItemsDone,
+            statusName: schema_1.statuses.name,
+            listName: schema_1.lists.name,
+            spaceName: schema_1.spaces.name,
+        })
+            .from(schema_1.tasks)
+            .innerJoin(schema_1.taskAssignees, (0, drizzle_orm_1.eq)(schema_1.taskAssignees.taskId, schema_1.tasks.id))
+            .innerJoin(schema_1.statuses, (0, drizzle_orm_1.eq)(schema_1.statuses.id, schema_1.tasks.statusId))
+            .innerJoin(schema_1.lists, (0, drizzle_orm_1.eq)(schema_1.lists.id, schema_1.tasks.primaryListId))
+            .innerJoin(schema_1.spaces, (0, drizzle_orm_1.eq)(schema_1.spaces.id, schema_1.lists.spaceId))
+            .where(where);
+        return input.bucket === "completed"
+            ? q.orderBy((0, drizzle_orm_1.desc)(schema_1.tasks.completedAt)).limit(input.limit)
+            : q
+                .orderBy((0, drizzle_orm_1.sql) `${schema_1.tasks.dueDate} IS NULL`, (0, drizzle_orm_1.asc)(schema_1.tasks.dueDate), (0, drizzle_orm_1.asc)(schema_1.tasks.internalId))
+                .limit(input.limit);
+    }
+    /**
+     * One team's activity inside a window — created / assignee breakdown /
+     * overdue-now / completed — counted ONLY across tasks the ASKER can see
+     * (same `listScopeFilter` + own-escape composition as above), so a
+     * team-scoped Head and an Owner can both ask and each gets the truth of
+     * their own reach. The space itself is resolved by the CALLER through the
+     * scoped `SpacesRepo.listByWorkspace`, so an invisible team never reaches
+     * this method at all.
+     *
+     * `since`/`untilExclusive` bound `created_at` (and `completed_at` for the
+     * completed count); `todayYmd` drives overdue on the workspace clock.
+     */
+    async teamWindowStats(input) {
+        const visible = await (0, context_1.listScopeFilter)(schema_1.tasks.primaryListId, await (0, ownEscape_1.taskOwnEscape)());
+        const inSpace = (0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, input.workspaceId), (0, drizzle_orm_1.eq)(schema_1.lists.spaceId, input.spaceId), (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt), visible);
+        const createdInWindow = (0, drizzle_orm_1.and)(inSpace, (0, drizzle_orm_1.sql) `${schema_1.tasks.createdAt} >= ${input.since}`, (0, drizzle_orm_1.sql) `${schema_1.tasks.createdAt} < ${input.untilExclusive}`);
+        const [createdCountRow] = await this.db
+            .select({ cnt: (0, drizzle_orm_1.count)() })
+            .from(schema_1.tasks)
+            .innerJoin(schema_1.lists, (0, drizzle_orm_1.eq)(schema_1.lists.id, schema_1.tasks.primaryListId))
+            .where(createdInWindow);
+        const createdSample = await this.db
+            .select({
+            id: schema_1.tasks.id,
+            name: schema_1.tasks.name,
+            createdBy: schema_1.tasks.createdBy,
+            dueDate: schema_1.tasks.dueDate,
+        })
+            .from(schema_1.tasks)
+            .innerJoin(schema_1.lists, (0, drizzle_orm_1.eq)(schema_1.lists.id, schema_1.tasks.primaryListId))
+            .where(createdInWindow)
+            .orderBy((0, drizzle_orm_1.desc)(schema_1.tasks.createdAt))
+            .limit(10);
+        // Who the window's created tasks were assigned to — over ALL of them,
+        // not just the 10-row sample, so the breakdown never contradicts the
+        // count beside it.
+        const assigneeCounts = await this.db
+            .select({ userId: schema_1.taskAssignees.userId, count: (0, drizzle_orm_1.count)() })
+            .from(schema_1.taskAssignees)
+            .innerJoin(schema_1.tasks, (0, drizzle_orm_1.eq)(schema_1.tasks.id, schema_1.taskAssignees.taskId))
+            .innerJoin(schema_1.lists, (0, drizzle_orm_1.eq)(schema_1.lists.id, schema_1.tasks.primaryListId))
+            .where(createdInWindow)
+            .groupBy(schema_1.taskAssignees.userId)
+            .orderBy((0, drizzle_orm_1.desc)((0, drizzle_orm_1.count)()))
+            .limit(8);
+        const overdueWhere = (0, drizzle_orm_1.and)(inSpace, (0, drizzle_orm_1.notInArray)(schema_1.statuses.statusGroup, ["done", "closed"]), (0, drizzle_orm_1.sql) `${schema_1.tasks.dueDate} < ${input.todayYmd}`);
+        const [overdueCountRow] = await this.db
+            .select({ cnt: (0, drizzle_orm_1.count)() })
+            .from(schema_1.tasks)
+            .innerJoin(schema_1.lists, (0, drizzle_orm_1.eq)(schema_1.lists.id, schema_1.tasks.primaryListId))
+            .innerJoin(schema_1.statuses, (0, drizzle_orm_1.eq)(schema_1.statuses.id, schema_1.tasks.statusId))
+            .where(overdueWhere);
+        const overdueSample = await this.db
+            .select({ id: schema_1.tasks.id, name: schema_1.tasks.name, dueDate: schema_1.tasks.dueDate })
+            .from(schema_1.tasks)
+            .innerJoin(schema_1.lists, (0, drizzle_orm_1.eq)(schema_1.lists.id, schema_1.tasks.primaryListId))
+            .innerJoin(schema_1.statuses, (0, drizzle_orm_1.eq)(schema_1.statuses.id, schema_1.tasks.statusId))
+            .where(overdueWhere)
+            .orderBy((0, drizzle_orm_1.asc)(schema_1.tasks.dueDate))
+            .limit(5);
+        const [completedCountRow] = await this.db
+            .select({ cnt: (0, drizzle_orm_1.count)() })
+            .from(schema_1.tasks)
+            .innerJoin(schema_1.lists, (0, drizzle_orm_1.eq)(schema_1.lists.id, schema_1.tasks.primaryListId))
+            .innerJoin(schema_1.statuses, (0, drizzle_orm_1.eq)(schema_1.statuses.id, schema_1.tasks.statusId))
+            .where((0, drizzle_orm_1.and)(inSpace, (0, drizzle_orm_1.inArray)(schema_1.statuses.statusGroup, ["done", "closed"]), (0, drizzle_orm_1.sql) `${schema_1.tasks.completedAt} >= ${input.since}`, (0, drizzle_orm_1.sql) `${schema_1.tasks.completedAt} < ${input.untilExclusive}`));
+        return {
+            createdCount: createdCountRow?.cnt ?? 0,
+            createdSample,
+            assigneeCounts,
+            overdueNowCount: overdueCountRow?.cnt ?? 0,
+            overdueSample,
+            completedCount: completedCountRow?.cnt ?? 0,
+        };
+    }
 }
 exports.TasksRepo = TasksRepo;
 /**

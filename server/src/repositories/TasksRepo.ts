@@ -1218,6 +1218,241 @@ export class TasksRepo {
                 : undefined,
         );
     }
+
+    // ─── Assistant insights (AI_ASSISTANT_INSIGHTS_PLAN P1) ─────────────────
+
+    /**
+     * ANOTHER person's tasks, seen through the ASKER's eyes.
+     *
+     * ⚠️ This is deliberately NOT `HomeRepo.myTasksByBucket` with a different
+     * user id: that query carries no visibility filter, which is safe only
+     * because its user id is always the caller's own. Here the target is
+     * someone else, so the WHERE composes `listScopeFilter` + the asker's
+     * `taskOwnEscape` (ALS-keyed) — the exact filter every scoped task read
+     * uses. An own-scoped asker therefore gets only the target's tasks they
+     * could already see in the UI: shared-space rows plus rows the ASKER is
+     * personally attached to.
+     *
+     * Buckets mirror the "my work" ones the office already knows, with
+     * `completed` windowed on `completed_at` for "last N days" history.
+     * Dates: `todayYmd` is the WORKSPACE's calendar day (canonical clock);
+     * `since`/`untilExclusive` are real instants computed by the caller.
+     */
+    async personTasksVisible(input: {
+        targetUserId: string;
+        workspaceId: string;
+        bucket: "open" | "overdue" | "due_soon" | "completed";
+        todayYmd: string;
+        since?: Date;
+        untilExclusive?: Date;
+        limit: number;
+    }): Promise<
+        {
+            id: string;
+            name: string;
+            priority: number;
+            dueDate: Date | string | null;
+            completedAt: Date | null;
+            reviewStatus: string | null;
+            checklistTotal: number;
+            checklistDone: number;
+            statusName: string;
+            listName: string;
+            spaceName: string;
+        }[]
+    > {
+        const visible = await listScopeFilter(
+            tasks.primaryListId,
+            await taskOwnEscape(),
+        );
+        const base = and(
+            eq(tasks.workspaceId, input.workspaceId),
+            eq(taskAssignees.userId, input.targetUserId),
+            isNull(tasks.archivedAt),
+            visible,
+        );
+        const open = notInArray(statuses.statusGroup, ["done", "closed"]);
+        const where =
+            input.bucket === "overdue"
+                ? and(base, open, sql`${tasks.dueDate} < ${input.todayYmd}`)
+                : input.bucket === "due_soon"
+                  ? and(
+                        base,
+                        open,
+                        sql`${tasks.dueDate} >= ${input.todayYmd}`,
+                        sql`${tasks.dueDate} <= DATE_ADD(${input.todayYmd}, INTERVAL 7 DAY)`,
+                    )
+                  : input.bucket === "completed"
+                    ? and(
+                          base,
+                          inArray(statuses.statusGroup, ["done", "closed"]),
+                          input.since
+                              ? sql`${tasks.completedAt} >= ${input.since}`
+                              : undefined,
+                          input.untilExclusive
+                              ? sql`${tasks.completedAt} < ${input.untilExclusive}`
+                              : undefined,
+                      )
+                    : and(base, open);
+
+        const q = this.db
+            .select({
+                id: tasks.id,
+                name: tasks.name,
+                priority: tasks.priority,
+                dueDate: tasks.dueDate,
+                completedAt: tasks.completedAt,
+                reviewStatus: tasks.reviewStatus,
+                checklistTotal: tasks.checklistItemsTotal,
+                checklistDone: tasks.checklistItemsDone,
+                statusName: statuses.name,
+                listName: lists.name,
+                spaceName: spaces.name,
+            })
+            .from(tasks)
+            .innerJoin(taskAssignees, eq(taskAssignees.taskId, tasks.id))
+            .innerJoin(statuses, eq(statuses.id, tasks.statusId))
+            .innerJoin(lists, eq(lists.id, tasks.primaryListId))
+            .innerJoin(spaces, eq(spaces.id, lists.spaceId))
+            .where(where);
+
+        return input.bucket === "completed"
+            ? q.orderBy(desc(tasks.completedAt)).limit(input.limit)
+            : q
+                  .orderBy(
+                      sql`${tasks.dueDate} IS NULL`,
+                      asc(tasks.dueDate),
+                      asc(tasks.internalId),
+                  )
+                  .limit(input.limit);
+    }
+
+    /**
+     * One team's activity inside a window — created / assignee breakdown /
+     * overdue-now / completed — counted ONLY across tasks the ASKER can see
+     * (same `listScopeFilter` + own-escape composition as above), so a
+     * team-scoped Head and an Owner can both ask and each gets the truth of
+     * their own reach. The space itself is resolved by the CALLER through the
+     * scoped `SpacesRepo.listByWorkspace`, so an invisible team never reaches
+     * this method at all.
+     *
+     * `since`/`untilExclusive` bound `created_at` (and `completed_at` for the
+     * completed count); `todayYmd` drives overdue on the workspace clock.
+     */
+    async teamWindowStats(input: {
+        spaceId: string;
+        workspaceId: string;
+        since: Date;
+        untilExclusive: Date;
+        todayYmd: string;
+    }): Promise<{
+        createdCount: number;
+        createdSample: {
+            id: string;
+            name: string;
+            createdBy: string;
+            dueDate: Date | string | null;
+        }[];
+        assigneeCounts: { userId: string; count: number }[];
+        overdueNowCount: number;
+        overdueSample: {
+            id: string;
+            name: string;
+            dueDate: Date | string | null;
+        }[];
+        completedCount: number;
+    }> {
+        const visible = await listScopeFilter(
+            tasks.primaryListId,
+            await taskOwnEscape(),
+        );
+        const inSpace = and(
+            eq(tasks.workspaceId, input.workspaceId),
+            eq(lists.spaceId, input.spaceId),
+            isNull(tasks.archivedAt),
+            visible,
+        );
+        const createdInWindow = and(
+            inSpace,
+            sql`${tasks.createdAt} >= ${input.since}`,
+            sql`${tasks.createdAt} < ${input.untilExclusive}`,
+        );
+
+        const [createdCountRow] = await this.db
+            .select({ cnt: count() })
+            .from(tasks)
+            .innerJoin(lists, eq(lists.id, tasks.primaryListId))
+            .where(createdInWindow);
+
+        const createdSample = await this.db
+            .select({
+                id: tasks.id,
+                name: tasks.name,
+                createdBy: tasks.createdBy,
+                dueDate: tasks.dueDate,
+            })
+            .from(tasks)
+            .innerJoin(lists, eq(lists.id, tasks.primaryListId))
+            .where(createdInWindow)
+            .orderBy(desc(tasks.createdAt))
+            .limit(10);
+
+        // Who the window's created tasks were assigned to — over ALL of them,
+        // not just the 10-row sample, so the breakdown never contradicts the
+        // count beside it.
+        const assigneeCounts = await this.db
+            .select({ userId: taskAssignees.userId, count: count() })
+            .from(taskAssignees)
+            .innerJoin(tasks, eq(tasks.id, taskAssignees.taskId))
+            .innerJoin(lists, eq(lists.id, tasks.primaryListId))
+            .where(createdInWindow)
+            .groupBy(taskAssignees.userId)
+            .orderBy(desc(count()))
+            .limit(8);
+
+        const overdueWhere = and(
+            inSpace,
+            notInArray(statuses.statusGroup, ["done", "closed"]),
+            sql`${tasks.dueDate} < ${input.todayYmd}`,
+        );
+        const [overdueCountRow] = await this.db
+            .select({ cnt: count() })
+            .from(tasks)
+            .innerJoin(lists, eq(lists.id, tasks.primaryListId))
+            .innerJoin(statuses, eq(statuses.id, tasks.statusId))
+            .where(overdueWhere);
+        const overdueSample = await this.db
+            .select({ id: tasks.id, name: tasks.name, dueDate: tasks.dueDate })
+            .from(tasks)
+            .innerJoin(lists, eq(lists.id, tasks.primaryListId))
+            .innerJoin(statuses, eq(statuses.id, tasks.statusId))
+            .where(overdueWhere)
+            .orderBy(asc(tasks.dueDate))
+            .limit(5);
+
+        const [completedCountRow] = await this.db
+            .select({ cnt: count() })
+            .from(tasks)
+            .innerJoin(lists, eq(lists.id, tasks.primaryListId))
+            .innerJoin(statuses, eq(statuses.id, tasks.statusId))
+            .where(
+                and(
+                    inSpace,
+                    inArray(statuses.statusGroup, ["done", "closed"]),
+                    sql`${tasks.completedAt} >= ${input.since}`,
+                    sql`${tasks.completedAt} < ${input.untilExclusive}`,
+                ),
+            );
+
+        return {
+            createdCount: createdCountRow?.cnt ?? 0,
+            createdSample,
+            assigneeCounts,
+            overdueNowCount: overdueCountRow?.cnt ?? 0,
+            overdueSample,
+            completedCount: completedCountRow?.cnt ?? 0,
+        };
+    }
 }
 
 /**
