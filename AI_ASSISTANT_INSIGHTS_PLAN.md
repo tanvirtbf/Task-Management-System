@@ -279,17 +279,50 @@ computed from the API (not hardcoded).
 (the known gpt-4o-mini step/link flakiness is measured, not gate-breaking; content must be
 100%).
 
-### P7 — Live multi-role verification *(the user's questions, verbatim)*
-**Goal:** prove the three headline questions with seeded ground truth, as three roles.
+### P7 — Live multi-role verification *(the user's questions, verbatim)* — ✅ **COMPLETE 2026-08-20**
+
+**Shipped:** seeded 5 dated `INSIGHT *` tasks into Marketing/Influencer-Outreach (2 assigned
+Sumaiya + 1 Nusrat + 1 unassigned + 1 completed→backdated 10 days via direct
+`UPDATE tasks SET completed_at = DATE_SUB(UTC_TIMESTAMP(), INTERVAL 10 DAY)`), snapshotted
+SQL ground truth (`E:/tmp/p7-truth.json`), then ran the §4 set live through the REAL route
+as owner, Marketing head (Nusrat) and own-scoped outsider (Arif) via `E:/tmp/p7-accept.cjs`.
+
+**Result: 17/17 verdicts PASS**, every number == SQL truth (truth columns now filled in §4):
+owner's A1 linked exactly 8 tasks incl. both INSIGHT names + the overdue signal; Arif's A2/A4
+leaked zero rows/names with honest phrasing; A3 matched created=5 · Sumaiya=3/Nusrat=1 ·
+overdue=10 for both owner and head; head's A5 linked exactly the 3 completed-in-window tasks
+incl. the backdated one; A6 garbage (@keu-na, 999 din) stayed graceful ×2 with the 92-day
+clamp. Widget evidence: `E:/tmp/p7-A1-owner.png` (৮টি + links rendered), `p7-A4-arif.png`
+(refusal, zero names), `p7-A3-head.png` (send+stream wiring). Seed cleaned after: 5 tasks +
+4 assignees + 4 watchers + 11 activity + 6 notifications deleted, `INSIGHT%` count back to 0 —
+demo baseline restored for P8's graders. No source changed in this phase.
+
+**Goal (as planned):** prove the three headline questions with seeded ground truth, as three roles.
 **Steps:** seed a dated task set (the FILTERTEST method — created/assigned/overdue/completed
 across two teams, cleaned after); run the §4 acceptance set via live probes as owner, a head,
 and an own-scoped member; verify every number against direct SQL; screenshot the chat panel
 for the record. Any mismatch = a P1–P5 bug: fix, add the missing test, re-run.
 **Gate:** acceptance table in §4 fully ✅ with DB-truth columns filled in.
 
-### P8 — Ship gate
-**Goal:** the same bar every assistant change has met.
-**Steps:** full `jest.assistant` + collab suites · eval `--assert` PERFECT · matrix ALL PASS ·
+### P8 — Ship gate — ✅ **COMPLETE 2026-08-20 — PLAN DONE, feature SHIPPED**
+
+**Every gate green, measured on the cleaned demo baseline:**
+
+| Gate | Result |
+|---|---|
+| `jest.assistant` (full) | **17 suites / 270 tests — all pass** |
+| `jest.collab` (comments/mentions) | **5 suites / 59 tests — all pass** |
+| client vitest | **7 files / 49 tests — all pass** |
+| tsc server + client | **clean ×2** |
+| eslint | server **exactly 70** · client **12** — the pre-existing baseline, untouched |
+| `assistant-eval.cjs --assert` | run 1: steps 12/13 (the known model formatting flake, content 100%) · **run 2: VERDICT PERFECT** (links 16/16 · steps 13/13 · Bangla 16/16 · data 11/12 ≥ target · 0 fabricated · 0 leaked) — exit code read directly, not through a pipe |
+| `assistant-role-matrix.cjs` | **ALL CELLS PASS** — person column reads like the permission model (owner/admin 3/3 · head & 2-team 0/0 zero-link honest · 1-team self 3/3), teamStat all-visible matched, scoped outsider `hidden OK` |
+| dists | rebuilt from HEAD → **byte-identical** to what P1–P6 commits already carry (git diff empty — committed artifacts == source, proven) |
+| docs | `ASSISTANT_TEAM_NOTE.md` gained **§৩ কারো কাজের খবর, টিমের হিসাব** (both question families, @-handle usage, window phrasing, the honest-undercount + can't-see-team caveats, Bangla); sections renumbered ১–৭ |
+| deploy | `DEPLOY_PROMPT_2026-08-19.md` re-pinned to the final SHA + insights bullet (zero DB changes, zero env vars — ships inside the artifacts already in git) |
+
+**Goal (as planned):** the same bar every assistant change has met.
+**Steps (as planned):** full `jest.assistant` + collab suites · eval `--assert` PERFECT · matrix ALL PASS ·
 tsc ×2 · dist rebuilt · commit/push (feature message + this plan's execution records) ·
 `DEPLOY_PROMPT` re-pinned · memory updated. Docs: `ASSISTANT_TEAM_NOTE.md` gets the two new
 question families (Bangla, the team-facing file).
@@ -309,16 +342,16 @@ question families (Bangla, the team-facing file).
 | D9 | No client code changes except `suggestions.ts` chips | The chat UI already renders everything needed |
 | D10 | No DB schema change anywhere in this plan | Pure read-layer feature |
 
-## 4) Acceptance set (P7 fills the truth columns)
+## 4) Acceptance set — ✅ **all truth columns filled & PASSED, P7 2026-08-20** (17/17 verdicts, `E:/tmp/p7-accept.cjs`)
 
-| # | Question (as the user wrote it) | Asked as | Expected shape |
-|---|---|---|---|
-| A1 | "@<member> er hate ekhon ki kaj assign kora ase? due/pending kaj ase kina?" | owner | real list + overdue count, links |
-| A2 | same | own-scoped member (foreign target) | honest "outside your view" phrasing, zero fabricated rows |
-| A3 | "Marketing team er last 7 din e koyta task create hoise, ke ke assign chilo, overdue koyta?" | owner/head | counts + assignee breakdown + overdue, all == SQL |
-| A4 | same | own-scoped member (not on Marketing) | not-found/denied, **zero team-member names leaked** |
-| A5 | "@<member> er last 1 mash er kajer update daw" | head of that member's team | completed-in-window + open + overdue summary |
-| A6 | nonsense window/person ("@keu-na", "last 999 din") | any | graceful guidance, no crash, clamp to 92 |
+| # | Question (as the user wrote it) | Asked as | Expected shape | DB truth (SQL snapshot) | Live answer | ✓ |
+|---|---|---|---|---|---|---|
+| A1 | "@sumaiya er hate ekhon ki kaj assign kora ase? due/pending kaj ase kina?" | owner | real list + overdue count, links | open=**8**, overdue=**7** | ৮টি + exactly 8 task links + overdue signal, INSIGHT alpha/beta named | ✅ |
+| A2 | same | Arif (own-scoped, CS-only) | honest "outside your view" phrasing, zero fabricated rows | visible-to-Arif=**0** | 0 links, no counts invented, honest phrasing | ✅ |
+| A3 | "Marketing team er last 7 din e koyta task create hoise, ke ke assign chilo, overdue koyta?" | owner **and** head (Nusrat) | counts + assignee breakdown + overdue, all == SQL | created=**5** · Sumaiya=**3**/Nusrat=**1** · overdue=**10** | both askers: 5 / Sumaiya 3 + Nusrat 1 / 10 | ✅ |
+| A4 | same | Arif (not on Marketing) | not-found/denied, **zero team-member names leaked** | — (team invisible to asker) | refused, zero Marketing-exclusive names (screenshot) | ✅ |
+| A5 | "@sumaiya er last 1 mash er kajer update daw" | head of Marketing (Nusrat) | completed-in-window + open + overdue summary | completed-in-30d=**3** (incl. backdated INSIGHT epsilon) | exactly 3 completed links incl. epsilon + open/overdue summary | ✅ |
+| A6 | nonsense window/person ("@keu-na", "last 999 din") | owner | graceful guidance, no crash, clamp to 92 | n/a | graceful ×2, window clamped to 92, no crash | ✅ |
 
 ## 5) P0 execution record — ✅ COMPLETE 2026-08-19 (@ `529d3ee`, no code changed)
 
