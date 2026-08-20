@@ -599,7 +599,16 @@ describe("KB coverage — P4: every destination is a link", () => {
         // inside the system message, so the budget above never saw them, and
         // they more than doubled (3,143 → ~7k) when P4–P6 added six tools.
         // Pinned here so the next tool is a decision, not a drift.
-        expect(JSON.stringify(ASSISTANT_TOOL_DEFS).length).toBeLessThan(8000);
+        //
+        // Raised 8k → 9k for INSIGHTS_PLAN P3 (2026-08-19): `get_person_tasks`
+        // is the 11th tool — another person's task list/history through the
+        // asker's SQL-scoped visibility, the plan's headline ask. Its
+        // description carries the routing triggers gpt-4o-mini demonstrably
+        // needs (the person_workload fabrication incident), and P3 paid what
+        // it could first: person_workload's description was cut to the quick
+        // count it actually is, and the system-prompt sentence it replaces
+        // SHRANK the system message by 81 chars. Measured after: 8,422.
+        expect(JSON.stringify(ASSISTANT_TOOL_DEFS).length).toBeLessThan(9000);
     });
 
     it("every tool description says WHEN to use it, not just what it is", () => {

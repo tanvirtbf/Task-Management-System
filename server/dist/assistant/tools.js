@@ -100,7 +100,7 @@ exports.ASSISTANT_TOOL_DEFS = [
         type: "function",
         function: {
             name: "get_people",
-            description: 'People and teams. action="my_teams": the user\'s own teams with each head. action="team_roster": who is on a NAMED team (needs team_name). action="find_person": which team(s) a NAMED person is on (needs person_name; "@me" allowed). action="person_workload": how many open tasks a person has, counted only across what the ASKER can see (needs person_name) — ALWAYS use this for ANY question about another person\'s tasks or workload, including a request to LIST or show them, never search or get_my_* (those are the caller\'s own); it returns only a COUNT, and it is scope-limited, so a team/own-scoped asker gets 0 even when the person has work elsewhere. Use for "amar team e ke ke", "X kon team e", "Y er koyta kaj / koto kaj / kaj cholche", "X ke koto kaj diyeche", "X er task gula dekhao / list koro", "amader head ke".',
+            description: 'People and teams. action="my_teams": the user\'s own teams with each head. action="team_roster": who is on a NAMED team (needs team_name). action="find_person": which team(s) a NAMED person is on (needs person_name; "@me" allowed). action="person_workload": a QUICK COUNT of one person\'s open tasks across what the ASKER can see (needs person_name) — for the task LIST, overdue/pending detail or work history, call get_person_tasks instead. Use for "amar team e ke ke", "X kon team e", "Y er koyta kaj cholche", "amader head ke".',
             parameters: {
                 type: "object",
                 properties: {
@@ -117,6 +117,38 @@ exports.ASSISTANT_TOOL_DEFS = [
                     person_name: { type: "string" },
                 },
                 required: ["action"],
+                additionalProperties: false,
+            },
+        },
+    },
+    {
+        type: "function",
+        function: {
+            name: "get_person_tasks",
+            description: 'ANOTHER person\'s task LIST, seen through the ASKER\'s permissions (INSIGHTS_PLAN P3). ALWAYS use this — never search or get_my_* — for "X er hate ki kaj / ki assign ase", "X er due/pending/overdue kaj", "X ke koto kaj diyeche, kongula", "X er last N diner kajer update" (bucket=completed with window_days). Rows are only what the asker may see; relay the result\'s note honestly. get_my_tasks stays for the caller\'s OWN work; get_people person_workload is just the count.',
+            parameters: {
+                type: "object",
+                properties: {
+                    person_name: {
+                        type: "string",
+                        description: 'Name or @handle (e.g. "@arif"); "@me" allowed',
+                    },
+                    bucket: {
+                        type: "string",
+                        enum: [
+                            "open",
+                            "overdue",
+                            "due_soon",
+                            "completed",
+                        ],
+                        description: "Which view; omit for open",
+                    },
+                    window_days: {
+                        type: "integer",
+                        description: "completed only: how many days back (1–92, default 30)",
+                    },
+                },
+                required: ["person_name"],
                 additionalProperties: false,
             },
         },
@@ -333,6 +365,8 @@ async function executeAssistantTool(name, args, ctx, services) {
         }
         case "get_people":
             return peopleTool(args, ctx, services);
+        case "get_person_tasks":
+            return personTasksTool(args, ctx, services);
         case "get_my_approvals": {
             const box = args.box === "sent" || args.box === "team"
                 ? args.box
@@ -771,6 +805,111 @@ async function peopleTool(args, ctx, services) {
  * department; everyone else sees the departments they currently HEAD. A caller
  * with neither gets the honest denial, and never learns whether reports exist.
  */
+/** get_person_tasks buckets and caps (INSIGHTS_PLAN D6/D7). */
+const PERSON_TASK_BUCKETS = [
+    "open",
+    "overdue",
+    "due_soon",
+    "completed",
+];
+const PERSON_TASKS_CAP = 15;
+const WINDOW_MAX_DAYS = 92;
+const WINDOW_DEFAULT_DAYS = 30;
+/**
+ * `get_person_tasks` (INSIGHTS_PLAN P3) — another person's task LIST through
+ * the ASKER's eyes.
+ *
+ * Gate: `member.view`, the same key the roster carries — asserted HERE because
+ * the tool path never runs the HTTP gates. Reach: `TasksRepo.personTasksVisible`
+ * composes `listScopeFilter` + the asker's own-escape IN SQL, so what comes
+ * back is exactly the intersection the asker's own UI would show (P1, tested
+ * against SQL truth). The `note` carries the visible-zero doctrine: a scoped
+ * asker's 0 must never be narrated as "they have no tasks".
+ *
+ * Dates: `window_days` is an INTEGER the server turns into a rolling window
+ * ending now (D6 — model date-math is not trusted); "overdue" runs on the
+ * workspace's own calendar day.
+ */
+async function personTasksTool(args, ctx, services) {
+    if (!(0, can_1.holds)(await (0, context_1.currentActor)(), "member.view")) {
+        return denied("member.view");
+    }
+    const wanted = typeof args.person_name === "string" ? args.person_name.trim() : "";
+    if (!wanted) {
+        return { error: "Which person? Ask the user for the name (or @handle)." };
+    }
+    // A wrong bucket gets guidance, not a silent default — quietly showing
+    // "open" when the user asked for something else would be a quiet lie.
+    let bucket = "open";
+    if (args.bucket !== undefined) {
+        if (typeof args.bucket === "string" &&
+            PERSON_TASK_BUCKETS.includes(args.bucket)) {
+            bucket = args.bucket;
+        }
+        else {
+            return {
+                error: `"${String(args.bucket)}" is not a bucket. Use open, overdue, due_soon or completed.`,
+            };
+        }
+    }
+    let windowDays = WINDOW_DEFAULT_DAYS;
+    if (args.window_days !== undefined) {
+        const n = typeof args.window_days === "number"
+            ? args.window_days
+            : Number(args.window_days);
+        if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) {
+            return {
+                error: `window_days must be a whole number of days (1–${WINDOW_MAX_DAYS}), e.g. 7 or 30 — not "${String(args.window_days)}".`,
+            };
+        }
+        windowDays = Math.min(n, WINDOW_MAX_DAYS);
+    }
+    const resolved = await resolvePerson(wanted, ctx, services);
+    if (resolved.failure)
+        return resolved.failure;
+    const person = resolved.person;
+    const todayYmd = await services.home.todayFor(ctx.workspaceId);
+    // Rolling window ending now — "last 30 days" the way people mean it. The
+    // small forward slack keeps a completion from this very second inside.
+    const untilExclusive = new Date(Date.now() + 60 * 1000);
+    const since = new Date(untilExclusive.getTime() - windowDays * 24 * 60 * 60 * 1000);
+    const rows = await services.tasks.personTasksVisible({
+        targetUserId: person.id,
+        workspaceId: ctx.workspaceId,
+        bucket,
+        todayYmd,
+        ...(bucket === "completed" ? { since, untilExclusive } : {}),
+        limit: PERSON_TASKS_CAP + 1,
+    });
+    const shown = rows.slice(0, PERSON_TASKS_CAP);
+    return {
+        person: person.name,
+        bucket,
+        ...(bucket === "completed" ? { windowDays } : {}),
+        count: shown.length,
+        more: rows.length > PERSON_TASKS_CAP,
+        tasks: shown.map((t) => ({
+            name: t.name,
+            url: `/t/${t.id}`,
+            list: t.listName,
+            team: t.spaceName,
+            status: t.statusName,
+            dueDate: dateOnly(t.dueDate),
+            ...(bucket === "completed"
+                ? {
+                    completedOn: t.completedAt
+                        ? dateOnly(t.completedAt)
+                        : null,
+                }
+                : {}),
+            priority: PRIORITY_WORD[t.priority] ?? "none",
+            review: t.reviewStatus,
+        })),
+        note: shown.length === 0
+            ? `0 counts ONLY tasks you may see — ${person.name} may truly have none here OR their work is outside your view. Do NOT say they have none; say you cannot see it from here and point to [Members](/settings/members).`
+            : `These are ${person.name}'s ${bucket} tasks that YOU can see; they may have more outside your view. Show each task name as a link using its url field.`,
+    };
+}
 async function reportStatusTool(args, ctx, services) {
     const actor = await (0, context_1.currentActor)();
     const visible = await services.spaces.listByWorkspace(ctx.workspaceId, {

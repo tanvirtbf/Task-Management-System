@@ -147,8 +147,30 @@ surname fallback, single-hit, ambiguity candidates).
 ambiguous stays ambiguous; unknown stays "no active member".
 **Gate:** jest file green; `create_task`/`get_people` behaviour unchanged (their tests re-run).
 
-### P3 — Tool `get_person_tasks` *(the "@tanvir er hate ki kaj" answer)*
-**Goal:** LIST + counts of one person's work, asker-scoped, honestly phrased.
+### P3 — Tool `get_person_tasks` *(the "@tanvir er hate ki kaj" answer)* — ✅ **COMPLETE 2026-08-19**
+
+**Shipped:** the 11th tool — `{person_name, bucket?: open|overdue|due_soon|completed,
+window_days?}` → `member.view` assert → `resolvePerson` (@handles work, P2) →
+`personTasksVisible` (P1's scoped SQL) → capped 15 rows + `more`, per-task
+name/url/list/team/status/dueDate/priority/review (+`completedOn` in completed), and the
+visible-zero `note`. Garbage bucket / window_days come back as **guidance** (never a silent
+default, never a throw); `window_days` clamps 1–92, default 30, rolling window ending now;
+"overdue" runs on the workspace clock via the new public `HomeService.todayFor`.
+
+**Pulled forward from P5 (self-contradiction would have shipped otherwise):** the system-prompt
+sentence claiming "no tool gives another person's task LIST" now routes to the new tool — and
+SHRANK the system message 47,940 → **47,859** (headroom 60 → 141); `person_workload`'s
+description cut to the quick count it is. Tool-def ceiling moved 8,000 → **9,000** with the
+paper-trail comment (measured after: **8,422**).
+
+**Gate met:** new `person-tasks-tool.test.ts` **10 tests** (denial shape, all/space-scoped row
+sets, @handle, overdue, completed+window+clamp, visible-zero note, caps+more, unknown echo,
+garbage guidance) + 4 new robustness GARBAGE cases (the completeness guard caught the missing
+coverage exactly as designed) → full `jest.assistant` **16 suites / 259 green** · tsc clean ·
+eslint total still exactly 70. Test-authoring note: `userWithPermissions` users need an explicit
+`"assistant.use"` grant to pass the route gate.
+
+**Goal (as planned):** LIST + counts of one person's work, asker-scoped, honestly phrased.
 **Definition:** params `{person_name, bucket?: open|overdue|due_soon|completed,
 window_days?: int}` (window only meaningful for `completed`; server clamps 1–92, default 30).
 Executor: `member.view` assert (the `get_people` precedent) → `resolvePerson` →
@@ -183,12 +205,12 @@ the reports-tool lesson).
 
 ### P5 — Prompt routing + discoverability *(the UX phase)*
 **Goal:** the model reliably picks the right tool, and users learn these questions exist.
-**Steps:** system-prompt "Which tool" line gains the two tools (and the person_workload/
-person-tasks division of labour); the "no tool for X" sentence updated (it currently says
-person LISTS are impossible — after P3 that would be a lie the bot tells about itself);
-`suggestions.ts` chips + its vitest updated with one person-question and one team-question
-example; KB gains 2–3 sentences ONLY if eval shows guidance gaps (budget: move system
-ceiling with paper trail — expect 48,000 → ~48,800).
+**Steps:** system-prompt "Which tool" line gains the two tools *(the person_workload division
+of labour and the "no tool for lists" sentence were already fixed in P3 — this phase adds only
+the team-stats routing)*; `suggestions.ts` chips + its vitest updated with one person-question
+and one team-question example; KB gains 2–3 sentences ONLY if eval shows guidance gaps
+(budget: move the system ceiling with paper trail only if actually needed — P3 left headroom
+at 141).
 **Tests:** `kb-coverage`/`route-parity` green; client vitest green; budget assertions updated.
 **Gate:** jest.assistant + client vitest green.
 

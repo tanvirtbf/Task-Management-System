@@ -99,6 +99,14 @@ class HomeService {
      * "today" must be the WORKSPACE's calendar day (the canonical clock), so
      * `overdue` here and the overdue tile can never disagree by a timezone.
      */
+    /**
+     * The workspace's calendar day (INSIGHTS_PLAN P3) — the same canonical
+     * clock every bucket here uses, exposed so the assistant's person/team
+     * tools compute "overdue" on the workspace's today, never the server's.
+     */
+    async todayFor(workspaceId) {
+        return (0, dhakaTime_1.todayInZone)(await this.zoneOf(workspaceId));
+    }
     async myTasks(input) {
         return this.homeRepo.myTasksByBucket({
             ...input,
