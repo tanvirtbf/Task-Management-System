@@ -156,6 +156,25 @@ exports.ASSISTANT_TOOL_DEFS = [
     {
         type: "function",
         function: {
+            name: "get_team_stats",
+            description: 'One TEAM\'s created / assigned-to / overdue-now / completed counts inside a window, only across tasks the ASKER can see. Use for "X team er last N dine koyta task create hoise", "ke ke assign chilo", "team er overdue koyta". Relay the note; an invisible team answers not_found — never confirm it exists.',
+            parameters: {
+                type: "object",
+                properties: {
+                    team_name: { type: "string" },
+                    window_days: {
+                        type: "integer",
+                        description: "How many days back (1–92, default 7)",
+                    },
+                },
+                required: ["team_name"],
+                additionalProperties: false,
+            },
+        },
+    },
+    {
+        type: "function",
+        function: {
             name: "get_my_approvals",
             description: 'Cross-team assignment approval requests involving the user. box="received" (default): requests THEY must accept or decline. box="sent": requests they raised for someone else. box="team": requests targeting members of teams they HEAD. Use for "amar kache ki approval pending", "amar request er ki obostha". Deciding happens in the app — point them at Inbox → Requests.',
             parameters: {
@@ -367,6 +386,8 @@ async function executeAssistantTool(name, args, ctx, services) {
             return peopleTool(args, ctx, services);
         case "get_person_tasks":
             return personTasksTool(args, ctx, services);
+        case "get_team_stats":
+            return teamStatsTool(args, ctx, services);
         case "get_my_approvals": {
             const box = args.box === "sent" || args.box === "team"
                 ? args.box
@@ -908,6 +929,120 @@ async function personTasksTool(args, ctx, services) {
         note: shown.length === 0
             ? `0 counts ONLY tasks you may see — ${person.name} may truly have none here OR their work is outside your view. Do NOT say they have none; say you cannot see it from here and point to [Members](/settings/members).`
             : `These are ${person.name}'s ${bucket} tasks that YOU can see; they may have more outside your view. Show each task name as a link using its url field.`,
+    };
+}
+/** get_team_stats window bounds (INSIGHTS_PLAN P4, D6/D7). */
+const TEAM_WINDOW_DEFAULT_DAYS = 7;
+/**
+ * `get_team_stats` (INSIGHTS_PLAN P4) — one team's created / assigned-to /
+ * overdue-now / completed inside a window, through the ASKER's eyes.
+ *
+ * Gates, in order: `member.view` (the result names people — without the key
+ * the roster gate would be bypassable through counts); then the team resolves
+ * ONLY through the scoped `SpacesRepo.listByWorkspace`, so a team outside the
+ * asker's `space.view` answers the same `not_found` as one that does not
+ * exist (doctrine #3). The numbers themselves come from
+ * `TasksRepo.teamWindowStats`, whose WHERE composes `listScopeFilter` + the
+ * asker's own-escape — SQL-level defense even if a name ever leaked.
+ */
+async function teamStatsTool(args, ctx, services) {
+    if (!(0, can_1.holds)(await (0, context_1.currentActor)(), "member.view")) {
+        return denied("member.view");
+    }
+    const teamName = typeof args.team_name === "string" ? args.team_name.trim() : "";
+    if (!teamName) {
+        return { error: "Which team? Ask the user for the team's exact name." };
+    }
+    let windowDays = TEAM_WINDOW_DEFAULT_DAYS;
+    if (args.window_days !== undefined) {
+        const n = typeof args.window_days === "number"
+            ? args.window_days
+            : Number(args.window_days);
+        if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) {
+            return {
+                error: `window_days must be a whole number of days (1–${WINDOW_MAX_DAYS}), e.g. 7 or 30 — not "${String(args.window_days)}".`,
+            };
+        }
+        windowDays = Math.min(n, WINDOW_MAX_DAYS);
+    }
+    // Resolve the team against the asker's VISIBLE spaces only. Exact
+    // (normalized) match first; a single substring hit forgives casual typing;
+    // several visible hits ask for the exact label (those names are already
+    // the asker's to see); zero hits = the ambiguous not-found.
+    const visible = await services.spaces.listByWorkspace(ctx.workspaceId, {
+        includeArchived: false,
+    });
+    const named = visible.map((s) => ({ id: s.id, name: s.name }));
+    let team = exactMatch(named, teamName);
+    if (!team) {
+        const q = teamName.toLowerCase();
+        const contains = named.filter((s) => s.name.toLowerCase().includes(q));
+        if (contains.length === 1)
+            team = contains[0];
+        else if (contains.length > 1) {
+            return {
+                error: `More than one team matches "${teamName}" — use the exact team name.`,
+                candidates: contains.slice(0, 5).map((s) => s.name),
+            };
+        }
+    }
+    if (!team) {
+        return {
+            error: "not_found",
+            code: "space.not_found",
+            say: "No such team is visible to this user — do not claim it exists.",
+        };
+    }
+    const untilExclusive = new Date(Date.now() + 60 * 1000);
+    const since = new Date(untilExclusive.getTime() - windowDays * 24 * 60 * 60 * 1000);
+    const todayYmd = await services.home.todayFor(ctx.workspaceId);
+    const stats = await services.tasks.teamWindowStats({
+        spaceId: team.id,
+        workspaceId: ctx.workspaceId,
+        since,
+        untilExclusive,
+        todayYmd,
+    });
+    // People are shown as NAMES, resolved workspace-scoped — never emails.
+    const personIds = [
+        ...new Set([
+            ...stats.createdSample.map((t) => t.createdBy),
+            ...stats.assigneeCounts.map((a) => a.userId),
+        ]),
+    ];
+    const people = personIds.length > 0
+        ? await services.users.findManyByIdsInWorkspace(personIds, ctx.workspaceId)
+        : [];
+    const nameOf = new Map(people.map((p) => [p.id, `${p.firstName} ${p.lastName}`.trim()]));
+    return {
+        team: team.name,
+        windowDays,
+        created: {
+            count: stats.createdCount,
+            more: stats.createdCount > stats.createdSample.length,
+            tasks: stats.createdSample.map((t) => ({
+                name: t.name,
+                url: `/t/${t.id}`,
+                createdBy: nameOf.get(t.createdBy) ?? "unknown",
+                dueDate: dateOnly(t.dueDate),
+            })),
+            byAssignee: stats.assigneeCounts.map((a) => ({
+                name: nameOf.get(a.userId) ?? "unknown",
+                tasks: a.count,
+            })),
+        },
+        overdueNow: {
+            count: stats.overdueNowCount,
+            tasks: stats.overdueSample.map((t) => ({
+                name: t.name,
+                url: `/t/${t.id}`,
+                dueDate: dateOnly(t.dueDate),
+            })),
+        },
+        completedInWindow: { count: stats.completedCount },
+        note: `Counts cover ONLY tasks YOU can see in "${team.name}" — a scoped view can undercount. ` +
+            "You WERE allowed to read this: a 0 means nothing there in the window, never a permission problem. " +
+            "Show task names as links using their url fields.",
     };
 }
 async function reportStatusTool(args, ctx, services) {

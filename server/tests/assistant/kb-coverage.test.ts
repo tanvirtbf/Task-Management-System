@@ -608,7 +608,13 @@ describe("KB coverage — P4: every destination is a link", () => {
         // it could first: person_workload's description was cut to the quick
         // count it actually is, and the system-prompt sentence it replaces
         // SHRANK the system message by 81 chars. Measured after: 8,422.
-        expect(JSON.stringify(ASSISTANT_TOOL_DEFS).length).toBeLessThan(9000);
+        //
+        // Raised 9k → 9.5k for INSIGHTS_PLAN P4 (same day): `get_team_stats`
+        // is the 12th — team-window analytics behind the same scoped SQL. Its
+        // description was trimmed 73 chars first; what remains is the routing
+        // triggers and the anti-enumeration instruction, which are the parts
+        // that keep the model honest. Measured after: 9,020.
+        expect(JSON.stringify(ASSISTANT_TOOL_DEFS).length).toBeLessThan(9500);
     });
 
     it("every tool description says WHEN to use it, not just what it is", () => {

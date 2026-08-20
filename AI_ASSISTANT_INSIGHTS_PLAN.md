@@ -188,8 +188,26 @@ comment in `kb-coverage.test.ts`.
 `window_days:"7din"`) come back as guidance, never a throw.
 **Gate:** full `jest.assistant` config green (all suites, not just new ones).
 
-### P4 — Tool `get_team_stats` *(the "Marketing last 7 din" answer)*
-**Goal:** per-team window analytics, team-invisibility preserved.
+### P4 — Tool `get_team_stats` *(the "Marketing last 7 din" answer)* — ✅ **COMPLETE 2026-08-19**
+
+**Shipped:** the 12th tool — `{team_name, window_days? (default 7, clamp 1–92)}` →
+`member.view` assert (the breakdown names people; counts must not bypass the roster gate) →
+team resolved ONLY through the scoped spaces list (exact match, then single-substring
+forgiveness, several visible hits → candidates, zero → the ambiguous `space.not_found`) →
+P1's `teamWindowStats` → created {count, ≤10 tasks w/ creator+url, byAssignee ≤8 names},
+overdueNow {count, ≤5}, completedInWindow, and a note carrying BOTH doctrines: scoped
+undercount honesty + "a 0 is data, never a permission problem".
+
+**Gate met:** new `team-stats-tool.test.ts` **8 tests** — denial shape; seeded-truth numbers
+(archived excluded, names hydrated, urls); own-team scoped member = same truth; **foreign
+team ⇒ not_found with zero names in the payload; nonexistent team ⇒ byte-identical shape**;
+empty team = honest zeros; substring forgiveness; garbage guidance — plus 3 robustness
+GARBAGE cases. Full `jest.assistant` **17 suites / 270 green** · tsc clean · eslint still
+exactly 70. Tool-def budget: description trimmed 73 chars first, then the ceiling moved
+9,000 → **9,500** with the amended paper trail (measured after: **9,020**); system message
+untouched at 47,859.
+
+**Goal (as planned):** per-team window analytics, team-invisibility preserved.
 **Definition:** params `{team_name, window_days?: int (default 7, clamp 1–92)}`. Executor:
 resolve the team through **scoped** `SpacesRepo.listByWorkspace` + `exactMatch` (invisible ⇒
 the ambiguous `space.not_found`, doctrine #3); then `teamWindowStats`; result
