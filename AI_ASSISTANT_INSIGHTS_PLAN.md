@@ -221,8 +221,22 @@ edges; empty-window honesty ("0 created" ≠ permission problem — doctrine #2'
 the reports-tool lesson).
 **Gate:** full `jest.assistant` green + tool-def budget re-measured.
 
-### P5 — Prompt routing + discoverability *(the UX phase)*
-**Goal:** the model reliably picks the right tool, and users learn these questions exist.
+### P5 — Prompt routing + discoverability *(the UX phase)* — ✅ **COMPLETE 2026-08-19**
+
+**Shipped:** the system prompt's "Which tool" line now routes both new families —
+*another person's task list/pending/history → get_person_tasks · a team's
+created/assigned/overdue in a window → get_team_stats* (system message 47,970 / 48,000,
+headroom 30 — inside the guard, no ceiling move needed). Two starter chips in
+`suggestions.ts`: the person question offered to everyone (names nobody, so the bot's own
+"which person?" follow-up teaches the @name pattern) and the team-window question gated on
+`isHead`. KB untouched — the plan's only-if-eval-shows-gaps rule; P6's eval decides.
+
+**Gate met:** client vitest **49/49** (13 in the suggestions suite, +2) · client tsc/lint
+clean · full `jest.assistant` **17 suites / 270 green** (kb-coverage's 48k assert and
+route-parity both pass with the new prompt) · eslint total still exactly 70.
+
+**Goal (as planned):** the model reliably picks the right tool, and users learn these
+questions exist.
 **Steps:** system-prompt "Which tool" line gains the two tools *(the person_workload division
 of labour and the "no tool for lists" sentence were already fixed in P3 — this phase adds only
 the team-stats routing)*; `suggestions.ts` chips + its vitest updated with one person-question

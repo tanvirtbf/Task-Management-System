@@ -31,6 +31,15 @@ export const SUGGESTIONS: Suggestion[] = [
     { q: "কীভাবে একটা নতুন task বানাবো?" },
     { q: "কাউকে task assign করব কীভাবে?" },
     { q: "আমার team-এ কে কে আছে?" },
+    // INSIGHTS_PLAN P5 — the two new live-data families (P3/P4). The person
+    // question names nobody, so the bot's own "which person?" follow-up
+    // teaches the @name pattern; the team question is head-gated because a
+    // head both has the reach and actually asks it.
+    { q: "আমার team-এর কার হাতে এখন কী কাজ আছে?" },
+    {
+        q: "আমাদের team-এ গত ৭ দিনে কী কী task হয়েছে?",
+        show: (a) => a.isHead,
+    },
     { q: "কীভাবে comment বা checklist যোগ করব?" },
     { q: "পাসওয়ার্ড কীভাবে বদলাবো?" },
     {

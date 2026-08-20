@@ -106,3 +106,20 @@ describe("pickSuggestions", () => {
         }
     });
 });
+
+// ─── INSIGHTS_PLAN P5 — the person/team live-data chips ─────────────────────
+const PERSON_Q = "আমার team-এর কার হাতে এখন কী কাজ আছে?";
+const TEAM_STATS_Q = "আমাদের team-এ গত ৭ দিনে কী কী task হয়েছে?";
+
+describe("insights chips (P5)", () => {
+    it("offers the person-workload question to everyone", () => {
+        expect(pickSuggestions(audience())).toContain(PERSON_Q);
+    });
+
+    it("gates the team-window question on being a head", () => {
+        expect(pickSuggestions(audience())).not.toContain(TEAM_STATS_Q);
+        expect(pickSuggestions(audience({ isHead: true }))).toContain(
+            TEAM_STATS_Q,
+        );
+    });
+});
