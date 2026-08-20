@@ -586,13 +586,17 @@ const resolvePerson = async (wanted, ctx, services) => {
             },
         };
     }
+    // Mention-style handle (INSIGHTS_PLAN P2): "@arif" is the exact token the
+    // comment-mention picker inserts, so people paste it into chat. Strip ONE
+    // leading "@" for the search; the email local-part then settles it below.
+    const stripped = wanted.trim().replace(/^@/, "").trim();
     let rows = await services.users.listByWorkspace({
         workspaceId: ctx.workspaceId,
-        q: wanted.trim(),
+        q: stripped,
         status: "active",
         limit: 6,
     });
-    const words = wanted.trim().split(/\s+/);
+    const words = stripped.split(/\s+/);
     if (rows.length === 0 && words.length > 1) {
         rows = await services.users.listByWorkspace({
             workspaceId: ctx.workspaceId,
@@ -601,11 +605,25 @@ const resolvePerson = async (wanted, ctx, services) => {
             limit: 6,
         });
     }
+    // An email local-part is unique by construction (emails are), so a single
+    // local-part hit resolves even when the name search alone is ambiguous —
+    // "@arif" finds Arif Chowdhury even beside an Arifa. Two locals colliding
+    // across domains stays ambiguous, and falls through to the name ladder.
+    const local = stripped.toLowerCase();
+    const byLocal = rows.filter((u) => u.email.split("@")[0].toLowerCase() === local);
+    if (byLocal.length === 1) {
+        return {
+            person: {
+                id: byLocal[0].id,
+                name: `${byLocal[0].firstName} ${byLocal[0].lastName}`.trim(),
+            },
+        };
+    }
     const named = rows.map((u) => ({
         id: u.id,
         name: `${u.firstName} ${u.lastName}`.trim(),
     }));
-    const person = exactMatch(named, wanted) ?? (named.length === 1 ? named[0] : null);
+    const person = exactMatch(named, stripped) ?? (named.length === 1 ? named[0] : null);
     if (person)
         return { person };
     return {

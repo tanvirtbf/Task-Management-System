@@ -20,7 +20,7 @@ import { fakeId } from "../../src/utils";
 import { resetPolicy } from "../../src/rbac/policy";
 import { resetAssignmentGate } from "../../src/services/AssignmentRequestsService";
 import type { LoggedInClient } from "../test-utils/app";
-import { makeStatus, makeTask, makeTaskType } from "../test-utils/factories";
+import { makeStatus, makeTask, makeTaskType, makeUser } from "../test-utils/factories";
 import {
     makeRbacList,
     makeRbacSpace,
@@ -562,5 +562,97 @@ describe("get_sla_breaches — only what the caller can see", () => {
             (b) => b.task === "Late complaint",
         );
         expect(row?.hoursLate).toBe(3);
+    });
+});
+
+describe("resolvePerson — mention-style handles (INSIGHTS_PLAN P2)", () => {
+    // The comment-mention picker inserts "@<email-local>"; people paste that
+    // token straight into chat. Every person-taking tool resolves it now.
+    const seedHandles = async () => {
+        const ws = await rbacWorkspace();
+        const asker = await userWithSystemRole(ws, "member");
+        const arif = await makeUser({
+            workspaceId: ws.id,
+            firstName: "Arif",
+            lastName: "Chowdhury",
+            email: "arif@handles.test",
+        });
+        // The name-search booby trap: "arif" is a substring of her name AND
+        // email, so a plain LIKE search returns both people.
+        const arifa = await makeUser({
+            workspaceId: ws.id,
+            firstName: "Arifa",
+            lastName: "Khan",
+            email: "arifa@handles.test",
+        });
+        return { ws, asker, arif, arifa };
+    };
+
+    it("@<email-local> resolves the person even when the name search alone is ambiguous", async () => {
+        const s = await seedHandles();
+        const seen = modelCalling("get_people", {
+            action: "find_person",
+            person_name: "@arif",
+        });
+        const result = await ask(s.asker.client, seen);
+        expect(result.person).toBe("Arif Chowdhury");
+    });
+
+    it("@Full Name resolves too — the @ is stripped before the name ladder", async () => {
+        const s = await seedHandles();
+        const seen = modelCalling("get_people", {
+            action: "find_person",
+            person_name: "@Arifa Khan",
+        });
+        const result = await ask(s.asker.client, seen);
+        expect(result.person).toBe("Arifa Khan");
+    });
+
+    it("an unknown handle still fails honestly, echoing what was typed", async () => {
+        const s = await seedHandles();
+        const seen = modelCalling("get_people", {
+            action: "find_person",
+            person_name: "@nobody-here",
+        });
+        const result = await ask(s.asker.client, seen);
+        expect(String(result.error)).toContain('"@nobody-here"');
+        expect(String(result.error)).toMatch(/No active member/i);
+    });
+
+    it("two people sharing an email local-part stay ambiguous (never a guess)", async () => {
+        const ws = await rbacWorkspace();
+        const asker = await userWithSystemRole(ws, "member");
+        await makeUser({
+            workspaceId: ws.id,
+            firstName: "Dupe",
+            lastName: "One",
+            email: "dupe@domain-a.test",
+        });
+        await makeUser({
+            workspaceId: ws.id,
+            firstName: "Dupe",
+            lastName: "Two",
+            email: "dupe@domain-b.test",
+        });
+        const seen = modelCalling("get_people", {
+            action: "find_person",
+            person_name: "@dupe",
+        });
+        const result = await ask(asker.client, seen);
+        expect(String(result.error)).toMatch(/More than one person/i);
+        expect(result.candidates).toEqual(
+            expect.arrayContaining(["Dupe One", "Dupe Two"]),
+        );
+    });
+
+    it("@me is untouched by the stripping — it still means the caller", async () => {
+        const s = await seedHandles();
+        const seen = modelCalling("get_people", {
+            action: "person_workload",
+            person_name: "@me",
+        });
+        const result = await ask(s.asker.client, seen);
+        expect(result.openTasksYouCanSee).toBe(0);
+        expect(result.error).toBeUndefined();
     });
 });

@@ -127,8 +127,19 @@ inclusive; archived excluded; closed-vs-open per `statusGroup ∉ CLOSED_GROUPS`
 **Gate:** new jest file green + `tsc` clean. **No tool exposure yet** — nothing user-visible
 can break.
 
-### P2 — `resolvePerson` learns mention handles *(tiny, isolated)*
-**Goal:** `@tanvir`, `@harun` resolve exactly like the comment-mention tokens.
+### P2 — `resolvePerson` learns mention handles *(tiny, isolated)* — ✅ **COMPLETE 2026-08-19**
+
+**Shipped:** one leading `@` stripped before the search; an email-local-part **exact match**
+now sits before the name ladder, so `"@arif"` resolves Arif Chowdhury even beside an Arifa
+(previously ambiguous), while two people sharing a local-part across domains stay honestly
+ambiguous. `@me` untouched (checked before stripping). Failure messages still echo exactly
+what the user typed. Reaches every person-taking tool for free: `get_people` (find_person /
+person_workload / team_roster) and `create_task` assignees. **5 new tests** in
+`team-data-tools.test.ts` (handle-beats-ambiguity, @Full Name, unknown echo, local-part
+collision, @me untouched). **Gate met:** full `jest.assistant` **15 suites / 245 tests
+green** · tsc clean · eslint total still exactly 70.
+
+**Goal (as planned):** `@tanvir`, `@harun` resolve exactly like the comment-mention tokens.
 **Steps:** strip one leading `@` from `wanted`; add email-local-part **exact match** to the
 match ladder (before the ambiguity failure); keep every existing behaviour (`@me`, full name,
 surname fallback, single-hit, ambiguity candidates).
