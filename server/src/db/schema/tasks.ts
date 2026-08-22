@@ -183,6 +183,19 @@ export const tasks = mysqlTable(
 
         archivedAt: timestamp("archived_at"),
         createdBy: varchar("created_by", { length: ID_LENGTH }).notNull(),
+        /**
+         * upgrades/025 (ASSIGNED_BY_PLAN P1) — who HANDED THE WORK OUT.
+         *
+         * Distinct from `createdBy`: the creator is a fact about the record,
+         * this is a fact about the work, and unlike the creator it can be
+         * corrected when the wrong person is on it. Written from the actor on
+         * every creation path; adding an assignee later never rewrites it.
+         *
+         * NULLable only so a departed manager can be removed (`ON DELETE SET
+         * NULL`) — the wire falls back to `created_by`, so no surface ever
+         * renders a blank attribution.
+         */
+        assignedBy: varchar("assigned_by", { length: ID_LENGTH }),
         createdAt: timestamp("created_at").notNull().defaultNow(),
         updatedAt: timestamp("updated_at").notNull().defaultNow().onUpdateNow(),
     },
@@ -232,6 +245,16 @@ export const tasks = mysqlTable(
         })
             .onDelete("restrict")
             .onUpdate("cascade"),
+        assignedByFk: foreignKey({
+            columns: [t.assignedBy],
+            foreignColumns: [users.id],
+            name: "fk_tasks_assigned_by",
+        })
+            // SET NULL, not RESTRICT like createdBy: attribution must never be
+            // the reason a leaver cannot be removed from the workspace.
+            .onDelete("set null")
+            .onUpdate("cascade"),
+        assignedByIdx: index("idx_tasks_assigned_by").on(t.assignedBy),
 
         priorityCk: check("ck_tasks_priority", sql`${t.priority} BETWEEN 0 AND 4`),
         nestingCk: check("ck_tasks_nesting", sql`${t.nestingDepth} <= 2`),

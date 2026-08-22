@@ -89,8 +89,36 @@ assistant, client vitest count, eslint 70/12, tsc ×2 clean, table count 47); lo
 §3; write the acceptance set in §4; open the issues log in §6.
 **Gate:** §5 filled with real numbers. No code changes.
 
-### P1 — The column and the backfill
-**Goal:** the data exists and is right, before anything reads it.
+### P1 — The column and the backfill — ✅ **COMPLETE 2026-08-22**
+
+**Shipped:** `database/upgrades/025_assigned_by.sql` (ALTER → backfill → FK, in that order so the
+constraint validates final data), mirrored into `database/schema.sql` (column after `created_by`,
+`fk_tasks_assigned_by` ON DELETE SET NULL, `idx_tasks_assigned_by`) and
+`server/src/db/schema/tasks.ts` — the three synchronized edits, plus the README applied-state row.
+
+**Applied to dev:** 47 tasks, **0 unattributed**, 0 values without a matching user, FK rule
+`SET NULL`, index present — exactly what P0's read-only dry-run predicted.
+
+**Parity proved, not assumed:** a scratch database built from the edited `schema.sql` through the
+harness's own `cleanSql` came out **column-for-column and index-for-index identical** to the dev
+database upgraded by `025`, still **47 tables / 5 views**. `db:setup` builds from the same file, so
+fresh installs and all 31 per-suite test databases are covered by that one edit.
+
+**Tests:** `tests/tasks/assigned-by.test.ts` — **9 new tests, all green**. They do not re-type the
+backfill: the `UPDATE` is **extracted from the shipped upgrade script**, so what runs in the test is
+the statement production will run, and moving it without re-reading the expectations fails the
+build. Covered: the column reaches `TaskRow`; a real assigner who is *not* the creator survives;
+the **earliest** assigner wins when work was handed on twice; `created_by` is the fallback both for
+never-assigned tasks and for legacy assignee rows with a NULL assigner; nothing is left
+unattributed (doctrine #2); a value already set is never overwritten (so re-running the script is
+safe); and deleting the assigner NULLs the attribution instead of blocking the delete.
+
+**Gate:** tasks suite **14 suites / 409 tests green** (P0's 13/400 + this file's 9), run as four
+foreground chunks per P0's environment note · eslint still exactly **70** · tsc clean · canonical
+count still **47**. The I-1 timeout fix was confirmed in passing: the test that used to fail took
+**16.8s** in a three-file run (4.2s alone), which is why 30s was the wrong budget and 60s is right.
+
+**Goal (as planned):** the data exists and is right, before anything reads it.
 **Steps:** `database/upgrades/025_assigned_by.sql` — add `assigned_by VARCHAR(64) NULL` to `tasks`,
 FK to `users(id)` `ON DELETE SET NULL` (a departed manager must not delete the task), plus an index
 for the P6 filter. Backfill in the same script:

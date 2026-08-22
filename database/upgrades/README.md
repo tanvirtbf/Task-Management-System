@@ -47,6 +47,7 @@
 | `022_checklist_counters.sql` | ✅ 2026-08-12 | ✅ 2026-08-12 (first, re-apply proven) | ✅ 2026-08-12 |
 | `023_task_delete_approval.sql` | ✅ 2026-08-16 | ⏳ | ⏳ ships with the delete-approval build |
 | `024_recurrence_spawn.sql` | ✅ 2026-08-16 | ⏳ | ⏳ ships with the recurrence build (+ cron line) |
+| `025_assigned_by.sql` | ✅ 2026-08-22 | ⏳ | ⏳ ships with the Assigned By build (ASSIGNED_BY_PLAN P8) |
 
 > **prod = `tasks.beautybooth.com.bd`.** Phase A of `LIVE_ROLLOUT_TEAM_ACCESS.md`
 > landed 001–018 + 021 on 2026-08-11 and `022` on 2026-08-12; every one of them was

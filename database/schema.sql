@@ -542,6 +542,14 @@ CREATE TABLE tasks (
 
     archived_at          TIMESTAMP    NULL,
     created_by           VARCHAR(64)  NOT NULL,
+    -- upgrades/025 (ASSIGNED_BY_PLAN P1) — who HANDED THE WORK OUT. Distinct
+    -- from created_by: the creator is a fact about the record, this is a fact
+    -- about the work, and it can be corrected when the wrong person is on it.
+    -- Set to the actor on every creation path; adding an assignee later never
+    -- rewrites it. NULLable so a departed manager's row can be SET NULL rather
+    -- than blocking the delete — the wire falls back to created_by, so the app
+    -- never shows a blank attribution.
+    assigned_by          VARCHAR(64)  NULL,
     created_at           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at           TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP
                                               ON UPDATE CURRENT_TIMESTAMP,
@@ -573,6 +581,10 @@ CREATE TABLE tasks (
         REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,
     CONSTRAINT fk_tasks_created_by FOREIGN KEY (created_by)
         REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    -- upgrades/025. SET NULL, not RESTRICT like created_by: attribution must
+    -- never be the reason a leaver cannot be removed from the workspace.
+    CONSTRAINT fk_tasks_assigned_by FOREIGN KEY (assigned_by)
+        REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,
 
     CONSTRAINT ck_tasks_priority CHECK (priority BETWEEN 0 AND 4),
     CONSTRAINT ck_tasks_nesting  CHECK (nesting_depth <= 2),  -- spec: 2 levels max
@@ -608,7 +620,11 @@ CREATE TABLE tasks (
     INDEX idx_tasks_list_internal (primary_list_id, internal_id),
     -- upgrades/014: the overdue-alert job's every-10-min scan
     -- (due_date < today AND open AND unclaimed).
-    INDEX idx_tasks_overdue_scan (due_date, completed_at, archived_at, overdue_notified_at)
+    INDEX idx_tasks_overdue_scan (due_date, completed_at, archived_at, overdue_notified_at),
+    -- upgrades/025: "what did this person hand out" — and InnoDB needs an
+    -- index on the FK column anyway, so it is named here rather than left to
+    -- MySQL to invent one.
+    INDEX idx_tasks_assigned_by (assigned_by)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC
   AUTO_INCREMENT = 1;
 
