@@ -168,6 +168,36 @@ describe("POST /api/v1/tasks/:id/assignees", () => {
                 [a.id, b.id, c.id].sort(),
             );
         });
+
+        it("never rewrites who handed the work out (ASSIGNED_BY_PLAN D11)", async () => {
+            // Assignment and attribution are different questions. Pulling
+            // somebody onto a task says who is DOING it; `assigned_by` says
+            // who GAVE it out, and only an explicit correction changes that
+            // (P5). Without this the answer to "who gave me this?" would
+            // silently become "whoever touched the assignees last".
+            const ws = await makeWorkspace();
+            const manager = await makeUser({ workspaceId: ws.id });
+            const actor = await makeUser({ workspaceId: ws.id });
+            const first = await makeUser({ workspaceId: ws.id });
+            const latecomer = await makeUser({ workspaceId: ws.id });
+            const task = await makeTask({ workspaceId: ws.id, createdBy: actor.id });
+            await getDb()
+                .update(tasks)
+                .set({ assignedBy: manager.id })
+                .where(eq(tasks.id, task.id));
+            const client = await makeLoggedInClient(actor);
+
+            await client.post(url(task.id)).send({ user_id: first.id });
+            await client.post(url(task.id)).send({ user_id: latecomer.id });
+            // …including re-adding somebody already on it (idempotent upsert).
+            await client.post(url(task.id)).send({ user_id: first.id });
+
+            const [row] = await getDb()
+                .select({ assignedBy: tasks.assignedBy })
+                .from(tasks)
+                .where(eq(tasks.id, task.id));
+            expect(row.assignedBy).toBe(manager.id);
+        });
     });
 
     // ─── b. Validation (422 validation.failed) ────────────────────────────────

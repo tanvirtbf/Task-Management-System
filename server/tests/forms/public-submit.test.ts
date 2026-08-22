@@ -83,7 +83,7 @@ describe("§18 Forms — public submit", () => {
     });
 
     it("creates a task + records the submission + bumps submission_count (201)", async () => {
-        const { form } = await seedSubmittableForm({
+        const { u, form } = await seedSubmittableForm({
             settings: { success_message: "Thanks for reaching out!" },
         });
         await makeFormField({
@@ -126,6 +126,11 @@ describe("§18 Forms — public submit", () => {
         expect(task).toBeDefined();
         expect(task.name).toBe("Order arrived damaged");
         expect(task.description).toBe("The box was crushed");
+        // ASSIGNED_BY_PLAN P2 (D8) — the form's OWNER handed this work out.
+        // The submitter is anonymous and has no workspace identity, so they
+        // can never appear here; the team sees whose intake form produced it.
+        expect(task.assignedBy).toBe(u.id);
+        expect(task.createdBy).toBe(u.id);
 
         const [formRow] = await db
             .select()

@@ -250,6 +250,10 @@ describe("tasks.assigned_by (upgrades/025)", () => {
         });
     });
 
+    // (D11 — "adding an assignee never rewrites the attribution" — is proved
+    // against the REAL endpoint in `assignees.add.test.ts`, where a logged-in
+    // client exists; imitating the upsert here would only test the imitation.)
+
     // ─── c. the foreign key's shape ──────────────────────────────────────────
     describe("the foreign key", () => {
         it("NULLs the attribution when the assigner is deleted, keeping the task", async () => {

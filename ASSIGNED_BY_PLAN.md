@@ -141,8 +141,42 @@ whose assigner ≠ creator keeps the assigner; a task with no assignees falls ba
 **Gate:** dev + test DBs at 025 · `db:setup` still canonical **47 tables** · tasks suite green ·
 eslint still 70/12.
 
-### P2 — The write path: every new task is attributed
-**Goal:** from now on the column is always correct without anyone thinking about it.
+### P2 — The write path: every new task is attributed — ✅ **COMPLETE 2026-08-22**
+
+**Shipped:** `assignedBy: input.actorId` beside `createdBy` in the task insert — which is the whole
+change, because every route into task creation already carries the right actor: the API (the
+logged-in person), a public form (`form.createdBy` — never the anonymous submitter), the
+recurrence job (`template.createdBy`) and the assistant's `create_task` (the person asking).
+
+**Correction to P0's scan:** there are **TWO** services that insert a task, not one. P0 read
+"exactly one `insert(tasks)`" — true of the repo method, but `TemplateApplyService` calls it as
+well as `TaskWriteService`. Applying a template is someone putting work into the world, so it sets
+the actor too. Without this, template-created tasks would have been the one silently unattributed
+kind. Logged as the reason P2 greps for callers rather than trusting a count.
+
+**D6 needs no code.** `AssignmentRequestsService.accept` adds the assignee and never touches the
+task row, so the decider can never become the attribution. The per-assignee `task_assignees.
+assigned_by` records the approver (who executed it) while `tasks.assigned_by` keeps the requester
+(who decided the work should go there) — both statements are true, and they answer different
+questions.
+
+**Tests — 4 new, 4 assertions added, each where its path actually runs:**
+
+| Path | Where | What it pins |
+|---|---|---|
+| API create | `tasks/create.test.ts` | creator is recorded, and equals `created_by` at birth |
+| Public form | `forms/public-submit.test.ts` | the form's **owner**, never the anonymous submitter (D8) |
+| Recurrence job | `jobs/recurrence-spawn.test.ts` | each occurrence inherits the template's owner (D7) |
+| Assistant | `assistant/create-task-tool.test.ts` | the **person** who asked — the bot is a tool, never the assigner |
+| Template apply | `templates/apply.test.ts` | whoever applied it (the second insert path) |
+| Adding assignees | `tasks/assignees.add.test.ts` | three real POSTs, including re-adding — attribution unmoved (D11) |
+| Approval accept | `rbac/p8-approval.test.ts` | the **decider never** becomes the assigner; the requester stays (D6) |
+
+**Gate:** tasks **14 suites / 411 tests** · forms **8 / 85** · jobs **7 / 54** · templates **6 /
+123** · rbac **19 / 346** · assistant **17 / 270** — all green · eslint still exactly **70** · tsc
+clean. Found and fixed on the way: **I-2** (§6), the forms suite's own version of the I-1 timeout.
+
+**Goal (as planned):** from now on the column is always correct without anyone thinking about it.
 **Steps:** `TaskWriteService.create` sets `assignedBy = actorId` — which automatically gives the
 right answer for all four creation paths (API, public form → form owner, recurrence spawn →
 template owner, assistant `create_task` → the asking user). Assignee add/remove paths explicitly do
@@ -324,6 +358,19 @@ backfill honest.)*
   *Why it mattered enough to stop for:* P2 and P5 change assignment write paths. Without a
   deterministic green baseline here there would be nothing honest to compare against, and the very
   first "did I break assignment?" question would have had no trustworthy answer.
+- **I-2 · P2 (2026-08-22) — the same defect as I-1, in the forms suite.**
+  `forms/public-submit.test.ts` failed on its **first** test ("missing ENCRYPTION_KEY → clean 503")
+  with `Exceeded timeout of 30000 ms` — the identical signature: never a wrong answer, always the
+  one test that pays the file's cold start inside its own budget. This suite's cold start is
+  heavier than most (a seeded form, an encrypted submission and a real task write); its siblings
+  finish in ~1.7s and the test itself takes **4.7s** once warm. This is also, finally, the identity
+  of the unexplained forms failure P0 recorded and could not name.
+  *Fix:* `tests/test-utils/setup-each-forms.ts` 30s → 60s — the suite-wide setting, since the
+  files themselves declare nothing. Same precedent as I-1: **8 of the 30 setup-each files already
+  use 60s** (assistant, home, jobs, on-call, search, sprints, sse, templates). Forms suite now
+  8 suites / 85 tests green, the offending test at 4.67s.
+  *Pattern worth carrying forward:* a 30s budget plus a file's first test is this repo's fragile
+  combination. When a later phase sees a lone timeout on a first test, this is what it is.
 - **Environment note (2026-08-22):** long-running background commands in this session are being
   killed after a few minutes regardless of whether they emit output, while foreground calls are
   capped at 10 minutes. The tasks suite needs ~29 minutes. Later phases should therefore run heavy

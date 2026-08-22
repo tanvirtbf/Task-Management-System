@@ -374,6 +374,36 @@ describe("P8 — cross-team assignment approval", () => {
         ).toBe(409);
     });
 
+    it("accepting never makes the DECIDER the person who handed the work out (D6)", async () => {
+        // ASSIGNED_BY_PLAN P2. Two people touch a gated assignment: the
+        // requester, who decided this work should go to that person, and the
+        // decider, who merely allowed it. `tasks.assigned_by` is about the
+        // first of those, so `accept` must leave it exactly as it found it —
+        // otherwise every cross-team hand-off would end up credited to
+        // whichever admin happened to click approve.
+        const s = await seed();
+        await db()
+            .update(schema.tasks)
+            .set({ assignedBy: s.requester.id })
+            .where(eq(schema.tasks.id, s.task.id));
+
+        await s.requester.client
+            .post(`/api/v1/tasks/${s.task.id}/assignees`)
+            .send({ user_ids: [s.target.id] });
+        const [r] = await pendingRows(s.task.id, s.target.id);
+        const res = await s.target.client
+            .post(`/api/v1/assignment-requests/${r.id}/accept`)
+            .send({});
+        expect(res.status).toBe(200);
+
+        const [row] = await db()
+            .select({ assignedBy: schema.tasks.assignedBy })
+            .from(schema.tasks)
+            .where(eq(schema.tasks.id, s.task.id));
+        expect(row.assignedBy).toBe(s.requester.id);
+        expect(row.assignedBy).not.toBe(s.target.id);
+    });
+
     it("deciders are the target, their Head, an admin — never the requester, never a bystander", async () => {
         const s = await seed();
         const t2 = await makeTask({

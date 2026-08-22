@@ -95,6 +95,10 @@ describe("recurrence-spawn", () => {
         // Attribution is the person who set the recurrence up — not a robot
         // account that does not exist.
         expect(copy.createdBy).toBe(s.user.id);
+        // ASSIGNED_BY_PLAN P2 (D7) — and the same person handed the work out.
+        // Every occurrence answers "who is this from?" without anyone typing
+        // it once a month.
+        expect(copy.assignedBy).toBe(s.user.id);
     });
 
     it("the occurrence is CLEAN — nothing carried over from the template", async () => {

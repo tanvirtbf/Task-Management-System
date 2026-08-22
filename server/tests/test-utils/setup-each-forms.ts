@@ -13,8 +13,16 @@ import { getPool } from "../../src/db/client";
  * server-wide metadata-lock stall a TRUNCATE-all triggers under a concurrent
  * session's DROP/CREATE DATABASE. FK checks are disabled around the loop, so
  * truncation order is irrelevant.
+ *
+ * ASSIGNED_BY_PLAN P2 (2026-08-22): raised 30s → 60s. `public-submit`'s FIRST
+ * test timed out here twice — never as a wrong answer, always as the one test
+ * that pays the file's cold start on top of its own work (this suite's is
+ * heavier than most: a seeded form, an encrypted submission and a real task
+ * write). Its siblings finish in ~1.7s. Same defect as the tasks suite's I-1,
+ * and the same remedy: 60s is already what assistant, home, jobs, on-call,
+ * search, sprints, sse and templates use — 8 of the 30 setup-each files.
  */
-jest.setTimeout(30000);
+jest.setTimeout(60000);
 
 const TABLES = [
     // RBAC (P11): assignments/grants/roles are per-workspace rows and must not

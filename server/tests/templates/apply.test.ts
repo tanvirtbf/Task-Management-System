@@ -141,6 +141,10 @@ describe("POST /api/v1/templates/:id/apply", () => {
             expect(task.taskTypeId).toBe(taskType.id);
             expect(task.priority).toBe(2);
             expect(task.createdBy).toBe(actor.id);
+            // ASSIGNED_BY_PLAN P2 — applying a template is putting work into
+            // the world, so whoever applied it is who handed it out. (This is
+            // the second of the two code paths that insert a task.)
+            expect(task.assignedBy).toBe(actor.id);
             expect(task.parentTaskId).toBeNull();
         });
 

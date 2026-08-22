@@ -274,6 +274,19 @@ describe("POST /api/v1/tasks", () => {
             expect(acts[0].actorId).toBe(ctx.user.id);
         });
 
+        it("records the creator as who handed the work out", async () => {
+            // ASSIGNED_BY_PLAN P2 — the API creation path. `assigned_by`
+            // starts life equal to `created_by` and diverges only when someone
+            // corrects it (P5); adding assignees later never rewrites it.
+            const ctx = await seed();
+
+            const res = await ctx.client.post(PATH).send(body(ctx));
+
+            const row = await taskRow(res.body.id);
+            expect(row.assignedBy).toBe(ctx.user.id);
+            expect(row.assignedBy).toBe(row.createdBy);
+        });
+
         it("leaves the trigger-maintained counters at 0", async () => {
             const ctx = await seed();
 

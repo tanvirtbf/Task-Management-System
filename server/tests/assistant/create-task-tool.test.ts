@@ -170,6 +170,9 @@ describe("create_task — the assistant's one write, under the caller's own rule
         const [row] = await taskRowsByName("Banner reviewer khoja");
         expect(row).toBeDefined();
         expect(row.createdBy).toBe(s.member.id);
+        // ASSIGNED_BY_PLAN P2 — a task the bot creates is handed out by the
+        // PERSON who asked for it. The assistant is a tool, never the assigner.
+        expect(row.assignedBy).toBe(s.member.id);
         expect(row.priority).toBe(2);
         expect(row.dueDate?.toISOString().slice(0, 10)).toBe("2026-08-20");
         const audit = await db()
