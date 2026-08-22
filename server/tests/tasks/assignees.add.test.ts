@@ -121,7 +121,17 @@ const OLD = new Date("2020-01-01T00:00:00Z");
 // per-test TRUNCATEs can queue behind concurrent DDL. Raise the default
 // test/hook timeout so a busy-but-not-deadlocked server doesn't spuriously fail
 // setup. Per-test overrides below (concurrency cases) still apply.
-jest.setTimeout(30000);
+//
+// ASSIGNED_BY_PLAN P0 (2026-08-22): raised 30s → 60s. 30s was not enough under
+// FULL-SUITE conditions and this file failed both full runs of the day, always
+// on its FIRST test ("204 for a single user_id"), always as a timeout and never
+// as a wrong answer. Measured: that test takes 4.2s when the file runs alone
+// (60/60 green) and 4.8s beside one sibling, but the per-test cost roughly
+// doubles as the 13-file run accumulates, and the first test also pays the
+// file's cold start — so the one test with warm-up in its budget was the one
+// that blew it. 60s is not a new number here: 8 other suites in this repo
+// already use it for exactly this reason.
+jest.setTimeout(60_000);
 
 // ════════════════════════════════════════════════════════════════════════════
 describe("POST /api/v1/tasks/:id/assignees", () => {
