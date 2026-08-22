@@ -187,6 +187,11 @@ export interface Task {
     createdAt: string;
     updatedAt: string;
     createdBy: string;
+    /** upgrades/025 — who handed this work out. Defaults to the creator and is
+     *  correctable (a supply-chain member assigning to engineering wants their
+     *  own name here, not whoever happened to type the task in). Never empty:
+     *  the server falls back to `createdBy` rather than send a blank. */
+    assignedBy: string;
     completedAt: string | null;
     /** Dept Review V1 — current review verdict (null until the department
      *  head reviews the completed task; auto-reset when it reopens). */

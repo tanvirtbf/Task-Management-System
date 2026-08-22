@@ -30,7 +30,7 @@ import {
  *     the task's own rows die in the FK cascade.
  */
 
-jest.setTimeout(30_000);
+jest.setTimeout(60_000);
 
 const BULK = "/api/v1/tasks/bulk";
 const db = () => getDb();

@@ -186,8 +186,32 @@ as Assigned By when the approval later lands (D6).
 "approving a cross-team request does not make the approver the assigner".
 **Gate:** jest `tasks` · `forms` · `jobs` · `assistant` suites green.
 
-### P3 — The wire and the types
-**Goal:** the field reaches the browser everywhere, and can never silently disappear.
+### P3 — The wire and the types — ✅ **COMPLETE 2026-08-22**
+
+**Shipped:** `assigned_by: t.assignedBy ?? t.createdBy` in `toWireTask`, plus the field on `WireTask`
+and on the client's `Task`. That is the whole change — the fallback lives at the **one** boundary
+every task crosses instead of in seven surfaces that would each have to remember it, and the
+camelCase interceptor means the client needed **no mapper work at all**, exactly as P0 predicted.
+`assignmentRequestSerializer.toWireTaskSnapshot` was checked again and still needs nothing (the
+approval card already renders "requested by X", who by D6 *is* the Assigned By).
+
+**The parity guard already existed — twice — and both fired.** `get-by-id.test.ts` and
+`list-by-list.test.ts` each assert `Object.keys(body).sort()` against an exact list, so adding a
+field to the serializer **failed the suite until the key was declared**. That is precisely the
+"can never silently disappear" property P3 was asked for, and it was already in the repo: no new
+guard was invented, two were updated (47 → **48** wire fields, in the lists, the comments and the
+test names).
+
+**Tests:** the two key-set guards, plus two at the endpoint in `get-by-id.test.ts` — one proving
+`assigned_by` is a genuinely different answer from `created_by`, one proving the NULL case (the
+assigner left, the FK nulled it) still comes back as the creator rather than a blank.
+
+**Gate:** tasks **14 suites / 413 tests** · home 23 · search 32 · eng 80 · task-dependencies 67 ·
+dept-review 122 · assistant 270 — every service that feeds `toWireTask`, all green · client vitest
+**49** · tsc clean **×2** · eslint still exactly **70 / 12**. Found and fixed on the way: **I-3**
+(§6) — and this time the timeout defect was fixed for the whole suite rather than one more file.
+
+**Goal (as planned):** the field reaches the browser everywhere, and can never silently disappear.
 **Steps:** `toWireTask` emits `assigned_by: t.assignedBy ?? t.createdBy` (doctrine #2 fallback); the
 client `Task` interface gains `assignedBy: string`. No mapper changes (see §0).
 *Resolved in P0:* the second serializer, `assignmentRequestSerializer.toWireTaskSnapshot`, needs
@@ -371,6 +395,17 @@ backfill honest.)*
   8 suites / 85 tests green, the offending test at 4.67s.
   *Pattern worth carrying forward:* a 30s budget plus a file's first test is this repo's fragile
   combination. When a later phase sees a lone timeout on a first test, this is what it is.
+- **I-3 · P3 (2026-08-22) — third instance, so it stopped being a file's problem.**
+  `tasks/get-by-id.test.ts` failed on its **first** test at 30s. Same signature as I-1 and I-2:
+  never a wrong answer, always the first test in a file, always a test that runs in 1.5–5s once
+  warm. Three phases had now each lost a run to it, and patching one file at a time was simply
+  losing to whichever file came next.
+  *Fix:* the **whole tasks suite** moved at once — `setup-each-tasks.ts` **and** all 13 of its test
+  files (each declares its own budget, which would otherwise win) from 30s to **60s**, the value 8
+  other setup-each files already use. `setup-each-tasks` is shared only with `jest.tasks10`, so the
+  blast radius is exactly the suites intended.
+  *What it costs:* nothing when tests pass — a timeout only bounds failure. What it buys is that
+  P4–P8 can trust a red result to mean "you broke something".
 - **Environment note (2026-08-22):** long-running background commands in this session are being
   killed after a few minutes regardless of whether they emit output, while foreground calls are
   capped at 10 minutes. The tasks suite needs ~29 minutes. Later phases should therefore run heavy

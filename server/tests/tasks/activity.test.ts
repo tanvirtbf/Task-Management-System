@@ -32,7 +32,7 @@ import type { Role } from "../../src/constants";
  * N/A categories (documented): request body (pure read); conflict / idempotency.
  */
 
-jest.setTimeout(30_000);
+jest.setTimeout(60_000);
 
 const PATH = (id: string) => `/api/v1/tasks/${id}/activity`;
 

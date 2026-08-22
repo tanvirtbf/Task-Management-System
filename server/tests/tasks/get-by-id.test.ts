@@ -30,11 +30,11 @@ import type { Role } from "../../src/constants";
  * (none — only the :id param); conflict/idempotency (a pure read).
  */
 
-jest.setTimeout(30_000);
+jest.setTimeout(60_000);
 
 const PATH = (id: string) => `/api/v1/tasks/${id}`;
 
-/** The exact Appendix-A `Task` wire keys this endpoint returns (47). */
+/** The exact Appendix-A `Task` wire keys this endpoint returns (48). */
 const TASK_KEYS = [
     "id",
     "custom_id",
@@ -91,6 +91,10 @@ const TASK_KEYS = [
     "custom_field_values",
     "archived_at",
     "created_by",
+    // upgrades/025 — who handed the work out. Emitted for EVERY task, never
+    // null: the serializer falls back to `created_by`, so this key is as
+    // reliable as the one above it.
+    "assigned_by",
     "created_at",
     "updated_at",
 ].sort();
@@ -168,7 +172,7 @@ describe("GET /api/v1/tasks/:id", () => {
             expect(res.body.custom_id).toBe("ORD-1042");
         });
 
-        it("shapes the body as exactly the 47 wire fields", async () => {
+        it("shapes the body as exactly the 48 wire fields", async () => {
             const { client, task } = await seed();
 
             const res = await client.get(PATH(task.id));
@@ -216,6 +220,42 @@ describe("GET /api/v1/tasks/:id", () => {
 
             expect(res.status).toBe(200);
             expect(res.body.archived_at).not.toBeNull();
+        });
+
+        // ASSIGNED_BY_PLAN P3 — the wire half of "every task has an Assigned
+        // By". The fallback lives in the serializer, so it is proved here at
+        // the boundary rather than trusted.
+        it("sends assigned_by as the person who handed the work out", async () => {
+            const { ws, user, client, task } = await seed();
+            const manager = await makeUser({ workspaceId: ws.id });
+            await getDb()
+                .update(tasks)
+                .set({ assignedBy: manager.id })
+                .where(eq(tasks.id, task.id));
+
+            const res = await client.get(PATH(task.id));
+
+            expect(res.status).toBe(200);
+            expect(res.body.assigned_by).toBe(manager.id);
+            // …and it is genuinely a different answer from the creator.
+            expect(res.body.created_by).toBe(user.id);
+        });
+
+        it("falls back to created_by rather than send a blank attribution", async () => {
+            // The column is NULL for exactly one reason in practice: the
+            // assigner left and the FK set it null. The screen must still be
+            // able to answer "who gave me this?" — doctrine #2.
+            const { user, client, task } = await seed();
+            await getDb()
+                .update(tasks)
+                .set({ assignedBy: null })
+                .where(eq(tasks.id, task.id));
+
+            const res = await client.get(PATH(task.id));
+
+            expect(res.status).toBe(200);
+            expect(res.body.assigned_by).toBe(user.id);
+            expect(res.body.assigned_by).toBe(res.body.created_by);
         });
     });
 

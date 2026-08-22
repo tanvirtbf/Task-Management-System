@@ -35,7 +35,7 @@ import type { Role } from "../../src/constants";
  * a retried create makes a second task; ETag/If-Match is for PATCH).
  */
 
-jest.setTimeout(30_000);
+jest.setTimeout(60_000);
 
 const PATH = "/api/v1/tasks";
 

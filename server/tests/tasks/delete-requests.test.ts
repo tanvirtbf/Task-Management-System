@@ -31,7 +31,7 @@ import type { Role } from "../../src/constants";
  *      moment cannot both proceed (the second would delete a ghost).
  */
 
-jest.setTimeout(30_000);
+jest.setTimeout(60_000);
 
 const REQUEST = (id: string) => `/api/v1/tasks/${id}/delete-request`;
 const QUEUE = "/api/v1/delete-requests";

@@ -45,11 +45,11 @@ import type { Role } from "../../src/constants";
 // The shared `resetTestDb` beforeEach TRUNCATEs all 31 tables; on a slow disk
 // each TRUNCATE recreates a tablespace file (~200ms), so a reset can take ~6.5s
 // — past Jest's default 5s hook timeout. Raise it so the (correct) reset fits.
-jest.setTimeout(30000);
+jest.setTimeout(60_000);
 
 const PATH = (listId: string) => `/api/v1/lists/${listId}/tasks`;
 
-// ─── the 47 wire fields (API_DESIGN.md §10 + Appendix A) ──────────────────────
+// ─── the 48 wire fields (API_DESIGN.md §10 + Appendix A) ──────────────────────
 const TASK_KEYS = [
     "id",
     "custom_id",
@@ -106,6 +106,10 @@ const TASK_KEYS = [
     "custom_field_values",
     "archived_at",
     "created_by",
+    // upgrades/025 — who handed the work out. Every list row carries it, so
+    // the List/Board/Calendar surfaces can show attribution without a second
+    // request per task.
+    "assigned_by",
     "created_at",
     "updated_at",
 ].sort();
@@ -332,7 +336,7 @@ describe("GET /api/v1/lists/:listId/tasks", () => {
             });
         });
 
-        it("shapes each row as exactly the 47 wire fields", async () => {
+        it("shapes each row as exactly the 48 wire fields", async () => {
             const { client, ctx } = await setup();
             await insertTask(ctx);
 

@@ -14,8 +14,18 @@ import { getPool } from "../../src/db/client";
  * 31 — so the reset stays fast and avoids the server-wide metadata-lock stall a
  * TRUNCATE-all triggers under a concurrent session's DROP/CREATE DATABASE. FK
  * checks are disabled around the loop, so truncation order is irrelevant.
+ *
+ * ASSIGNED_BY_PLAN P3 (2026-08-22): 30s → 60s here AND in all 13 files of this
+ * suite (they each declare their own, which would otherwise win). Three
+ * separate phases each lost a run to the same failure — `assignees.add` (I-1),
+ * `forms/public-submit` (I-2) and `get-by-id` (I-3) — every time the FIRST test
+ * of a file, every time a timeout rather than a wrong answer, every time a test
+ * that takes 1.5–5s once warm. 30s simply does not cover this machine's cold
+ * start on top of a test's own work. Fixing it per-file was losing to the next
+ * file, so the whole suite moves at once, to the value 8 other setup-each files
+ * already use.
  */
-jest.setTimeout(30000);
+jest.setTimeout(60000);
 
 const TABLES = [
     // RBAC (P11): assignments/grants/roles are per-workspace rows and must not

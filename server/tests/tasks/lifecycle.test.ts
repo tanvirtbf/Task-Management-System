@@ -21,7 +21,7 @@ import type { Role } from "../../src/constants";
  * (`?hard=true` → 👑). N/A: pagination, body validation (no body).
  */
 
-jest.setTimeout(30_000);
+jest.setTimeout(60_000);
 
 const ARCHIVE = (id: string) => `/api/v1/tasks/${id}/archive`;
 const UNARCHIVE = (id: string) => `/api/v1/tasks/${id}/unarchive`;

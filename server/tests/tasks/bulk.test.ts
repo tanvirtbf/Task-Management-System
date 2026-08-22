@@ -25,7 +25,7 @@ import type { Role } from "../../src/constants";
  * Tests for `POST /api/v1/tasks/bulk` (§10 #10) — fail-atomic bulk edit.
  */
 
-jest.setTimeout(30_000);
+jest.setTimeout(60_000);
 
 const PATH = "/api/v1/tasks/bulk";
 

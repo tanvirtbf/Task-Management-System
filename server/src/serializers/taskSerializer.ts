@@ -71,6 +71,14 @@ export interface WireTask {
     custom_field_values: Record<string, unknown>;
     archived_at: string | null;
     created_by: string;
+    /**
+     * upgrades/025 — who handed this work out. Never null on the wire even
+     * though the column is nullable: a task with no attribution would be a
+     * blank where the app promises an answer, so `created_by` stands in (it is
+     * what the value was set to at birth anyway, and the only way it becomes
+     * NULL is the assigner being deleted from the workspace).
+     */
+    assigned_by: string;
     created_at: string;
     updated_at: string;
 }
@@ -174,6 +182,10 @@ export const toWireTask = (t: TaskRow, h: TaskHydration): WireTask => ({
     custom_field_values: h.customFieldValues,
     archived_at: toWireTimestamp(t.archivedAt),
     created_by: t.createdBy,
+    // ASSIGNED_BY_PLAN P3 (doctrine #2) — the fallback lives HERE, at the one
+    // boundary every task crosses, rather than in seven surfaces that would
+    // each have to remember it.
+    assigned_by: t.assignedBy ?? t.createdBy,
     created_at: t.createdAt.toISOString(),
     updated_at: t.updatedAt.toISOString(),
 });

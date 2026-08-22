@@ -23,7 +23,7 @@ import { dhakaDayOffset } from "../test-utils/dates";
  * Only the caller's assigned, non-archived, same-workspace tasks count.
  */
 
-jest.setTimeout(30_000);
+jest.setTimeout(60_000);
 
 const PATH = "/api/v1/tasks/my-work";
 

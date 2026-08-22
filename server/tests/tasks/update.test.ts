@@ -28,7 +28,7 @@ import type { Role } from "../../src/constants";
  * `ck_tasks_dates` 500).
  */
 
-jest.setTimeout(30_000);
+jest.setTimeout(60_000);
 
 const PATH = (id: string) => `/api/v1/tasks/${id}`;
 
