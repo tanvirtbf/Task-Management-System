@@ -12,7 +12,8 @@ import {
     Trash2,
     X,
 } from "lucide-react";
-import { statusesApi, listsApi, usersApi, tagsApi, tasksApi } from "../../http/api";
+import { statusesApi, listsApi, tagsApi, tasksApi } from "../../http/api";
+import { useAssignablePeople } from "../../hooks/useAssignablePeople";
 import { PRIORITY_LABELS, type Priority } from "../../types";
 import { useBulkUpdateTasks } from "../../hooks/useTaskMutations";
 import { PriorityFlag } from "../ui/PriorityFlag";
@@ -42,10 +43,10 @@ export const BulkActionToolbar = ({
         queryKey: ["list", listId],
         queryFn: () => listsApi.getById(listId),
     });
-    const { data: users = [] } = useQuery({
-        queryKey: ["users"],
-        queryFn: () => usersApi.list(),
-    });
+    // Active-only and teammates-first, from the one place that decides
+    // both (useAssignablePeople) — this menu, the inline picker, the
+    // create modal and the phone's card menu now agree on the order.
+    const { people } = useAssignablePeople();
     const { data: spaceTags = [] } = useQuery({
         queryKey: ["tags", list?.spaceId],
         queryFn: () =>
@@ -110,14 +111,12 @@ export const BulkActionToolbar = ({
 
     const assigneeMenu = {
         items:
-            users.length > 0
-                ? users
-                      .filter((u) => u.status === "active")
-                      .map((u) => ({
-                          key: u.id,
-                          label: `${u.firstName} ${u.lastName}`,
-                          onClick: () => handleBulkAssignee(u.id),
-                      }))
+            people.length > 0
+                ? people.map((u) => ({
+                      key: u.id,
+                      label: `${u.firstName} ${u.lastName}`,
+                      onClick: () => handleBulkAssignee(u.id),
+                  }))
                 : [{ key: "none", label: "No active users", disabled: true }],
     };
 

@@ -19,7 +19,7 @@ import { InlineStatusEdit } from "../task/InlineStatusEdit";
 import { InlinePriorityEdit } from "../task/InlinePriorityEdit";
 import { InlineAssigneeEdit } from "../task/InlineAssigneeEdit";
 import { InlineDateEdit } from "../task/InlineDateEdit";
-import { useUpdateTask } from "../../hooks/useTaskMutations";
+import { useTaskMembership, useUpdateTask } from "../../hooks/useTaskMutations";
 import { tokens } from "../../theme";
 
 interface ListViewRowProps {
@@ -45,6 +45,13 @@ export const ListViewRow = ({
     const navigate = useNavigate();
     const [, setSearchParams] = useSearchParams();
     const update = useUpdateTask(listId);
+    // Assignees are NOT a patchable field: the API answers a PATCH carrying
+    // them with "assignees are managed via POST /tasks/:id/assignees and
+    // DELETE /tasks/:id/assignees/:userId". This row sent the patch anyway,
+    // so changing an assignee from the list view has never worked — it just
+    // showed that sentence as a toast. setAssignees diffs the list and calls
+    // the two real endpoints, exactly as the task drawer does.
+    const { setAssignees } = useTaskMembership(task);
 
     const {
         attributes,
@@ -310,9 +317,7 @@ export const ListViewRow = ({
             <div style={{ flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
                 <InlineAssigneeEdit
                     assigneeIds={task.assignees}
-                    onChange={(assignees) =>
-                        update.mutate({ id: task.id, patch: { assignees } })
-                    }
+                    onChange={(assignees) => setAssignees.mutate(assignees)}
                 />
             </div>
 

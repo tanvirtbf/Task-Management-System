@@ -4,7 +4,8 @@ import { Input, Segmented } from "antd";
 import { Search as SearchIcon } from "lucide-react";
 import { tasksApi } from "../../http/api";
 import { useStatuses, useUsers } from "../../hooks/useReferenceData";
-import { useUpdateTask } from "../../hooks/useTaskMutations";
+import { useBulkUpdateTasks, useUpdateTask } from "../../hooks/useTaskMutations";
+import { useAssignablePeople } from "../../hooks/useAssignablePeople";
 import { EmptyState } from "../ui/EmptyState";
 import { LoadingState } from "../shared/LoadingState";
 import { CARD_GAP, CARD_HEIGHT, MobileTaskCard } from "./MobileTaskCard";
@@ -76,6 +77,11 @@ export const MobileTaskView = ({
     const { data: statuses = [] } = useStatuses(listId);
     const { data: users = [] } = useUsers();
     const update = useUpdateTask(listId);
+    // Delta-based (assignee_add / assignee_remove), so taking a task never
+    // wipes whoever else is on it. One mutation for the whole list — the menu
+    // is built per row and cannot call a per-task hook.
+    const bulkUpdate = useBulkUpdateTasks(listId);
+    const { me } = useAssignablePeople(false);
 
     const statusById = useMemo(
         () => new Map(statuses.map((s) => [s.id, s])),
@@ -174,13 +180,38 @@ export const MobileTaskView = ({
         if (el) setViewportH(el.clientHeight || 600);
     }, []);
 
-    const statusMenu = (task: Task) => ({
-        items: statuses.map((s) => ({
-            key: s.id,
-            label: s.name,
-            onClick: () => update.mutate({ id: task.id, patch: { statusId: s.id } }),
-        })),
-    });
+    // P4 gave this menu the job drag used to do, but only ever filled it with
+    // statuses. Taking a task is the other thing you want from a list on a
+    // phone, and hunting for yourself in a picker is not it — so it leads.
+    const cardMenu = (task: Task) => {
+        const mine = !!me && task.assignees.includes(me.id);
+        return {
+            items: [
+                ...(me
+                    ? [
+                          {
+                              key: "assign-me",
+                              label: mine ? "Remove me" : "Assign to me",
+                              onClick: () =>
+                                  bulkUpdate.mutate({
+                                      ids: [task.id],
+                                      patch: mine
+                                          ? { assigneeRemove: [me.id] }
+                                          : { assigneeAdd: [me.id] },
+                                  }),
+                          },
+                          { type: "divider" as const, key: "d1" },
+                      ]
+                    : []),
+                ...statuses.map((s) => ({
+                    key: s.id,
+                    label: s.name,
+                    onClick: () =>
+                        update.mutate({ id: task.id, patch: { statusId: s.id } }),
+                })),
+            ],
+        };
+    };
 
     if (isLoading) return <LoadingState label="Loading tasks…" />;
 
@@ -278,7 +309,7 @@ export const MobileTaskView = ({
                                         status={row.status}
                                         members={users}
                                         onOpen={onOpenTask}
-                                        menu={statusMenu(row.task)}
+                                        menu={cardMenu(row.task)}
                                     />
                                 </div>
                             ),

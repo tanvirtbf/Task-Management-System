@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Clock, Timer, Eye, Calendar as CalIcon, Flag, Zap, GitPullRequest, Repeat } from "lucide-react";
 import { useUpdateTask, useTaskMembership } from "../../hooks/useTaskMutations";
 import { InlineAssigneeEdit } from "./InlineAssigneeEdit";
+import { AssignToMeButton } from "./AssignToMeButton";
 import { InlineDateEdit } from "./InlineDateEdit";
 import { InlinePriorityEdit } from "./InlinePriorityEdit";
 import { InlineTagEdit } from "./InlineTagEdit";
@@ -11,7 +12,7 @@ import { InlineReviewerEdit } from "./InlineReviewerEdit";
 import { InlineStoryPointsEdit } from "./InlineStoryPointsEdit";
 import { BugSeverityBadge } from "./BugSeverityBadge";
 import { RecurrenceConfig } from "./RecurrenceConfig";
-import { useQuery } from "@tanstack/react-query";
+import { useIsFetching, useQuery } from "@tanstack/react-query";
 import type { Task } from "../../types";
 import { sprintsApi } from "../../http/api";
 import { useListMap, useTaskTypeMap } from "../../hooks/useReferenceData";
@@ -29,6 +30,13 @@ export const TaskPropertiesPanel = ({ task }: { task: Task }) => {
     const listMap = useListMap();
     const typeMap = useTaskTypeMap();
     const { setAssignees, setTags } = useTaskMembership(task);
+    // Busy until the SCREEN agrees, not just until the write returns. The
+    // mutation settling only means the server is done; this panel still shows
+    // the old assignees until the refetch lands, and a click in that gap
+    // computes its toggle from stale data and does the opposite of what the
+    // button says. Counting the in-flight refetch closes that window.
+    const refetching = useIsFetching({ queryKey: ["task", task.id] });
+    const assigneeWriteBusy = setAssignees.isPending || refetching > 0;
     const list = listMap.get(task.primaryListId);
     const update = useUpdateTask(task.primaryListId);
     const isDev = typeMap.get(task.taskTypeId)?.isDevType ?? false;
@@ -94,11 +102,28 @@ export const TaskPropertiesPanel = ({ task }: { task: Task }) => {
 
             <PropLabel>Assignees</PropLabel>
             <PropValue>
-                <InlineAssigneeEdit
-                    assigneeIds={task.assignees}
-                    taskSpaceId={list?.spaceId ?? null}
-                    onChange={(assignees) => setAssignees.mutate(assignees)}
-                />
+                {/* The picker, and beside it the one-click path for the case
+                    that is most of them: taking the task yourself. Both write
+                    through the same mutation. */}
+                <span
+                    style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 8,
+                        flexWrap: "wrap",
+                    }}
+                >
+                    <InlineAssigneeEdit
+                        assigneeIds={task.assignees}
+                        taskSpaceId={list?.spaceId ?? null}
+                        onChange={(assignees) => setAssignees.mutate(assignees)}
+                    />
+                    <AssignToMeButton
+                        assigneeIds={task.assignees}
+                        onChange={(assignees) => setAssignees.mutate(assignees)}
+                        pending={assigneeWriteBusy}
+                    />
+                </span>
             </PropValue>
 
             {isDev && (

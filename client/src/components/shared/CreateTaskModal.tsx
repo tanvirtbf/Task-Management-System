@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { Modal, Input, Select, DatePicker, App as AntApp } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import dayjs from "dayjs";
-import { listsApi, tasksApi, usersApi } from "../../http/api";
+import { listsApi, tasksApi } from "../../http/api";
+import { useAssignablePeople } from "../../hooks/useAssignablePeople";
 import { useSpaceMap, useTaskTypes } from "../../hooks/useReferenceData";
 import { tokens } from "../../theme";
 import { PRIORITY_LABELS } from "../../types";
@@ -41,10 +42,9 @@ export const CreateTaskModal = ({
         queryFn: () => listsApi.listAll(),
         enabled: !defaultListId,
     });
-    const { data: users = [] } = useQuery({
-        queryKey: ["users"],
-        queryFn: () => usersApi.list(),
-    });
+    // Active-only and teammates-first — same source as every other
+    // assignment surface (useAssignablePeople).
+    const { people } = useAssignablePeople();
 
     useEffect(() => {
         if (defaultListId) setListId(defaultListId);
@@ -185,12 +185,10 @@ export const CreateTaskModal = ({
                         placeholder="Assign to..."
                         showSearch
                         optionFilterProp="label"
-                        options={users
-                            .filter((u) => u.status === "active")
-                            .map((u) => ({
-                                value: u.id,
-                                label: `${u.firstName} ${u.lastName}`,
-                            }))}
+                        options={people.map((u) => ({
+                            value: u.id,
+                            label: `${u.firstName} ${u.lastName}`,
+                        }))}
                     />
                 </div>
             </div>
