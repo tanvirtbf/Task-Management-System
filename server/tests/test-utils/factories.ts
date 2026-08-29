@@ -219,6 +219,11 @@ export interface MakeSpaceInput {
     isPrivate?: boolean;
     position?: number;
     archivedAt?: Date | null;
+    /**
+     * The department head (§ dept review). Also the person a bug report is
+     * routed to when nobody is on call, so eng specs set it.
+     */
+    headUserId?: string | null;
 }
 
 /**
@@ -249,9 +254,16 @@ export const makeSpace = async (input: MakeSpaceInput) => {
     if (input.description !== undefined) values.description = input.description;
     if (input.icon !== undefined) values.icon = input.icon;
     if (input.color !== undefined) values.color = input.color;
+    if (input.headUserId !== undefined) values.headUserId = input.headUserId;
 
     await db.insert(spaces).values(values);
-    return { id, name, workspaceId: input.workspaceId, createdBy };
+    return {
+        id,
+        name,
+        workspaceId: input.workspaceId,
+        createdBy,
+        headUserId: input.headUserId ?? null,
+    };
 };
 
 export interface MakeTaskTypeInput {

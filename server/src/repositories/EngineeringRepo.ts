@@ -135,6 +135,29 @@ export class EngineeringRepo {
         return rows[0]?.engineerId ?? null;
     }
 
+    /**
+     * The head of a space — the person a report belongs to when nobody is on
+     * call.
+     *
+     * Added because the on-call rota is a rota: it runs out. When it had, a
+     * bug report landed in Bug Triage assigned to nobody and notified nobody,
+     * including an S0 'site down'. The Engineering space head is the standing
+     * owner who routes what the pager did not catch.
+     *
+     * `status = 'active'` for the same reason `findCurrentOnCallEngineerId`
+     * filters on it: `create()` rejects an inactive assignee with a 422, which
+     * would turn 'nobody was told' into 'the report could not be filed at all'.
+     */
+    async findSpaceHeadId(spaceId: string): Promise<string | null> {
+        const rows = await this.db
+            .select({ headUserId: spaces.headUserId })
+            .from(spaces)
+            .innerJoin(users, eq(users.id, spaces.headUserId))
+            .where(and(eq(spaces.id, spaceId), eq(users.status, "active")))
+            .limit(1);
+        return rows[0]?.headUserId ?? null;
+    }
+
     // ─── #2 eng-home rollups ─────────────────────────────────────────────────
 
     /** The workspace's active sprint (most recent start), or null. */

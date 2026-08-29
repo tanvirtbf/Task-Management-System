@@ -4,16 +4,34 @@ import { Modal, Input, Select, App as AntApp } from "antd";
 import { Bug } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { engineeringApi } from "../../http/api";
-import { useAuthStore } from "../../stores/auth";
+import { getApiErrorMessage } from "../../http/client";
 import { tokens } from "../../theme";
 
 /**
- * Sidebar button visible to non-engineering teams. Opens a guided form
- * that creates a Bug task in the Engineering → Bug Triage list and
- * auto-assigns to the current on-call engineer.
+ * Sidebar button visible to non-engineering teams. Opens a guided form that
+ * creates a Bug task in the Engineering → Bug Triage list, assigned to the
+ * on-call engineer for an S0/S1 and to the Engineering space head otherwise.
+ * The server decides that; the form just sends the raw fields.
  */
-export const ReportBugButton = () => {
-    const [open, setOpen] = useState(false);
+/**
+ * P3 of MOBILE_REBUILD_PLAN.md added the optional controlled mode. The trigger
+ * lived only in the sidebar, which is not rendered on a phone — and a CS or
+ * warehouse staffer holding a phone is exactly who files bugs. The mobile top
+ * bar opens it from its menu instead. Called with no props (the desktop
+ * sidebar) it behaves exactly as before and renders its own trigger.
+ */
+export const ReportBugButton = ({
+    open: openProp,
+    onOpenChange,
+}: {
+    open?: boolean;
+    onOpenChange?: (next: boolean) => void;
+} = {}) => {
+    const [openLocal, setOpenLocal] = useState(false);
+    const controlled = openProp !== undefined;
+    const open = controlled ? openProp : openLocal;
+    const setOpen = (next: boolean) =>
+        controlled ? onOpenChange?.(next) : setOpenLocal(next);
     const [steps, setSteps] = useState("");
     const [happened, setHappened] = useState("");
     const [expected, setExpected] = useState("");
@@ -21,15 +39,14 @@ export const ReportBugButton = () => {
     const [severity, setSeverity] = useState<"S0" | "S1" | "S2" | "S3">("S2");
     const [url, setUrl] = useState("");
 
-    const user = useAuthStore((s) => s.user);
     const qc = useQueryClient();
     const navigate = useNavigate();
     const { message } = AntApp.useApp();
 
     const create = useMutation({
         // The backend composes the Bug task (Bug Triage list, reported status,
-        // §29 SLA, and S0/S1 on-call auto-assignment) — the FE just sends the
-        // raw fields; title/description are built server-side.
+        // §29 SLA, and the routing that puts it on a real person) — the FE just
+        // sends the raw fields; title/description are built server-side.
         mutationFn: () =>
             engineeringApi.reportBug({
                 steps,
@@ -43,7 +60,17 @@ export const ReportBugButton = () => {
             qc.invalidateQueries({
                 queryKey: ["tasks-by-list", task.primaryListId],
             });
-            message.success(`Bug ${task.customId ?? task.id} created`);
+            // "created" left the reporter wondering whether anyone would see
+            // it — and for a long time nobody did. Name the destination.
+            // `task.id` is a 24-char internal handle — dumping it in a toast
+            // reads as an error code, and custom_id is null on tasks the app
+            // creates today. The user is being navigated to the task anyway, so
+            // when there is no friendly id, name none.
+            message.success(
+                task.customId
+                    ? `Bug ${task.customId} sent to Engineering`
+                    : "Bug sent to Engineering",
+            );
             setOpen(false);
             setSteps("");
             setHappened("");
@@ -51,14 +78,19 @@ export const ReportBugButton = () => {
             setUrl("");
             navigate(`/t/${task.customId ?? task.id}`);
         },
-        onError: (err) =>
-            message.error(
-                err instanceof Error ? err.message : "Could not create bug",
-            ),
+        // An AxiosError IS an Error, so the old `err.message` here showed
+        // "Request failed with status code 409" — while the server was saying
+        // something the reporter could act on, e.g. 'This workspace has no
+        // "Bug Triage" list; create one before reporting bugs'. A person who
+        // hits that reasonably concludes the feature is broken and stops
+        // filing bugs. getApiErrorMessage reads the `{error:{code,message}}`
+        // envelope and is what the rest of the app already uses.
+        onError: (err) => message.error(getApiErrorMessage(err)),
     });
 
     return (
         <>
+            {!controlled && (
             <button
                 onClick={() => setOpen(true)}
                 style={{
@@ -90,6 +122,7 @@ export const ReportBugButton = () => {
                 />
                 Report a bug
             </button>
+            )}
 
             <Modal
                 open={open}
@@ -177,11 +210,13 @@ export const ReportBugButton = () => {
                                     value={team}
                                     onChange={setTeam}
                                     style={{ width: "100%" }}
-                                    placeholder={
-                                        user
-                                            ? `Auto: ${user.firstName}'s team`
-                                            : "Select team"
-                                    }
+                                    // This said `Auto: ${user.firstName}'s
+                                    // team`, but nothing derives a team from
+                                    // the user — leaving it blank submits
+                                    // "internal", so a CS agent's bug arrived
+                                    // in triage labelled as an internal one.
+                                    // Say what actually happens instead.
+                                    placeholder="Internal (default)"
                                     options={[
                                         { value: "ops", label: "Operations" },
                                         { value: "cs", label: "Customer Support" },

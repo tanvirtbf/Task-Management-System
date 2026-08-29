@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../src/db/client";
-import { taskActivity, notifications, lists } from "../../src/db/schema";
+import { taskActivity, notifications, lists, spaces } from "../../src/db/schema";
 import {
     makeUser,
     makeLoggedInClient,
@@ -60,9 +60,22 @@ interface EngWorkspace {
     ownerId: string;
     bugTypeId: string;
     bugListId: string;
+    spaceId: string;
     statusId: string;
     client: LoggedInClient;
 }
+
+/**
+ * Give the Bug Triage space a head. Done after the fact rather than through
+ * `makeSpace({ headUserId })` because the head has to be a user IN this
+ * workspace, and the workspace does not exist until the helper below has run.
+ */
+const setSpaceHead = async (spaceId: string, userId: string) => {
+    await getDb()
+        .update(spaces)
+        .set({ headUserId: userId })
+        .where(eq(spaces.id, spaceId));
+};
 
 /** A workspace wired for §22: a "Bug" task type + a "Bug Triage" list + status. */
 const makeEngWorkspace = async (
@@ -93,6 +106,7 @@ const makeEngWorkspace = async (
         ownerId: owner.id,
         bugTypeId: bugType.id,
         bugListId: bugList.id,
+        spaceId: space.id,
         statusId: status.id,
         client,
     };
@@ -216,7 +230,18 @@ describe("POST /api/v1/eng/report-bug", () => {
         });
     });
 
-    describe("On-call auto-assignment (S0/S1 only)", () => {
+    /**
+     * Routing. These specs used to assert that a report was assigned ONLY when
+     * it was an S0/S1 and somebody was on call — which is exactly the bug a CS
+     * agent hit: an S2 landed in Bug Triage owned by nobody and notified
+     * nobody, and once the rota lapsed a site-down S0 did the same. Assignment
+     * is what sends the in-app notification and the email, so a report assigned
+     * to nobody has not reached the software team at all.
+     *
+     * The contract now: the pager takes S0/S1, the Engineering space head takes
+     * everything else AND anything the pager missed.
+     */
+    describe("Routing — a report reaches a person", () => {
         it("assigns the current on-call engineer for S0", async () => {
             const eng = await makeEngWorkspace();
             const shift = await makeOnCallShift({
@@ -242,17 +267,76 @@ describe("POST /api/v1/eng/report-bug", () => {
             expect(res.body.assignees).toEqual([shift.engineerId]);
         });
 
-        it("does NOT auto-assign for S2 (low severity)", async () => {
+        it("does not page for S2 — the space head owns it instead", async () => {
             const eng = await makeEngWorkspace();
-            await makeOnCallShift({ workspaceId: eng.workspaceId });
+            const head = await makeUser({ workspaceId: eng.workspaceId });
+            await setSpaceHead(eng.spaceId, head.id);
+            const shift = await makeOnCallShift({
+                workspaceId: eng.workspaceId,
+            });
             const res = await eng.client
                 .post(ENDPOINT)
                 .send(validBody({ severity: "S2" }));
 
+            expect(res.status).toBe(201);
+            // nobody is woken up for an S2 …
+            expect(res.body.assignees).not.toContain(shift.engineerId);
+            // … but the report is still somebody's job.
+            expect(res.body.assignees).toEqual([head.id]);
+        });
+
+        /**
+         * The production failure, verbatim: the last on-call shift ended on a
+         * Friday, nobody filled the next week, and every report after that —
+         * a site-down S0 included — was filed to nobody.
+         */
+        it("routes an S0 to the space head when the rota has lapsed", async () => {
+            const eng = await makeEngWorkspace();
+            const head = await makeUser({ workspaceId: eng.workspaceId });
+            await setSpaceHead(eng.spaceId, head.id);
+            const res = await eng.client
+                .post(ENDPOINT)
+                .send(validBody({ severity: "S0" }));
+
+            expect(res.status).toBe(201);
+            expect(res.body.assignees).toEqual([head.id]);
+        });
+
+        it("prefers the on-call engineer over the head for a page", async () => {
+            const eng = await makeEngWorkspace();
+            const head = await makeUser({ workspaceId: eng.workspaceId });
+            await setSpaceHead(eng.spaceId, head.id);
+            const shift = await makeOnCallShift({
+                workspaceId: eng.workspaceId,
+            });
+            const res = await eng.client
+                .post(ENDPOINT)
+                .send(validBody({ severity: "S1" }));
+
+            expect(res.body.assignees).toEqual([shift.engineerId]);
+        });
+
+        it("does NOT assign a DEACTIVATED head (and does not 422)", async () => {
+            const eng = await makeEngWorkspace();
+            const goneHead = await makeUser({
+                workspaceId: eng.workspaceId,
+                status: "deactivated",
+            });
+            await setSpaceHead(eng.spaceId, goneHead.id);
+            const res = await eng.client
+                .post(ENDPOINT)
+                .send(validBody({ severity: "S2" }));
+
+            expect(res.status).toBe(201);
             expect(res.body.assignees).toHaveLength(0);
         });
 
-        it("does NOT auto-assign when nobody is on call", async () => {
+        /**
+         * The one case that still reaches nobody: no on-call engineer and no
+         * active head. Filing it anyway beats losing it, and the service logs
+         * `eng.report_bug.unrouted` so the silence is visible.
+         */
+        it("still files the report when there is neither an on-call nor a head", async () => {
             const eng = await makeEngWorkspace();
             const res = await eng.client
                 .post(ENDPOINT)
@@ -262,6 +346,8 @@ describe("POST /api/v1/eng/report-bug", () => {
             expect(res.body.assignees).toHaveLength(0);
         });
 
+        // No head in the two workspaces below, so a failed pager lookup leaves
+        // the report with nobody — the fallback's absence, not its refusal.
         it("does NOT assign a DEACTIVATED on-call engineer (and does not 422)", async () => {
             const eng = await makeEngWorkspace();
             const deactivated = await makeUser({
