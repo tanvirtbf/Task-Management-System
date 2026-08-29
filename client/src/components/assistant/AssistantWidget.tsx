@@ -54,6 +54,7 @@ export const AssistantWidget = () => {
     const sendMessage = useChatStore((s) => s.sendMessage);
     const error = useChatStore((s) => s.error);
     const retryLast = useChatStore((s) => s.retryLast);
+    const claimFor = useChatStore((s) => s.claimFor);
     const navigate = useNavigate();
     const { data: spaces = [] } = useSpaces();
     const { holds, ready } = usePermissions();
@@ -80,6 +81,16 @@ export const AssistantWidget = () => {
             }),
         [navigate, close],
     );
+
+    // The persisted thread belongs to whoever wrote it. Signing out already
+    // scrubs it, but almost nobody signs out — they close the tab, and on a
+    // shared computer the next person would have rehydrated the previous
+    // person's questions. Checking on every identity change is what covers
+    // that. Safe to run after paint: `isOpen` is not persisted, so the panel
+    // is always closed on load and nothing has been shown yet.
+    useEffect(() => {
+        claimFor(user?.id ?? null);
+    }, [user?.id, claimFor]);
 
     // Keep the view pinned to the latest message as content streams in.
     useEffect(() => {
