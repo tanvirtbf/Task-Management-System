@@ -70,7 +70,7 @@ const EngineeringHomePage = () => {
                 >
                     <Code size={20} strokeWidth={1.75} />
                 </div>
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
                     <h1
                         style={{
                             margin: 0,

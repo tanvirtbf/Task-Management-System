@@ -4,14 +4,27 @@
     <meta charset="UTF-8" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
     />
     <meta name="theme-color" content="#4F46E5" />
     <meta
       name="description"
       content="Internal task management for BeautyBooth — orders, complaints, listings, campaigns, and inventory in one place."
     />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <!-- iOS reads THIS, never the manifest icons. Without it, Add to Home
+         Screen produced a screenshot of the login page as the app icon — and
+         A2HS is the only way iOS delivers web push, which is why the manifest
+         exists at all. -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <!-- Required for Web Push on iOS: Apple delivers push only to a site the
          user has installed via Share → Add to Home Screen (iOS 16.4+), and
          "installable" means a manifest with a standalone display mode. -->

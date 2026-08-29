@@ -45,6 +45,7 @@ import { PostmortemChecklist } from "./PostmortemChecklist";
 import { SLABadge } from "./SLABadge";
 import { CustomFieldsList } from "../custom-field/CustomFieldsList";
 import { useUpdateTask } from "../../hooks/useTaskMutations";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import { useCanEditTask } from "../../hooks/useCanEditTask";
 import { usePermissions } from "../../hooks/usePermissions";
 import { useAuthStore } from "../../stores/auth";
@@ -62,6 +63,7 @@ export const TaskDetailDrawer = ({
     listId,
     onClose,
 }: TaskDetailDrawerProps) => {
+    const isMobile = useIsMobile();
     const navigate = useNavigate();
     const qc = useQueryClient();
     const { message } = AntApp.useApp();
@@ -336,12 +338,17 @@ export const TaskDetailDrawer = ({
             open={!!taskId}
             onClose={onClose}
             size="large"
-            placement="right"
+            /* D7 — a phone gets a bottom sheet: it is the native shape for
+               "more detail about this thing", it leaves a strip of the list
+               visible above so the user keeps their place, and the mask above
+               it is a second way out besides the close button. Desktop keeps
+               the right-hand drawer it has always had. */
+            placement={isMobile ? "bottom" : "right"}
             closeIcon={null}
             styles={{
                 body: { padding: 0 },
                 header: { display: "none" },
-                wrapper: { width: 720 },
+                wrapper: isMobile ? { height: "92svh" } : { width: 720 },
             }}
             destroyOnHidden
         >

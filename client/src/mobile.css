@@ -1,0 +1,273 @@
+/* ============================================================================
+   mobile.css — P1 of MOBILE_REBUILD_PLAN.md
+   ============================================================================
+
+   Every rule in this file lives inside `@media (max-width: 767px)` (D1), so the
+   desktop app cannot change. `e2e/desktop-guard.pw.ts` proves that on every run:
+   if a rule escapes the media query, the guard goes red.
+
+   Two conventions worth knowing before editing:
+
+   1. `!important` is deliberate here, not laziness. antd v6 injects its
+      component CSS into <head> at runtime, i.e. AFTER this bundled stylesheet,
+      so an equal-specificity rule loses the cascade. This file is an override
+      layer for one viewport range; `!important` is the honest tool for that.
+
+   2. Attribute selectors like `[style*="minmax(320px"]` exist because 1,319 of
+      this app's styles are inline `style={{...}}` objects with no class to hook.
+      A stylesheet rule with `!important` does beat an inline style, so this is
+      the only way to reach them without editing 140 components. When a phase
+      rewrites one of those components properly, delete the matching rule here.
+
+   What P1 deliberately does NOT do:
+   - It does not touch `theme.ts`. That object is handed to ConfigProvider once
+     and cannot be media-queried, so raising `controlHeight` there would make
+     every control taller on desktop too (W2 in the plan).
+   - It does not enlarge the sidebar rail, the topbar buttons or the task
+     drawer's chrome. P3 deletes the rail and P4 rebuilds the drawer; growing
+     them here would be churn. That is why P1's gate is A4a (antd controls),
+     not A4 (every control) — see the plan's P1 execution record.
+   - It does not trim page padding. The worst offenders are the public form
+     (P6) and Home/Settings (P3/P5), all of which get rebuilt; a blanket
+     `[style*="padding: 24px"]` rule would be a broad hack for little gain.
+   ============================================================================ */
+
+@media (max-width: 767px) {
+    /* ── A5 · iOS auto-zoom ────────────────────────────────────────────────
+       Safari zooms the whole page in when a focused field computes below 16px,
+       and never zooms back out. Every field in this app is 14px except the
+       login form, so today tapping any input jerks the page and the user has to
+       pinch back. This block was verified live before being written. */
+    input,
+    textarea,
+    select,
+    .ant-input,
+    .ant-input-affix-wrapper input,
+    .ant-input-number-input,
+    .ant-select-selection-search-input,
+    .ant-select-selection-item,
+    .ant-select-selection-placeholder,
+    .ant-picker-input > input {
+        font-size: 16px !important;
+    }
+
+    /* ── A4a · antd controls reach the 44px touch minimum ──────────────────
+       Apple asks for 44pt, Android for 48dp. These are min-heights, not fixed
+       heights, so nothing that is already large shrinks. */
+    .ant-btn {
+        min-height: 44px !important;
+    }
+    .ant-btn.ant-btn-icon-only {
+        min-width: 44px !important;
+    }
+    .ant-input,
+    .ant-input-affix-wrapper,
+    .ant-picker {
+        min-height: 44px !important;
+    }
+    .ant-select-selector {
+        min-height: 44px !important;
+    }
+    /* antd sets an explicit height on single-selects, which beats min-height. */
+    .ant-select-single .ant-select-selector {
+        height: 44px !important;
+    }
+    .ant-select-single .ant-select-selector .ant-select-selection-search-input {
+        height: 42px !important;
+    }
+    .ant-select-single .ant-select-selector::after,
+    .ant-select-single .ant-select-selector .ant-select-selection-item,
+    .ant-select-single .ant-select-selector .ant-select-selection-placeholder {
+        line-height: 42px !important;
+    }
+
+    /* Menu and dropdown rows are overlays, so growing them costs no layout and
+       buys a lot — these are the rows people actually aim at on a phone. */
+    .ant-dropdown-menu-item,
+    .ant-menu-item,
+    .ant-select-item-option,
+    .ant-picker-cell {
+        min-height: 44px !important;
+    }
+    .ant-dropdown-menu-item,
+    .ant-menu-item,
+    .ant-select-item-option {
+        display: flex !important;
+        align-items: center !important;
+    }
+
+    /* ── D5 · no drag on a phone ───────────────────────────────────────────
+       dnd-kit fires PointerSensor only and the cards never set `touch-action`,
+       so a drag either loses the gesture to the browser or steals a tap. The
+       plan removes mobile drag outright (P7); hiding the handle now stops the
+       app advertising an affordance that cannot work. Every drag action already
+       has a non-drag path: tap opens the task, status changes through the
+       status control, scheduling through the due-date field. */
+    .row-drag-handle {
+        display: none !important;
+    }
+
+    /* ── Touch feedback ────────────────────────────────────────────────────
+       The app simulates :hover with 53 JS onMouseEnter handlers across 36
+       files. On touch those either never fire or fire on tap and stick on, so
+       today nothing gives feedback when you press it. One rule fixes the feel
+       until the components are rebuilt. */
+    button,
+    a,
+    [role="button"],
+    .ant-btn {
+        -webkit-tap-highlight-color: transparent;
+    }
+    button:active,
+    a:active,
+    [role="button"]:active,
+    .ant-btn:active,
+    .ant-dropdown-menu-item:active,
+    .ant-select-item-option:active {
+        opacity: 0.6;
+    }
+
+    /* ── Grids whose track minimum is wider than a phone ───────────────────
+       `repeat(auto-fill, minmax(320px, 1fr))` inside a ~300px column cannot
+       fit even one track, so the grid overflows its container. Only the four
+       values that actually overflow are listed; smaller tracks (the 140px
+       attachment thumbnails, the 200px KPI tiles) still reflow correctly and
+       are left alone. Sources: Reports 300 · Forms 320 · Templates 320 ·
+       Sprint 280 · Space 280 · Import/Export 240. */
+    [style*="minmax(240px"],
+    [style*="minmax(280px"],
+    [style*="minmax(300px"],
+    [style*="minmax(320px"] {
+        grid-template-columns: 1fr !important;
+    }
+
+    /* ── Safe area ─────────────────────────────────────────────────────────
+       index.html already opts into `viewport-fit=cover`, which pushes content
+       under the notch and the home indicator, and nothing in the app has ever
+       compensated. These custom properties are the shared hook; P3 uses them
+       for the bottom bar. The assistant is handled here because it is the one
+       fixed element that already carries a class. */
+    :root {
+        --safe-top: env(safe-area-inset-top, 0px);
+        --safe-bottom: env(safe-area-inset-bottom, 0px);
+        --safe-left: env(safe-area-inset-left, 0px);
+        --safe-right: env(safe-area-inset-right, 0px);
+    }
+    .asst-fab {
+        bottom: calc(16px + var(--safe-bottom)) !important;
+    }
+    .asst-panel {
+        padding-bottom: var(--safe-bottom) !important;
+    }
+
+
+    /* ── The assistant keeps its own button on a phone ─────────────────────
+       P3 retired the floating button and made the assistant a tab, reasoning
+       that two doors to one room is a smell. In use that cost more than it
+       saved: the purple robot button is HOW people recognise the assistant,
+       and as one grey outline among five tabs it stopped reading as anything
+       in particular.
+
+       So it is back — smaller than the 56px it is on a desktop, and sitting
+       ABOVE the tab bar rather than on top of it. The tab slot it used to
+       occupy is Search now, so there is still exactly one door to the
+       assistant.
+
+       The onboarding nudge returns with it: that Bangla line is the thing that
+       actually tells a first-time user what the button is for. Dismissible,
+       shown once. */
+    .asst-fab {
+        width: 46px !important;
+        height: 46px !important;
+        right: 12px !important;
+        /* clear of the 56px tab bar and the home indicator */
+        bottom: calc(56px + var(--safe-bottom, 0px) + 10px) !important;
+        box-shadow: 0 6px 16px rgba(79, 70, 229, 0.42) !important;
+    }
+    .asst-fab svg {
+        width: 22px !important;
+        height: 22px !important;
+    }
+    .asst-nudge {
+        right: 12px !important;
+        bottom: calc(56px + var(--safe-bottom, 0px) + 64px) !important;
+        max-width: calc(100vw - 24px) !important;
+    }
+    /* The nudge is the one thing on this screen a thumb might want to
+       dismiss without meaning to open the assistant, so its target has to
+       be a real one — it was 30px wide (A4). */
+    .asst-nudge__x {
+        min-width: 44px !important;
+        padding: 0 12px !important;
+    }
+
+    /* Lifted clear of both the tab bar and the assistant button, so a
+       transient pill never lands on the one control that is always there. */
+    .bb-bottom-floating {
+        bottom: calc(120px + var(--safe-bottom, 0px)) !important;
+        z-index: 1029 !important; /* under the bar at 1030, above content */
+    }
+
+    /* The assistant sheet is a tab destination now, so it owns the whole
+       screen including the space the bar occupies. */
+    .asst-panel {
+        z-index: 1045 !important;
+    }
+
+    /* antd puts drawers and modals at z-index 1000 — under the 1030 tab bar,
+       so the bar floated on top of an open task sheet. D6 assumed antd used the
+       app's own modal token; it does not. Lift antd's overlay layers to that
+       token (theme.ts zIndex.modal = 1040) so the intended order holds:
+       content < bar < drawers and modals < dropdowns < toasts. */
+    .ant-drawer,
+    .ant-modal-root,
+    .ant-modal-wrap,
+    .ant-modal-mask {
+        z-index: 1040 !important;
+    }
+
+    /* ── P4 · the task sheet is operated by thumb ──────────────────────────
+       The scan measured 24 of 24 controls in the task drawer under 44px, the
+       smallest 16×16 — a screen you can read but cannot reliably operate. The
+       drawer is a bottom sheet on a phone now (D7), and its chrome is sized for
+       a thumb here rather than in each of the dozen components that render into
+       it. min-* only, so nothing already large is shrunk. */
+    .ant-drawer button,
+    .ant-drawer [role="button"],
+    .ant-drawer a[href] {
+        min-width: 44px;
+        min-height: 44px;
+    }
+
+    /* The top bar shows the breadcrumb as the page title, and its segments are
+       links. At 19px tall, sitting right beside the back button, they were the
+       last two mis-tappable controls on the task screen. Inline elements ignore
+       min-height, hence inline-flex. */
+    .mobile-title a {
+        display: inline-flex;
+        align-items: center;
+        min-height: 44px;
+    }
+
+    /* ── P7 · date pickers stay on the screen ──────────────────────────────
+       The 652px viewport blowout the scan measured came from the two-panel
+       RangePicker in the list filter, which a phone no longer reaches at all
+       (P4 replaced that toolbar). What is left are single-panel pickers in the
+       task sheet and the create sheet — 330px in a 360px viewport, which antd
+       then aligns to the trigger and can push a couple of pixels past the edge.
+       Giving the panel a little less width leaves antd room to place it. */
+    .ant-picker-dropdown {
+        max-width: calc(100vw - 32px) !important;
+    }
+    .ant-picker-panel-container,
+    .ant-picker-panel {
+        max-width: 100% !important;
+    }
+
+    /* ── Text should not be re-inflated by the browser ─────────────────────
+       Mobile Safari and Chrome resize text in landscape unless told not to. */
+    html {
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
+    }
+}

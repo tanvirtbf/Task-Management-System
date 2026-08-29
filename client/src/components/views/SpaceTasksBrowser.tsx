@@ -178,7 +178,11 @@ export const SpaceTasksBrowser = ({ lists }: SpaceTasksBrowserProps) => {
                 background: tokens.colors.bgSurface,
                 border: `1px solid ${tokens.colors.border}`,
                 borderRadius: tokens.radius.lg,
-                overflow: "hidden",
+                // P2: `overflow: "hidden"` here deleted anything wider than the card,
+                // with no scrollbar and no signal. Only the x axis changes; the y axis
+                // stays hidden so the rounded corners still clip.
+                overflowX: "auto",
+                overflowY: "hidden",
             }}
         >
             {/* Toolbar */}

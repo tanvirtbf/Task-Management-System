@@ -1,4 +1,5 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import {
     User,
     Settings as SettingsIcon,
@@ -115,6 +116,7 @@ const NAV: NavGroup[] = [
 
 export const SettingsLayout = () => {
     const location = useLocation();
+    const isMobile = useIsMobile();
     const { holds, ready } = usePermissions();
     // Until the permission set lands, show only the ungated items rather than
     // flashing links that then vanish.
@@ -124,24 +126,44 @@ export const SettingsLayout = () => {
     })).filter((g) => g.items.length > 0);
     return (
         <div
-            style={{
-                display: "grid",
-                gridTemplateColumns: "260px 1fr",
-                minHeight: "calc(100vh - 48px)",
-                background: tokens.colors.bgPage,
-            }}
+            style={
+                isMobile
+                    ? { display: "block", background: tokens.colors.bgPage }
+                    : {
+                          display: "grid",
+                          gridTemplateColumns: "260px 1fr",
+                          minHeight: "calc(100vh - 48px)",
+                          background: tokens.colors.bgPage,
+                      }
+            }
         >
             <aside
-                style={{
-                    background: tokens.colors.bgSurface,
-                    borderRight: `1px solid ${tokens.colors.border}`,
-                    padding: `${tokens.spacing[5]}px ${tokens.spacing[3]}px`,
-                    overflow: "auto",
-                    position: "sticky",
-                    top: 0,
-                    height: "calc(100vh - 48px)",
-                }}
+                style={
+                    isMobile
+                        ? {
+                              background: tokens.colors.bgSurface,
+                              borderBottom: `1px solid ${tokens.colors.border}`,
+                              padding: `${tokens.spacing[2]}px ${tokens.spacing[3]}px`,
+                              display: "flex",
+                              gap: tokens.spacing[2],
+                              overflowX: "auto",
+                              overflowY: "hidden",
+                              position: "sticky",
+                              top: 0,
+                              zIndex: 1,
+                          }
+                        : {
+                              background: tokens.colors.bgSurface,
+                              borderRight: `1px solid ${tokens.colors.border}`,
+                              padding: `${tokens.spacing[5]}px ${tokens.spacing[3]}px`,
+                              overflow: "auto",
+                              position: "sticky",
+                              top: 0,
+                              height: "calc(100vh - 48px)",
+                          }
+                }
             >
+                {!isMobile && (
                 <h2
                     style={{
                         margin: 0,
@@ -154,11 +176,17 @@ export const SettingsLayout = () => {
                 >
                     Settings
                 </h2>
+                )}
                 {visible.map((group) => (
                     <div
                         key={group.title}
-                        style={{ marginBottom: tokens.spacing[4] }}
+                        style={
+                            isMobile
+                                ? { display: "contents" }
+                                : { marginBottom: tokens.spacing[4] }
+                        }
                     >
+                        {!isMobile && (
                         <div
                             style={{
                                 fontSize: 11,
@@ -172,6 +200,7 @@ export const SettingsLayout = () => {
                         >
                             {group.title}
                         </div>
+                        )}
                         {group.items.map((item) => {
                             const active = location.pathname.startsWith(
                                 item.to,
@@ -185,7 +214,13 @@ export const SettingsLayout = () => {
                                         display: "flex",
                                         alignItems: "center",
                                         gap: 8,
-                                        padding: "6px 10px",
+                                        padding: isMobile
+                                            ? "10px 14px"
+                                            : "6px 10px",
+                                        flexShrink: isMobile ? 0 : undefined,
+                                        whiteSpace: isMobile
+                                            ? "nowrap"
+                                            : undefined,
                                         borderRadius: tokens.radius.md,
                                         fontSize:
                                             tokens.typography.fontSize.sm,
@@ -211,11 +246,15 @@ export const SettingsLayout = () => {
             </aside>
 
             <main
-                style={{
-                    padding: tokens.spacing[6],
-                    overflow: "auto",
-                    maxHeight: "calc(100vh - 48px)",
-                }}
+                style={
+                    isMobile
+                        ? { padding: tokens.spacing[4] }
+                        : {
+                              padding: tokens.spacing[6],
+                              overflow: "auto",
+                              maxHeight: "calc(100vh - 48px)",
+                          }
+                }
             >
                 <div style={{ maxWidth: 880, margin: "0 auto" }}>
                     <Outlet />

@@ -64,7 +64,11 @@ test("login succeeds + session survives a reload", async ({ page }) => {
     expect(new URL(page.url()).pathname).not.toContain("login");
 
     await page.reload();
-    await page.waitForLoadState("networkidle").catch(() => {});
+    // networkidle never settles here: the app holds an SSE inbox stream open for
+    // as long as it is mounted, so an unbounded wait burns the whole test
+    // timeout. Same bounded pattern this file already uses below.
+    await page.waitForLoadState("networkidle", { timeout: 1500 }).catch(() => {});
+    await page.waitForTimeout(1500);
     expect(
         new URL(page.url()).pathname,
         "should stay authenticated after reload",

@@ -14,6 +14,7 @@ import {
 import { searchApi } from "../../http/api";
 import { useListMap } from "../../hooks/useReferenceData";
 import { tokens } from "../../theme";
+import { useIsMobile } from "../../hooks/useIsMobile";
 
 type Kind = "task" | "list" | "space" | "note" | "comment" | "user";
 
@@ -38,6 +39,7 @@ const KIND_META: Record<
 };
 
 const SearchPage = () => {
+    const isMobile = useIsMobile();
     const navigate = useNavigate();
     const [params, setParams] = useSearchParams();
     const [query, setQuery] = useState(params.get("q") ?? "");
@@ -130,7 +132,7 @@ const SearchPage = () => {
                             fontSize: tokens.typography.fontSize.sm,
                         }}
                     >
-                        Across tasks, lists, notes, comments, and people. Press{" "}
+                        Across tasks, lists, notes, comments, and people.{isMobile ? null : <>{" "}Press{" "}
                         <kbd
                             style={{
                                 background: tokens.colors.bgMuted,
@@ -144,7 +146,7 @@ const SearchPage = () => {
                         >
                             ⌘K
                         </kbd>{" "}
-                        anywhere to open the command palette.
+                        anywhere to open the command palette.</>}
                     </p>
                 </div>
             </div>

@@ -1,8 +1,12 @@
 /* ============================================================
-   Fonts — loaded from Google Fonts CDN
-   Inter for UI, JetBrains Mono for numbers/IDs/code
+   Fonts
+   P8 moved the Google Fonts request out of this file and into a <link> in
+   index.html, with preconnect hints. An @import inside a BUNDLED stylesheet is
+   discovered only after that stylesheet has downloaded and parsed, so it cost a
+   serial round trip on every first load — the worst place for one on a phone.
+   The next step, when someone wants it, is self-hosting the woff2 files and
+   dropping the third-party request entirely.
    ============================================================ */
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap");
 
 /* ============================================================
    CSS variables — synced with src/theme.ts tokens

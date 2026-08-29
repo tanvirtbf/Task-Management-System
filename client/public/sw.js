@@ -2,11 +2,25 @@
 /**
  * BeautyBooth Tasks — service worker (Web Push receiver only).
  *
- * Deliberately TINY: no caching, no offline shell, and crucially NO `fetch`
- * handler — the SPA's network behaviour is exactly what it was before this
- * file existed, so a stale worker can never serve a stale app. Its only job is
- * to let the browser deliver notifications while the app tab is CLOSED, and to
- * route the click back into the app.
+ * Two jobs: receive Web Push while the app tab is CLOSED, and keep the app
+ * shell available offline (P8 of MOBILE_REBUILD_PLAN.md).
+ *
+ * The original file had NO `fetch` handler, on the reasoning that a stale
+ * worker can never serve a stale app. That reasoning is sound and is why the
+ * handler below is written the way it is:
+ *
+ *   /api/*        never cached, never intercepted. Stale task data is worse
+ *                 than no task data, and D8 chose a read-cache of the SHELL,
+ *                 not of the content.
+ *   navigations   network first, cache only as the offline fallback — so a
+ *                 deploy is picked up on the next online load, and a stale
+ *                 shell can never reference chunks that no longer exist.
+ *   /assets/*     cache first. These filenames are content-hashed, so a hit is
+ *                 by definition the right bytes.
+ *
+ * Chrome also requires a fetch handler before it will treat the app as
+ * installable, which is why "no offline story" and "cannot be installed" were
+ * the same bug.
  *
  * Payload contract (server `PushService.PushPayload`):
  *   { title, body, url, tag }
@@ -18,14 +32,81 @@
  * in dev and by nginx from client/dist in production.
  */
 
+const SHELL_CACHE = "bb-shell-v1";
+const SHELL_URLS = [
+    "/",
+    "/icon.svg",
+    "/icon-192.png",
+    "/apple-touch-icon.png",
+    "/manifest.webmanifest",
+];
+
 // A new worker version takes over immediately instead of waiting for every
 // tab to close — otherwise a payload-shape change could sit unused for days.
-self.addEventListener("install", () => {
-    self.skipWaiting();
+self.addEventListener("install", (event) => {
+    event.waitUntil(
+        caches
+            .open(SHELL_CACHE)
+            // One bad URL must not fail the whole install, so each is added
+            // on its own and allowed to fail.
+            .then((c) => Promise.all(SHELL_URLS.map((u) => c.add(u).catch(() => {}))))
+            .then(() => self.skipWaiting()),
+    );
 });
 
 self.addEventListener("activate", (event) => {
-    event.waitUntil(self.clients.claim());
+    event.waitUntil(
+        (async () => {
+            const names = await caches.keys();
+            await Promise.all(
+                names.filter((n) => n !== SHELL_CACHE).map((n) => caches.delete(n)),
+            );
+            await self.clients.claim();
+        })(),
+    );
+});
+
+self.addEventListener("fetch", (event) => {
+    const { request } = event;
+    if (request.method !== "GET") return;
+    const url = new URL(request.url);
+    if (url.origin !== self.location.origin) return; // fonts etc. — leave alone
+    if (url.pathname.startsWith("/api/")) return; // never cache task data
+    if (url.pathname === "/sw.js") return;
+
+    // Content-hashed bundles: a cache hit is the right bytes by definition.
+    if (url.pathname.startsWith("/assets/")) {
+        event.respondWith(
+            caches.match(request).then(
+                (hit) =>
+                    hit ||
+                    fetch(request).then((res) => {
+                        if (res.ok) {
+                            const copy = res.clone();
+                            caches.open(SHELL_CACHE).then((c) => c.put(request, copy));
+                        }
+                        return res;
+                    }),
+            ),
+        );
+        return;
+    }
+
+    // Everything else — the HTML shell included — is network first, so a deploy
+    // lands on the next online load and the cache is purely an offline safety net.
+    if (request.mode === "navigate" || url.pathname === "/") {
+        event.respondWith(
+            fetch(request)
+                .then((res) => {
+                    if (res.ok) {
+                        const copy = res.clone();
+                        caches.open(SHELL_CACHE).then((c) => c.put("/", copy));
+                    }
+                    return res;
+                })
+                .catch(async () => (await caches.match("/")) || Response.error()),
+        );
+    }
 });
 
 self.addEventListener("push", (event) => {

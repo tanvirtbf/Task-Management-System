@@ -1,0 +1,178 @@
+{
+  "A1@390x844": {
+    "renderedPx": 285,
+    "fontSize": 15,
+    "chars": 36
+  },
+  "A2@390x844": {
+    "taps": [
+      "Spaces",
+      "Marketing",
+      "Influencer Outreach"
+    ],
+    "landed": "/s/sp-kXDTU2WT28l1mOu57F9TCg/l/l-082ALFhXiHYmXJsC_Oz2TA"
+  },
+  "A3@390x844": {
+    "totalClippedContainers": 0,
+    "byRoute": {}
+  },
+  "A4@390x844": {
+    "under44": 0,
+    "smallest": []
+  },
+  "A5@390x844": {
+    "under16": 0,
+    "byRoute": {}
+  },
+  "A6@390x844": {
+    "contentWidth": 390,
+    "contentLeft": 0,
+    "viewport": 390
+  },
+  "A7@390x844": {
+    "agendaHeaders": [
+      {
+        "label": "Overdue1",
+        "width": 366
+      }
+    ],
+    "headerCount": 1,
+    "surfaceWidth": 390,
+    "zeroWidthSurfaces": 0
+  },
+  "A8@390x844": {
+    "viewportBefore": 390,
+    "viewportAfter": 390,
+    "popup": {
+      "w": 330,
+      "panels": 1,
+      "offLeft": 0,
+      "offRight": 0
+    }
+  },
+  "A9@390x844": {
+    "contentHeight": 1742,
+    "viewport": 792,
+    "screens": 2.2,
+    "myWorkTop": 247,
+    "myWorkInFirstScreen": true
+  },
+  "A12@390x844": {
+    "composer": {
+      "top": 179,
+      "bottom": 268,
+      "inViewport": true,
+      "tappable": true
+    },
+    "sendButton": {
+      "top": 276,
+      "bottom": 320,
+      "inViewport": true,
+      "tappable": true
+    },
+    "viewportHeight": 380
+  },
+  "A1@360x640": {
+    "renderedPx": 255,
+    "fontSize": 15,
+    "chars": 32
+  },
+  "A2@360x640": {
+    "taps": [
+      "Spaces",
+      "QA Space 72677",
+      "QA List 72677"
+    ],
+    "landed": "/s/sp-9FD2yFJ0lYYT4uXCRnnACQ/l/l-Cx5NXci56g5bejcfsqOVDQ"
+  },
+  "A3@360x640": {
+    "totalClippedContainers": 0,
+    "byRoute": {}
+  },
+  "A4@360x640": {
+    "under44": 0,
+    "smallest": []
+  },
+  "A5@360x640": {
+    "under16": 0,
+    "byRoute": {}
+  },
+  "A6@360x640": {
+    "contentWidth": 360,
+    "contentLeft": 0,
+    "viewport": 360
+  },
+  "A7@360x640": {
+    "agendaHeaders": [
+      {
+        "label": "Overdue1",
+        "width": 336
+      }
+    ],
+    "headerCount": 1,
+    "surfaceWidth": 360,
+    "zeroWidthSurfaces": 0
+  },
+  "A8@360x640": {
+    "viewportBefore": 360,
+    "viewportAfter": 360,
+    "popup": {
+      "w": 328,
+      "panels": 1,
+      "offLeft": 0,
+      "offRight": 0
+    }
+  },
+  "A9@360x640": {
+    "contentHeight": 1758,
+    "viewport": 588,
+    "screens": 2.99,
+    "myWorkTop": 247,
+    "myWorkInFirstScreen": true
+  },
+  "A12@360x640": {
+    "composer": {
+      "top": 129,
+      "bottom": 218,
+      "inViewport": true,
+      "tappable": true
+    },
+    "sendButton": {
+      "top": 226,
+      "bottom": 270,
+      "inViewport": true,
+      "tappable": true
+    },
+    "viewportHeight": 288
+  },
+  "A13@390x844": {
+    "tasks": 500,
+    "renderMs": 997,
+    "domNodes": 547,
+    "pageHeight": 844,
+    "scroll20FramesMs": 330
+  },
+  "A13@360x640": {
+    "tasks": 500,
+    "renderMs": 1595,
+    "domNodes": 448,
+    "pageHeight": 640,
+    "scroll20FramesMs": 323
+  },
+  "A4a@390x844": {
+    "antdControlsUnder44": 0,
+    "byRoute": {}
+  },
+  "A4a@360x640": {
+    "antdControlsUnder44": 0,
+    "byRoute": {}
+  },
+  "A14@390x844": {
+    "impossibleCopy": 0,
+    "byRoute": {}
+  },
+  "A14@360x640": {
+    "impossibleCopy": 0,
+    "byRoute": {}
+  }
+}

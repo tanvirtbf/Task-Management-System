@@ -15,6 +15,8 @@ import { AssigneeStack } from "../../components/ui/AssigneeStack";
 import { DynamicIcon } from "../../components/shared/DynamicIcon";
 import { InlineNameEdit } from "../../components/task/InlineNameEdit";
 import { ListView } from "../../components/views/ListView";
+import { MobileTaskView } from "../../components/views/MobileTaskView";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import { BoardView } from "../../components/views/BoardView";
 import { CalendarView } from "../../components/views/CalendarView";
 import { FormView } from "../../components/views/FormView";
@@ -32,6 +34,7 @@ const ListPage = () => {
     const { spaceId, listId, viewId } = useParams();
     const [searchParams, setSearchParams] = useSearchParams();
     const openTaskId = searchParams.get("task");
+    const isMobile = useIsMobile();
 
     // Default view is "list"; URL `:viewId` (e.g., "board") overrides
     const currentView = viewId ?? "list";
@@ -101,6 +104,39 @@ const ListPage = () => {
         );
     }
     if (!list || !listId) return null;
+
+    const openTask = (id: string) => {
+        const next = new URLSearchParams(searchParams);
+        next.set("task", id);
+        // Not `replace`: pushing means Android Back closes the task, which is
+        // the behaviour every other surface in this app already has.
+        setSearchParams(next);
+    };
+    const closeTask = () => {
+        const next = new URLSearchParams(searchParams);
+        next.delete("task");
+        setSearchParams(next, { replace: true });
+    };
+
+    // U1 — on a phone the three view tabs collapse into one card view. The
+    // top bar already carries the list name, so the desktop header block and
+    // the tab strip are both redundant here.
+    if (isMobile) {
+        return (
+            <div style={{ height: "100%", display: "flex", flexDirection: "column", minHeight: 0 }}>
+                <MobileTaskView
+                    listId={listId}
+                    onOpenTask={(t) => openTask(t.id)}
+                    /* A7 — the month grid renders at zero width on a phone and
+                       cannot be made to work at 43px per day. The calendar tab
+                       therefore opens the agenda: grouping by due date IS the
+                       calendar, which is exactly what U1 predicted. */
+                    initialGroupBy={currentView === "calendar" ? "due" : "status"}
+                />
+                <TaskDetailDrawer taskId={openTaskId} listId={listId} onClose={closeTask} />
+            </div>
+        );
+    }
 
     const renderView = () => {
         switch (currentView) {

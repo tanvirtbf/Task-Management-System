@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
@@ -40,26 +40,14 @@ export const Sidebar = () => {
     const navigate = useNavigate();
     const { message } = AntApp.useApp();
     const { sidebarCollapsed, toggleSidebar } = useUiStore();
-    const setSidebarCollapsed = useUiStore((s) => s.setSidebarCollapsed);
-
     /**
-     * F34 (ISS-097): at phone width the expanded sidebar (248px) ate two
-     * thirds of a 390px viewport, leaving the topbar a 142px column it could
-     * not fit — the app panned sideways. Auto-collapse when the viewport
-     * enters the narrow range (640px matches the smallest tablet breakpoint
-     * the F31 sweep covers between phone and 768). One-way on purpose: the
-     * user can re-expand by hand, and widening the window never fights their
-     * choice.
+     * P3 of MOBILE_REBUILD_PLAN.md removed the F34 (ISS-097) auto-collapse that
+     * used to fire at 640px. The sidebar is no longer rendered below 768px at
+     * all — AppShell swaps in the phone shell — so the effect could never match
+     * again, and leaving it would have created a 640-768px dead zone where two
+     * navigation systems fought over the same state. That state persists to
+     * localStorage, so the fight would have survived reloads.
      */
-    useEffect(() => {
-        const mq = window.matchMedia("(max-width: 640px)");
-        const apply = () => {
-            if (mq.matches) setSidebarCollapsed(true);
-        };
-        apply();
-        mq.addEventListener("change", apply);
-        return () => mq.removeEventListener("change", apply);
-    }, [setSidebarCollapsed]);
     const user = useAuthStore((s) => s.user);
     const logout = useAuthStore((s) => s.logout);
     const [treeSearch, setTreeSearch] = useState("");

@@ -76,11 +76,21 @@ export const usePermissionsStore = create<PermissionsState>()(
     ),
 );
 
-/** What one permission grants, or an all-false entry. */
+/**
+ * What one permission grants, or an all-false entry.
+ *
+ * The optional chain has to cover `permissions` too, not just `data`. It
+ * guarded only `data` until P8, which was fine while every caller waited for
+ * `ready` — and became a crash the moment something asked early: a payload
+ * without a `permissions` key threw "Cannot read properties of undefined".
+ * Found by loading the production build, where the mobile top bar asks on its
+ * first render. An unknown permission must read as "not granted", never as an
+ * exception.
+ */
 export const entryFor = (
     data: MyPermissions | null,
     key: string,
-): PermissionEntry => data?.permissions[key] ?? EMPTY;
+): PermissionEntry => data?.permissions?.[key] ?? EMPTY;
 
 export interface CanContext {
     spaceId?: string | null;

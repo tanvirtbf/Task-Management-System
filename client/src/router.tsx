@@ -9,16 +9,24 @@ import RequirePermission from "./components/shared/RequirePermission";
 import RequireGuest from "./layouts/RequireGuest";
 // Auth pages — small, keep eager
 import LoginPage from "./pages/auth/Login";
-import ForgotPasswordPage from "./pages/auth/ForgotPassword";
-import ResetPasswordPage from "./pages/auth/ResetPassword";
-import AcceptInvitationPage from "./pages/auth/AcceptInvitation";
 // Home + Task redirect — small, keep eager
 import HomePage from "./pages/home/HomePage";
-import TaskRedirect from "./pages/task/TaskRedirect";
 import { RouteFallback } from "./components/shared/RouteFallback";
 
 // Lazy pages
+// P8: eager, this dragged TaskDetailDrawer → TipTap into the entry chunk, so
+// every first load — the login screen included — downloaded 119 KB of
+// rich-text editor it would probably never use. It is a deep-link target, so
+// it is worth a prefetch hint later, but not worth being in the entry graph.
+const TaskRedirect = lazy(() => import("./pages/task/TaskRedirect"));
+// Reached once, from an email link. Login stays eager because it is the first
+// paint for anyone signed out.
+const ForgotPasswordPage = lazy(() => import("./pages/auth/ForgotPassword"));
+const ResetPasswordPage = lazy(() => import("./pages/auth/ResetPassword"));
+const AcceptInvitationPage = lazy(() => import("./pages/auth/AcceptInvitation"));
 const SpacePage = lazy(() => import("./pages/space/SpacePage"));
+// P3: the phone drill-down that replaces the sidebar tree.
+const SpacesPage = lazy(() => import("./pages/spaces/SpacesPage"));
 const ListPage = lazy(() => import("./pages/list/ListPage"));
 const FormsListPage = lazy(() => import("./pages/forms/FormsListPage"));
 const FormBuilderPage = lazy(() => import("./pages/forms/FormBuilderPage"));
@@ -95,15 +103,15 @@ export const router = createBrowserRouter([
                             { path: "login", element: <LoginPage /> },
                             {
                                 path: "forgot-password",
-                                element: <ForgotPasswordPage />,
+                                element: lazyRoute(<ForgotPasswordPage />),
                             },
                             {
                                 path: "reset-password/:token",
-                                element: <ResetPasswordPage />,
+                                element: lazyRoute(<ResetPasswordPage />),
                             },
                             {
                                 path: "invitation/:token",
-                                element: <AcceptInvitationPage />,
+                                element: lazyRoute(<AcceptInvitationPage />),
                             },
                         ],
                     },
@@ -118,6 +126,14 @@ export const router = createBrowserRouter([
                         element: <AppShell />,
                         children: [
                             { path: "", element: <HomePage /> },
+                            {
+                                path: "spaces",
+                                element: lazyRoute(<SpacesPage />),
+                            },
+                            {
+                                path: "spaces/:spaceId",
+                                element: lazyRoute(<SpacesPage />),
+                            },
                             { path: "inbox", element: lazyRoute(<InboxPage />) },
                             {
                                 path: "search",
@@ -267,7 +283,10 @@ export const router = createBrowserRouter([
                                 path: "s/:spaceId/l/:listId/:viewId",
                                 element: lazyRoute(<ListPage />),
                             },
-                            { path: "t/:taskKey", element: <TaskRedirect /> },
+                            {
+                                path: "t/:taskKey",
+                                element: lazyRoute(<TaskRedirect />),
+                            },
 
                             // Forms management
                             {

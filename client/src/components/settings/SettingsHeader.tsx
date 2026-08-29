@@ -15,7 +15,7 @@ export const SettingsHeader = ({ title, description, actions }: Props) => (
             marginBottom: tokens.spacing[5],
         }}
     >
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
             <h1
                 style={{
                     margin: 0,

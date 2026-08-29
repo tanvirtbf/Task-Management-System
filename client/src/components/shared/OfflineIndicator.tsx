@@ -24,6 +24,7 @@ export const OfflineIndicator = () => {
         <div
             role="status"
             aria-live="polite"
+            className="bb-bottom-floating"
             style={{
                 position: "fixed",
                 bottom: 16,
@@ -44,7 +45,13 @@ export const OfflineIndicator = () => {
             }}
         >
             <WifiOff size={14} strokeWidth={1.75} />
-            <span>You're offline — changes will sync when reconnected.</span>
+            {/* P8 / D8: this used to promise "changes will sync when
+                reconnected". Nothing implemented that — there is no mutation
+                queue and no background sync — so a warehouse or delivery user
+                in a dead spot was told their edit was safe and then lost it.
+                The service worker keeps the app SHELL offline, not the data,
+                and this now says exactly that. */}
+            <span>You&rsquo;re offline — you can look around, but changes won&rsquo;t save.</span>
         </div>
     );
 };

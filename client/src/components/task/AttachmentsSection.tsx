@@ -15,6 +15,7 @@ import dayjs from "dayjs";
 import { attachmentsApi } from "../../http/api";
 import { getApiErrorMessage } from "../../http/client";
 import { useUserMap } from "../../hooks/useReferenceData";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import { tokens } from "../../theme";
 import type { Attachment } from "../../types/extras";
 
@@ -44,6 +45,7 @@ interface Props {
 }
 
 export const AttachmentsSection = ({ taskId }: Props) => {
+    const isMobile = useIsMobile();
     const qc = useQueryClient();
     const { message } = AntApp.useApp();
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -163,7 +165,9 @@ export const AttachmentsSection = ({ taskId }: Props) => {
                 {dragOver
                     ? "Release to upload"
                     : attachments.length === 0
-                      ? "Drag files here or click to upload"
+                      ? isMobile
+                        ? "Tap to add a photo or file"
+                        : "Drag files here or click to upload"
                       : "+ Add more files"}
             </div>
 

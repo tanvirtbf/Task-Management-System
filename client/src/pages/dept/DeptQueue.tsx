@@ -211,7 +211,10 @@ export const DeptQueue = ({
                                     display: "flex",
                                     alignItems: "center",
                                     gap: tokens.spacing[3],
-                                    padding: `${tokens.spacing[3]} ${tokens.spacing[2]}`,
+                                    // P2: the spacing tokens are numbers, so this emitted `padding: "12 8"`
+                                    // with no units and the browser dropped it — these rows had
+                                    // zero padding on every device.
+                                    padding: `${tokens.spacing[3]}px ${tokens.spacing[2]}px`,
                                     borderTop:
                                         i === 0
                                             ? undefined

@@ -158,6 +158,7 @@ export const BulkActionToolbar = ({
 
     return (
         <div
+            className="bb-bottom-floating"
             style={{
                 position: "fixed",
                 bottom: 24,

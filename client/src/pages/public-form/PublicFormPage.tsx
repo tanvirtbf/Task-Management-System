@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { Alert, Button, DatePicker, Input, InputNumber, Select } from "antd";
+import { isValidBdPhone } from "../../lib/bd-phone";
+import { useIsMobile } from "../../hooks/useIsMobile";
 import dayjs from "dayjs";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 import { publicFormsApi, type PublicFormField } from "../../http/api";
@@ -19,6 +21,9 @@ import { tokens } from "../../theme";
  */
 const PublicFormPage = () => {
     const { slug } = useParams();
+    // Must sit with the other hooks: the early returns below (loading, not
+    // found) would otherwise make the hook count vary between renders.
+    const isMobile = useIsMobile();
     const [values, setValues] = useState<Record<string, unknown>>({});
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [submitted, setSubmitted] = useState(false);
@@ -86,10 +91,25 @@ const PublicFormPage = () => {
             const v = values[f.fieldKey];
             if (f.isRequired && (v === undefined || v === null || v === "")) {
                 newErrors[f.fieldKey] = "This field is required";
+                continue;
+            }
+            if (f.valueType === "phone" && typeof v === "string" && v.trim() !== "" && !isValidBdPhone(v)) {
+                newErrors[f.fieldKey] = "Use an 11-digit number like 01712345678";
             }
         }
         if (Object.keys(newErrors).length > 0) {
             setErrors(newErrors);
+            // Without this the page does not move, so on a phone — where the
+            // failing field is usually above the fold you are looking at —
+            // Submit reads as a button that does nothing.
+            const firstKey = fields.find((f) => newErrors[f.fieldKey])?.fieldKey;
+            requestAnimationFrame(() => {
+                const el = document.querySelector<HTMLElement>(
+                    `[data-field-key="${firstKey}"]`,
+                );
+                el?.scrollIntoView({ behavior: "smooth", block: "center" });
+                el?.querySelector<HTMLElement>("input,textarea")?.focus();
+            });
             return;
         }
         setErrors({});
@@ -167,7 +187,9 @@ const PublicFormPage = () => {
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
-                padding: tokens.spacing[6],
+                // 24 outside + 32 inside per side spent 112px of a 360px screen
+                // on nothing — a third of a customer's phone.
+                padding: isMobile ? tokens.spacing[3] : tokens.spacing[6],
             }}
         >
             <div
@@ -177,9 +199,9 @@ const PublicFormPage = () => {
                     background: tokens.colors.bgSurface,
                     border: `1px solid ${tokens.colors.border}`,
                     borderRadius: tokens.radius.xl,
-                    padding: tokens.spacing[8],
+                    padding: isMobile ? tokens.spacing[4] : tokens.spacing[8],
                     boxShadow: tokens.shadows.md,
-                    marginTop: tokens.spacing[6],
+                    marginTop: isMobile ? tokens.spacing[3] : tokens.spacing[6],
                 }}
             >
                 {/* Brand accent */}
@@ -328,7 +350,7 @@ const FormFieldInput = ({
     error?: string;
     onChange: (v: unknown) => void;
 }) => (
-    <div>
+    <div data-field-key={field.fieldKey}>
         <label style={labelStyle}>
             {field.label}
             {field.isRequired && (
@@ -435,14 +457,39 @@ const FieldControl = ({
             );
         }
         case "files":
+            // P6 decision: anonymous upload is a backend feature (a public
+            // presign endpoint, size caps, abuse protection), not something a
+            // mobile phase can honestly ship. What it should NOT do meanwhile is
+            // render a disabled text box — a customer reads that as a broken
+            // field. Say the true thing in one line instead.
+            return (
+                <div
+                    style={{
+                        fontSize: 13,
+                        color: tokens.colors.textMuted,
+                        padding: "6px 0",
+                    }}
+                >
+                    Photos can't be attached here yet — please describe it above and
+                    we'll ask for pictures when we reply.
+                </div>
+            );
+        case "phone":
+            // A phone number typed on a QWERTY keyboard is a small daily tax on
+            // every customer. `inputMode` raises the numeric pad; `type="tel"`
+            // lets the browser offer a saved number.
             return (
                 <Input
-                    disabled
-                    placeholder="File uploads aren't available on public forms"
+                    value={(value as string) ?? ""}
+                    onChange={(e) => onChange(e.target.value)}
+                    placeholder={placeholder ?? "01XXXXXXXXX"}
+                    status={status}
+                    type="tel"
+                    inputMode="numeric"
+                    autoComplete="tel"
                 />
             );
         case "text":
-        case "phone":
         default:
             return (
                 <Input

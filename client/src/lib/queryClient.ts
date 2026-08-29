@@ -21,9 +21,17 @@ export const queryClient = new QueryClient({
         },
     }),
     defaultOptions: {
+        // ⚠️ QUERIES ONLY. Do not add a `mutations` block with retry: a write
+        // whose response was lost would be sent twice, and this app creates
+        // tasks, comments and delete-requests.
         queries: {
-            retry: false,
-            refetchOnWindowFocus: false,
+            // P8: mobile data drops requests. One dropped read used to become a
+            // permanent error with no way back except a reload.
+            retry: 2,
+            retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
+            // On a phone, coming back to a backgrounded app IS the refresh
+            // gesture — the SSE stream is also usually dead by then.
+            refetchOnWindowFocus: true,
             staleTime: 30 * 1000,
         },
     },

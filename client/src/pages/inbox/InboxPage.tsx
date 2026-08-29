@@ -334,6 +334,10 @@ const InboxPage = () => {
             <div
                 style={{
                     display: "flex",
+                    // P5: without wrapping, "@Mentions" and "Requests" sat off
+                    // the right edge of a phone — the two filters that carry an
+                    // obligation were the two you could not reach.
+                    flexWrap: "wrap",
                     gap: 6,
                     marginBottom: tokens.spacing[3],
                 }}

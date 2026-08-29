@@ -88,6 +88,7 @@ export const PushPrompt = () => {
             size="small"
             role="region"
             aria-label="Enable notifications"
+            className="bb-bottom-floating"
             style={{
                 position: "fixed",
                 left: 16,

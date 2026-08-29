@@ -1,0 +1,155 @@
+{
+  "home": {
+    "rootFontSize": 14,
+    "bodyFontSize": 14,
+    "sidebarWidth": 248,
+    "mainWidth": 1192,
+    "topbarHeight": 48,
+    "button": null,
+    "input": {
+      "h": 22,
+      "fontSize": 14,
+      "padTop": 0,
+      "padLeft": 0
+    },
+    "select": null,
+    "clippingContainers": 0
+  },
+  "inbox": {
+    "rootFontSize": 14,
+    "bodyFontSize": 14,
+    "sidebarWidth": 248,
+    "mainWidth": 1192,
+    "topbarHeight": 48,
+    "button": {
+      "h": 36,
+      "fontSize": 14,
+      "padTop": 0,
+      "padLeft": 15
+    },
+    "input": {
+      "h": 22,
+      "fontSize": 14,
+      "padTop": 0,
+      "padLeft": 0
+    },
+    "select": null,
+    "clippingContainers": 0
+  },
+  "search": {
+    "rootFontSize": 14,
+    "bodyFontSize": 14,
+    "sidebarWidth": 248,
+    "mainWidth": 1192,
+    "topbarHeight": 48,
+    "button": null,
+    "input": {
+      "h": 22,
+      "fontSize": 14,
+      "padTop": 0,
+      "padLeft": 0
+    },
+    "select": null,
+    "clippingContainers": 0
+  },
+  "dept": {
+    "rootFontSize": 14,
+    "bodyFontSize": 14,
+    "sidebarWidth": 248,
+    "mainWidth": 1192,
+    "topbarHeight": 48,
+    "button": {
+      "h": 28,
+      "fontSize": 14,
+      "padTop": 0,
+      "padLeft": 7
+    },
+    "input": {
+      "h": 22,
+      "fontSize": 14,
+      "padTop": 0,
+      "padLeft": 0
+    },
+    "select": null,
+    "clippingContainers": 0
+  },
+  "settings-profile": {
+    "rootFontSize": 14,
+    "bodyFontSize": 14,
+    "sidebarWidth": 248,
+    "mainWidth": 1192,
+    "topbarHeight": 48,
+    "button": {
+      "h": 36,
+      "fontSize": 14,
+      "padTop": 0,
+      "padLeft": 15
+    },
+    "input": {
+      "h": 22,
+      "fontSize": 14,
+      "padTop": 0,
+      "padLeft": 0
+    },
+    "select": null,
+    "clippingContainers": 0
+  },
+  "settings-members": {
+    "rootFontSize": 14,
+    "bodyFontSize": 14,
+    "sidebarWidth": 248,
+    "mainWidth": 1192,
+    "topbarHeight": 48,
+    "button": {
+      "h": 36,
+      "fontSize": 14,
+      "padTop": 0,
+      "padLeft": 15
+    },
+    "input": {
+      "h": 22,
+      "fontSize": 14,
+      "padTop": 0,
+      "padLeft": 0
+    },
+    "select": null,
+    "clippingContainers": 0
+  },
+  "eng": {
+    "rootFontSize": 14,
+    "bodyFontSize": 14,
+    "sidebarWidth": 248,
+    "mainWidth": 1192,
+    "topbarHeight": 48,
+    "button": null,
+    "input": {
+      "h": 22,
+      "fontSize": 14,
+      "padTop": 0,
+      "padLeft": 0
+    },
+    "select": null,
+    "clippingContainers": 0
+  },
+  "list": {
+    "rootFontSize": 14,
+    "bodyFontSize": 14,
+    "sidebarWidth": 248,
+    "mainWidth": 1192,
+    "topbarHeight": 48,
+    "button": {
+      "h": 28,
+      "fontSize": 14,
+      "padTop": 0,
+      "padLeft": 7
+    },
+    "input": {
+      "h": 22,
+      "fontSize": 14,
+      "padTop": 0,
+      "padLeft": 0
+    },
+    "select": null,
+    "clippingContainers": 0
+  }
+}

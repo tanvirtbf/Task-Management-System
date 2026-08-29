@@ -65,6 +65,9 @@ export const MyWorkCard = () => {
                 <div
                     style={{
                         display: "flex",
+                        // P5: without this the last two buckets ("Unscheduled",
+                        // "Done") ran off a phone screen with nothing to scroll.
+                        flexWrap: "wrap",
                         gap: 2,
                         background: tokens.colors.bgMuted,
                         borderRadius: tokens.radius.md,
