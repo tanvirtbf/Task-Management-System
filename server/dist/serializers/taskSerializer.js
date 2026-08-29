@@ -83,6 +83,10 @@ const toWireTask = (t, h) => ({
     custom_field_values: h.customFieldValues,
     archived_at: toWireTimestamp(t.archivedAt),
     created_by: t.createdBy,
+    // ASSIGNED_BY_PLAN P3 (doctrine #2) — the fallback lives HERE, at the one
+    // boundary every task crosses, rather than in seven surfaces that would
+    // each have to remember it.
+    assigned_by: t.assignedBy ?? t.createdBy,
     created_at: t.createdAt.toISOString(),
     updated_at: t.updatedAt.toISOString(),
 });

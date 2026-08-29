@@ -141,6 +141,19 @@ exports.tasks = (0, mysql_core_1.mysqlTable)("tasks", {
     rollbackReason: (0, mysql_core_1.varchar)("rollback_reason", { length: 500 }),
     archivedAt: (0, mysql_core_1.timestamp)("archived_at"),
     createdBy: (0, mysql_core_1.varchar)("created_by", { length: _shared_1.ID_LENGTH }).notNull(),
+    /**
+     * upgrades/025 (ASSIGNED_BY_PLAN P1) — who HANDED THE WORK OUT.
+     *
+     * Distinct from `createdBy`: the creator is a fact about the record,
+     * this is a fact about the work, and unlike the creator it can be
+     * corrected when the wrong person is on it. Written from the actor on
+     * every creation path; adding an assignee later never rewrites it.
+     *
+     * NULLable only so a departed manager can be removed (`ON DELETE SET
+     * NULL`) — the wire falls back to `created_by`, so no surface ever
+     * renders a blank attribution.
+     */
+    assignedBy: (0, mysql_core_1.varchar)("assigned_by", { length: _shared_1.ID_LENGTH }),
     createdAt: (0, mysql_core_1.timestamp)("created_at").notNull().defaultNow(),
     updatedAt: (0, mysql_core_1.timestamp)("updated_at").notNull().defaultNow().onUpdateNow(),
 }, (t) => ({
@@ -182,6 +195,16 @@ exports.tasks = (0, mysql_core_1.mysqlTable)("tasks", {
     })
         .onDelete("restrict")
         .onUpdate("cascade"),
+    assignedByFk: (0, mysql_core_1.foreignKey)({
+        columns: [t.assignedBy],
+        foreignColumns: [auth_1.users.id],
+        name: "fk_tasks_assigned_by",
+    })
+        // SET NULL, not RESTRICT like createdBy: attribution must never be
+        // the reason a leaver cannot be removed from the workspace.
+        .onDelete("set null")
+        .onUpdate("cascade"),
+    assignedByIdx: (0, mysql_core_1.index)("idx_tasks_assigned_by").on(t.assignedBy),
     priorityCk: (0, mysql_core_1.check)("ck_tasks_priority", (0, drizzle_orm_1.sql) `${t.priority} BETWEEN 0 AND 4`),
     nestingCk: (0, mysql_core_1.check)("ck_tasks_nesting", (0, drizzle_orm_1.sql) `${t.nestingDepth} <= 2`),
     datesCk: (0, mysql_core_1.check)("ck_tasks_dates", (0, drizzle_orm_1.sql) `${t.startDate} IS NULL OR ${t.dueDate} IS NULL OR ${t.startDate} <= ${t.dueDate}`),

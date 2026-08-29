@@ -1,0 +1,1 @@
+const t=/^01[3-9]\d{8}$/,c=e=>{const s=e.replace(/\D/g,"");return t.test(s)},n=e=>e.replace(/\D/g,"").replace(/^88/,"").replace(/^0+/,"0"),o=e=>{const s=n(e);return c(s)?`+880 ${s.slice(1,3)}-${s.slice(3,7)}-${s.slice(7)}`:e};export{o as f,c as i};

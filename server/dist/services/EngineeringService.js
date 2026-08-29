@@ -107,11 +107,12 @@ class EngineeringService {
      * §22 #1 `POST /api/v1/eng/report-bug` (🔐 any member). Composes a Bug task
      * in the workspace's "Bug Triage" list (resolved by name), letting
      * `TaskWriteService.create` apply the §29 per-severity SLA (it keys on the
-     * "Bug" type name) and default the severity to S2 when omitted. The current
-     * on-call engineer is auto-assigned ONLY for high-severity bugs (S0/S1) and
-     * only when an active engineer is on call this week. Returns the hydrated
-     * Task (201). 409 `eng.not_configured` if the workspace lacks a "Bug" task
-     * type or a "Bug Triage" list.
+     * "Bug" type name) and default the severity to S2 when omitted. ALWAYS
+     * assigns: the on-call engineer for an S0/S1, the Engineering space head
+     * otherwise and whenever the rota has lapsed — see the block below for why
+     * an unassigned report is the same thing as a lost one. Returns the
+     * hydrated Task (201). 409 `eng.not_configured` if the workspace lacks a
+     * "Bug" task type or a "Bug Triage" list.
      */
     async reportBug(input) {
         const bugTaskTypeId = await this.repo.findBugTaskTypeId(input.workspaceId);
@@ -122,16 +123,52 @@ class EngineeringService {
         if (!bugList) {
             throw errors_1.AppError.conflict("eng.not_configured", 'This workspace has no "Bug Triage" list; create one before reporting bugs');
         }
-        // Auto-assign the current on-call engineer for high-severity bugs only
-        // (S0/S1). Decided on the SUPPLIED severity (before create() defaults to
-        // S2), and only when an ACTIVE engineer is on call — create() rejects an
-        // inactive assignee with 422.
+        // Every bug report lands on a person. It used to land on one only when
+        // the severity was S0/S1 AND someone was on call — so an S2 from a CS
+        // agent went into Bug Triage assigned to nobody, notifying nobody, and
+        // was found only if an engineer happened to open that list. Worse, the
+        // rota is a rota: once it lapsed, even an S0 'site down' went nowhere.
+        // In-app notification and email both ride on assignment, so assigning is
+        // what makes a report reach the software team at all.
+        //
+        //   S0 / S1  → the on-call engineer. This is the page.
+        //   anything → the Engineering space head, who owns triage. Also the
+        //              fallback for a page when the rota has run out, because a
+        //              site-down report must never reach nobody.
+        //
+        // Severity is read from the SUPPLIED value, before create() defaults a
+        // Bug to S2. Both lookups filter to ACTIVE users — create() rejects an
+        // inactive assignee with a 422, which would turn 'nobody was told' into
+        // 'the report could not be filed'.
         const severity = input.severity ?? null;
+        const isPage = severity === "S0" || severity === "S1";
         let assignees = [];
-        if (severity === "S0" || severity === "S1") {
+        let routedTo = "nobody";
+        if (isPage) {
             const onCallId = await this.repo.findCurrentOnCallEngineerId(input.workspaceId);
-            if (onCallId)
+            if (onCallId) {
                 assignees = [onCallId];
+                routedTo = "on-call";
+            }
+        }
+        if (assignees.length === 0) {
+            const headId = await this.repo.findSpaceHeadId(bugList.spaceId);
+            if (headId) {
+                assignees = [headId];
+                routedTo = "space-head";
+            }
+        }
+        if (routedTo === "nobody") {
+            // The only remaining case is an Engineering space with no active
+            // head. The report is still filed — losing it would be worse — but
+            // it is silent, and that deserves to be visible in the logs.
+            this.logger.warn("eng.report_bug.unrouted", {
+                workspaceId: input.workspaceId,
+                listId: bugList.id,
+                spaceId: bugList.spaceId,
+                severity,
+                reason: "no active on-call engineer and no active space head",
+            });
         }
         // F28 (ISS-094, D12.1): run the insert under the NAMED intake principal.
         // The route gate (`bug.report`) is the authority for this flow — every
@@ -166,7 +203,7 @@ class EngineeringService {
             workspaceId: input.workspaceId,
             taskId: task.id,
             severity: task.bug_severity,
-            assigned: assignees.length > 0,
+            routedTo,
         });
         return task;
     }

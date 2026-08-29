@@ -143,6 +143,11 @@ class TemplateApplyService {
                         taskTypeId,
                         completedAt,
                         createdBy: input.actorId,
+                        // ASSIGNED_BY_PLAN P2 — the SECOND path that inserts a
+                        // task (the first is TaskWriteService.create). Applying
+                        // a template is someone putting work into the world, so
+                        // the person who applied it is who handed it out.
+                        assignedBy: input.actorId,
                     };
                     await this.tasks.insert(row, tx);
                     if (tagIds.length > 0) {

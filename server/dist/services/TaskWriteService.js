@@ -562,6 +562,16 @@ class TaskWriteService {
                             : null,
                         rollbackReason: input.rollbackReason ?? null,
                         createdBy: input.actorId,
+                        // ASSIGNED_BY_PLAN P2 — who handed this work out.
+                        // The actor is the right answer on every path that
+                        // reaches here, and there is only one: the API (the
+                        // logged-in person), a public form (the form's owner —
+                        // never the anonymous submitter), the recurrence job
+                        // (the template's owner) and the assistant's
+                        // create_task (the person asking). Adding an assignee
+                        // later never rewrites this; only an explicit edit
+                        // does (P5).
+                        assignedBy: input.actorId,
                     };
                     await this.tasks.insert(row, tx);
                     if (input.parentTaskId) {
