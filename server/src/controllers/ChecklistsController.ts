@@ -43,9 +43,7 @@ export class ChecklistsController {
         next: NextFunction,
     ) {
         try {
-            const { name } = matchedData(req, { locations: ["body"] }) as {
-                name: string;
-            };
+            const { name } = matchedData<{ name: string; }>(req, { locations: ["body"] });
             const checklist = await this.service.createChecklist({
                 idOrKey: req.params.id,
                 workspaceId: req.auth.workspaceId,
@@ -71,9 +69,9 @@ export class ChecklistsController {
         next: NextFunction,
     ) {
         try {
-            const { name, position } = matchedData(req, {
+            const { name, position } = matchedData<{ name?: string; position?: number }>(req, {
                 locations: ["body"],
-            }) as { name?: string; position?: number };
+            });
             const checklist = await this.service.updateChecklist({
                 id: req.params.id,
                 workspaceId: req.auth.workspaceId,
@@ -104,15 +102,10 @@ export class ChecklistsController {
     /** POST /api/v1/checklists/:id/items (🔐). 201. */
     async addItem(req: AddItemRequest, res: Response, next: NextFunction) {
         try {
-            const { text, assignee_id, parent_item_id, position } = matchedData(
+            const { text, assignee_id, parent_item_id, position } = matchedData<{ text: string; assignee_id?: string | null; parent_item_id?: string | null; position?: number; }>(
                 req,
                 { locations: ["body"] },
-            ) as {
-                text: string;
-                assignee_id?: string | null;
-                parent_item_id?: string | null;
-                position?: number;
-            };
+            );
             const item = await this.service.addItem({
                 checklistId: req.params.id,
                 workspaceId: req.auth.workspaceId,
@@ -135,9 +128,7 @@ export class ChecklistsController {
         next: NextFunction,
     ) {
         try {
-            const { texts } = matchedData(req, { locations: ["body"] }) as {
-                texts: string[];
-            };
+            const { texts } = matchedData<{ texts: string[]; }>(req, { locations: ["body"] });
             const items = await this.service.bulkAddItems({
                 checklistId: req.params.id,
                 workspaceId: req.auth.workspaceId,
@@ -153,13 +144,9 @@ export class ChecklistsController {
     /** PATCH /api/v1/checklist-items/:id (🔐). 200. */
     async updateItem(req: UpdateItemRequest, res: Response, next: NextFunction) {
         try {
-            const { text, assignee_id, position } = matchedData(req, {
+            const { text, assignee_id, position } = matchedData<{ text?: string; assignee_id?: string | null; position?: number; }>(req, {
                 locations: ["body"],
-            }) as {
-                text?: string;
-                assignee_id?: string | null;
-                position?: number;
-            };
+            });
             const item = await this.service.updateItem({
                 id: req.params.id,
                 workspaceId: req.auth.workspaceId,

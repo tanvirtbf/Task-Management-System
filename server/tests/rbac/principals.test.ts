@@ -10,7 +10,6 @@ import {
     elevationReasons,
     isPublic,
     isSystem,
-    publicFormActor,
     publicFormPrincipal,
     SYSTEM_USER_ID,
     systemActor,

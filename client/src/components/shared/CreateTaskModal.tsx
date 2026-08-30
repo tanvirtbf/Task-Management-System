@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Modal, Input, Select, DatePicker, App as AntApp } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import dayjs from "dayjs";
@@ -33,9 +33,11 @@ export const CreateTaskModal = ({
     const { data: taskTypes = [] } = useTaskTypes();
     const [taskTypeId, setTaskTypeId] = useState<string | undefined>(undefined);
 
-    useEffect(() => {
-        if (!taskTypeId && taskTypes.length > 0) setTaskTypeId(taskTypes[0].id);
-    }, [taskTypes, taskTypeId]);
+    // Pick a default once the types load. No effect: the condition is
+    // self-limiting — after the first render that sets it, `taskTypeId` is
+    // truthy and this never runs again — so an effect only bought an extra
+    // paint with an empty selector.
+    if (!taskTypeId && taskTypes.length > 0) setTaskTypeId(taskTypes[0].id);
 
     const { data: lists = [] } = useQuery({
         queryKey: ["lists"],
@@ -46,9 +48,14 @@ export const CreateTaskModal = ({
     // assignment surface (useAssignablePeople).
     const { people } = useAssignablePeople();
 
-    useEffect(() => {
+    // Follow the caller's list when it changes (opening the modal from a
+    // different list). Compared against the last value seen rather than run
+    // in an effect, so the first render already shows the right list.
+    const [seenDefaultList, setSeenDefaultList] = useState(defaultListId);
+    if (seenDefaultList !== defaultListId) {
+        setSeenDefaultList(defaultListId);
         if (defaultListId) setListId(defaultListId);
-    }, [defaultListId]);
+    }
 
     const create = useMutation({
         mutationFn: () => {

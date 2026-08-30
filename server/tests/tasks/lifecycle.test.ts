@@ -12,7 +12,6 @@ import {
 } from "../test-utils/factories";
 import { getDb } from "../../src/db/client";
 import { tasks, taskActivity } from "../../src/db/schema";
-import { Config } from "../../src/config";
 import type { Role } from "../../src/constants";
 
 /**
@@ -27,7 +26,7 @@ const ARCHIVE = (id: string) => `/api/v1/tasks/${id}/archive`;
 const UNARCHIVE = (id: string) => `/api/v1/tasks/${id}/unarchive`;
 const DEL = (id: string) => `/api/v1/tasks/${id}`;
 
-const signAccess = (
+const _signAccess = (
     user: { id: string; workspaceId: string; role: Role },
     secret: string,
     opts: jwt.SignOptions = {},

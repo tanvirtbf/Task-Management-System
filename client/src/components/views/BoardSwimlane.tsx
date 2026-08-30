@@ -5,7 +5,6 @@ import { PriorityFlag } from "../ui/PriorityFlag";
 import { tokens } from "../../theme";
 import type { SubgroupBy } from "../../stores/board";
 import type { Priority, User } from "../../types";
-import { PRIORITY_LABELS } from "../../types";
 
 interface BoardSwimlaneProps {
     subgroupBy: SubgroupBy;
@@ -110,13 +109,3 @@ export const BoardSwimlane = ({
     );
 };
 
-export const swimlaneLabel = (
-    subgroupBy: SubgroupBy,
-    key: string,
-): string => {
-    if (subgroupBy === "priority") {
-        if (key === "0") return PRIORITY_LABELS[0];
-        return PRIORITY_LABELS[Number(key) as Priority];
-    }
-    return key;
-};

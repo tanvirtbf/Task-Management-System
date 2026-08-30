@@ -34,7 +34,14 @@ const logger = winston.createLogger({
                 winston.format.timestamp({ format: "HH:mm:ss" }),
                 winston.format.printf(
                     ({ timestamp, level, message, requestId, ...rest }) => {
-                        const reqPart = requestId ? ` [${requestId}]` : "";
+                        // winston types these as `unknown`/`{}` because a
+                        // transport may be handed anything; at runtime they
+                        // are the strings we put there. Saying so explicitly
+                        // beats a template literal quietly rendering
+                        // "[object Object]" the one time it is not.
+                        const reqPart = requestId
+                            ? ` [${String(requestId)}]`
+                            : "";
                         const restKeys = Object.keys(rest).filter(
                             (k) => k !== "serviceName" && k !== "stack",
                         );
@@ -46,7 +53,7 @@ const logger = winston.createLogger({
                                       ),
                                   )}`
                                 : "";
-                        return `${timestamp} ${level}${reqPart} ${message}${meta}`;
+                        return `${String(timestamp)} ${level}${reqPart} ${String(message)}${meta}`;
                     },
                 ),
             ),

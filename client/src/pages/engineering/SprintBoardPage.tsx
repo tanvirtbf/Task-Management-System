@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { Select, Empty } from "antd";
@@ -35,15 +35,16 @@ const SprintBoardPage = () => {
         enabled: !!sprintId,
     });
 
-    // Default the selector to the active sprint (or first) once sprints load.
-    useEffect(() => {
-        if (!sprintId && sprintList.length > 0) {
-            setSprintId(
-                sprintList.find((s) => s.status === "active")?.id ??
-                    sprintList[0].id,
-            );
-        }
-    }, [sprintId, sprintList]);
+    // Default the selector to the active sprint (or the first) once sprints
+    // load. No effect: once `sprintId` is set the condition can never hold
+    // again, so this converges on the first render that has data — instead
+    // of painting an empty board and then replacing it.
+    if (!sprintId && sprintList.length > 0) {
+        setSprintId(
+            sprintList.find((s) => s.status === "active")?.id ??
+                sprintList[0].id,
+        );
+    }
 
     const sprint = sprintList.find((s) => s.id === sprintId);
     const totalPoints = sprintTasks.reduce(

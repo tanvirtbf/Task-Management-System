@@ -36,9 +36,9 @@ export class CommentsController {
     /** POST /api/v1/tasks/:id/comments (🔐). 201 with the created comment. */
     async create(req: CreateCommentRequest, res: Response, next: NextFunction) {
         try {
-            const { body, parent_comment_id } = matchedData(req, {
+            const { body, parent_comment_id } = matchedData<{ body: string; parent_comment_id?: string }>(req, {
                 locations: ["body"],
-            }) as { body: string; parent_comment_id?: string };
+            });
 
             const comment = await this.service.create({
                 idOrKey: req.params.id,
@@ -64,9 +64,7 @@ export class CommentsController {
     /** PATCH /api/v1/comments/:id (🔐 author, within 15 min). 200. */
     async update(req: UpdateCommentRequest, res: Response, next: NextFunction) {
         try {
-            const { body } = matchedData(req, { locations: ["body"] }) as {
-                body: string;
-            };
+            const { body } = matchedData<{ body: string; }>(req, { locations: ["body"] });
             const comment = await this.service.update({
                 id: req.params.id,
                 workspaceId: req.auth.workspaceId,

@@ -737,11 +737,11 @@ describe("GET /api/v1/task-types", () => {
             const rows = dataOf((await client.get(TASK_TYPES)).body);
 
             const byName = Object.fromEntries(rows.map((r) => [r.name, r]));
-            expect(byName["Task"].is_system).toBe(true);
-            expect(byName["Task"].is_dev_type).toBe(false);
-            expect(byName["Milestone"].is_milestone_type).toBe(true);
-            expect(byName["Bug"].is_dev_type).toBe(true);
-            expect(byName["Bug"].is_milestone_type).toBe(false);
+            expect(byName.Task.is_system).toBe(true);
+            expect(byName.Task.is_dev_type).toBe(false);
+            expect(byName.Milestone.is_milestone_type).toBe(true);
+            expect(byName.Bug.is_dev_type).toBe(true);
+            expect(byName.Bug.is_milestone_type).toBe(false);
         });
     });
 });

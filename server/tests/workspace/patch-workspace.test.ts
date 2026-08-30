@@ -53,7 +53,7 @@ const signAccess = (
     );
 
 /** Direct Drizzle update to seed non-default starting state the factory omits. */
-const setWorkspace = async (
+const _setWorkspace = async (
     id: string,
     patch: Partial<typeof workspaces.$inferInsert>,
 ): Promise<void> => {

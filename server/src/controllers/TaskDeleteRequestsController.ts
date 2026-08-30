@@ -41,9 +41,7 @@ export class TaskDeleteRequestsController {
      */
     async create(req: AuthRequest, res: Response, next: NextFunction) {
         try {
-            const { id } = matchedData(req, { locations: ["params"] }) as {
-                id: string;
-            };
+            const { id } = matchedData<{ id: string; }>(req, { locations: ["params"] });
             const body = req.body as { reason?: string };
             const out = await this.service.request({
                 workspaceId: req.auth.workspaceId,
@@ -72,9 +70,7 @@ export class TaskDeleteRequestsController {
     /** GET /tasks/:id/delete-request — the live request, or null. */
     async forTask(req: AuthRequest, res: Response, next: NextFunction) {
         try {
-            const { id } = matchedData(req, { locations: ["params"] }) as {
-                id: string;
-            };
+            const { id } = matchedData<{ id: string; }>(req, { locations: ["params"] });
             const found = await this.service.forTask({
                 workspaceId: req.auth.workspaceId,
                 taskId: id,
@@ -105,9 +101,7 @@ export class TaskDeleteRequestsController {
     decide(approve: boolean) {
         return async (req: AuthRequest, res: Response, next: NextFunction) => {
             try {
-                const { id } = matchedData(req, { locations: ["params"] }) as {
-                    id: string;
-                };
+                const { id } = matchedData<{ id: string; }>(req, { locations: ["params"] });
                 const body = req.body as { note?: string };
                 await this.service.decide({
                     workspaceId: req.auth.workspaceId,
@@ -132,9 +126,7 @@ export class TaskDeleteRequestsController {
     /** POST /delete-requests/:id/cancel — the requester withdraws. */
     async cancel(req: AuthRequest, res: Response, next: NextFunction) {
         try {
-            const { id } = matchedData(req, { locations: ["params"] }) as {
-                id: string;
-            };
+            const { id } = matchedData<{ id: string; }>(req, { locations: ["params"] });
             await this.service.cancel({
                 workspaceId: req.auth.workspaceId,
                 actorId: req.auth.sub,

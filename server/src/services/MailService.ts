@@ -1,4 +1,5 @@
 import nodemailer, { type Transporter } from "nodemailer";
+import type SMTPTransport from "nodemailer/lib/smtp-transport";
 import type { Logger } from "winston";
 import { Config } from "../config";
 
@@ -17,7 +18,14 @@ import { Config } from "../config";
  * recipient + subject, never the token.
  */
 export class MailService {
-    private readonly transporter: Transporter | null;
+    /**
+     * Parameterised on purpose. `Transporter<T = any>` defaults its result type
+     * to `any`, so a bare `Transporter` makes `sendMail()` return `any` and
+     * every field read off the result — `info.messageId` in the log below —
+     * completely unchecked. Naming the SMTP result type is what that default
+     * was quietly hiding.
+     */
+    private readonly transporter: Transporter<SMTPTransport.SentMessageInfo> | null;
     private readonly from: string;
     /** The bare envelope address, for messages that override the display name. */
     private readonly fromAddress: string;

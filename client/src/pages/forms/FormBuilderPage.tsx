@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import {
@@ -77,9 +77,13 @@ const FormBuilderPage = () => {
 
     const [draft, setDraft] = useState<Form | null>(null);
 
-    useEffect(() => {
+    // Adopt the server form whenever it changes (load, refetch, save). At
+    // render, so the builder never paints one version and then the other.
+    const [seenForm, setSeenForm] = useState(form);
+    if (seenForm !== form) {
+        setSeenForm(form);
         if (form) setDraft(form);
-    }, [form]);
+    }
 
     // Save = metadata PATCH (NOT `fields`) + a per-field diff against the server
     // form — the form PATCH ignores `fields`; fields live behind their own

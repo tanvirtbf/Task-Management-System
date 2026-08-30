@@ -466,7 +466,7 @@ describe("GET /api/v1/lists/:listId/tasks", () => {
             const { client, ctx, ws } = await setup();
             const u2 = await makeUser({ workspaceId: ws.id });
             const a = await insertTask(ctx, { id: "t-a" });
-            const b = await insertTask(ctx, { id: "t-b" });
+            const _b = await insertTask(ctx, { id: "t-b" });
             await addAssignee(a, u2.id);
 
             const rows = dataOf((await client.get(PATH(ctx.listId))).body);

@@ -13,6 +13,8 @@
         "lint:fix": "eslint . --fix",
         "test": "jest --no-cache --coverage --all --runInBand --passWithNoTests",
         "test:all": "node scripts/test-all.cjs",
+        "typecheck": "tsc --noEmit -p tsconfig.tests.json",
+        "endpoints": "node scripts/endpoints.cjs",
         "test:watch": "jest --watch --runInBand",
         "db:generate": "drizzle-kit generate",
         "db:migrate": "tsx src/db/migrate.ts",

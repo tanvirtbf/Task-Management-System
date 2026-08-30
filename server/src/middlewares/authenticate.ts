@@ -44,7 +44,12 @@ export default function authenticate(
     res: Response,
     next: NextFunction,
 ): void {
-    verifyJwt(req, res, (err?: unknown) => {
+    // `void` rather than await: express-jwt v7 resolves its promise AFTER it
+    // has already reported failure through the `next` callback below, so
+    // there is nothing to await and no rejection path to lose. Marking it
+    // says that on purpose instead of leaving a floating promise for the
+    // next reader to wonder about.
+    void verifyJwt(req, res, (err?: unknown) => {
         if (err) return next(err);
         const auth = (req as { auth?: { exp?: number } }).auth;
         if (typeof auth?.exp !== "number") {

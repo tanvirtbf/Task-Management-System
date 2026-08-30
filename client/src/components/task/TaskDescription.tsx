@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import {useRef, useState} from "react";
 import { Input, type GetRef } from "antd";
 import { FileText } from "lucide-react";
 import { TiptapEditor, TiptapReadOnly } from "../editor/TiptapEditor";
@@ -20,9 +20,23 @@ export const TaskDescription = ({
     const [draft, setDraft] = useState(description ?? "");
     const ref = useRef<GetRef<typeof Input.TextArea>>(null);
 
-    useEffect(() => {
+    /**
+     * Re-seed the draft when the task's description changes underneath us — a
+     * refetch, an SSE update, or simply opening a different task in the same
+     * drawer.
+     *
+     * Adjusted DURING RENDER rather than in an effect. React documents this as
+     * the way to derive state from a changed prop: an effect would render once
+     * with the stale draft, commit it to the DOM, then set state and render
+     * again, which is both a wasted paint and the thing `set-state-in-effect`
+     * is warning about. Comparing against the previous value here means the
+     * extra render happens before anything is shown.
+     */
+    const [seenDescription, setSeenDescription] = useState(description);
+    if (seenDescription !== description) {
+        setSeenDescription(description);
         setDraft(description ?? "");
-    }, [description]);
+    }
 
     const commit = () => {
         if (draft !== description) onSave(draft);

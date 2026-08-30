@@ -78,7 +78,7 @@ describe("PermissionsRepo — the catalog mirror", () => {
 
 describe("RolesRepo — definable roles", () => {
     it("creates, finds and lists roles ordered by rank", async () => {
-        const { perms, roles } = repos();
+        const { roles } = repos();
         const ws = { id: await bareRbacWorkspace() };
 
         const midId = await roles.create(ws.id, {
@@ -108,7 +108,7 @@ describe("RolesRepo — definable roles", () => {
     });
 
     it("is workspace-scoped: another tenant's role resolves to null", async () => {
-        const { perms, roles } = repos();
+        const { roles } = repos();
         const a = { id: await bareRbacWorkspace() };
         const b = { id: await bareRbacWorkspace() };
         const id = await roles.create(a.id, { roleKey: "x", name: "X" });
@@ -119,7 +119,7 @@ describe("RolesRepo — definable roles", () => {
     });
 
     it("hides archived roles unless asked", async () => {
-        const { perms, roles } = repos();
+        const { roles } = repos();
         const ws = { id: await bareRbacWorkspace() };
         const id = await roles.create(ws.id, { roleKey: "old", name: "Old" });
 
@@ -132,7 +132,7 @@ describe("RolesRepo — definable roles", () => {
     });
 
     it("replacePermissions swaps the whole grant set atomically", async () => {
-        const { perms, roles } = repos();
+        const { roles } = repos();
         const ws = { id: await bareRbacWorkspace() };
         const id = await roles.create(ws.id, { roleKey: "r", name: "R" });
 
@@ -158,7 +158,7 @@ describe("RolesRepo — definable roles", () => {
     });
 
     it("REFUSES a grant for a key that is not in the catalog (FK RESTRICT)", async () => {
-        const { perms, roles } = repos();
+        const { roles } = repos();
         const ws = { id: await bareRbacWorkspace() };
         const id = await roles.create(ws.id, { roleKey: "r", name: "R" });
 
@@ -170,7 +170,7 @@ describe("RolesRepo — definable roles", () => {
     });
 
     it("counts holders and users-with-a-permission", async () => {
-        const { perms, roles, grants } = repos();
+        const { roles, grants } = repos();
         const ws = { id: await bareRbacWorkspace() };
         const u1 = await makeUser({ workspaceId: ws.id });
         const u2 = await makeUser({ workspaceId: ws.id });
@@ -202,7 +202,7 @@ describe("RolesRepo — definable roles", () => {
     });
 
     it("an ARCHIVED role stops counting toward a permission", async () => {
-        const { perms, roles, grants } = repos();
+        const { roles, grants } = repos();
         const ws = { id: await bareRbacWorkspace() };
         const u = await makeUser({ workspaceId: ws.id });
         const roleId = await roles.create(ws.id, { roleKey: "r", name: "R" });
@@ -238,7 +238,7 @@ describe("RolesRepo — definable roles", () => {
 
 describe("UserRolesRepo — assignments and membership", () => {
     it("assigns workspace- and space-scoped roles, and is idempotent", async () => {
-        const { perms, roles, grants } = repos();
+        const { roles, grants } = repos();
         const ws = { id: await bareRbacWorkspace() };
         const u = await makeUser({ workspaceId: ws.id });
         const sp = await makeSpace({ workspaceId: ws.id, createdBy: u.id });
@@ -278,7 +278,7 @@ describe("UserRolesRepo — assignments and membership", () => {
     });
 
     it("listEffectiveGrants returns both scopes for the resolver", async () => {
-        const { perms, roles, grants } = repos();
+        const { roles, grants } = repos();
         const ws = { id: await bareRbacWorkspace() };
         const u = await makeUser({ workspaceId: ws.id });
         const sp = await makeSpace({ workspaceId: ws.id, createdBy: u.id });
@@ -326,7 +326,7 @@ describe("UserRolesRepo — assignments and membership", () => {
     });
 
     it("an archived role disappears from the effective grants immediately", async () => {
-        const { perms, roles, grants } = repos();
+        const { roles, grants } = repos();
         const ws = { id: await bareRbacWorkspace() };
         const u = await makeUser({ workspaceId: ws.id });
         const roleId = await roles.create(ws.id, { roleKey: "r", name: "R" });
@@ -347,7 +347,7 @@ describe("UserRolesRepo — assignments and membership", () => {
     });
 
     it("lists a space's members and revokes cleanly", async () => {
-        const { perms, roles, grants } = repos();
+        const { roles, grants } = repos();
         const ws = { id: await bareRbacWorkspace() };
         const u1 = await makeUser({ workspaceId: ws.id });
         const u2 = await makeUser({ workspaceId: ws.id });
@@ -379,7 +379,7 @@ describe("UserRolesRepo — assignments and membership", () => {
     });
 
     it("revoking a workspace grant does not touch the space grant", async () => {
-        const { perms, roles, grants } = repos();
+        const { roles, grants } = repos();
         const ws = { id: await bareRbacWorkspace() };
         const u = await makeUser({ workspaceId: ws.id });
         const sp = await makeSpace({ workspaceId: ws.id, createdBy: u.id });

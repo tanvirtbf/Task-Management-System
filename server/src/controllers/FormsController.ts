@@ -51,9 +51,7 @@ export class FormsController {
         next: NextFunction,
     ) {
         try {
-            const { listId } = matchedData(req, { locations: ["params"] }) as {
-                listId: string;
-            };
+            const { listId } = matchedData<{ listId: string; }>(req, { locations: ["params"] });
             const data = await this.forms.listByList(
                 listId,
                 req.auth.workspaceId,
@@ -67,9 +65,7 @@ export class FormsController {
     /** GET /api/v1/forms/:id (#3, 🔐). */
     async get(req: GetFormRequest, res: Response, next: NextFunction) {
         try {
-            const { id } = matchedData(req, { locations: ["params"] }) as {
-                id: string;
-            };
+            const { id } = matchedData<{ id: string; }>(req, { locations: ["params"] });
             const form = await this.forms.get(id, req.auth.workspaceId);
             res.status(200).json(form);
         } catch (err) {
@@ -80,9 +76,9 @@ export class FormsController {
     /** POST /api/v1/forms (#4, 👑). 201 with the created form. */
     async create(req: CreateFormRequest, res: Response, next: NextFunction) {
         try {
-            const b = matchedData(req, {
+            const b = matchedData<Partial<CreateFormBody>>(req, {
                 locations: ["body"],
-            }) as Partial<CreateFormBody>;
+            });
             const form = await this.forms.create({
                 workspaceId: req.auth.workspaceId,
                 actorId: req.auth.sub,
@@ -109,12 +105,10 @@ export class FormsController {
     /** PATCH /api/v1/forms/:id (#5, 👑). 200 with the updated form. */
     async update(req: UpdateFormRequest, res: Response, next: NextFunction) {
         try {
-            const { id } = matchedData(req, { locations: ["params"] }) as {
-                id: string;
-            };
-            const b = matchedData(req, {
+            const { id } = matchedData<{ id: string; }>(req, { locations: ["params"] });
+            const b = matchedData<Partial<UpdateFormBody>>(req, {
                 locations: ["body"],
-            }) as Partial<UpdateFormBody>;
+            });
             if (Object.keys(b).length === 0) {
                 throw AppError.validationFailed([
                     { issue: "Provide at least one field to update" },
@@ -146,9 +140,7 @@ export class FormsController {
     /** DELETE /api/v1/forms/:id (#6, 👑). 204. */
     async delete(req: DeleteFormRequest, res: Response, next: NextFunction) {
         try {
-            const { id } = matchedData(req, { locations: ["params"] }) as {
-                id: string;
-            };
+            const { id } = matchedData<{ id: string; }>(req, { locations: ["params"] });
             await this.forms.delete(id, req.auth.workspaceId);
             this.logger.info("forms.delete.ok", {
                 requestId: req.requestId,
@@ -165,12 +157,10 @@ export class FormsController {
     /** POST /api/v1/forms/:id/fields (#7, 👑). 201 with the created field. */
     async addField(req: AddFieldRequest, res: Response, next: NextFunction) {
         try {
-            const { id } = matchedData(req, { locations: ["params"] }) as {
-                id: string;
-            };
-            const b = matchedData(req, {
+            const { id } = matchedData<{ id: string; }>(req, { locations: ["params"] });
+            const b = matchedData<Partial<AddFieldBody>>(req, {
                 locations: ["body"],
-            }) as Partial<AddFieldBody>;
+            });
             const field = await this.forms.addField({
                 workspaceId: req.auth.workspaceId,
                 formId: id,
@@ -204,12 +194,10 @@ export class FormsController {
         next: NextFunction,
     ) {
         try {
-            const { id } = matchedData(req, { locations: ["params"] }) as {
-                id: string;
-            };
-            const b = matchedData(req, {
+            const { id } = matchedData<{ id: string; }>(req, { locations: ["params"] });
+            const b = matchedData<Partial<UpdateFieldBody>>(req, {
                 locations: ["body"],
-            }) as Partial<UpdateFieldBody>;
+            });
             if (Object.keys(b).length === 0) {
                 throw AppError.validationFailed([
                     { issue: "Provide at least one field to update" },
@@ -238,9 +226,7 @@ export class FormsController {
         next: NextFunction,
     ) {
         try {
-            const { id } = matchedData(req, { locations: ["params"] }) as {
-                id: string;
-            };
+            const { id } = matchedData<{ id: string; }>(req, { locations: ["params"] });
             await this.forms.deleteField(id, req.auth.workspaceId);
             res.sendStatus(204);
         } catch (err) {
@@ -255,9 +241,7 @@ export class FormsController {
         next: NextFunction,
     ) {
         try {
-            const { id } = matchedData(req, { locations: ["params"] }) as {
-                id: string;
-            };
+            const { id } = matchedData<{ id: string; }>(req, { locations: ["params"] });
             const body = (req.body ?? {}) as {
                 items?: { id: string; position: number }[];
             };
@@ -279,13 +263,8 @@ export class FormsController {
         next: NextFunction,
     ) {
         try {
-            const { id } = matchedData(req, { locations: ["params"] }) as {
-                id: string;
-            };
-            const q = matchedData(req, { locations: ["query"] }) as {
-                cursor?: string;
-                limit?: number;
-            };
+            const { id } = matchedData<{ id: string; }>(req, { locations: ["params"] });
+            const q = matchedData<{ cursor?: string; limit?: number; }>(req, { locations: ["query"] });
             const result = await this.forms.listSubmissions({
                 workspaceId: req.auth.workspaceId,
                 formId: id,
@@ -327,9 +306,7 @@ export class FormsController {
      */
     async submit(req: SubmitFormRequest, res: Response, next: NextFunction) {
         try {
-            const { slug } = matchedData(req, { locations: ["params"] }) as {
-                slug: string;
-            };
+            const { slug } = matchedData<{ slug: string; }>(req, { locations: ["params"] });
             const body = (req.body ?? {}) as { data?: Record<string, unknown> };
             const result = await this.forms.submit({
                 slug,

@@ -65,9 +65,9 @@ export class TaskWriteController {
      */
     async create(req: CreateTaskRequest, res: Response, next: NextFunction) {
         try {
-            const b = matchedData(req, {
+            const b = matchedData<Partial<CreateTaskBody>>(req, {
                 locations: ["body"],
-            }) as Partial<CreateTaskBody>;
+            });
 
             const task = await this.writes.create({
                 workspaceId: req.auth.workspaceId,
@@ -85,7 +85,7 @@ export class TaskWriteController {
                 startDate: b.start_date,
                 dueDate: b.due_date,
                 recurrencePattern:
-                    b.recurrence_pattern as CreateTaskBody["recurrence_pattern"] as never,
+                    b.recurrence_pattern as never,
                 recurrenceDays: b.recurrence_days,
                 recurrenceTime: b.recurrence_time,
                 recurrenceEndsAt: b.recurrence_ends_at,
@@ -130,12 +130,10 @@ export class TaskWriteController {
      */
     async update(req: UpdateTaskRequest, res: Response, next: NextFunction) {
         try {
-            const { id } = matchedData(req, { locations: ["params"] }) as {
-                id: string;
-            };
-            const b = matchedData(req, {
+            const { id } = matchedData<{ id: string; }>(req, { locations: ["params"] });
+            const b = matchedData<Partial<UpdateTaskBody>>(req, {
                 locations: ["body"],
-            }) as Partial<UpdateTaskBody>;
+            });
 
             // `matchedData` drops explicit-null optional fields, so a PATCH that
             // CLEARS a nullable column would look empty. Re-include the nulls the
@@ -196,7 +194,7 @@ export class TaskWriteController {
                     startDate: b.start_date,
                     dueDate: b.due_date,
                     recurrencePattern:
-                        b.recurrence_pattern as UpdateTaskBody["recurrence_pattern"] as never,
+                        b.recurrence_pattern as never,
                     recurrenceDays: b.recurrence_days,
                     recurrenceTime: b.recurrence_time,
                     recurrenceEndsAt: b.recurrence_ends_at,
@@ -235,9 +233,7 @@ export class TaskWriteController {
     /** POST /api/v1/tasks/:id/archive — soft-delete (cascades to subtasks). 204. */
     async archive(req: AuthRequest, res: Response, next: NextFunction) {
         try {
-            const { id } = matchedData(req, { locations: ["params"] }) as {
-                id: string;
-            };
+            const { id } = matchedData<{ id: string; }>(req, { locations: ["params"] });
             await this.writes.archive({
                 workspaceId: req.auth.workspaceId,
                 actorId: req.auth.sub,
@@ -258,9 +254,7 @@ export class TaskWriteController {
     /** POST /api/v1/tasks/:id/unarchive — restore the subtree. 204. */
     async unarchive(req: AuthRequest, res: Response, next: NextFunction) {
         try {
-            const { id } = matchedData(req, { locations: ["params"] }) as {
-                id: string;
-            };
+            const { id } = matchedData<{ id: string; }>(req, { locations: ["params"] });
             await this.writes.unarchive({
                 workspaceId: req.auth.workspaceId,
                 actorId: req.auth.sub,
@@ -284,9 +278,7 @@ export class TaskWriteController {
      */
     async del(req: AuthRequest, res: Response, next: NextFunction) {
         try {
-            const { id } = matchedData(req, { locations: ["params"] }) as {
-                id: string;
-            };
+            const { id } = matchedData<{ id: string; }>(req, { locations: ["params"] });
             const hard = req.query.hard === "true";
             await this.writes.del({
                 workspaceId: req.auth.workspaceId,
@@ -399,9 +391,7 @@ export class TaskWriteController {
      */
     async myWork(req: AuthRequest, res: Response, next: NextFunction) {
         try {
-            const { bucket } = matchedData(req, { locations: ["query"] }) as {
-                bucket?: MyWorkBucket;
-            };
+            const { bucket } = matchedData<{ bucket?: MyWorkBucket; }>(req, { locations: ["query"] });
             const result = await this.writes.myWork({
                 workspaceId: req.auth.workspaceId,
                 userId: req.auth.sub,

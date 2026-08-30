@@ -127,7 +127,7 @@ const signAccess = (
         { algorithm: "HS256", expiresIn: "15m", ...opts },
     );
 
-const sum = (a: number[]): number => a.reduce((s, n) => s + n, 0);
+const _sum = (a: number[]): number => a.reduce((s, n) => s + n, 0);
 
 describe("GET /api/v1/home/kpis", () => {
     // ─── Shape ────────────────────────────────────────────────────────────────

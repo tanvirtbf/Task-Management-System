@@ -78,7 +78,7 @@ const taskRow = async (id: string) => {
 describe("DELETE /api/v1/sprints/:id", () => {
     describe("Happy path", () => {
         it("deletes a PLANNED sprint and returns 204 with no body", async () => {
-            const { client, workspaceId, u } = await setup();
+            const { client, workspaceId } = await setup();
             const s = await makeSprint({
                 workspaceId,
                 status: "planned",
@@ -92,7 +92,7 @@ describe("DELETE /api/v1/sprints/:id", () => {
         });
 
         it("deletes a CLOSED sprint too — history can be cleaned up", async () => {
-            const { client, workspaceId, u } = await setup();
+            const { client, workspaceId } = await setup();
             const s = await makeSprint({
                 workspaceId,
                 status: "closed",
@@ -107,7 +107,7 @@ describe("DELETE /api/v1/sprints/:id", () => {
          * means removing a sprint costs the sprint row and nothing else.
          */
         it("DETACHES its tasks instead of deleting them", async () => {
-            const { client, workspaceId, list, todo, u } = await setup();
+            const { client, workspaceId, list, todo } = await setup();
             const s = await makeSprint({
                 workspaceId,
                 status: "planned",
@@ -168,7 +168,7 @@ describe("DELETE /api/v1/sprints/:id", () => {
 
     describe("The active-sprint guard", () => {
         it("REFUSES an active sprint with 409 sprint.active_immutable", async () => {
-            const { client, workspaceId, u } = await setup();
+            const { client, workspaceId } = await setup();
             const s = await makeSprint({
                 workspaceId,
                 status: "active",
@@ -182,7 +182,7 @@ describe("DELETE /api/v1/sprints/:id", () => {
         });
 
         it("leaves an active sprint's tasks attached when the delete is refused", async () => {
-            const { client, workspaceId, list, todo, u } = await setup();
+            const { client, workspaceId, list, todo } = await setup();
             const s = await makeSprint({
                 workspaceId,
                 status: "active",
@@ -200,7 +200,7 @@ describe("DELETE /api/v1/sprints/:id", () => {
         });
 
         it("allows the delete once the sprint is no longer active", async () => {
-            const { client, workspaceId, u } = await setup();
+            const { client, workspaceId } = await setup();
             const s = await makeSprint({
                 workspaceId,
                 status: "active",
@@ -227,7 +227,7 @@ describe("DELETE /api/v1/sprints/:id", () => {
         it("404 for a sprint in ANOTHER workspace (no existence oracle)", async () => {
             const { client } = await setup();
             const other = await makeWorkspace();
-            const otherOwner = await makeUser({
+            const _otherOwner = await makeUser({
                 workspaceId: other.id,
                 role: "owner",
             });
@@ -253,7 +253,7 @@ describe("DELETE /api/v1/sprints/:id", () => {
         });
 
         it("allows an admin (sprint.manage)", async () => {
-            const { client, workspaceId, u } = await setup("admin");
+            const { client, workspaceId } = await setup("admin");
             const s = await makeSprint({
                 workspaceId,
                 status: "planned",
@@ -290,7 +290,7 @@ describe("DELETE /api/v1/sprints/:id", () => {
 
     describe("Cross-cutting", () => {
         it("responds with an X-Request-Id header", async () => {
-            const { client, workspaceId, u } = await setup();
+            const { client, workspaceId } = await setup();
             const s = await makeSprint({
                 workspaceId,
                 status: "planned",

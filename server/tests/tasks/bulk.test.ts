@@ -18,7 +18,6 @@ import {
     taskAssignees,
     taskTags,
 } from "../../src/db/schema";
-import { Config } from "../../src/config";
 import type { Role } from "../../src/constants";
 
 /**
@@ -29,7 +28,7 @@ jest.setTimeout(60_000);
 
 const PATH = "/api/v1/tasks/bulk";
 
-const signAccess = (
+const _signAccess = (
     user: { id: string; workspaceId: string; role: Role },
     secret: string,
     opts: jwt.SignOptions = {},

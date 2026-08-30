@@ -161,18 +161,10 @@ export class UserController {
      */
     async update(req: UpdateUserRequest, res: Response, next: NextFunction) {
         try {
-            const { id } = matchedData(req, { locations: ["params"] }) as {
-                id: string;
-            };
-            const data = matchedData(req, {
+            const { id } = matchedData<{ id: string; }>(req, { locations: ["params"] });
+            const data = matchedData<Partial<{ first_name: string; last_name: string; email: string; timezone: string; avatar_url: string | null; }>>(req, {
                 locations: ["body"],
-            }) as Partial<{
-                first_name: string;
-                last_name: string;
-                email: string;
-                timezone: string;
-                avatar_url: string | null;
-            }>;
+            });
 
             const patch: ProfilePatch = {};
             if (data.first_name !== undefined) patch.firstName = data.first_name;
@@ -222,12 +214,8 @@ export class UserController {
      */
     async changeRole(req: ChangeRoleRequest, res: Response, next: NextFunction) {
         try {
-            const { id } = matchedData(req, { locations: ["params"] }) as {
-                id: string;
-            };
-            const { role } = matchedData(req, { locations: ["body"] }) as {
-                role: "admin" | "member" | "guest";
-            };
+            const { id } = matchedData<{ id: string; }>(req, { locations: ["params"] });
+            const { role } = matchedData<{ role: "admin" | "member" | "guest"; }>(req, { locations: ["body"] });
 
             const user = await this.userService.changeRole({
                 workspaceId: req.auth.workspaceId,
@@ -260,9 +248,7 @@ export class UserController {
      */
     async deactivate(req: AuthRequest, res: Response, next: NextFunction) {
         try {
-            const { id } = matchedData(req, { locations: ["params"] }) as {
-                id: string;
-            };
+            const { id } = matchedData<{ id: string; }>(req, { locations: ["params"] });
 
             await this.userService.deactivate({
                 workspaceId: req.auth.workspaceId,
@@ -294,9 +280,7 @@ export class UserController {
         next: NextFunction,
     ) {
         try {
-            const { id } = matchedData(req, { locations: ["params"] }) as {
-                id: string;
-            };
+            const { id } = matchedData<{ id: string; }>(req, { locations: ["params"] });
             const result = await this.userService.deletionPreflight({
                 workspaceId: req.auth.workspaceId,
                 actorId: req.auth.sub,
@@ -335,9 +319,7 @@ export class UserController {
      */
     async hardDelete(req: AuthRequest, res: Response, next: NextFunction) {
         try {
-            const { id } = matchedData(req, { locations: ["params"] }) as {
-                id: string;
-            };
+            const { id } = matchedData<{ id: string; }>(req, { locations: ["params"] });
 
             await this.userService.hardDelete({
                 workspaceId: req.auth.workspaceId,
@@ -369,9 +351,7 @@ export class UserController {
      */
     async reactivate(req: AuthRequest, res: Response, next: NextFunction) {
         try {
-            const { id } = matchedData(req, { locations: ["params"] }) as {
-                id: string;
-            };
+            const { id } = matchedData<{ id: string; }>(req, { locations: ["params"] });
 
             await this.userService.reactivate({
                 workspaceId: req.auth.workspaceId,
@@ -403,9 +383,7 @@ export class UserController {
      */
     async resetPassword(req: AuthRequest, res: Response, next: NextFunction) {
         try {
-            const { id } = matchedData(req, { locations: ["params"] }) as {
-                id: string;
-            };
+            const { id } = matchedData<{ id: string; }>(req, { locations: ["params"] });
 
             await this.userService.resetPassword({
                 workspaceId: req.auth.workspaceId,

@@ -69,7 +69,7 @@ const seed = async () => {
 
 describe("P5 — a narrow-scoped user cannot reach the other team through ANY side door", () => {
     it("SLA queue lists only their reach, and the Home tile agrees (G7)", async () => {
-        const { ws, viewer, taskA, taskB } = await seed();
+        const { viewer, taskA, taskB } = await seed();
         const past = new Date(Date.now() - 60 * 60 * 1000);
         for (const t of [taskA, taskB]) {
             await db()

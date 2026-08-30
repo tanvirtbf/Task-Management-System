@@ -3,9 +3,8 @@ import { oneOff } from "../test-utils/app";
 import { makeUser } from "../test-utils/factories";
 import { getDb } from "../../src/db/client";
 import { notifications } from "../../src/db/schema";
-import { Config } from "../../src/config";
 import { fakeId } from "../../src/utils";
-import { BASE, seed, insertNotification, signAccess } from "./_helpers";
+import { BASE, seed, insertNotification } from "./_helpers";
 
 /**
  * Tests for `POST /api/v1/notifications/:id/read` (§19 #3) and

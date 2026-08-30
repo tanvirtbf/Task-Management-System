@@ -1,7 +1,6 @@
 import { eq } from "drizzle-orm";
 import { oneOff } from "../test-utils/app";
 import {
-    makeLoggedInClient,
     makeTag,
     makeTaskType,
     makeUser,

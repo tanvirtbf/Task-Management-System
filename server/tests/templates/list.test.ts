@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { oneOff } from "../test-utils/app";
-import { makeLoggedInClient, makeUser, makeWorkspace } from "../test-utils/factories";
+import { makeUser, makeWorkspace } from "../test-utils/factories";
 import { getDb } from "../../src/db/client";
 import { templates } from "../../src/db/schema";
 import { Config } from "../../src/config";
@@ -13,7 +13,6 @@ import {
     setup,
     signAccess,
     validStructure,
-    type WireTemplate,
 } from "./helpers";
 
 /**

@@ -635,7 +635,7 @@ export class FormsService {
                 typeByKey.set(key, cf.type);
                 configByKey.set(
                     key,
-                    (cf.config ?? {}) as Record<string, unknown>,
+                    (cf.config ?? {}),
                 );
             }
         }
@@ -761,23 +761,23 @@ export class FormsService {
             primaryListId: form.listId,
             name:
                 typeof taskAttrs.name === "string" && taskAttrs.name.length > 0
-                    ? (taskAttrs.name as string)
+                    ? (taskAttrs.name)
                     : `${form.title} submission`,
             description:
                 typeof taskAttrs.description === "string"
-                    ? (taskAttrs.description as string)
+                    ? (taskAttrs.description)
                     : undefined,
             priority:
                 typeof taskAttrs.priority === "number"
-                    ? (taskAttrs.priority as number)
+                    ? (taskAttrs.priority)
                     : undefined,
             dueDate:
                 typeof taskAttrs.due_date === "string"
-                    ? (taskAttrs.due_date as string)
+                    ? (taskAttrs.due_date)
                     : undefined,
             startDate:
                 typeof taskAttrs.start_date === "string"
-                    ? (taskAttrs.start_date as string)
+                    ? (taskAttrs.start_date)
                     : undefined,
         });
 
@@ -805,7 +805,7 @@ export class FormsService {
                     taskId: task.id,
                     submitterEmail,
                     submitterIp: input.ip,
-                    data: encryptedData as any,
+                    data: encryptedData,
                     encryptedAt: now,
                     expiresAt,
                 },

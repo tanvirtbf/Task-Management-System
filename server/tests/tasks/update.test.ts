@@ -12,7 +12,6 @@ import {
 } from "../test-utils/factories";
 import { getDb } from "../../src/db/client";
 import { tasks, taskActivity, taskTypes } from "../../src/db/schema";
-import { Config } from "../../src/config";
 import type { Role } from "../../src/constants";
 
 /**
@@ -32,7 +31,7 @@ jest.setTimeout(60_000);
 
 const PATH = (id: string) => `/api/v1/tasks/${id}`;
 
-const signAccess = (
+const _signAccess = (
     user: { id: string; workspaceId: string; role: Role },
     secret: string,
     opts: jwt.SignOptions = {},

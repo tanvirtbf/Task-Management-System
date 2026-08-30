@@ -6,8 +6,6 @@ import {
     makeUser,
     makeLoggedInClient,
     makeTask,
-    makeList,
-    makeStatus,
     makeTag,
 } from "../test-utils/factories";
 import { getDb } from "../../src/db/client";

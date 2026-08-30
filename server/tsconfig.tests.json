@@ -1,0 +1,25 @@
+{
+    // Type-check the TEST suite.
+    //
+    // `tsconfig.json` includes `src/**/*.ts` and explicitly excludes `tests`,
+    // so `tsc --noEmit` — the thing every phase calls "tsc clean" — has never
+    // said anything about the 312 files in `tests/`. Their type safety rides
+    // entirely on ts-jest's diagnostics, which means the only way to learn that
+    // a test no longer compiles is to run it: 35 module configs, about two
+    // hours.
+    //
+    // This config type-checks all of them in about ninety seconds. P1 needed it
+    // immediately — a scripted lint cleanup renamed identifiers inside
+    // multi-line imports, and this caught all ten broken files before a single
+    // jest process started.
+    //
+    // `rootDir` is widened to the package root because the base config pins it
+    // to `src`, and a file outside it is an error before type-checking begins.
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+        "noEmit": true,
+        "rootDir": "."
+    },
+    "include": ["src/**/*.ts", "tests/**/*.ts"],
+    "exclude": ["node_modules", "dist"]
+}

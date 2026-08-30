@@ -1,5 +1,5 @@
 import jwt from "jsonwebtoken";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { oneOff } from "../test-utils/app";
 import {
     makeUser,

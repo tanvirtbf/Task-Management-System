@@ -3,7 +3,6 @@ import { eq } from "drizzle-orm";
 import { oneOff } from "../test-utils/app";
 import {
     makeUser,
-    makeSpace,
     makeLoggedInClient,
 } from "../test-utils/factories";
 import { getDb } from "../../src/db/client";

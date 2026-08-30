@@ -9,7 +9,6 @@ import {
 } from "../test-utils/factories";
 import { getDb } from "../../src/db/client";
 import { customFields, workspaceActivity } from "../../src/db/schema";
-import { Config } from "../../src/config";
 import { fakeId } from "../../src/utils";
 
 /**
@@ -62,7 +61,7 @@ const countFields = async (workspaceId: string) =>
             .where(eq(customFields.workspaceId, workspaceId))
     ).length;
 
-const signAccess = (
+const _signAccess = (
     user: { id: string; workspaceId: string; role: string },
     secret: string,
     opts: jwt.SignOptions = { algorithm: "HS256", expiresIn: "15m" },

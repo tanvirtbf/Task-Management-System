@@ -83,7 +83,11 @@ const RolesSettings = () => {
         staleTime: 60 * 60 * 1000, // the catalog only changes on deploy
     });
 
-    const roles = rolesQ.data ?? [];
+    // Memoised for the identity, not the cost: `?? []` mints a fresh array on
+    // every render while the query is loading or errored, and `roles` is a
+    // dependency of the two useMemos below — so without this they recompute
+    // forever and `selected` is a new object each time.
+    const roles = useMemo(() => rolesQ.data ?? [], [rolesQ.data]);
     const selected: Role | undefined = useMemo(
         () => roles.find((r) => r.id === selectedId) ?? roles[0],
         [roles, selectedId],

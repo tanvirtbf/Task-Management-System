@@ -1,9 +1,13 @@
+# Generated output only. Everything a person writes gets linted.
+#
+# This file used to hide 321 source files — the whole of `tests/` (312
+# files), every operator script, and one jest config singled out for no
+# reason anyone recorded. They were excluded because the TYPE-AWARE
+# parser cannot resolve files outside `tsconfig.json`'s include and
+# reports one parse error each; the fix for that is an `overrides` block
+# with `project: null` (see .eslintrc.cjs), not an ignore list. An
+# ignore entry does not say "this file is fine" — it says nobody will
+# ever find out.
 dist
 node_modules
-*.spec.ts
-tests/
 src/db/migrations
-jest.statuses.config.cjs
-
-# Operator scripts — plain Node CJS, run by hand, outside the TS project
-scripts/

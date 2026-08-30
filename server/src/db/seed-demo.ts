@@ -218,10 +218,17 @@ const seed = async () => {
         ["eng", "Engineering", "Code2", "#4F46E5", 2],
     ];
     const SP: Record<string, string> = {};
+    /**
+     * spaceKey → the head's user id. Kept because the head is who hands work
+     * out in this product, which is what `tasks.assigned_by` (upgrade 025) is
+     * for. See the task loop below.
+     */
+    const SPACE_HEAD: Record<string, string> = {};
     for (let i = 0; i < spaceDefs.length; i++) {
         const [key, name, icon, color, headIdx] = spaceDefs[i];
         const id = fakeId("sp");
         SP[key] = id;
+        SPACE_HEAD[key] = U[headIdx];
         await db.insert(S.spaces).values({
             id,
             workspaceId: ws,
@@ -252,6 +259,10 @@ const seed = async () => {
         ["features", "eng", "Website Features"],
     ];
     const L: Record<string, string> = {};
+    /** listKey → the head of the space that List belongs to. */
+    const LIST_HEAD: Record<string, string> = Object.fromEntries(
+        listDefs.map(([key, spaceKey]) => [key, SPACE_HEAD[spaceKey]]),
+    );
     // ST[listKey][statusName] = statusId
     const ST: Record<string, Record<string, string>> = {};
     const statusPlan: [
@@ -391,6 +402,8 @@ const seed = async () => {
         const listId = L[s.list];
         listCounter[s.list] = (listCounter[s.list] ?? 0) + 1;
         const tid = fakeId("t");
+        // Who handed this out — the head of the space this List sits in.
+        const assigner = LIST_HEAD[s.list] ?? U[0];
         const typeName = s.type ?? "Task";
         const done = !!s.done;
         await db.insert(S.tasks).values({
@@ -426,13 +439,27 @@ const seed = async () => {
             storyPoints: s.points ?? null,
             bugSeverity: s.sev ?? null,
             createdBy: U[0],
+            /**
+             * Upgrade 025's rule, applied at seed time: the earliest real
+             * assigner wins, and `created_by` is the fallback for a task
+             * nobody was ever assigned to.
+             *
+             * The assigner is the SPACE HEAD rather than the owner, and that
+             * detail is the whole point. Seeding `assigned_by = created_by`
+             * everywhere — which is what the owner-assigns-everything fixture
+             * produced — makes the column and the wire's created_by fallback
+             * indistinguishable, so a reseeded database tests the fallback and
+             * never the column. It is also simply truer: a department head is
+             * who gives their team work.
+             */
+            assignedBy: (s.who ?? []).length > 0 ? assigner : U[0],
         });
         // assignees
         for (const idx of s.who ?? []) {
             await db.insert(S.taskAssignees).values({
                 taskId: tid,
                 userId: U[idx],
-                assignedBy: U[0],
+                assignedBy: assigner,
             });
         }
         // tags

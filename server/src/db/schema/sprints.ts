@@ -17,7 +17,6 @@ import {
 } from "drizzle-orm/mysql-core";
 import {
     ID_LENGTH,
-    NAME_LENGTH,
     SHORT_NAME_LENGTH,
     sprintStatuses,
 } from "./_shared";

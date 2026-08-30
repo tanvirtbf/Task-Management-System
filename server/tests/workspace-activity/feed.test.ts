@@ -3,12 +3,10 @@ import { makeUser, makeWorkspace, makeLoggedInClient } from "../test-utils/facto
 import { getDb } from "../../src/db/client";
 import { workspaceActivity } from "../../src/db/schema";
 import { fakeId } from "../../src/utils";
-import { Config } from "../../src/config";
 import {
     BASE,
     seed,
     insertActivity,
-    signAccess,
     idsOf,
     USER_KEYS,
 } from "./_helpers";

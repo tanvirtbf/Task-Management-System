@@ -1,6 +1,8 @@
 import { drizzle, MySql2Database } from "drizzle-orm/mysql2";
 import mysql from "mysql2/promise";
+import type { PoolConnection as CallbackPoolConnection } from "mysql2";
 import { Config } from "../config";
+import logger from "../config/logger";
 import * as schema from "./schema";
 
 let pool: mysql.Pool;
@@ -81,8 +83,39 @@ export const initDb = async (): Promise<MySql2Database<typeof schema>> => {
         // The other half of the pair. Per-connection because the MySQL server is
         // shared with unrelated applications — changing the global time_zone
         // would move THEIR timestamps too.
-        pool.on("connection", (c) => {
-            c.query("SET time_zone = ?", [dbTimezone]);
+        pool.on("connection", (emitted) => {
+            // mysql2's promise typings declare this listener's argument as a
+            // PromiseConnection. It is not one — see the note below — and the
+            // compiler cannot know that, so the truth is stated here once,
+            // at the boundary, rather than worked around at each call.
+            const c = emitted as unknown as CallbackPoolConnection;
+            // The failure used to be dropped on the floor, which is the worst
+            // possible place to be quiet: if this statement fails, the driver
+            // keeps formatting Dates at `dbTimezone` while the session sits on
+            // the server default, and every TIMESTAMP written on that
+            // connection lands hours off — silently, and only ever visible much
+            // later as data nobody can explain. So the error is reported.
+            //
+            // The CALLBACK form is load-bearing, not a style choice. mysql2's
+            // promise pool forwards this event through `inherit_events.js`,
+            // which re-emits the driver's arguments untouched — so `c` is the
+            // RAW callback connection, not a PromiseConnection, whatever the
+            // typings suggest. Calling `.then`/`.catch` on its `query()` hits
+            // mysql2's "that is not a promise" guard, which throws inside an
+            // emitter callback: the pool never finishes connecting, and the
+            // process dies without a single line of our own logging. It is
+            // invisible to the test suite because `.env.test` leaves
+            // DB_TIMEZONE unset, so this handler is never even registered
+            // there — it only breaks dev and production. See P1 in
+            // FULL_SYSTEM_TEST_PLAN_2026-08-29.md.
+            c.query("SET time_zone = ?", [dbTimezone], (err: unknown) => {
+                if (err) {
+                    logger.error("db.session_timezone_failed", {
+                        timezone: dbTimezone,
+                        error: err instanceof Error ? err.message : String(err),
+                    });
+                }
+            });
         });
     }
 

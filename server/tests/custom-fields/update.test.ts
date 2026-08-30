@@ -4,7 +4,6 @@ import { oneOff } from "../test-utils/app";
 import { makeUser, makeLoggedInClient } from "../test-utils/factories";
 import { getDb } from "../../src/db/client";
 import { customFields, workspaceActivity } from "../../src/db/schema";
-import { Config } from "../../src/config";
 import { fakeId } from "../../src/utils";
 
 /**
@@ -54,7 +53,7 @@ const fetchActivityFor = async (entityId: string) =>
         .select({ action: workspaceActivity.action })
         .from(workspaceActivity)
         .where(eq(workspaceActivity.entityId, entityId));
-const signAccess = (
+const _signAccess = (
     user: { id: string; workspaceId: string; role: string },
     secret: string,
     opts: jwt.SignOptions = { algorithm: "HS256", expiresIn: "15m" },

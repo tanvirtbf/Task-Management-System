@@ -6,7 +6,10 @@ import type { Task } from "../../types";
 import { tokens } from "../../theme";
 
 /** Extract a default branch suggestion from a task ID + name. */
-export const suggestBranchName = (task: Task): string => {
+// Not exported: a non-component export in a component file defeats Fast
+// Refresh (the whole module reloads instead of hot-swapping). Nothing outside
+// this file uses it.
+const suggestBranchName = (task: Task): string => {
     const id = task.customId ?? `T-${task.taskNumber}`;
     const slug = task.name
         .toLowerCase()

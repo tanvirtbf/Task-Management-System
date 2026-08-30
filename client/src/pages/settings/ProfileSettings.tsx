@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button, Input, Select, Modal, Space, App as AntApp } from "antd";
 import { Save, KeyRound, BellRing } from "lucide-react";
@@ -36,14 +36,21 @@ const ProfileSettings = () => {
     const [email, setEmail] = useState(user?.email ?? "");
     const [timezone, setTimezone] = useState(user?.timezone ?? "Asia/Dhaka");
 
-    useEffect(() => {
+    // Re-seed the form when the signed-in user object changes — the profile
+    // save writes a new one back into the store, and so does the session
+    // bootstrap on a hard reload. Adjusted during render rather than in an
+    // effect: an effect paints the stale values first, which on a reload is a
+    // visible flash of an empty form before the real name appears.
+    const [seenUser, setSeenUser] = useState(user);
+    if (seenUser !== user) {
+        setSeenUser(user);
         if (user) {
             setFirstName(user.firstName);
             setLastName(user.lastName);
             setEmail(user.email);
             setTimezone(user.timezone);
         }
-    }, [user]);
+    }
 
     const saveProfile = useMutation({
         mutationFn: () =>

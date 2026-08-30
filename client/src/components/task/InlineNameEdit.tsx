@@ -18,9 +18,14 @@ export const InlineNameEdit = ({
     const [draft, setDraft] = useState(value);
     const inputRef = useRef<HTMLInputElement>(null);
 
-    useEffect(() => {
+    // Re-seed the draft when the name changes underneath us, or when the
+    // editor closes — but never while someone is typing. Render-time so the
+    // stale draft is never painted first.
+    const [seen, setSeen] = useState({ value, editing });
+    if (seen.value !== value || seen.editing !== editing) {
+        setSeen({ value, editing });
         if (!editing) setDraft(value);
-    }, [value, editing]);
+    }
 
     useEffect(() => {
         if (editing) inputRef.current?.focus();

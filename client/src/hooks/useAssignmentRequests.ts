@@ -93,7 +93,7 @@ export const useAssignmentRequestActions = () => {
     const qc = useQueryClient();
     const { message } = AntApp.useApp();
 
-    const make = <TArgs extends unknown[]>(
+    const useAction = <TArgs extends unknown[]>(
         fn: (...args: TArgs) => Promise<AssignmentRequest>,
         okText: string,
     ) =>
@@ -106,33 +106,31 @@ export const useAssignmentRequestActions = () => {
             onError: (err) => message.error(getApiErrorMessage(err)),
         });
 
-    /* eslint-disable react-hooks/rules-of-hooks -- the five calls run
-       unconditionally in a fixed order on every render (a static hook list,
-       merely built by a helper). */
-    const accept = make(
+     
+    const accept = useAction(
         (id: string, note?: string) => assignmentRequestsApi.accept(id, note),
         "Assignment accepted",
     );
-    const decline = make(
+    const decline = useAction(
         (id: string, note?: string) =>
             assignmentRequestsApi.decline(id, note),
         "Request declined",
     );
-    const query = make(
+    const query = useAction(
         (id: string, note: string, proposedDueDate?: string | null) =>
             assignmentRequestsApi.query(id, note, proposedDueDate),
         "Query sent to the requester",
     );
-    const answer = make(
+    const answer = useAction(
         (id: string, input: { note?: string; dueDate?: string }) =>
             assignmentRequestsApi.answer(id, input),
         "Reply sent",
     );
-    const cancel = make(
+    const cancel = useAction(
         (id: string) => assignmentRequestsApi.cancel(id),
         "Request withdrawn",
     );
-    /* eslint-enable react-hooks/rules-of-hooks */
+     
 
     return { accept, decline, query, answer, cancel };
 };

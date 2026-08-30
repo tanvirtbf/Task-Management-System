@@ -34,6 +34,17 @@ const humanSize = (bytes: number): string => {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
+/**
+ * A client-side row id for a newly attached file.
+ *
+ * Deliberately outside the component: this is unavoidably impure (a temp id
+ * has to be unique), and react-hooks/purity guards the component BODY. Keeping
+ * it at module scope says "this is not render work" instead of silencing the
+ * rule with a disable comment.
+ */
+const newFileId = (): string =>
+    `file-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
 export const FilesFieldRenderer = ({
     field,
     value,
@@ -45,7 +56,7 @@ export const FilesFieldRenderer = ({
 
     const addFile = (filename: string, size: number) => {
         const item: FileItem = {
-            id: `file-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            id: newFileId(),
             filename,
             size,
         };
