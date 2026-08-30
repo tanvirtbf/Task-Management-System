@@ -15,14 +15,46 @@ async function login(page: Page) {
 }
 const isReal = (t: string) => !/(ResizeObserver|favicon|401|Unauthorized|manifest|deprecated|antd)/i.test(t);
 
+/**
+ * KI-4: this searched for the literal "QA List" and expected "QA List A/B" —
+ * names that only ever existed in a hand-seeded `taskmanagement_qa` database,
+ * so against the demo seed the query returned nothing and the test failed on
+ * a missing fixture rather than on search. What it is really asserting is
+ * that a query returns results and that clicking one navigates, so it now
+ * searches for a list this workspace actually has.
+ */
+let SEARCH_TERM = "";
+
+test.beforeAll(async () => {
+    const api = process.env.E2E_API ?? "http://localhost:5501/api/v1";
+    const token = await fetch(api + "/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            email: "owner@company.local",
+            password: "Owner@12345",
+        }),
+    })
+        .then((r) => r.json())
+        .then((b) => b.access_token as string);
+    const body = await fetch(api + "/lists", {
+        headers: { Authorization: "Bearer " + token },
+    }).then((r) => r.json());
+    const lists = (Array.isArray(body) ? body : (body.data ?? [])) as {
+        name: string;
+    }[];
+    if (lists.length === 0) throw new Error("no lists to search for");
+    SEARCH_TERM = lists[0].name;
+});
+
 test("Search: query returns results + clicking a result navigates", async ({ page }) => {
     await login(page);
     await page.goto("/search");
-    await page.getByPlaceholder("Search everything...").fill("QA List");
+    await page.getByPlaceholder("Search everything...").fill(SEARCH_TERM);
     await page.waitForTimeout(1500);
-    // results render (lists bucket shows QA List A/B)
-    await expect(page.getByText(/QA List [AB]/).first()).toBeVisible({ timeout: 8000 });
-    await page.getByText(/QA List [AB]/).first().click();
+    // the lists bucket shows the list we searched for
+    await expect(page.getByText(SEARCH_TERM).first()).toBeVisible({ timeout: 8000 });
+    await page.getByText(SEARCH_TERM).first().click();
     await page.waitForTimeout(1200);
     // navigated somewhere meaningful (a list URL) — search didn't crash
     expect(new URL(page.url()).pathname).not.toContain("/login");

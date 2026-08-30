@@ -604,7 +604,7 @@ describe("GET /api/v1/spaces/:spaceId/lists", () => {
 
     // ─── j. Pagination (collection mode — single complete page) ─────────────────
     describe("Collection pagination", () => {
-        it("returns a large set in a single page with no hidden cap", async () => {
+        it("caps a large set at the default limit and pages through it", async () => {
             const { u, space, client } = await setup();
             const rows = Array.from({ length: 250 }, (_, i) => ({
                 name: `list-${String(i).padStart(3, "0")}`,
@@ -612,16 +612,43 @@ describe("GET /api/v1/spaces/:spaceId/lists", () => {
             }));
             await seedLists(space.id, u.id, rows);
 
-            const res = await client.get(url(space.id));
+            // F23 (ISS-007) inverted this test's premise. This endpoint used to
+            // return every row with has_more:false whatever `limit` said; it now
+            // has a real DEFAULT_LIMIT of 100 and a working cursor. So "no hidden
+            // cap" is precisely what must NOT be true any more — and the first
+            // page is only half the contract. The half that matters to a client
+            // is that following the cursor still yields EVERY row, in order,
+            // exactly once (the H1 rule the views depend on).
+            const first = await client.get(url(space.id));
+            expect(first.status).toBe(200);
+            expect(first.body.data).toHaveLength(100);
+            expect(first.body.pagination.has_more).toBe(true);
+            expect(first.body.pagination.total_estimate).toBe(250);
+            expect(first.body.pagination.next_cursor).toEqual(
+                expect.any(String),
+            );
+            expect(dataOf(first.body)[0].name).toBe("list-000");
 
-            expect(res.body.data).toHaveLength(250);
-            expect(res.body.pagination).toEqual({
-                next_cursor: null,
-                has_more: false,
-                total_estimate: 250,
-            });
-            expect(dataOf(res.body)[0].name).toBe("list-000");
-            expect(dataOf(res.body)[249].name).toBe("list-249");
+            const seen: string[] = dataOf(first.body).map((l) => l.name);
+            let cursor: string | null = first.body.pagination.next_cursor;
+            let pages = 1;
+            while (cursor) {
+                const next = await client.get(`${url(space.id)}?${`cursor=${encodeURIComponent(cursor)}`}`);
+                expect(next.status).toBe(200);
+                expect(next.body.pagination.total_estimate).toBe(250);
+                seen.push(...dataOf(next.body).map((l) => l.name));
+                cursor = next.body.pagination.next_cursor;
+                pages++;
+                // 250 rows at 100/page is 3. A cursor that silently restarted
+                // at page 1 (the ISS-008 bug) would loop here for ever, so the
+                // bound is the assertion, not a safety net.
+                expect(pages).toBeLessThanOrEqual(4);
+            }
+            expect(pages).toBe(3);
+            expect(seen).toHaveLength(250);
+            expect(new Set(seen).size).toBe(250);
+            expect(seen[0]).toBe("list-000");
+            expect(seen[249]).toBe("list-249");
         });
 
         it("returns the identical set on a repeated request (stability)", async () => {
@@ -881,15 +908,26 @@ describe("GET /api/v1/spaces/:spaceId/lists", () => {
             expect(res.headers["content-type"]).toMatch(/application\/json/);
         });
 
-        it("ignores a stray ?cursor and ?limit (collection mode)", async () => {
+        it("refuses a ?cursor it never issued, and honours ?limit", async () => {
             const { u, space, client } = await setup();
             await seedLists(space.id, u.id, [{ name: "a" }, { name: "b" }]);
 
-            const res = await client.get(`${url(space.id)}?cursor=whatever&limit=1`);
+            // F23 (ISS-008) inverted this one too. `whatever` is alphanumeric,
+            // so lenient base64 decoding used to produce mojibake that silently
+            // restarted pagination at page 1 WITH a fresh next_cursor — a client
+            // retrying a corrupted cursor looped for ever. Refusing every cursor
+            // this server did not issue IS the fix, so "ignores a stray ?cursor"
+            // is the pre-fix contract and must not come back.
+            const bad = await client.get(`${url(space.id)}?${"cursor=whatever&limit=1"}`);
+            expect(bad.status).toBe(400);
+            expect(bad.body.error.code).toBe("pagination.invalid_cursor");
 
-            expect(res.status).toBe(200);
-            expect(res.body.data).toHaveLength(2);
-            expect(res.body.pagination.next_cursor).toBeNull();
+            // …and `limit` is honoured now rather than ignored.
+            const limited = await client.get(`${url(space.id)}?${"limit=1"}`);
+            expect(limited.status).toBe(200);
+            expect(limited.body.data).toHaveLength(1);
+            expect(limited.body.pagination.has_more).toBe(true);
+            expect(limited.body.pagination.total_estimate).toBe(2);
         });
     });
 });

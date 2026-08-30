@@ -45,6 +45,11 @@ const SEGMENT_TO_ROUTE: Record<string, string> = {
     "forgot-password": "/forgot-password",
     inbox: "/inbox",
     search: "/search",
+    // Added by the mobile rebuild (P3). A phone has no Sidebar, so this page IS
+    // the Space tree there — which is why the bot has to know it: the knowledge
+    // base's standing advice, "open it from the Sidebar", is unfollowable for
+    // the majority of this workspace. `spaces/:spaceId` stays out, dynamic (L4).
+    spaces: "/spaces",
     dept: "/dept",
     reports: "/reports",
     // F28 (ISS-082, D12.4) — the breached-SLA queue.

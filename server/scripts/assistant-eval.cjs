@@ -198,7 +198,7 @@ const ask = async (token, message) => {
  */
 const REAL_ROUTES = [
     "/", "/login", "/forgot-password",
-    "/inbox", "/search", "/dept", "/reports", "/sla", "/forms",
+    "/inbox", "/search", "/spaces", "/dept", "/reports", "/sla", "/forms",
     "/eng", "/eng/sprint", "/eng/on-call",
     "/settings",
     "/settings/profile", "/settings/workspace", "/settings/members",

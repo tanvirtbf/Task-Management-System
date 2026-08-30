@@ -1,4 +1,5 @@
 import { execFileSync } from "child_process";
+import { ensureFixture, destroyFixture, type Fixture } from "./fixtures";
 import AxeBuilder from "@axe-core/playwright";
 import { test, expect, type Page } from "@playwright/test";
 
@@ -13,18 +14,40 @@ import { test, expect, type Page } from "@playwright/test";
  * documents a filed finding is annotated `test.fail` with the ISS number, so
  * the suite is green-or-filed by construction.
  *
- * Environment: API :5501 on taskmanagement_qa (DB_NAME_OVERRIDE) + vite :5173.
+ * Environment: API :5501 + vite :5173, against whichever database the API is
+ * serving (`taskmanagement` by default; set E2E_DB to match a DB_NAME_OVERRIDE).
  * Fixtures: fixing/evidence/F31/restore-qa-fixtures.cjs (P45X tasks, pinned ids).
  */
 
 const MYSQL = "C:\\Program Files\\MySQL\\MySQL Server 8.0\\bin\\mysql.exe";
+/**
+ * The database the RUNNING API serves. Hardcoded to `taskmanagement_qa` before
+ * KI-4 — a database the dev API never writes — so every "the row is in the DB"
+ * assertion here was reading a different database from the one under test.
+ * Override with E2E_DB when pointing the API at another one.
+ */
+const DB = process.env.E2E_DB ?? "taskmanagement";
 const sql = (q: string) =>
-    execFileSync(MYSQL, ["-uroot", "-proot", "taskmanagement_qa", "-N", "-e", q], {
+    execFileSync(MYSQL, ["-uroot", "-proot", DB, "-N", "-e", q], {
         encoding: "utf8",
     }).trim();
 
-const LIST = "/s/sp--ueSzuQKREl5iSMVpSpTIg/l/l-63STZdlEZ2QOoWk61X-kOw";
-const ALPHA = "t-i-lZYwQtOsh0FCDoUV27rw";
+/**
+ * KI-4: a Space id, a List id and a task id lifted from a hand-seeded
+ * `taskmanagement_qa` database (the header's `restore-qa-fixtures.cjs`). None
+ * of it exists in the demo-seeded dev database, so four of these tests failed
+ * on missing rows rather than on the deferred behaviour they exercise. The
+ * spec provisions its own fixture through the API now.
+ *
+ * Playwright runs with workers: 1, fullyParallel: false, so sharing these
+ * fixture names with tasks-views.pw.ts is safe — the files never overlap.
+ */
+const ALPHA_NAME = "P45X Alpha task";
+const BETA_NAME = "P45X Beta task";
+
+let fixture: Fixture;
+let LIST = "";
+let ALPHA = "";
 const API = "http://localhost:5501/api/v1";
 const EMAIL = "owner@company.local";
 const PASSWORD = "Owner@12345";
@@ -77,10 +100,22 @@ async function dragTo(page: Page, from: { x: number; y: number }, to: { x: numbe
     await page.mouse.up();
 }
 
-test.afterAll(() => {
-    // return the fixture to its invariant state
-    sql(`UPDATE tasks SET status_id = (SELECT id FROM statuses WHERE scope_id='l-63STZdlEZ2QOoWk61X-kOw' AND name='To Do'), due_date = NULL WHERE id = '${ALPHA}'`);
-    sql(`DELETE FROM comments WHERE task_id='${ALPHA}' AND body LIKE 'F31 %'`);
+test.beforeAll(async () => {
+    fixture = await ensureFixture({
+        spaceName: "P45X Space",
+        listName: "P45X List B",
+        tasks: [ALPHA_NAME, BETA_NAME],
+        // The board test drags Alpha ONTO Beta, so Beta has to be in the
+        // column being dragged to — otherwise the drop lands on an empty
+        // column body and the status never changes.
+        statuses: { [BETA_NAME]: "In Progress" },
+    });
+    LIST = fixture.listUrl;
+    ALPHA = fixture.taskIds[ALPHA_NAME];
+});
+
+test.afterAll(async () => {
+    destroyFixture(fixture);
 });
 
 // ─── 1. board drag-and-drop between status columns ───────────────────────────
@@ -146,7 +181,7 @@ test("two contexts: a comment posted elsewhere appears when the drawer reopens",
     const pageB = await ctxB.newPage();
     await login(pageB);
     await pageB.goto(`${LIST}?task=${ALPHA}`);
-    await expect(pageB.getByRole("dialog").getByText("P45X Alpha task")).toBeVisible({ timeout: 12_000 });
+    await expect(pageB.getByRole("dialog").getByText("P45X Alpha task").first()).toBeVisible({ timeout: 12_000 });
 
     const body = `F31 propagation ${Date.now()}`;
     const r = await fetch(`${API}/tasks/${ALPHA}/comments`, {
@@ -168,7 +203,7 @@ test("offline: a comment fails visibly, recovers after reconnect", async ({ page
     await login(page);
     await page.goto(`${LIST}?task=${ALPHA}`);
     const drawer = page.getByRole("dialog");
-    await expect(drawer.getByText("P45X Alpha task")).toBeVisible({ timeout: 12_000 });
+    await expect(drawer.getByText("P45X Alpha task").first()).toBeVisible({ timeout: 12_000 });
 
     const input = drawer.getByPlaceholder(/Write a comment/i).first();
     await input.click();
@@ -177,7 +212,7 @@ test("offline: a comment fails visibly, recovers after reconnect", async ({ page
     await page.keyboard.press("Control+Enter");
     // the app must stay alive — drawer still there, no crash screen
     await page.waitForTimeout(1500);
-    await expect(drawer.getByText("P45X Alpha task")).toBeVisible();
+    await expect(drawer.getByText("P45X Alpha task").first()).toBeVisible();
 
     await context.setOffline(false);
     const body = `F31 recovered ${Date.now()}`;

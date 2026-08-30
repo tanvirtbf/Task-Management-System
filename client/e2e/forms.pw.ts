@@ -1,4 +1,9 @@
 import { test, expect, type Page } from "@playwright/test";
+import { removeNotificationsLike } from "./fixtures";
+
+// A public-form submission notifies the owning team; that row points at the
+// FORM, so nothing else in the teardown reaches it.
+test.afterAll(() => removeNotificationsLike("%PW Public Form %"));
 
 /**
  * Forms feature E2E. Covers the two bugs found in QA:

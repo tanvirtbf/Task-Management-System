@@ -1,5 +1,14 @@
 import { test, expect, type Page, type ConsoleMessage } from "@playwright/test";
 
+import { removeSpacesLike, removeTasksByName } from "./fixtures";
+
+// This journey creates a Space, a List and two tasks on every run and never
+// removed any of them, so the dev database grew a `QA Space <stamp>` each
+// time the gate ran.
+test.afterAll(() => {
+    removeSpacesLike("QA Space %");
+    removeTasksByName("QA task one", "QA calendar task");
+});
 /**
  * Comprehensive action-level E2E. Unlike the smoke route-sweep (which only
  * checks rendering + console errors), this drives real CREATE/EDIT actions and

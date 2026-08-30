@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
+import { ensureFixture, destroyFixture, type Fixture } from "./fixtures";
 
 /**
  * Phase 45 — Browser tasks: List/Board/Calendar views, TaskDetailDrawer panels,
@@ -7,10 +8,29 @@ import { execFileSync } from "node:child_process";
  * The drawer opens via the `?task=<id>` URL param (ListPage reads searchParams).
  */
 const MYSQL = "C:\\Program Files\\MySQL\\MySQL Server 8.0\\bin\\mysql.exe";
-const sql = (q: string) => execFileSync(MYSQL, ["-uroot", "-proot", "taskmanagement_qa", "-N", "-e", q], { encoding: "utf8" }).trim();
-const LIST = "/s/sp--ueSzuQKREl5iSMVpSpTIg/l/l-63STZdlEZ2QOoWk61X-kOw";
-const ALPHA = "t-i-lZYwQtOsh0FCDoUV27rw"; // Task
-const GAMMA = "t-SM8n-5khukenNA_4jHueAQ"; // Bug
+/**
+ * The database the RUNNING API serves. Hardcoded to `taskmanagement_qa` before
+ * KI-4 — a database the dev API never writes — so every "the row is in the DB"
+ * assertion here was reading a different database from the one under test.
+ * Override with E2E_DB when pointing the API at another one.
+ */
+const DB = process.env.E2E_DB ?? "taskmanagement";
+const sql = (q: string) => execFileSync(MYSQL, ["-uroot", "-proot", DB, "-N", "-e", q], { encoding: "utf8" }).trim();
+/**
+ * KI-4: these were a Space id, a List id and two task ids copied out of a
+ * hand-seeded `taskmanagement_qa` database. None of those rows exist in the
+ * demo-seeded dev database, so all ten tests here failed on a missing fixture
+ * rather than on anything the product did. The suite provisions its own now,
+ * through the API, and removes it afterwards.
+ */
+const ALPHA_NAME = "P45X Alpha task";
+const BETA_NAME = "P45X Beta task";
+const GAMMA_NAME = "P45X Gamma bug"; // created as the Bug type (is_dev_type)
+
+let fixture: Fixture;
+let LIST = "";
+let ALPHA = "";
+let GAMMA = "";
 
 async function login(page: Page) {
     await page.goto("/login");
@@ -25,11 +45,27 @@ async function openList(page: Page) {
     await expect(page.getByText("P45X Alpha task", { exact: false }).first()).toBeVisible({ timeout: 12_000 });
 }
 const drawer = (page: Page) => page.getByRole("dialog");
-test.afterAll(() => { sql(`DELETE FROM tasks WHERE name LIKE 'P45X quick%'`); });
+test.beforeAll(async () => {
+    fixture = await ensureFixture({
+        spaceName: "P45X Space",
+        listName: "P45X List B",
+        tasks: [ALPHA_NAME, BETA_NAME, GAMMA_NAME],
+        bugs: [GAMMA_NAME],
+    });
+    LIST = fixture.listUrl;
+    ALPHA = fixture.taskIds[ALPHA_NAME];
+    GAMMA = fixture.taskIds[GAMMA_NAME];
+});
+
+test.afterAll(async () => {
+    // The quick-add test makes rows the fixture does not know about.
+    sql(`DELETE FROM tasks WHERE name LIKE 'P45X quick%'`);
+    destroyFixture(fixture);
+});
 
 test("List view renders tasks + status groups", async ({ page }) => {
     await login(page); await openList(page);
-    await expect(page.getByText("QA List B", { exact: false }).first()).toBeVisible();
+    await expect(page.getByText(fixture.listName, { exact: false }).first()).toBeVisible();
     await expect(page.getByText("To Do", { exact: false }).first()).toBeVisible();
     for (const n of ["P45X Alpha task", "P45X Beta task", "P45X Gamma bug"]) await expect(page.getByText(n, { exact: false }).first()).toBeVisible();
 });
@@ -56,7 +92,7 @@ test("drawer opens via ?task= deep-link (the mechanism every affordance uses)", 
     await login(page);
     await page.goto(`${LIST}?task=${ALPHA}`);
     await expect(drawer(page)).toBeVisible({ timeout: 10_000 });
-    await expect(drawer(page).getByText("P45X Alpha task", { exact: false })).toBeVisible({ timeout: 8000 });
+    await expect(drawer(page).getByText("P45X Alpha task", { exact: false }).first()).toBeVisible({ timeout: 8000 });
 });
 
 test("multi-select checkboxes → bulk action bar appears", async ({ page }) => {
@@ -79,7 +115,7 @@ test("regular Task drawer: base panels, NO dev panels", async ({ page }) => {
     await login(page);
     await page.goto(`${LIST}?task=${ALPHA}`);
     await expect(drawer(page)).toBeVisible({ timeout: 10_000 });
-    await expect(drawer(page).getByText("P45X Alpha task", { exact: false })).toBeVisible({ timeout: 8000 }); // content loaded
+    await expect(drawer(page).getByText("P45X Alpha task", { exact: false }).first()).toBeVisible({ timeout: 8000 }); // content loaded
     const text = await drawer(page).innerText();
     expect(text).toMatch(/Status/); expect(text).toMatch(/Priority/); expect(text).toMatch(/DESCRIPTION/i); expect(text).toMatch(/COMMENTS/i);
     // dev-only panels must be ABSENT for a non-dev task
@@ -92,7 +128,7 @@ test("Bug drawer: dev-type panels rendered (BUG DETAILS/GIT/Severity/SLA/Subtask
     await login(page);
     await page.goto(`${LIST}?task=${GAMMA}`);
     await expect(drawer(page)).toBeVisible({ timeout: 10_000 });
-    await expect(drawer(page).getByText("P45X Gamma bug", { exact: false })).toBeVisible({ timeout: 8000 }); // content loaded
+    await expect(drawer(page).getByText("P45X Gamma bug", { exact: false }).first()).toBeVisible({ timeout: 8000 }); // content loaded
     const text = await drawer(page).innerText();
     for (const panel of [/BUG DETAILS/i, /\bGIT\b/, /Severity/i, /Reviewer/i, /SUBTASKS/i, /DEPENDENCIES/i, /SLA/i]) {
         expect(text, `expected Bug drawer to contain ${panel}`).toMatch(panel);

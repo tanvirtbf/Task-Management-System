@@ -70,9 +70,14 @@ export class ListController {
      * GET /api/v1/spaces/:spaceId/lists — list the lists in one space.
      *
      * Archived lists are excluded unless `?include_archived=true` (or `=1`).
-     * The response uses the spec list envelope; lists are a bounded per-space
-     * set with no `internal_id`, so the whole set is returned in a single page
-     * (`next_cursor: null`, `has_more: false`) — matching `GET /spaces`.
+     *
+     * Paginated for real since F23 (ISS-007): `?limit` defaults to 100 and caps
+     * at 200, and `next_cursor` is an opaque offset cursor that must be followed
+     * to see the whole set. Any cursor this server did not issue is refused with
+     * `400 pagination.invalid_cursor` (ISS-008) rather than silently restarting
+     * at page 1. This comment used to promise the opposite — one complete page,
+     * a stray cursor ignored — and the read tests asserted that promise, so both
+     * described a contract the code had already replaced.
      *
      * `404 space.not_found` if the space is missing or in another workspace.
      */
@@ -120,10 +125,10 @@ export class ListController {
      * or `404 space.not_found`); archived lists are excluded unless
      * `?include_archived=true` (or `=1`).
      *
-     * Like `GET /spaces` and `listBySpace`, lists are a bounded set with no
-     * `internal_id`, so the whole set is returned in a single page
-     * (`next_cursor: null`, `has_more: false`); a stray `?cursor` / `?limit` is
-     * accepted but inert.
+     * Paginated for real since F23 (ISS-007), exactly as `listBySpace` above:
+     * `?limit` defaults to 100 and caps at 200, `next_cursor` is an opaque
+     * offset cursor, and a cursor this server never issued is
+     * `400 pagination.invalid_cursor` (ISS-008) — not accepted-but-inert.
      */
     async listAll(req: ListAllRequest, res: Response, next: NextFunction) {
         try {

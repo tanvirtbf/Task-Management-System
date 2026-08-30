@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { removeTasksByName } from "./fixtures";
 
 /**
  * Phase 46 — Browser settings + KI-13 EngHome fix verification.
@@ -6,7 +7,85 @@ import { test, expect, type Page } from "@playwright/test";
  * fix resolves the real list from a representative task. A bug was seeded into
  * the real "Bug Triage" list (l-9krS0i8aig7nbSdVZEh0VQ).
  */
-const REAL_BUG_LIST = "l-9krS0i8aig7nbSdVZEh0VQ";
+/**
+ * KI-4: this was the Bug Triage list id from a hand-seeded
+ * `taskmanagement_qa` database. The point of the two tests below is that the
+ * KPI navigates to the REAL list instead of a fabricated id — so pinning one
+ * particular id was the wrong shape for that assertion all along, and against
+ * any other database it simply failed. It is resolved from the API now, which
+ * is what "real" was supposed to mean.
+ */
+let REAL_BUG_LIST = "";
+const BUG_NAME = "P46 KI-13 bug";
+
+test.beforeAll(async () => {
+    const api = process.env.E2E_API ?? "http://localhost:5501/api/v1";
+    const token = await fetch(api + "/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            email: "owner@company.local",
+            password: "Owner@12345",
+        }),
+    })
+        .then((r) => r.json())
+        .then((b) => b.access_token as string);
+
+    const body = await fetch(api + "/lists", {
+        headers: { Authorization: "Bearer " + token },
+    }).then((r) => r.json());
+    const lists = (Array.isArray(body) ? body : (body.data ?? [])) as {
+        id: string;
+        name: string;
+    }[];
+    const triage = lists.find((l) => l.name === "Bug Triage");
+    if (!triage) throw new Error("no Bug Triage list in this workspace");
+    REAL_BUG_LIST = triage.id;
+
+    // The /t/ redirect test clicks a bug BY NAME, and that name came from the
+    // old QA seed. Rather than weaken the assertion to "any row", the spec
+    // creates the bug it needs — of the Bug type, so it shows up in the eng
+    // home's "Open bugs" card — and removes it again afterwards.
+    const types = await fetch(api + "/task-types", {
+        headers: { Authorization: "Bearer " + token },
+    }).then((r) => r.json());
+    const typeList = (Array.isArray(types) ? types : (types.data ?? [])) as {
+        id: string;
+        name: string;
+    }[];
+    const bugType = typeList.find((t) => t.name.toLowerCase() === "bug");
+
+    const existing = await fetch(
+        api + "/lists/" + triage.id + "/tasks?limit=200",
+        { headers: { Authorization: "Bearer " + token } },
+    ).then((r) => r.json());
+    const rows = (Array.isArray(existing) ? existing : (existing.data ?? [])) as {
+        id: string;
+        name: string;
+    }[];
+    const found = rows.find((t) => t.name === BUG_NAME);
+    if (found) {
+        return;
+    }
+    await fetch(api + "/tasks", {
+        method: "POST",
+        headers: {
+            Authorization: "Bearer " + token,
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            primary_list_id: triage.id,
+            name: BUG_NAME,
+            ...(bugType ? { task_type_id: bugType.id } : {}),
+        }),
+    });
+});
+
+test.afterAll(() => {
+    // NOT the API: DELETE /tasks archives, so the row would survive every
+    // run and the next one would create another beside it.
+    removeTasksByName(BUG_NAME);
+});
 async function login(page: Page) {
     await page.goto("/login");
     await page.getByPlaceholder("you@company.local").fill("owner@company.local");

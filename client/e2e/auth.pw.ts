@@ -10,7 +10,14 @@ import crypto from "node:crypto";
  */
 
 const MYSQL = "C:\\Program Files\\MySQL\\MySQL Server 8.0\\bin\\mysql.exe";
-const sql = (q: string) => execFileSync(MYSQL, ["-uroot", "-proot", "taskmanagement_qa", "-N", "-e", q], { encoding: "utf8" }).trim();
+/**
+ * The database the RUNNING API serves. Hardcoded to `taskmanagement_qa` before
+ * KI-4 — a database the dev API never writes — so every "the row is in the DB"
+ * assertion here was reading a different database from the one under test.
+ * Override with E2E_DB when pointing the API at another one.
+ */
+const DB = process.env.E2E_DB ?? "taskmanagement";
+const sql = (q: string) => execFileSync(MYSQL, ["-uroot", "-proot", DB, "-N", "-e", q], { encoding: "utf8" }).trim();
 const sha256 = (s: string) => crypto.createHash("sha256").update(s).digest("hex");
 const API = "http://localhost:5501/api/v1";
 

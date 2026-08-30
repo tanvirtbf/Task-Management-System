@@ -1,4 +1,5 @@
 import { test, expect, request, type Page } from "@playwright/test";
+import { removeTasksByName } from "./fixtures";
 
 /**
  * Team-access P10 — the three office rules, end to end in a real browser,
@@ -205,13 +206,10 @@ test.beforeAll(async () => {
     await jhankar.api.dispose();
 });
 
-test.afterAll(async () => {
-    if (!probe) return;
-    const owner = await apiClient("owner@company.local");
-    await owner.api.delete(`/api/v1/tasks/${probe.taskId}`, {
-        headers: owner.auth,
-    });
-    await owner.api.dispose();
+test.afterAll(() => {
+    // DELETE /tasks archives rather than removes, so the probe row survived
+    // every run. Removed for real, or the dev DB never returns to baseline.
+    removeTasksByName(PROBE_NAME);
 });
 
 test("R1.4: the drawer shows the pending negotiation, and the picker warns before a cross-team pick", async ({

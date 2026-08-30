@@ -51,7 +51,10 @@ test("assistant widget reaches :5501, streams a reply, and persists across reloa
 
     // Persistence: reload, reopen — the prior turn survives (localStorage-persisted store).
     await page.reload();
-    await page.waitForLoadState("networkidle");
+    // NOT networkidle: the inbox SSE stream never goes idle, so that wait can
+    // only ever time out (45s x2 here). The assertions that follow already wait
+    // on real elements, which is the honest signal anyway.
+    await page.waitForLoadState("domcontentloaded");
     await page.getByRole("button", { name: "Open help assistant" }).click();
     await expect(page.getByRole("dialog", { name: "Help assistant" })).toBeVisible();
     await expect(page.locator(".asst-bubble--user").first()).toBeVisible({ timeout: 10_000 });
@@ -136,7 +139,10 @@ test("first-time onboarding nudge shows near the FAB, then stays dismissed", asy
 
     // reload → flag persisted, nudge does NOT return; the FAB is still there
     await page.reload();
-    await page.waitForLoadState("networkidle");
+    // NOT networkidle: the inbox SSE stream never goes idle, so that wait can
+    // only ever time out (45s x2 here). The assertions that follow already wait
+    // on real elements, which is the honest signal anyway.
+    await page.waitForLoadState("domcontentloaded");
     await expect(page.getByTestId("asst-nudge")).toHaveCount(0);
     await expect(
         page.getByRole("button", { name: "Open help assistant" }),

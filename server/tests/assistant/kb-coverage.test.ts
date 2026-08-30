@@ -590,8 +590,26 @@ describe("KB coverage — P4: every destination is a link", () => {
         // told an ADMIN to file a request. Four earlier phases paid their own
         // way by deleting real duplication; there is no fifth duplication left
         // to spend, so the ceiling moves instead of the accuracy.
+        //
+        // Raised 48k → 48.5k for the mobile rebuild's Spaces page (2026-08-29,
+        // TEST PLAN Phase 0). The product grew a PAGE, and `route-parity`
+        // exists to stop exactly that shipping unexplained: on a phone there is
+        // no Sidebar, so /spaces is the only way in to a List — and the KB's
+        // standing advice, "open it from the Sidebar Space tree", was
+        // unfollowable for the ~70% of this workspace that works from a phone.
+        // Teaching it is accuracy, not padding.
+        //
+        // Paid its own way first, in the order this file asks for: the addition
+        // was written at 452 chars and compressed to 172 before the ceiling was
+        // touched at all. What is left to trim is not fat — the sidebar
+        // paragraph's remaining duplicate links (/sla, /eng/sprint,
+        // /eng/on-call) are pinned by "the sidebar list links every destination
+        // it names" and by the >=60 link count two tests below. So the ceiling
+        // moves by 500, not the accuracy, and not by the usual 1k: the need is
+        // 172 chars and the rest is headroom for the next page, not a licence.
+        // Measured after: 48,142.
         const sys = buildMessages([], "x")[0].content as string;
-        expect(sys.length).toBeLessThan(48000);
+        expect(sys.length).toBeLessThan(48500);
     });
 
     it("keeps the TOOL DEFINITIONS inside their own budget", () => {

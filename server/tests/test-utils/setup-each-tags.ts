@@ -26,6 +26,15 @@ const TABLES = [
     "role_permissions",
     "roles",
     "sessions",
+    // `jest.tagscheck.config.js` reuses THIS setup to run tests/auth alongside
+    // tests/tags, and the §2 auth flows write two tables the tags suite never
+    // touches. Without them a reset token (and an invitation) survived into the
+    // next test, so forgot-password went red under that runner while the same
+    // file was 341/341 green under its own `jest.auth.config.cjs` — a false red
+    // that made the aggregate look broken when the product was fine. Truncating
+    // two more empty tables costs the tags suite nothing.
+    "invitations",
+    "password_reset_tokens",
     "tags",
     "workspace_activity",
     "users",

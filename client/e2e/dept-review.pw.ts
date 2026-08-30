@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { removeSpacesLike, removeNotificationsLike } from "./fixtures";
 import { execFileSync } from "node:child_process";
 
 /**
@@ -19,16 +20,35 @@ import { execFileSync } from "node:child_process";
  */
 
 const MYSQL = "C:\\Program Files\\MySQL\\MySQL Server 8.0\\bin\\mysql.exe";
+/**
+ * The database the RUNNING API serves. Hardcoded to `taskmanagement_qa` before
+ * KI-4 — a database the dev API never writes — so every "the row is in the DB"
+ * assertion here was reading a different database from the one under test.
+ * Override with E2E_DB when pointing the API at another one.
+ */
+const DB = process.env.E2E_DB ?? "taskmanagement";
 const sql = (q: string) =>
     execFileSync(
         MYSQL,
-        ["-uroot", "-proot", "taskmanagement_qa", "-N", "-e", q],
+        ["-uroot", "-proot", DB, "-N", "-e", q],
         { encoding: "utf8" },
     ).trim();
 const API = "http://localhost:5501/api/v1";
 
 const OWNER = "owner@company.local", OPASS = "Owner@12345";
-const HEAD = "member@qa.local", HPASS = "Member@12345";
+/**
+ * KI-4: this was `member@qa.local` / `Member@12345`, a login that only existed
+ * in a hand-seeded `taskmanagement_qa` database — against the demo seed the
+ * spec's very first API call 401'd. An existing active member is resolved
+ * instead, and every seeded account shares the same password.
+ *
+ * Note on §A rule 4 / rule 11: the resolved account is on the staff domain,
+ * and that is safe HERE because the head is only ever the ACTOR. The three
+ * tasks under review are assigned to the OWNER, so the `task_reviewed` fanout
+ * (and any mail it triggers) goes to `owner@company.local`, never to staff.
+ */
+let HEAD = "";
+const HPASS = "Owner@12345";
 const DEPT = `Dept E2E ${Date.now().toString().slice(-6)}`;
 const FLAG_NOTE = "Second pass needed - the export is low-res.";
 
@@ -89,6 +109,21 @@ test.beforeAll(async () => {
     });
     oTok = oLogin.access_token;
     ownerId = oLogin.user.id;
+    const people = await jfetch("/users", { token: oTok });
+    const roster = (Array.isArray(people) ? people : (people.data ?? [])) as {
+        email: string;
+        role: string;
+        status: string;
+    }[];
+    const candidate = roster.find(
+        (u) =>
+            u.status === "active" && u.role === "member" && u.email !== OWNER,
+    );
+    if (!candidate) {
+        throw new Error("no active member to act as the department head");
+    }
+    HEAD = candidate.email;
+
     const hLogin = await jfetch("/auth/login", {
         method: "POST", body: { email: HEAD, password: HPASS },
     });
@@ -142,6 +177,17 @@ test.afterAll(async () => {
         await jfetch(`/spaces/${spaceId}/archive`, {
             method: "POST", token: oTok,
         }).catch(() => undefined);
+});
+
+test.afterAll(() => {
+    // The department Space, its List and the three review tasks all
+    // survived every run: DELETE /tasks only archives, and a Space that has
+    // been reported on refuses to drop while department_reports points at
+    // it. Swept for real so the phase can end at the dev-DB baseline.
+    removeSpacesLike("Dept E2E %");
+    // the weekly report fans a report_ready row out to four people; those point
+    // at the REPORT, so sweeping the Space does not reach them
+    removeNotificationsLike("%Dept E2E %");
 });
 
 test.describe.configure({ mode: "serial" });

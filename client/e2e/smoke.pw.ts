@@ -1,4 +1,12 @@
 import { test, expect, type Page, type ConsoleMessage } from "@playwright/test";
+import { removeTasksByName, removeSpacesLike } from "./fixtures";
+
+// The create-task flow below made a row on every run and never removed it,
+// so the dev database grew a `Browser Tester` task each time the gate ran.
+test.afterAll(() => {
+    removeTasksByName("Browser Tester");
+    removeSpacesLike("PW Space %");
+});
 
 /**
  * Browser smoke E2E — covers the [BROWSER] checks the API tests can't:
