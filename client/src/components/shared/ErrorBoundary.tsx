@@ -22,7 +22,10 @@ export class ErrorBoundary extends Component<Props, State> {
     }
 
     componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-        // eslint-disable-next-line no-console
+        // Deliberate: this is the last place a crash can be seen at all, so
+        // it goes to the console even in production. (The `no-console`
+        // disable that used to sit here was inert — unlike the server, the
+        // client config never enables that rule.)
         console.error("Uncaught error:", error, errorInfo);
     }
 

@@ -201,6 +201,23 @@ body {
     border-color: var(--color-border);
 }
 
+/*
+ * A form label that has to hold two things — a caption on the left and a link
+ * on the right — needs to span the field.
+ *
+ * antd renders `Form.Item`'s label as `<label style="display:inline-flex">`,
+ * which shrink-wraps to its content. So a `width: 100%` flex row placed inside
+ * it resolves against the label's own content width, `space-between` gets no
+ * room, and the two halves render touching. On the login page that read as
+ * "PasswordForgot password?" — measured: label wrapper 334px, label 172px,
+ * inner row 158px.
+ *
+ * Opt-in via a class, so this cannot reflow every other form in the product.
+ */
+.form-label-row .ant-form-item-label > label {
+    width: 100%;
+}
+
 /* ============================================================
    Animations
    ============================================================ */

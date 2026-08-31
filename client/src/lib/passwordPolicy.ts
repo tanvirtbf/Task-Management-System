@@ -82,7 +82,11 @@ export const isPasswordValid = (value: string): boolean =>
  */
 export const passwordError = (value: string): string | null => {
     if (codePointLength(value) > PASSWORD_MAX) {
-        return `Password must be at most ${PASSWORD_MAX} characters`;
+        // Word-for-word the server's message. It used to open with "Password"
+        // while the API answered "New password", so the same over-length value
+        // was described two different ways depending on which check caught it
+        // first — the exact class of contradiction this file exists to prevent.
+        return `New password must be at most ${PASSWORD_MAX} characters`;
     }
     const missing = failedPasswordRules(value);
     if (missing.length === 0) return null;

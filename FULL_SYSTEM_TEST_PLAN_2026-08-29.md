@@ -157,6 +157,10 @@ Re-verified ✔ = probed again today, still true.
 | KI-25 | `client/mobile-baseline.json` records measurement churn on every A-net run | ✔ | **P0** rule |
 | KI-26 | Ops: `/health/version` not proxied by nginx + `git_sha` unfed ("unknown"); Cloudflare Rocket Loader active on prod HTML; upgrades README says 023/024 "pending prod" (stale) | carried | **P14** |
 | KI-27 | On-call rota lapsed 2026-08-14 (prod routing falls back to Engineering head by design); prod `Bug` type + `Bug Triage` list existence unconfirmed | carried | **P14** ops checks |
+| KI-28 | **Opened by P2.** One `/auth/refresh` returned 500 under full-module load, once; not reproduced in 346 concurrent requests, 5 isolated runs or 3 further full runs. Cause discarded by the silenced test logger (now fixable with `TEST_LOG_ERRORS=1`) | open | **P13** load · any phase meeting an unexplained 5xx |
+| KI-29 | **Opened by P2.** 30 of 32 test setups still reset with `TRUNCATE` (509 ms per 9 tables vs 1.9 ms for `DELETE`, and it takes an exclusive metadata lock). Plausibly the majority of the gate's 127 min; auth already converted | open | **P13** |
+| KI-30 | **Opened by P2.** `client/public/sw.js` is shipped code no lint rule touches — `eslint.config.js` matches only `**/*.{ts,tsx}` | open | **P11** |
+| KI-31 | **Opened by P2.** `assistant` is the gate's first module and so pays the cold ts-jest cache inside a test; it went FLAKY-PASS once. `setup-each-auth.ts` shows the fix (warm the app in `beforeAll`) | open | **P9** |
 
 ---
 
@@ -174,6 +178,24 @@ These are FEATURES, not defects. Phases may add to this list but never build fro
 - Optimistic-concurrency (`If-Match`) on task PATCH
 - Server dependency majors (drizzle-orm, nodemailer, bcrypt/tar chain) upgrade window
 - `is_private` decorative — BY DESIGN (documented 2026-07-25), not a gap
+
+**Added by P2 (auth):**
+
+- **Two-factor authentication.** No server route exists. The client carries dead
+  scaffolding for it (`pendingTwoFactor`, `setPendingTwoFactor`, a `requires2fa` arm on
+  `LoginResponse`, a `/auth/2fa` exemption in the 401 interceptor) — grep-proven never
+  called. Kept as the shape a real implementation would take.
+- **Account lockout.** Absent. With the item below, brute-force protection is exactly one
+  IP-keyed bucket, and an attacker rotating IPs has none.
+- **`authStrictLimiter` sizing (D2.2).** 5/min/IP shared by login + forgot-password +
+  reset-password + accept-invitation — one bucket per office NAT. Raise it, key it on
+  IP+email, or split the four routes.
+- **Refresh-rotation serialisation (D2.8).** Concurrent reuse of one cookie is undetected
+  and mints a session per use (measured: 10 → 10 active sessions). Closing the window
+  costs signing out users whose tabs race.
+- **A short "do not keep me signed in" session (D2.10).** The inert checkbox is removed;
+  the capability was never built. Needs a chooseable session TTL, cookie `maxAge`, and a
+  decision on the duration.
 
 ---
 
@@ -224,7 +246,7 @@ matrix it passed (happy / validation / authz / edge).
 | Client vitest | **49 / 49** |
 | Playwright `chromium` (desktop) | **83 / 83** |
 | Playwright `desktop-guard` + `mobile-390` + `mobile-360` | **27 / 27** |
-| `tsc --noEmit` server · client | clean · clean |
+| `tsc --noEmit` server · client | clean · clean — ⚠️ **the client half was vacuous**, see D2.9 (P2): the client's root tsconfig is a solution file, so `tsc --noEmit` without `-b` compiles nothing and exits 0 whatever the code says |
 | eslint server · client | **70** · **16** (12 err + 4 warn) — recorded, owned by P13 |
 
 Gate command, built by this phase: **`npm run test:all`**
@@ -364,7 +386,9 @@ test went green and every fixture survived. The catch logs now.
       and every config, which `.eslintignore` had excluded (D1.12); client lints everything
       but `dist`
 - [x] tsc clean ×2 — plus a NEW `npm run typecheck` that covers all 312 test files, which
-      `tsc --noEmit` never has (D1.13)
+      `tsc --noEmit` never has (D1.13). ⚠️ The CLIENT half of "×2" was later found to have
+      been a no-op all along (D2.9); the client got its own `npm run typecheck` in P2, and
+      both are now in the gate.
 - [x] Parity suite exists and is green (**10/10** with the session-clock suite); in the runner as the 35th module — auto-discovered, no runner edit needed
 - [x] Both seeds + demo accounts verified on the scratch DB `tms_p1_seedcheck`; `assigned_by` **46/46 + 46/46**
 - [x] Dead-code dispositions written; the 5,844-line mock layer deleted; the 35 wire-later methods itemised to GATE
@@ -378,7 +402,7 @@ test went green and every fixture survived. The catch logs now.
 |---|---|---|
 | eslint server | 70 problems — **142** once the 321 files `.eslintignore` hid are counted (D1.12) | **0** |
 | eslint client | 16 (12 err + 4 warn) | **0** |
-| `tsc --noEmit` server · client | clean | clean |
+| `tsc --noEmit` server · client | clean | clean — ⚠️ client half vacuous until D2.9 (P2) replaced it with `npm run typecheck` (`tsc -b --noEmit`) |
 | Schema module (`jest.schema.config.cjs`) — new | did not exist | **10 / 10** (parity 6, session-clock 4) |
 | Client vitest — after the dep bumps and the mock deletion | 49 / 49 | **49 / 49** |
 | Production `vite build` (to a scratch `--outDir`; `client/dist` untouched) | — | exit 0, main chunk hash **unchanged** |
@@ -453,6 +477,13 @@ Neither shows up as a lint failure today, which is exactly why it would have gon
 the service worker's `self`/`clients` globals and the boundary's deliberate `console.error`
 both lost the note that says they are intentional. Both restored. (The third removed directive,
 the `rules-of-hooks` disable in `useAssignmentRequests.ts`, went on purpose — see D1.6.)
+
+⚠️ **Corrected in P2.** Restoring them was half right. The intent was worth keeping, but both
+directives were INERT — `eslint.config.js` applies rules only to `**/*.{ts,tsx}`, so `sw.js`
+matches no config block at all, and the client never enables `no-console`. eslint reported both
+as unused disable directives, which the gate's new `--max-warnings 0` then failed on. P2 kept
+the explanation as a plain comment and dropped the directive syntax, because a disable comment
+that suppresses nothing tells the next reader something untrue.
 
 **D1.6 — a `rules-of-hooks` suppression was hiding a real violation.** `useAssignmentRequests.ts`
 carried a blanket disable over a local factory named `make` that called hooks. Renaming it
@@ -642,10 +673,361 @@ response contract vs client types (snake_case wire, camelize interceptor).
 - Browser pass: login page, remember-me, wrong-password message (friendly, not axios), reset
   flow e2e on `*@company.local`
 
-**Exit criteria:** every endpoint line ticked with its matrix; `jest.auth` (341) green; browser
-flows recorded; defects fixed + regression-tested.
+**Exit criteria**
+- [x] All **10/10** endpoints ticked with their matrix (table at the top of the record)
+- [x] `jest.auth` green — **363 / 363**, up from 341, and in **1.6 min** rather than ~5.5
+- [x] Browser flows recorded — Playwright `auth.pw.ts` **6/6**, run twice, one spec
+      strengthened so it can no longer pass on a request the browser refused to send
+- [x] Defects fixed + regression-tested — 11 fixed, each with a test; 2 open with their
+      evidence; 7 decisions to the GATE
+- [x] Rate limiters exercised with the limiter **ON**, in a dedicated pass (the plan's
+      one explicitly-unmet matrix column)
+- [x] Dev DB back at baseline 47/6/9/27/15
 
-**Execution record P2:** *(empty)*
+**Execution record P2** — 2026-08-31, anchor `41525b6`.
+
+### Endpoints — 10 / 10
+
+| | endpoint | happy | validation | authz / negative | edge |
+|---|---|---|---|---|---|
+| 1 | `POST /auth/login` | ✔ | ✔ 12 branches | ✔ wrong password · deactivated · invited · cross-workspace email collision | ✔ unicode pw · 200-char pw · `+` alias · 50 parallel · **rate limit (new)** |
+| 2 | `POST /auth/forgot-password` | ✔ | ✔ 7 branches | ✔ enumeration-proof — same 202 for unknown / deactivated / invited | ✔ one email in two workspaces · repeat invalidates prior · mailer throws · **rate limit (new)** |
+| 3 | `POST /auth/reset-password` | ✔ | ✔ 10 branches | ✔ never-issued · expired · consumed · single-use under a 50-way race | ✔ 8- and 200-char bounds · whitespace preserved · **policy parity (new)** · **rate limit (new)** |
+| 4 | `POST /auth/refresh` | ✔ | ✔ | ✔ absent / empty / garbage / wrong-secret / alg-none / expired cookie · revoked-session mass-revoke · token_hash corruption | ✔ 1 s either side of expiry · UA preserved · **concurrent rotation (new)** |
+| 5 | `POST /auth/logout` | ✔ | ✔ body ignored | ✔ 7 token-failure shapes | ✔ idempotent · hard-deleted session · 50 parallel |
+| 6 | `POST /auth/logout-all` | ✔ | ✔ | ✔ the same 7 shapes | ✔ 5 devices · pre-revoked caller · tenant isolation |
+| 7 | `GET /auth/me` | ✔ | n/a | ✔ 6 token-failure shapes · deactivated holder · missing user row | ✔ unicode / RTL / max-length names · HEAD · cookie-only auth · **wire ↔ `User` type parity (new)** |
+| 8 | `POST /auth/change-password` | ✔ | ✔ 6 branches | ✔ wrong current · unchanged · unauthenticated | ✔ the calling session survives |
+| 9 | `GET /auth/invitation/:token` | ✔ | ✔ | ✔ unknown 404 · expired 410 · accepted 409 | ✔ **its own rate-limit bucket (new)** |
+| 10 | `POST /auth/accept-invitation` | ✔ | ✔ 3 branches | ✔ unknown / expired / consumed / already-active | ✔ single-use · invited role preserved · **rate limit (new)** |
+
+`GET /me/permissions` is touched here (the camelize-skip test) but is **owned by P7**, which runs
+it against all six personas.
+
+### What ran
+
+| | before | after |
+|---|---|---|
+| `jest.auth` module | 341 tests · ~5.5 min | **363 / 363** · 11 suites · **1.6 min** |
+| Client vitest | 49 | **87 / 87** (+24 interceptor, +14 auth store) |
+| Playwright `auth.pw.ts` | 6 / 6 | **6 / 6** (run twice; one spec strengthened) |
+| `npm run typecheck` server (src + 313 tests) · client (new) | server only | clean · clean |
+| eslint server · client, `--max-warnings 0` | 0 · 0 | **0 · 0** |
+| Dev DB baseline | 47/6/9/27/15 | **47/6/9/27/15** — the e2e user purged, nothing left behind |
+
+### Defects found and fixed
+
+**D2.1 — the rate limiters had never once executed, in any test, ever.** `/auth/login` has no
+account lockout in this system — no failed-attempt counter, no per-account cooling-off — so
+`authStrictLimiter` is the only thing between a known email address and an unlimited guessing
+loop. It was unreachable by construction:
+
+```ts
+const rateLimitOff = process.env.NODE_ENV === "test" || …;
+export const authStrictLimiter = rateLimitOff ? noop : rateLimit({ … });
+```
+
+Under jest the limiter was not disabled, it was **never constructed** — all seven limiters in
+the file were the literal function `noop` for the entire 5,400-test suite. A limiter mounted on
+the wrong route, with the wrong ceiling, or keyed on the wrong thing would have looked exactly
+like a correct one.
+
+The same shape as P1's D1.1, fixed the same way: the bypass is decided **per request**, so the
+middleware is real everywhere and only whether it *runs* varies. Precedence is explicit —
+`ENABLE_RATE_LIMIT=1` beats `NODE_ENV=test`, which beats `DISABLE_RATE_LIMIT=1`. Production is
+untouched.
+
+Why an opt-in and not "run the tests in dev mode": `MailService` picks a **real SMTP transport**
+whenever `NODE_ENV !== "test"`, and `.env.test` does not override `MAIL_HOST` — it inherits
+`live.smtp.mailtrap.io`, which delivers. Flipping NODE_ENV to test a rate limiter would have
+mailed actual people. §A rule 4, through a door nobody had marked; the new suite asserts
+`Config.NODE_ENV === "test"` in its own `beforeAll` so it cannot drift.
+
+`tests/auth/rate-limit.test.ts` — **11 tests, green, the first execution of this code under
+test.** Each test claims its own client IP via `X-Forwarded-For`, which keeps the shared
+MemoryStore from leaking counters between tests and incidentally proves `trust proxy` is
+honoured. Established: five attempts pass and the sixth is `429 auth.rate_limited` with the spec
+envelope, `Retry-After` and the `RateLimit-*` headers; **successful** logins count toward the
+ceiling; a different IP has its own bucket; `GET /auth/invitation/:token` has a **separate**
+bucket, so a new hire accepting an invitation is not blocked by someone else's mistyped
+password; and `/auth/refresh` + `/auth/me` are outside the strict bucket, which matters because
+one page load touches both.
+
+**D2.2 — the four auth-strict routes share ONE bucket, and one office shares one IP.** Not a
+code defect — a sizing decision nobody had written down, now measured. `authStrictLimiter` is a
+single instance mounted on login, forgot-password, reset-password and accept-invitation, keyed
+purely on IP, so its five per minute is a **total across all four**; and `trust proxy` resolves
+to the real client address, which for this workspace is one office NAT. Proven in the suite: one
+login + two forgot-passwords + one reset + one login exhausts it, and the sixth request — an
+invitation accept, a different person, a different intent — is refused with "Too many login
+attempts."
+
+Left as configured and raised as a decision: five per minute per office is defensible against
+brute force and awkward on a Monday morning. That is a threshold with an operational cost on one
+side and a security cost on the other, so it is the user's call. → **GATE**.
+
+**D2.3 — the two copies of the password policy had no guard, and had already drifted.**
+`server/src/validators/passwordPolicy.ts` decides what is accepted; `client/src/lib/passwordPolicy.ts`
+decides what the person sees while typing. Two copies of one rule set, kept in step by nothing
+but a comment in each asking the next reader to remember.
+
+That arrangement has failed here before. The server used to apply a hidden common-password
+blocklist against a *normalised* form of the candidate, so `Dhaka@1234`, `Welcome@123`,
+`Admin@123` and `Password1!` were refused — while the client showed a strength bar reading
+"Strong" in green and the API said only "One or more fields failed validation". People saw
+green, were refused, told nothing, and some could not finish accepting their invitation.
+
+`tests/auth/password-policy-parity.test.ts` (10 tests) now compares the real implementations —
+the client module has no runtime imports, so a server test can load it directly. Same bounds,
+same four rules in the same order, identical labels and error fragments, and identical verdicts
+*and messages* across a 23-value corpus: every rule alone and in combination, both boundaries,
+whitespace, accents, emoji (code-point length, so `🙂🙂🙂🙂` is four characters on both sides),
+Bangla digits, CJK, and the four passwords the old blocklist refused.
+
+It found a live divergence: over-length produced **"New password must be at most 200 characters"**
+from the API and **"Password must be at most 200 characters"** in the browser — one refusal
+described two ways, in the one file whose entire purpose is that they never are. Client aligned
+to the server.
+
+(Cross-package import needed `rootDir: ".."` in `tsconfig.tests.json`; nothing is emitted from
+that config, so widening it costs nothing.)
+
+**D2.4 — the axios layer, which every request in the app passes through, had no test at all.**
+`client/src/http/client.test.ts` — **24 tests**. The behaviour most needing a guard is gap-scan
+H4: a 401 from `/auth/login` must NOT be refresh-retried. It is four lines of string matching,
+and nothing would have noticed a refactor dropping one. If it were dropped, a wrong password
+would re-POST the credentials, replace the precise `auth.invalid_credentials` with whatever the
+refresh failure said, and — for someone already signed in in that browser — end by purging a
+healthy session. Now covered, with: `/auth/refresh` exempt (no recursion), the single-retry
+`_retry` guard, one shared in-flight refresh across concurrent 401s, local-only purge when the
+refresh itself fails, non-401s untouched, and the `SKIP_CAMELIZE_URLS` rule for
+`/me/permissions` — where camelizing `catalog.task_types` to `catalog.taskTypes` would make
+every permission lookup miss and hide controls the person actually holds.
+
+**D2.5 — `logout()` performs seven scrubs and none was tested.** On the shared machines this
+workspace runs on, sign-out is the entire boundary between one person's data and the next
+person's. `client/src/stores/auth.test.ts` — **14 tests**, asserted against the REAL stores with
+only the network edges mocked: the server session is revoked (and is *not* when the caller
+passes `revoke: false`, because the interceptor's session is already dead); the device's push
+subscription is torn down; the react-query cache is emptied; the permission snapshot is dropped;
+the assistant thread, its `ownerId` and its conversation id are wiped and the panel closed; UI
+state is reset. And separately: the access token is **never** written to localStorage — which
+matters most here, because `partialize` keeps only `user`, so a reload re-earns the token from
+the httpOnly cookie rather than handing the next person a working credential out of devtools.
+
+**D2.6 — an unhandled 500 anywhere in the suite is undiagnosable by construction.** Found while
+chasing D2.7. When a request 500s the client body is deliberately opaque
+(`{error:{code:"internal"}}`, real message withheld) and the cause — name, message, stack — goes
+to `logger.error`. Under `NODE_ENV=test` **all three winston transports are silent**, so it goes
+nowhere. The failing assertion reads "Expected 401, Received 500" and there is, anywhere in the
+system, no way to learn why. `TEST_LOG_ERRORS=1` now un-silences the console transport at error
+level only. Off by default, so no suite's output changes.
+
+**D2.9 — the client's `tsc --noEmit` is a NO-OP, and has been for the whole plan.** Found while
+checking that the two new client test files were type-checked. They were not; nothing in the
+client has been. `client/tsconfig.json` is a *solution* file — `"files": []` plus two
+`references` — and without `-b` there is nothing to compile. Proven, not inferred: a deliberate
+`export const broken: number = "not a number";` in `src/` gave
+
+```
+tsc --noEmit      → exit 0     (with the error sitting in the tree)
+tsc -b --noEmit   → exit 2     src/zz-typeprobe.ts(1,14): error TS2322 …
+```
+
+So **every "client tsc clean" in P0 and P1 was vacuous**, including P1's own exit criterion.
+What kept the client honest in practice was `npm run build` (`tsc -b && vite build`), which §A
+rule 8 forbids during P0–P13; the scratch-directory build P1 ran was `vite build` alone, which
+strips types without checking them. Both records are annotated in place.
+
+Fixed with `npm run typecheck` (`tsc -b --noEmit`) on the client, mirroring the server's — and
+then fixed properly, because a script nobody runs is the same failure in a different costume
+(P1's own lesson about `.eslintignore`). **`scripts/test-all.cjs` now opens with a static
+phase**: eslint and a real type-check for both packages, `--max-warnings 0` on each, run before
+a single test and stopping the run on failure — a tree that does not compile makes the test
+results meaningless, and 100 minutes is too long to spend learning that afterwards.
+`--no-static` skips it; so does `--only`, which means "I am iterating on one module". Two static
+checks had already rotted unnoticed — this one, and the 321 files `.eslintignore` hid in P1 —
+which is the argument for the phase existing.
+
+`--max-warnings 0` immediately caught two inert `eslint-disable` directives P1 had restored
+believing they were protective. They were not: `eslint.config.js` applies rules only to
+`**/*.{ts,tsx}`, so `public/sw.js` matches no config block at all, and the client never enables
+`no-console`. Their explanations were worth keeping and are now plain comments; the directive
+syntax, which suppressed nothing, is gone.
+
+**D2.10 — "Keep me signed in" did nothing, and did nothing in the dangerous direction.** The
+plan names *remember-me* in P2's browser scope, which is the only reason anyone looked. The
+login page carried a checkbox with that label, **checked by default**, whose value went nowhere:
+`authApi.login` posts `{ email, password }` and drops `values.remember`. The server has no
+short-session concept either — every sign-in issues the same ~30-day refresh cookie, which
+`login.test.ts` has been asserting all along.
+
+What makes it worth fixing rather than noting is which way it was inert: on a shared machine, a
+person who **unchecked** "Keep me signed in" had every reason to believe the session would end
+with the browser, and instead got the full thirty days. That is the same boundary D2.5 is about,
+undone by a checkbox. Removed, with the reasoning left in the file. Varying the session lifetime
+is a feature — validator, token TTL, cookie `maxAge`, and a decision about how short "short" is
+— so it goes to the gate rather than being built mid-phase. (Precedent: the report-bug fix
+removed a fake "Auto: X's team" placeholder for exactly this reason.)
+
+**D2.11 — the login form was stricter than the API it posts to.** The password field carried
+`{ min: 8 }` — the composition policy's minimum, applied to *sign-in*. `loginValidator` accepts
+1–200 characters, and `login.test.ts` has an explicit test for it: "accepts a single-character
+password (login enforces no min)".
+
+A client stricter than its server on a login screen protects nothing and risks one thing: an
+account whose password is shorter than eight characters cannot sign in through the UI at all.
+The form refuses to send it and says "At least 8 characters", which a person reads as *your
+password is wrong* rather than *this form is refusing to submit it*. Not hypothetical —
+`SEED_OWNER_PASSWORD` is operator-chosen and nothing length-checks it, so a production owner
+account is exactly the kind that could land in this state, and it is the one account you cannot
+afford to lose.
+
+Rule removed; `required` stays. Regression guard in the spec that already existed: `auth.pw.ts`
+› "wrong password → error surfaced" now signs in with a **five-character** wrong password and
+asserts `.ant-alert-error` specifically — that element is rendered only from
+`getApiErrorMessage(err)`, so seeing it proves the request reached the server and came back. The
+old version used a 21-character password and counted `.ant-form-item-explain-error` as proof of
+"an error", so it passed whether the request was sent or refused in the browser. Still 6 tests
+in the file (`--list` verified, §A rule 6).
+
+**D2.12 — the per-test reset was 268× more expensive than it needed to be, and that is what made
+the module flaky.** Chasing a `beforeEach` hook that blew its 30-second budget — in a run with
+nothing else on the machine — led to the reset itself. `setup-each-auth.ts` cleared its nine
+tables with `TRUNCATE`. Measured here, 60 iterations each:
+
+| | median | p95 | max |
+|---|---|---|---|
+| `TRUNCATE` ×9 | **509 ms** | 589 ms | 601 ms |
+| `DELETE` ×9 | **1.9 ms** | 4.7 ms | 18.8 ms |
+
+TRUNCATE is DDL: InnoDB drops and recreates each tablespace file and holds an exclusive metadata
+lock while it does. Two consequences, and the second failed a run:
+
+- **Cost.** 432 tests × 509 ms ≈ **220 seconds** — over half the module's runtime — spent
+  emptying nine tables holding a handful of rows.
+- **Fragility.** That lock can queue behind any other session on this shared MySQL server, and
+  when it does the hook has no ceiling short of its 30-second budget. Seen twice.
+
+Switched to `DELETE`. Verified rather than assumed: none of the nine tables has an AUTO_INCREMENT
+column (ids are application-generated strings), no test holds a transaction across the hook, and
+reclaiming disk pages is meaningless at this scale.
+
+Result: the auth module went from 341 tests in ~5.5 minutes to **363 tests in 1.6 minutes**,
+with the flake gone. `me.test.ts` alone: 104 s → 17.5 s. `login.test.ts`: 57 s → 6.7 s.
+
+**Scoped deliberately.** 30 of the other 32 setup files still TRUNCATE, some of 25 tables — at
+roughly 57 ms per table, the tasks module's 23-table reset costs about 1.3 s per test across 413
+tests. Extrapolated across the 5,405-test gate, the reset is plausibly the majority of its
+runtime. That is a large and attractive change, and precisely why it is not being made here: a
+phase should not quietly alter the isolation semantics of 30 modules it is not testing. → **P13**.
+
+**D2.13 — the login page read "PasswordForgot password?".** Found by looking at the page rather
+than at the code, after removing the checkbox. The markup is correct — a flex row with
+`justifyContent: "space-between"` and `width: "100%"` — but antd renders a `Form.Item` label as
+`<label style="display:inline-flex">`, which shrink-wraps to its content, so `width: 100%`
+resolves against the label's own content width and `space-between` gets no room. Measured: label
+wrapper 334 px, label 172 px, inner row 158 px.
+
+Fixed with one opt-in CSS rule (`.form-label-row .ant-form-item-label > label { width: 100% }`)
+so it cannot reflow any other form. After: label 334 px, inner row 321 px, and the link sits at
+the field's right edge. Checked across the codebase — Login is the only form using this pattern.
+
+### Open — recorded, not fixed
+
+**D2.7 — one `/auth/refresh` returned 500 under full-module load, once.** Seen in
+`refresh.test.ts` › Concurrency › "10 parallel refreshes with the same cookie" during a complete
+`jest.auth` run. Not reproduced since, and the attempt was not casual:
+
+- 3 isolated runs of that one test — green;
+- 2 full runs of `refresh.test.ts` alone — 51/51 both;
+- a purpose-built probe firing **346 concurrent refreshes** (8 rounds of 12, 4 rounds of 60, a
+  final 10) — every one returned 200;
+- **3 further complete `jest.auth` runs with `TEST_LOG_ERRORS=1`** — zero `Unhandled error`
+  lines in any of them.
+
+It is **not** pool exhaustion: the error handler already maps that family to a 503 with
+`Retry-After` (F11), and this was a 500. The cause went only to the silenced logger, so nothing
+survives from the single occurrence — which is exactly what D2.6 now prevents. Carried as an
+open observation with its evidence rather than closed on a guess. → re-check in **P13** (load)
+and in any phase that meets an unexplained 5xx.
+
+*(Two of those three hunt runs did fail — one 30 s timeout on a test's first assertion, one on
+the `beforeEach` hook. Both were self-inflicted: heavy lint and type-check work was running on
+the same machine. Recorded because it is the honest reading of the evidence, and because D2.12
+turned out to be the real reason that hook could stall at all.)*
+
+**D2.8 — concurrent reuse of one refresh cookie is not detected, and mints one session per use.**
+Reproducible, measured, now pinned by a test. Sequentially the control works exactly as designed:
+replaying a rotated token returns 401 and mass-revokes every session for that user. Concurrently
+it does not fire at all — the requests arrive before any has committed its rotation, all read the
+session as live, and all succeed. Measured: **one cookie, 10 concurrent uses → 10 active
+sessions** (11 rows: the original revoked, ten new). At 60-way parallelism, 240 of 240 returned
+200.
+
+Pinned rather than "fixed", because the fix is a real decision and not an obvious one.
+Serialising the rotation (`SELECT … FOR UPDATE` inside a transaction) would close the window —
+and would also sign people out for the entirely ordinary reason that two of their tabs refreshed
+in the same instant, which is the false positive a rotation grace-window exists to avoid. What
+was *not* defensible was the state of the record: the suite asserted the sequential case, said
+nothing about the concurrent one, and a reader would reasonably assume both were covered. That
+is now explicit. → **GATE**.
+
+**D2.14 — `assistant` went green only on retry, and the runner had thrown away the reason.**
+The gate reported `FLAKY-PASS assistant 270/270` and nothing else. It could not report more: on
+a successful retry the runner replaced the failed attempt's result wholesale, and the retry's
+output is green by definition — so the only evidence there was had already been discarded. P0's
+own justification for naming flakies ("a flake nobody names is a flake nobody investigates") was
+only half-served by naming one without its reason.
+
+`scripts/test-all.cjs` now keeps the first attempt's tail and prints it under the FLAKY-PASS
+line.
+
+The flake itself is recorded, not chased: `jest.assistant` passes alone, twice, in 55–58 s, and
+`assistant` is the module the gate runs **first** — so it is the one that pays the cold ts-jest
+transform cache (every other module reads it warm), immediately after the new static phase has
+just had `tsc` and `eslint` saturating the CPU. P2 demonstrated the fix pattern for exactly this
+in `setup-each-auth.ts` — import the app in a `beforeAll` so no test's clock pays for it — but
+`assistant` is **P9's** module and a phase should not reshape another's setup on a single
+observation. → **P9**, with the evidence the runner will now keep.
+
+### To the GATE
+
+- **`authStrictLimiter` sizing (D2.2)** — 5/min/IP shared across four auth routes, one bucket per
+  office NAT. Options: raise the ceiling; key on IP+email so one person's failures do not spend
+  everyone's quota; or split the four routes into separate instances.
+- **Refresh-rotation serialisation (D2.8)** — close the concurrent-reuse window, at the price of
+  signing out users whose tabs race.
+- **A short "do not keep me signed in" session (D2.10)** — the checkbox is gone because it was
+  inert; the capability behind it was never built. Needs a session TTL the login request can
+  choose, a matching cookie `maxAge`, and a decision on the duration — session-only (the cookie
+  dies with the browser) being the option that actually helps on a shared machine.
+- **Two-factor authentication.** The server has no 2FA route of any kind. The client carries
+  scaffolding for one — `pendingTwoFactor` in the auth store, `setPendingTwoFactor`, a
+  `requires2fa` arm on the `LoginResponse` union, and a `/auth/2fa` exemption in the 401
+  interceptor. Grep-proven dead: `setPendingTwoFactor` is never called, `pendingTwoFactor` is
+  only ever set to `null`, and no login call site branches on `requires2fa`. Kept rather than
+  deleted (six lines, and the shape a real implementation would take) — but it is a feature that
+  does not exist, so the plan's "2FA path (pendingTwoFactor → verify)" cannot be tested. The
+  interceptor exemption is correct regardless and is now covered.
+- **Account lockout.** Also absent. With D2.2 that means brute-force protection is exactly one
+  IP-keyed bucket, and an attacker rotating IPs has none.
+- **The other 30 `TRUNCATE`-based test resets (D2.12).** Mechanical, measured, and the single
+  largest lever on the gate's runtime — but it changes how 30 modules isolate themselves, so it
+  wants its own pass with a full gate behind it. → **P13**.
+- **Lint coverage for `public/sw.js`.** Shipped code that no rule currently touches. → **P11**,
+  with the rest of the PWA work.
+
+### Closing state
+
+- **`npm run test:all` — 36 modules · **5,487 passed · 0 failed** · 127.1 min · ALL GREEN (one FLAKY-PASS: `assistant`, green on retry — D2.14)**
+- Static phase (new, runs first): eslint + type-check, both packages, `--max-warnings 0` — 4/4 pass.
+- Dev DB at baseline **47 / 6 / 9 / 27 / 15**; the e2e fixture user purged; the throwaway
+  work all ran on private test databases.
+- `client/dist` and `server/dist` untouched (§A rule 8) — every client fix in this phase is
+  source-only until P14 rebuilds them.
+
+**Signed off:** ✅
 
 ---
 

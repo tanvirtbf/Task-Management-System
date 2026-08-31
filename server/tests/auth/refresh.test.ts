@@ -790,6 +790,54 @@ describe("POST /api/v1/auth/refresh", () => {
             expect(oldRow!.revokedAt).not.toBeNull();
         });
 
+        it("does NOT detect reuse when the replays are CONCURRENT — one cookie, many sessions", async () => {
+            // The test above is the security control working: a rotated token
+            // used a SECOND time returns 401 and revokes every session the user
+            // has. That is theft detection, and it is the reason rotation exists.
+            //
+            // Concurrently it does not fire at all. The requests arrive before any
+            // of them has committed its rotation, so every one reads the session as
+            // live and every one succeeds — one refresh cookie becomes N active
+            // sessions and the theft signal never runs. Measured while writing this:
+            // 10 concurrent uses left 10 active sessions (11 rows — the original,
+            // revoked, plus ten new), and at 60-way parallelism 240 of 240 requests
+            // returned 200.
+            //
+            // This test PINS that behaviour rather than asserting the one we might
+            // prefer, because closing the window is a real decision and not an
+            // obvious fix: serialising the rotation (SELECT … FOR UPDATE inside a
+            // transaction) would also sign people out for the entirely ordinary
+            // reason that two of their tabs refreshed in the same instant — the
+            // false positive a rotation grace-window exists to avoid. Recorded for
+            // the gate in P2 of FULL_SYSTEM_TEST_PLAN_2026-08-29.md.
+            //
+            // What was NOT defensible was the state of the record: the suite
+            // asserted the sequential case, said nothing about the concurrent one,
+            // and a reader would reasonably assume both were covered.
+            //
+            // Asserted as a property, not a count, so a slower machine that lets
+            // fewer requests into the window still passes — while a change that
+            // serialises rotation (ok === 1) fails here, which is the notification
+            // you want the day someone tightens it.
+            const u = await makeUser();
+            const http = await oneOff();
+            const { cookie } = await loginAndGetCookie(http, u.email, u.password);
+
+            const results = await Promise.all(
+                Array.from({ length: 10 }, () =>
+                    http
+                        .post(POST_REFRESH)
+                        .set("Cookie", `bb_refresh=${cookie}`),
+                ),
+            );
+
+            const ok = results.filter((r) => r.status === 200).length;
+            expect(ok).toBeGreaterThan(1);
+            // Every success minted its own session, and none of them was revoked
+            // by reuse detection — which would have left zero.
+            expect(await countActiveSessions(u.id)).toBe(ok);
+        });
+
         it("returns 401 (no mass-revoke) when the user was deactivated after login", async () => {
             const u = await makeUser();
             const http = await oneOff();

@@ -13,12 +13,18 @@
     // multi-line imports, and this caught all ten broken files before a single
     // jest process started.
     //
-    // `rootDir` is widened to the package root because the base config pins it
-    // to `src`, and a file outside it is an error before type-checking begins.
+    // `rootDir` is widened to the REPOSITORY root, not just the server package.
+    // The base config pins it to `src`, and a file outside it is an error
+    // (TS6059) before type-checking even begins — which rules out `tests/`
+    // itself, and also rules out the one test that deliberately reaches across
+    // the package boundary: `tests/auth/password-policy-parity.test.ts` loads
+    // `client/src/lib/passwordPolicy.ts` so it can compare the two copies of
+    // the password rules against each other rather than against a
+    // transcription. Nothing is emitted here, so a wide rootDir costs nothing.
     "extends": "./tsconfig.json",
     "compilerOptions": {
         "noEmit": true,
-        "rootDir": "."
+        "rootDir": ".."
     },
     "include": ["src/**/*.ts", "tests/**/*.ts"],
     "exclude": ["node_modules", "dist"]

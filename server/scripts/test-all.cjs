@@ -37,6 +37,7 @@
  *   node scripts/test-all.cjs --only tasks,rbac
  *   node scripts/test-all.cjs --server-only
  *   node scripts/test-all.cjs --no-retry
+ *   node scripts/test-all.cjs --no-static     # skip lint + type-check
  *
  * Exit code is 1 if ANY module is red — do not pipe this into something that
  * swallows it.
@@ -62,6 +63,7 @@ const only = (valueOf("--only") || "")
     .filter(Boolean);
 const allowRetry = !flag("--no-retry");
 const serverOnly = flag("--server-only");
+const skipStatic = flag("--no-static") || only.length > 0;
 const clientOnly = flag("--client-only");
 /**
  * Playwright is OPT-IN, not part of the default gate.
@@ -131,6 +133,93 @@ const runJest = (cfg) => {
 const results = [];
 const t0 = Date.now();
 
+// ── static checks ───────────────────────────────────────────────────────────
+/**
+ * Lint and type-check BOTH packages before a single test runs.
+ *
+ * These were always meant to be part of the gate and were left to whoever
+ * remembered to type them, which turns out to be the same failure the runner
+ * itself exists to prevent. Twice now a check that nobody ran has been found
+ * to be silently answering the wrong question:
+ *
+ *   - P1: `.eslintignore` excluded 321 files — the whole of `tests/`, every
+ *     operator script — so `eslint .` reported 0 while 72 real violations sat
+ *     behind the ignore list.
+ *   - P2: the client's `tsc --noEmit` is a NO-OP. Its root tsconfig is a
+ *     solution file (`"files": []` + references), and without `-b` there is
+ *     nothing to compile, so it exits 0 with a deliberate type error present.
+ *     Every 'client tsc clean' in this plan's records was vacuous.
+ *
+ * A check that is not in the gate is a check that can rot, exactly like a
+ * config left out of the module list.
+ *
+ * They run FIRST and stop the run on failure. A tree that does not compile
+ * makes the test results meaningless, and 108 minutes is far too long to
+ * spend before finding that out. `--no-static` skips them; so does `--only`,
+ * because that flag means 'I am iterating on one module'.
+ */
+const bin = (pkg, ...rest) => path.join(pkg, "node_modules", ...rest);
+const STATIC_CHECKS = [
+    {
+        // `--max-warnings 0` on both packages: eslint exits 0 on a
+        // warnings-only run, and "0 / 0" has been this plan's standard since
+        // P1 — a warning nothing blocks on is a warning that accumulates.
+        label: "eslint (server)",
+        cwd: SERVER,
+        entry: bin(SERVER, "eslint", "bin", "eslint.js"),
+        argv: [".", "--max-warnings", "0"],
+    },
+    {
+        // `-p tsconfig.tests.json` — the base config excludes `tests/`, so the
+        // plain invocation says nothing about the 313 files in there.
+        label: "tsc (server)",
+        cwd: SERVER,
+        entry: bin(SERVER, "typescript", "bin", "tsc"),
+        argv: ["--noEmit", "-p", "tsconfig.tests.json"],
+    },
+    {
+        label: "eslint (client)",
+        cwd: CLIENT,
+        entry: bin(CLIENT, "eslint", "bin", "eslint.js"),
+        argv: [".", "--max-warnings", "0"],
+    },
+    {
+        // `-b` is load-bearing, not decoration. See the note above.
+        label: "tsc (client)",
+        cwd: CLIENT,
+        entry: bin(CLIENT, "typescript", "bin", "tsc"),
+        argv: ["-b", "--noEmit"],
+    },
+];
+
+if (!skipStatic) {
+    console.log(`\n static checks\n`);
+    const failedChecks = [];
+    for (const check of STATIC_CHECKS) {
+        process.stdout.write(`  ${check.label.padEnd(20)} … `);
+        const r = runNode(check.entry, check.argv, check.cwd);
+        const ok = r.status === 0;
+        console.log(ok ? "pass" : "FAIL");
+        if (!ok) {
+            failedChecks.push({
+                label: check.label,
+                tail: `${r.stdout || ""}\n${r.stderr || ""}`
+                    .split("\n")
+                    .filter((l) => l.trim())
+                    .slice(-15),
+            });
+        }
+    }
+    if (failedChecks.length) {
+        for (const f of failedChecks) {
+            console.log(`\n  ── ${f.label} ${"─".repeat(Math.max(0, 46 - f.label.length))}`);
+            for (const line of f.tail) console.log("     " + line);
+        }
+        console.log("\n  NOT GREEN — static checks failed; no tests were run.\n");
+        process.exit(1);
+    }
+}
+
 if (!clientOnly) {
     console.log(`\n running ${configs.length} server module(s)\n`);
     for (const cfg of configs) {
@@ -138,17 +227,19 @@ if (!clientOnly) {
         process.stdout.write(`  ${label.padEnd(20)} … `);
         let r = runJest(cfg);
         let flaky = false;
+        // Keep WHY the first attempt failed. Naming a flaky module without its
+        // reason is only half of "a flake nobody names is a flake nobody
+        // investigates" — the retry's output is green by definition, so
+        // discarding the first attempt threw away the only evidence there was.
+        let firstFailure = null;
         if (!r.ok && allowRetry) {
+            firstFailure = r.tail;
             process.stdout.write("retry … ");
             const again = runJest(cfg);
-            if (again.ok) {
-                flaky = true;
-                r = again;
-            } else {
-                r = again;
-            }
+            flaky = again.ok;
+            r = again;
         }
-        results.push({ kind: "server", label, flaky, ...r });
+        results.push({ kind: "server", label, flaky, firstFailure, ...r });
         const counts = r.total === null ? "no summary" : `${r.passed}/${r.total}`;
         console.log(
             r.ok ? `${flaky ? "FLAKY-PASS" : "pass"}  ${counts}` : `FAIL  ${counts}`,
@@ -245,6 +336,13 @@ if (flakies.length) {
     console.log(
         `  FLAKY-PASS (green only on retry): ${flakies.map((f) => f.label).join(", ")}`,
     );
+    for (const f of flakies) {
+        if (!f.firstFailure?.length) continue;
+        console.log(
+            `\n  ── ${f.label}: what the FIRST attempt said ${"─".repeat(Math.max(0, 24 - f.label.length))}`,
+        );
+        for (const line of f.firstFailure) console.log("     " + line.trim());
+    }
 }
 if (red.length) {
     console.log(`\n  RED: ${red.map((r) => r.label).join(", ")}\n`);

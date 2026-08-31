@@ -1,4 +1,10 @@
-/* eslint-disable no-undef */
+// Service-worker globals (`self`, `clients`, `caches`, `skipWaiting`) are
+// undefined in a browser or Node context and defined here. This file used to
+// carry `/* eslint-disable no-undef */` to say so; the directive was inert —
+// `eslint.config.js` matches only `**/*.{ts,tsx}`, so no rule applies to this
+// file at all and eslint reported the disable itself as unused. Lint coverage
+// for the service worker belongs with the PWA work (P11); the note stays
+// because the globals still surprise readers.
 /**
  * BeautyBooth Tasks — service worker (Web Push receiver only).
  *

@@ -96,11 +96,21 @@ test("login + session survives hard reload (KI-15 transient 401 benign)", async 
 });
 
 test("wrong password → error surfaced, stays on /login", async ({ page }) => {
-    await loginUI(page, OWNER, "definitely-wrong-pass");
-    await page.waitForTimeout(1500);
+    // A SHORT wrong password on purpose. The form used to carry the password
+    // policy's `min: 8` rule, which made it stricter than the API it posts to
+    // (`loginValidator` accepts 1–200) — so a short password never left the
+    // browser, and anyone whose password predates the policy could not sign in
+    // at all. The old version of this test used a 21-character password and
+    // accepted `.ant-form-item-explain-error` as proof of "an error", so it
+    // passed either way and could not tell the two apart.
+    //
+    // Asserting the ALERT specifically is what makes this a regression guard:
+    // that element is only rendered from `getApiErrorMessage(err)`, so seeing
+    // it means the request reached the server and came back.
+    await loginUI(page, OWNER, "short");
+    await expect(page.locator(".ant-alert-error")).toBeVisible({ timeout: 5000 });
     expect(new URL(page.url()).pathname).toContain("/login");
-    const errCount = await page.locator('.ant-alert-error, .ant-message-error, [role="alert"], .ant-form-item-explain-error').count();
-    expect(errCount).toBeGreaterThan(0);
+    await expect(page.locator(".ant-form-item-explain-error")).toHaveCount(0);
 });
 
 test("logout returns to /login", async ({ page }) => {
