@@ -143,6 +143,31 @@ const phaseOf = (file, ep) => {
     return PHASE_OF_ROUTER[file] ?? "?";
 };
 
+// ── as a module ─────────────────────────────────────────────────────────────
+/**
+ * Every endpoint, with the phase that owns it — the same list the CLI prints.
+ *
+ * Exported so a TEST can hold itself to it. `tests/isolation/cross-workspace`
+ * uses this to assert its own completeness: if a route with an `:id` appears
+ * that the isolation sweep does not cover, the suite fails and names it, rather
+ * than the new endpoint quietly never being checked for tenant leakage.
+ */
+const allEndpoints = () =>
+    groups.flatMap((g) =>
+        g.eps.map((ep) => ({
+            method: ep.method,
+            path: ep.path,
+            router: g.file,
+            phase: phaseOf(g.file, ep),
+        })),
+    );
+
+module.exports = { allEndpoints };
+
+// Everything below is the command line. Required as a module, this file only
+// hands back the table above.
+if (require.main !== module) return;
+
 // ── output ──────────────────────────────────────────────────────────────────
 const args = process.argv.slice(2);
 const argOf = (n) => {

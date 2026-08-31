@@ -161,6 +161,7 @@ Re-verified ✔ = probed again today, still true.
 | KI-29 | **Opened by P2.** 30 of 32 test setups still reset with `TRUNCATE` (509 ms per 9 tables vs 1.9 ms for `DELETE`, and it takes an exclusive metadata lock). Plausibly the majority of the gate's 127 min; auth already converted | open | **P13** |
 | KI-30 | **Opened by P2.** `client/public/sw.js` is shipped code no lint rule touches — `eslint.config.js` matches only `**/*.{ts,tsx}` | open | **P11** |
 | KI-31 | **Opened by P2.** `assistant` is the gate's first module and so pays the cold ts-jest cache inside a test; it went FLAKY-PASS once. `setup-each-auth.ts` shows the fix (warm the app in `beforeAll`) | open | **P9** |
+| KI-32 | **Opened by P3.** Custom fields are the only named entity with no uniqueness rule — no unique index and no service check, so one workspace can hold two fields called "Priority". Behaviour is now pinned by a test; whether to constrain it is a decision | open | **GATE** |
 
 ---
 
@@ -196,6 +197,15 @@ These are FEATURES, not defects. Phases may add to this list but never build fro
 - **A short "do not keep me signed in" session (D2.10).** The inert checkbox is removed;
   the capability was never built. Needs a chooseable session TTL, cookie `maxAge`, and a
   decision on the duration.
+
+**Added by P3 (org structure):**
+
+- **Custom-field name uniqueness (D3.3).** Every other named entity — spaces, lists, tags,
+  task types, statuses, templates — refuses a duplicate name in its scope. Custom fields do
+  not, so two fields can both be called "Priority" and any picker showing them by name is
+  ambiguous. Constraining it means a unique index plus a migration for whatever duplicates
+  already exist; leaving it means the inconsistency is deliberate. Either way it should be
+  a decision, which is why the current behaviour is now pinned by a test.
 
 ---
 
@@ -1053,10 +1063,180 @@ uniqueness collisions · position/reorder invariants · pagination where present
 - customFields: type matrix (each field type set/cleared on a task), list-scoped vs workspace
 - templates: apply idempotence, apply-into-authz
 
-**Exit criteria:** 67/67 ticked; module suites green (spaces 250, membership, taskTypes, tags,
-customfields, templates 123, workspace); DB baseline restored.
+**Exit criteria**
+- [x] **67 / 67** endpoints reached — measured against the live route table, not assumed
+- [x] All 16 P3 module suites green: **2,963 passed, 0 failed** (spaces 250 · users 308 ·
+      statuses 209 · lists 187 + listsread 156 · tags 149 · taskTypes 184 · templates 123 ·
+      customfields 103 · workspace 83 · membership 102 · rbac 358 · isolation 57)
+- [x] Cross-workspace isolation proved for **every** `:id` endpoint in the phase, and for every
+      body field that can carry another workspace's id — in one sweep that cannot fall
+      behind the route table
+- [x] Defects fixed + regression-tested — 2 fixed, 1 recorded to GATE
+- [x] DB baseline restored: 47 / 6 / 9 / 27 / 15 (untouched — private test DBs only)
 
-**Execution record P3:** *(empty)*
+**Execution record P3** — 2026-08-31, anchor `56deda6`.
+
+### Endpoints — 67 / 67
+
+Reach was measured, not assumed. A script extracts every URL the suite actually constructs —
+resolving each file's `const` declarations, its `helpers.ts` exports, and arrow helpers built on
+another constant — and matches them against the live route table. Run over the earlier phases as
+a control it reports P2 10/10 and P6 43/43, which is what makes its P3 answer worth believing:
+
+**66 of 67 were already exercised somewhere. One was not: `GET /roles/:id/holders`.**
+
+That is a better starting position than the phase assumed, and it moved P3's work from *reach*
+to *depth* — the four dimensions the plan asks for per endpoint (validation, authz,
+cross-workspace isolation, archive/uniqueness/position invariants), which is where the two
+findings below came from.
+
+### What ran
+
+| | before | after |
+|---|---|---|
+| **`isolation` module** — new, the tenant-isolation sweep | did not exist | **57 / 57** (48 URL probes + 8 body probes + a completeness check) |
+| `rbac` | 346 | **358** (+12, `GET /roles/:id/holders`) |
+| `customfields` | 102 | **103** (+1) |
+| `users` · `spaces` · `lists` · `listsread` · `statuses` · `tags` · `taskTypes` · `templates` · `workspace` · `workspaceActivity` · `membership` · `tagscheck` · `tagsreview` | green | green, unchanged |
+| eslint · typecheck, both packages | 0 / 0 | 0 / 0 |
+| Dev DB | 47/6/9/27/15 | untouched — every P3 test ran on a private DB |
+
+### Defects found and fixed
+
+**D3.1 — `GET /users/:id/roles` answered 200 for a user in another workspace.** Found by the new
+isolation sweep, which is the only thing that asked: `rbac` had no cross-workspace assertions at
+all, and the per-module suites each check their own corner.
+
+The query underneath was correctly workspace-scoped, so no foreign data was ever returned — the
+response was `200 {data: []}`. The defect is what that says. It is *exactly* the response a real
+colleague with no roles produces, so the caller cannot tell "this person holds nothing" from
+"this id is not yours"; the roles panel shows the reassuring one either way. Every sibling on
+`/users/:id` answers 404, and the POST on this very URL resolves the user first
+(`findByIdInWorkspace` → `user.not_found`) before doing anything. The read path simply skipped
+that step.
+
+Fixed by giving the read the same guard as the write. `rbac` stays 346/346 on top of it, so
+nothing depended on the old shape.
+
+**D3.2 — `GET /roles/:id/holders` had no test of any kind.** Not a happy path, not a guard,
+nothing — the single endpoint in P3 that no test ever called. Its neighbours in `roles.ts` are
+covered by `roles-api.test.ts`, and the LIST endpoint's `holders` **count** is asserted there,
+which is likely how it stayed invisible: the word appears in the suite and looks covered.
+
+It deserves more care than its size suggests. It is what a role-assignment UI calls before
+deleting or re-granting a role — the answer to "who will this affect?" — and it reports on the
+permission system itself, so a scoping mistake in it discloses who holds power in a workspace.
+
+`tests/rbac/role-holders.test.ts` — **12 tests**, green on the first run (the endpoint was
+correct; only unwatched). They pin: a workspace-wide holder with a null space; a space-scoped
+grant reporting the space it is limited to; the empty case; several holders on one role; **one
+person appearing twice when they hold the role in two spaces** (a caller deduplicating by
+user_id would under-report the blast radius); `role.manage` reachable by a custom role and
+refused for member/guest/anonymous; 404 for an unknown id, 404 for another workspace's role, and
+no foreign holder ever appearing in a legitimate list.
+
+### The tenant-isolation sweep — `tests/isolation/cross-workspace.test.ts`
+
+The one structural addition. Tenant isolation was being checked per module and unevenly —
+`lists` had fourteen cross-workspace assertions, `workspace` and `rbac` had **none** — which is
+the wrong shape for the property. It is not a per-endpoint feature; it is one question asked of
+every endpoint that takes an id, and it takes exactly one endpoint answering differently for a
+customer's data to be reachable from another workspace.
+
+So: build two complete workspaces, then walk the whole P3 surface as workspace A's **owner** —
+the most powerful principal there is, so a 404 cannot be explained away as "that role could not
+have done it anyway" — holding B's ids. **404 every time, 48 endpoints.**
+
+404 specifically, not merely "refused". A 403 would be a smaller leak and still a leak: it
+separates "exists, forbidden" from "does not exist", and that difference is enough to enumerate
+a neighbour's spaces, lists and users one id at a time.
+
+It is a new gate module rather than a file inside an existing one because it builds two entire
+object graphs — users, spaces, lists, statuses, task types, tags, custom fields, templates,
+tasks, roles — and so needs a reset that clears everything rather than one module's table list.
+Its reset uses `DELETE` (P2's D2.12), and it warms the app in `beforeAll` so no test pays the
+cold ts-jest compile.
+
+**It cannot fall behind the code.** The probe table is checked against the live route table — the
+same one `npm run endpoints` prints, now exported from `scripts/endpoints.cjs` for the purpose —
+so adding a route with an `:id` and no probe fails the suite and names it. Later phases extend
+the filter rather than starting again: P4–P6 add their own endpoints to the same sweep.
+
+Writing it also cost four wrong guesses about request shapes, each of which the suite reported
+as a 422 rather than a pass — `bucket` is a required query param on `review-queue`, the status
+reorder takes a bare array rather than a named field, visibility grants want `target_space_id`,
+and the home-team endpoint wants `space_id`. Worth recording only because a probe that 422s
+proves nothing while looking like a test.
+
+**And then the same question from the other direction — the one that actually hides bugs.**
+Above, the neighbour's id is in the URL. That is the case everyone remembers to guard, because
+the resource lookup is the first thing the handler does. The dangerous version is a foreign id in
+the **body** of a request about something you legitimately own: my new list pointed at their
+space, my space given their user as its head, my template applied into their list. That is the
+confused-deputy shape — the handler resolves the thing it was asked about, authorises the caller
+for it, and then writes a foreign id into a column without ever asking whether the caller can see
+*that*. Nothing about the request looks suspicious.
+
+Eight such probes, across the fields that can carry another workspace's id:
+`POST /lists` (`space_id`, `default_task_type_id`) · `PATCH /lists/:id` (move into their space) ·
+`PATCH /spaces/:id` (`head_user_id`) · `POST /spaces/:id/members` (`user_id`) ·
+`POST /spaces/:id/visibility-grants` (`target_space_id`) · `PATCH /users/:id/team` (`space_id`) ·
+`POST /custom-fields` (`scope_id`).
+
+**All eight refused. Not one 2xx.** Three answer 404 and five answer 422, and the split is
+informative rather than untidy: a 404 means the service resolved the referenced row inside the
+caller's workspace and found nothing; a 422 means the validator rejected the field before the
+service ever looked. Both are safe. The codes are pinned so a change of layer becomes visible,
+while the property that matters — never a success — is asserted separately and does not depend on
+which code arrives.
+
+This is the part of P3 that could most easily have gone the other way, and it did not. Worth
+saying plainly: on this surface, the multi-tenant boundary holds in both directions.
+
+### Verified already covered — no new tests needed
+
+The plan named seven special cases. Six were already covered, several more thoroughly than the
+plan expected:
+
+- **"role PATCH downgrade of the last owner (must refuse)"** — subsumed by a stricter rule that
+  is already tested: the owner's role cannot be changed *at all*
+  (`user.cannot_change_owner_role`, by an admin or by themselves). Checking the other two routes
+  to an owner-less workspace found both closed and tested as well —
+  `user.cannot_deactivate_owner` and `user.cannot_delete_owner`. All three paths are shut.
+- **statuses reorder under concurrent writes** — `reorder.test.ts` has an "Idempotency &
+  concurrency" block including two parallel reorders of one list.
+- **custom-field type matrix** — `set-value.test.ts` covers each of the six types on the happy
+  path *and* a per-type validation refusal (BD phone, money currency, dropdown option id, file
+  id in-workspace).
+- **template apply idempotence and authz** — `apply.test.ts` covers usage_count incrementing
+  once per apply, the archived-list 409, and four business refusals that write no task.
+- **spaces `head_user_id` flows** — `dept-review/head-assignment.test.ts`.
+- **teams directory shape** — the wire is snake_case and `/teams` is deliberately *not* in the
+  client's `SKIP_CAMELIZE_URLS`, so the interceptor camelizes it into the client's types. `/roles*`
+  and `/members` are in that list on purpose, because their payloads carry identifiers as keys.
+- **lists pagination (post-F23 cap + cursor)** — rewritten and proved in P0 (D0.1).
+
+### Recorded, not fixed
+
+**D3.3 — custom fields are the only named entity with no uniqueness rule.** Spaces, lists, tags,
+task types, statuses and templates all refuse a duplicate name in the same scope. `custom_fields`
+has no unique index (only `uq_cf_options_field_label`, on a dropdown's option labels) and
+`CustomFieldsService.create` has no check — so a workspace can hold two fields both called
+"Priority", and every picker that shows them by name becomes ambiguous.
+
+That may be intentional: a field is identified by id everywhere that matters. But nothing
+recorded the decision and nothing tested either behaviour, so it was equally likely to be an
+oversight. Now pinned by a test that states what actually happens; if a unique constraint is ever
+added, it fails there and the change becomes conscious rather than a surprise. → **GATE**.
+
+### Closing state
+
+- **`npm run test:all` — 37 modules · **5,557 passed · 0 failed** · 126.2 min · ALL GREEN, no flakies**
+- Static phase 4/4; eslint 0/0 and a real type-check on both packages.
+- Dev DB at baseline **47 / 6 / 9 / 27 / 15** — P3 never wrote to it.
+- `client/dist` and `server/dist` untouched (§A rule 8).
+
+**Signed off:** ✅
 
 ---
 

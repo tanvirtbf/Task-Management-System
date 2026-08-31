@@ -78,6 +78,34 @@ const _signAccess = (
     );
 
 describe("POST /api/v1/custom-fields", () => {
+    describe("Name uniqueness — deliberately absent", () => {
+        it("allows two fields with the SAME name in one workspace", async () => {
+            // Pinned by P3 because it is the odd one out. Spaces, lists, tags,
+            // task types, statuses and templates all refuse a duplicate name in
+            // the same scope; custom fields do not — there is no unique index on
+            // `custom_fields` (only `uq_cf_options_field_label`, on a dropdown's
+            // option labels) and `CustomFieldsService.create` has no check.
+            //
+            // So a workspace can hold two fields both called "Priority", and
+            // every picker that shows them by name becomes ambiguous. That may
+            // be intentional — a field is identified by id everywhere that
+            // matters — but nothing recorded the decision, and nothing would
+            // have noticed either way. This test states the current behaviour;
+            // if a unique constraint is ever added it fails here, which makes
+            // that a conscious change rather than a surprise.
+            const u = await makeUser({ role: "admin" });
+            const client = await makeLoggedInClient(u);
+
+            const first = await client.post(PATH).send(validBody());
+            const second = await client.post(PATH).send(validBody());
+
+            expect([first.status, second.status]).toEqual([201, 201]);
+            expect(
+                (second.body as { id: string }).id,
+            ).not.toBe((first.body as { id: string }).id);
+        });
+    });
+
     describe("Happy path", () => {
         it("creates a text field (201) with the wire shape for an admin", async () => {
             const u = await makeUser({ role: "admin" });
