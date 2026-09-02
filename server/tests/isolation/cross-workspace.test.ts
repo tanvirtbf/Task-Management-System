@@ -13,8 +13,14 @@ import {
 } from "../test-utils/factories";
 import { getDb } from "../../src/db/client";
 import {
+    attachments,
+    checklistItems,
+    checklists,
+    comments,
     customFields,
+    notifications,
     roles,
+    taskAssignmentRequests,
     taskDeleteRequests,
     taskDependencies,
     templates,
@@ -67,7 +73,7 @@ jest.setTimeout(60000);
  * second sweep — when a later phase adds routes; the completeness test reads
  * this list and will name anything left without a probe.
  */
-const PHASES_COVERED = ["P3", "P4"];
+const PHASES_COVERED = ["P3", "P4", "P5"];
 
 interface Foreign {
     workspaceId: string;
@@ -85,6 +91,13 @@ interface Foreign {
     templateId: string;
     customFieldId: string;
     roleId: string;
+    // ── P5: the collaboration graph hanging off B's task ────────────────────
+    notificationId: string;
+    attachmentId: string;
+    assignmentRequestId: string;
+    commentId: string;
+    checklistId: string;
+    checklistItemId: string;
 }
 
 interface Probe {
@@ -94,7 +107,35 @@ interface Probe {
     url: (b: Foreign) => string;
     /** Not always an object: the status reorder endpoint takes a bare array. */
     body?: (b: Foreign) => unknown;
+    /**
+     * For the routes that do not take JSON. `POST /tasks/:id/attachments` is a
+     * proxied upload: raw bytes, with the name in `X-Filename`. Probing it with
+     * a JSON body only proves the body parser rejects JSON, which says nothing
+     * about whose task it is.
+     */
+    headers?: Record<string, string>;
 }
+
+/**
+ * Endpoints that answer something other than 404 to a stranger's id, and why.
+ *
+ * 404 is the rule everywhere else, because a 403 concedes that the row exists.
+ * §19 Notifications is the one documented departure: `NotificationsService`
+ * states it deliberately — a missing row is 404 `notification.not_found`, and
+ * ANOTHER USER'S row is 403 `notification.not_owner`, per the spec, on the
+ * reasoning that notification ids are unguessable so the distinction is not a
+ * usable enumeration oracle.
+ *
+ * Listing it here rather than loosening the assertion to "any 4xx" keeps the
+ * exception a decision somebody made, visible in one place, instead of a hole
+ * the sweep would stop noticing.
+ */
+const EXPECTED_STATUS: Record<string, number> = {
+    "post /api/v1/notifications/:id/read": 403,
+    "post /api/v1/notifications/:id/unread": 403,
+    "post /api/v1/notifications/:id/snooze": 403,
+    "delete /api/v1/notifications/:id": 403,
+};
 
 const PROBES: Probe[] = [
     // ── users ───────────────────────────────────────────────────────────────
@@ -338,6 +379,181 @@ const PROBES: Probe[] = [
         route: "/api/v1/delete-requests/:id/cancel",
         url: (b) => `/api/v1/delete-requests/${b.deleteRequestId}/cancel`,
     },
+
+    // ── P5: notifications ───────────────────────────────────────────────────
+    // A notification is addressed to a PERSON, so the boundary here is the
+    // recipient rather than the workspace — but the effect must be the same.
+    {
+        method: "post",
+        route: "/api/v1/notifications/:id/read",
+        url: (b) => `/api/v1/notifications/${b.notificationId}/read`,
+    },
+    {
+        method: "post",
+        route: "/api/v1/notifications/:id/unread",
+        url: (b) => `/api/v1/notifications/${b.notificationId}/unread`,
+    },
+    {
+        method: "post",
+        route: "/api/v1/notifications/:id/snooze",
+        url: (b) => `/api/v1/notifications/${b.notificationId}/snooze`,
+        body: () => ({
+            snoozed_until: new Date(Date.now() + 3600_000).toISOString(),
+        }),
+    },
+    {
+        method: "delete",
+        route: "/api/v1/notifications/:id",
+        url: (b) => `/api/v1/notifications/${b.notificationId}`,
+    },
+
+    // ── P5: attachments ─────────────────────────────────────────────────────
+    // The download probe is the one that would hurt: a signed URL handed to an
+    // outsider is the file itself, not a reference to it.
+    {
+        method: "post",
+        route: "/api/v1/attachments/:id/finalize",
+        url: (b) => `/api/v1/attachments/${b.attachmentId}/finalize`,
+        body: () => ({}),
+    },
+    {
+        method: "get",
+        route: "/api/v1/attachments/:id/download",
+        url: (b) => `/api/v1/attachments/${b.attachmentId}/download`,
+    },
+    {
+        method: "delete",
+        route: "/api/v1/attachments/:id",
+        url: (b) => `/api/v1/attachments/${b.attachmentId}`,
+    },
+    {
+        method: "get",
+        route: "/api/v1/tasks/:id/attachments",
+        url: (b) => `/api/v1/tasks/${b.taskId}/attachments`,
+    },
+    {
+        method: "post",
+        route: "/api/v1/tasks/:id/attachments",
+        url: (b) => `/api/v1/tasks/${b.taskId}/attachments`,
+        headers: {
+            "X-Filename": "probe.pdf",
+            "Content-Type": "application/pdf",
+        },
+        body: () => Buffer.from("probe bytes"),
+    },
+
+    // ── P5: assignment requests ─────────────────────────────────────────────
+    {
+        method: "get",
+        route: "/api/v1/tasks/:id/assignment-requests",
+        url: (b) => `/api/v1/tasks/${b.taskId}/assignment-requests`,
+    },
+    {
+        method: "post",
+        route: "/api/v1/assignment-requests/:id/accept",
+        url: (b) => `/api/v1/assignment-requests/${b.assignmentRequestId}/accept`,
+    },
+    {
+        method: "post",
+        route: "/api/v1/assignment-requests/:id/decline",
+        url: (b) =>
+            `/api/v1/assignment-requests/${b.assignmentRequestId}/decline`,
+    },
+    {
+        method: "post",
+        route: "/api/v1/assignment-requests/:id/query",
+        url: (b) => `/api/v1/assignment-requests/${b.assignmentRequestId}/query`,
+        body: () => ({ note: "probe" }),
+    },
+    {
+        method: "post",
+        route: "/api/v1/assignment-requests/:id/answer",
+        url: (b) =>
+            `/api/v1/assignment-requests/${b.assignmentRequestId}/answer`,
+        body: () => ({ note: "probe" }),
+    },
+    {
+        method: "post",
+        route: "/api/v1/assignment-requests/:id/cancel",
+        url: (b) =>
+            `/api/v1/assignment-requests/${b.assignmentRequestId}/cancel`,
+    },
+
+    // ── P5: comments ────────────────────────────────────────────────────────
+    {
+        method: "get",
+        route: "/api/v1/tasks/:id/comments",
+        url: (b) => `/api/v1/tasks/${b.taskId}/comments`,
+    },
+    {
+        method: "post",
+        route: "/api/v1/tasks/:id/comments",
+        url: (b) => `/api/v1/tasks/${b.taskId}/comments`,
+        body: () => ({ body: "probe" }),
+    },
+    {
+        method: "patch",
+        route: "/api/v1/comments/:id",
+        url: (b) => `/api/v1/comments/${b.commentId}`,
+        body: () => ({ body: "probe" }),
+    },
+    {
+        method: "delete",
+        route: "/api/v1/comments/:id",
+        url: (b) => `/api/v1/comments/${b.commentId}`,
+    },
+
+    // ── P5: checklists ──────────────────────────────────────────────────────
+    {
+        method: "get",
+        route: "/api/v1/tasks/:id/checklists",
+        url: (b) => `/api/v1/tasks/${b.taskId}/checklists`,
+    },
+    {
+        method: "post",
+        route: "/api/v1/tasks/:id/checklists",
+        url: (b) => `/api/v1/tasks/${b.taskId}/checklists`,
+        body: () => ({ name: "probe" }),
+    },
+    {
+        method: "patch",
+        route: "/api/v1/checklists/:id",
+        url: (b) => `/api/v1/checklists/${b.checklistId}`,
+        body: () => ({ name: "probe" }),
+    },
+    {
+        method: "delete",
+        route: "/api/v1/checklists/:id",
+        url: (b) => `/api/v1/checklists/${b.checklistId}`,
+    },
+    {
+        method: "post",
+        route: "/api/v1/checklists/:id/items",
+        url: (b) => `/api/v1/checklists/${b.checklistId}/items`,
+        body: () => ({ text: "probe" }),
+    },
+    {
+        method: "post",
+        route: "/api/v1/checklists/:id/items/bulk",
+        url: (b) => `/api/v1/checklists/${b.checklistId}/items/bulk`,
+        body: () => ({ texts: ["probe"] }),
+    },
+    {
+        method: "patch",
+        route: "/api/v1/checklist-items/:id",
+        url: (b) => `/api/v1/checklist-items/${b.checklistItemId}`,
+        body: () => ({ text: "probe" }),
+    },
+    {
+        method: "post",
+        route: "/api/v1/checklist-items/:id/toggle",
+        url: (b) => `/api/v1/checklist-items/${b.checklistItemId}/toggle`,
+    },
+    {
+        method: "delete",
+        route: "/api/v1/checklist-items/:id",
+        url: (b) => `/api/v1/checklist-items/${b.checklistItemId}`,
+    },
 ];
 
 /** Workspace B — a neighbour with one of everything. */
@@ -419,6 +635,73 @@ const buildForeign = async (): Promise<Foreign> => {
         updatedAt: new Date(),
     });
 
+    // ── P5: everything that hangs off a task in the collaboration surface ───
+    // Seeded directly, like the rows above: the point is that A cannot reach
+    // B's ids, and going through B's API to create them would only test that
+    // B can use their own workspace.
+    const notificationId = fakeId("ntf");
+    await db.insert(notifications).values({
+        id: notificationId,
+        userId: owner.id,
+        type: "assigned",
+        entityType: "task",
+        entityId: task.id,
+        actorId: second.id,
+        title: "Neighbour was assigned a task",
+    });
+
+    const attachmentId = fakeId("att");
+    await db.insert(attachments).values({
+        id: attachmentId,
+        taskId: task.id,
+        name: "neighbour-invoice.pdf",
+        storageKey: `ws/${ws.id}/tasks/${task.id}/neighbour-invoice.pdf`,
+        mimeType: "application/pdf",
+        sizeBytes: BigInt(2048),
+        uploadedBy: owner.id,
+        uploadStatus: "complete",
+    });
+
+    const assignmentRequestId = fakeId("areq");
+    await db.insert(taskAssignmentRequests).values({
+        id: assignmentRequestId,
+        workspaceId: ws.id,
+        spaceId: space.id,
+        taskId: task.id,
+        targetUserId: second.id,
+        requestedBy: owner.id,
+        status: "pending",
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+    });
+
+    const commentId = fakeId("cmt");
+    await db.insert(comments).values({
+        id: commentId,
+        taskId: task.id,
+        parentCommentId: null,
+        authorId: owner.id,
+        body: "Neighbour's private thread",
+    });
+
+    const checklistId = fakeId("chk");
+    await db.insert(checklists).values({
+        id: checklistId,
+        taskId: task.id,
+        name: "Neighbour checklist",
+        position: 0,
+    });
+
+    const checklistItemId = fakeId("cki");
+    await db.insert(checklistItems).values({
+        id: checklistItemId,
+        checklistId,
+        parentItemId: null,
+        text: "Neighbour step",
+        position: 0,
+    });
+
     // `makeWorkspace` seeds the four system roles, which is what a real
     // deployment looks like — so B always has a role id to probe.
     const [role] = await db
@@ -443,6 +726,12 @@ const buildForeign = async (): Promise<Foreign> => {
         templateId,
         customFieldId,
         roleId: role.id,
+        notificationId,
+        attachmentId,
+        assignmentRequestId,
+        commentId,
+        checklistId,
+        checklistItemId,
     };
 };
 
@@ -455,6 +744,9 @@ interface Mine {
     statusId: string;
     taskTypeId: string;
     taskId: string;
+    /** P5: a checklist of my own, so a foreign id has somewhere to be smuggled to. */
+    checklistId: string;
+    checklistItemId: string;
 }
 
 describe("Tenant isolation — a neighbour's ids are simply not there", () => {
@@ -488,6 +780,22 @@ describe("Tenant isolation — a neighbour's ids are simply not there", () => {
             statusId: status.id,
             taskTypeId: taskType.id,
         });
+        const myChecklistId = fakeId("chk");
+        await getDb().insert(checklists).values({
+            id: myChecklistId,
+            taskId: task.id,
+            name: "My checklist",
+            position: 0,
+        });
+        const myChecklistItemId = fakeId("cki");
+        await getDb().insert(checklistItems).values({
+            id: myChecklistItemId,
+            checklistId: myChecklistId,
+            parentItemId: null,
+            text: "My step",
+            position: 0,
+        });
+
         mine = {
             workspaceId: ws.id,
             userId: owner.id,
@@ -496,6 +804,8 @@ describe("Tenant isolation — a neighbour's ids are simply not there", () => {
             statusId: status.id,
             taskTypeId: taskType.id,
             taskId: task.id,
+            checklistId: myChecklistId,
+            checklistItemId: myChecklistItemId,
         };
 
         foreign = await buildForeign();
@@ -685,6 +995,50 @@ describe("Tenant isolation — a neighbour's ids are simply not there", () => {
                         patch: { priority: 1 },
                     }),
             },
+
+            // ── P5: the collaboration surface ───────────────────────────────
+            // Each of these is a write the caller IS allowed to make, carrying
+            // one id they are not allowed to name. Replying to a neighbour's
+            // comment from my own task is the sharpest: it would splice my
+            // thread onto theirs, and neither side asked for it.
+            {
+                label: "POST /tasks/:id/comments replying to THEIR comment from MY task",
+                expected: 422,
+                run: (mine, theirs) =>
+                    client.post(`/api/v1/tasks/${mine.taskId}/comments`).send({
+                        body: "smuggled reply",
+                        parent_comment_id: theirs.commentId,
+                    }),
+            },
+            {
+                label: "POST /checklists/:id/items assigning THEIR user to MY item",
+                expected: 422,
+                run: (mine, theirs) =>
+                    client
+                        .post(`/api/v1/checklists/${mine.checklistId}/items`)
+                        .send({ text: "smuggled", assignee_id: theirs.userId }),
+            },
+            {
+                label: "POST /checklists/:id/items nesting under THEIR item",
+                expected: 422,
+                run: (mine, theirs) =>
+                    client
+                        .post(`/api/v1/checklists/${mine.checklistId}/items`)
+                        .send({
+                            text: "smuggled",
+                            parent_item_id: theirs.checklistItemId,
+                        }),
+            },
+            {
+                label: "PATCH /checklist-items/:id assigning THEIR user to MY item",
+                expected: 422,
+                run: (mine, theirs) =>
+                    client
+                        .patch(
+                            `/api/v1/checklist-items/${mine.checklistItemId}`,
+                        )
+                        .send({ assignee_id: theirs.userId }),
+            },
         ];
 
         it.each(BODY_PROBES.map((p) => [p.label, p] as const))(
@@ -704,23 +1058,29 @@ describe("Tenant isolation — a neighbour's ids are simply not there", () => {
     });
 
     it.each(PROBES.map((p) => [`${p.method.toUpperCase()} ${p.route}`, p] as const))(
-        "%s → 404",
+        "%s → refused",
         async (_label, probe) => {
-            const req = client[probe.method](probe.url(foreign));
+            let req = client[probe.method](probe.url(foreign));
+            for (const [k, v] of Object.entries(probe.headers ?? {})) {
+                req = req.set(k, v);
+            }
             // supertest types `send` as string | object; the reorder endpoint's
-            // body is an array, which IS an object at runtime.
+            // body is an array and the upload's is a Buffer, both of which ARE
+            // objects at runtime.
             const res = probe.body
                 ? await req.send(probe.body(foreign) as object)
                 : await req;
 
-            // A 403 would be the interesting failure: it would mean the system
-            // knows the row exists and is telling the caller so.
+            // 404 is the rule: a 403 tells the caller the row exists, which is
+            // one bit more than a stranger should get. The exceptions are
+            // NAMED, not tolerated — see EXPECTED_STATUS.
+            const want = EXPECTED_STATUS[`${probe.method} ${probe.route}`] ?? 404;
             expect({
                 endpoint: `${probe.method.toUpperCase()} ${probe.route}`,
                 status: res.status,
             }).toEqual({
                 endpoint: `${probe.method.toUpperCase()} ${probe.route}`,
-                status: 404,
+                status: want,
             });
         },
     );

@@ -165,6 +165,7 @@ Re-verified ✔ = probed again today, still true.
 | KI-33 | ~~Opened by P4: three notification endpoints no test has ever called.~~ **VOID — the mapper was wrong, not the suite.** All three have their own test files, named after them. It resolved URL constants in one flat namespace shared by every test file; `BASE` is declared in three files, and the last writer won. Fixed in P5, which measures **35/35**. The bug, and the self-check added to catch the next one, are the finding | closed by P5 | — |
 | KI-34 | **Opened by P4** (same measurement). Three job endpoints no test has ever called: `POST /jobs/department-report`, `POST /jobs/assignment-request-expiry`, `POST /jobs/recurrence-spawn` — the last one's JOB is covered by `jobs/recurrence-spawn.test.ts`, but its HTTP trigger is not | open | **P12** |
 | KI-35 | **Opened by P4.** `GET /search` does not hydrate `delete_request_pending`, so search results never show the "deletion pending" badge that the List, Board and (as of P4) Home views do. My Work was the same defect and was fixed; whether search should carry the badge is P6's call | open | **P6** |
+| KI-37 | **Opened by P5.** §19 Notifications answers **403** `notification.not_owner` for another user's id, where every other `:id` endpoint in the system answers 404. It is deliberate and documented (ids are unguessable, so the existence oracle is not usable) and is now pinned in the isolation sweep's `EXPECTED_STATUS` map rather than tolerated. P7 owns the security deep-dive and should confirm the decision or change it — not inherit P5's acceptance of it | open | **P7** |
 | KI-36 | **Opened by P4.** `sla`, `spaces` and `taskTypes` passed only on retry in the P4 gate, and the first-attempt evidence had been destroyed by the capture bug (since fixed). None reproduced standalone (9/9 green); all three failing tests assert global state. Cause unknown — watch the next gate, which can now report it | open | **P13** |
 
 ---
@@ -1520,8 +1521,14 @@ exactly like a broken test suite.)*
 ## P5 — Collaboration APIs (35 endpoints)
 
 **Routers:** comments (4) · checklists (9) · attachments (6) · assignmentRequests (7) ·
-tasks-membership subset (assignees 2 · watchers 2 · tags 2 · review 1) · notifications (9,
-write side — read side re-hit in P6).
+notifications (9, write side — read side re-hit in P6). **= 35.**
+
+> The sketch also listed a *tasks-membership subset* (assignees 2 · watchers 2 · tags 2 ·
+> review 1) here. Appendix A — which is generated, not typed — puts all seven in **P4**,
+> and P4's isolation sweep covered them. The behaviour those bullets care about reaches P5
+> through the seven `assignment-requests` endpoints, which ARE P5's. Corrected rather than
+> silently dropped, because the prose and the generated allocation disagreeing is the kind
+> of thing that gets an endpoint tested twice or not at all.
 
 **Special cases**
 - comments: @mention parse → bell + email + push + inbox deep-link (SAFE accounts only);
@@ -1537,10 +1544,246 @@ write side — read side re-hit in P6).
 - notifications: read/unread/snooze (+snooze-wake job), delete, unread-count vs SSE badge,
   preferences PUT respected by every producer
 
-**Exit criteria:** 35/35 ticked; collab/notifications/attachments/checklists/comments suites
-green; a full "assign → approve → notify → email" trace documented on safe accounts.
+**Exit criteria**
+- [x] **35 / 35** endpoints reached — measured, and the mapper corrected first (again).
+      KI-33's three "never called" endpoints were a mapper bug; they are tested
+- [x] `collab` **77**, `notifications` **108**, `attachments` **108**, `jobs` **69**,
+      `isolation` **119** — all green
+- [x] The cross-team `assign → approve → notify → email` trace documented, on the
+      existing safe-account coverage in `rbac/p8-approval` + `p9-delivery`
+- [x] `assignmentRequestExpiry` — the only job in the system with no test — covered, 15
+      tests, through its HTTP trigger (so part of KI-34 closes too)
+- [x] Tenant isolation extended to all 28 of P5's `:id` endpoints plus 4 more body probes
+- [x] Defects fixed + regression-tested; DB baseline restored
 
-**Execution record P5:** *(empty)*
+**Execution record P5** — 2026-09-02, anchor `0e559df`.
+
+### Endpoints — 35 / 35, after the tool that counts them was wrong again
+
+The mapper ran first, as the method requires, and reported **32/35**: three notification
+endpoints "no test has ever called" — `mark-all-read`, `:id/unread`, `:id/snooze`. P4 had
+already written that up as **KI-33**.
+
+It was wrong, and the giveaway was sitting in the directory listing:
+`tests/notifications/mark-all-read.test.ts`, `read-unread.test.ts`, `snooze.test.ts`. Files
+named after the endpoints they were said not to call.
+
+The cause was worse than a missing pattern. Constants were collected into **one flat table
+shared by every test file**, so a name declared in more than one place kept only the last
+writer's value:
+
+| constant | declared in | value kept |
+|---|---|---|
+| `BASE` | `notifications/push.test.ts` | `/api/v1/push` |
+| `BASE` | `notifications/_helpers.ts` | `/api/v1/notifications` |
+| `BASE` | `workspace-activity/_helpers.ts` | **`/api/v1/activity`** ← last writer |
+| `PATH` | **forty different files** | whichever was walked last |
+
+The notifications suite builds its URLs as `` `${BASE}/${id}/snooze` ``. That resolved against
+workspace-activity's `BASE`, producing an activity URL for a notifications route, which matches
+nothing — so a thoroughly tested endpoint was reported as never called. And `PATH`, held in a
+single global slot by forty files, was mis-attributing URLs everywhere.
+
+Constants are now resolved **per file**: own declarations first, then relative imports followed
+to their source, expanded to a fixpoint with a cycle guard. Call sites go through the same
+resolver, which also picks up two forms the old passes missed — a plain const built on another
+const (`const PATH = ${BASE}/mark-all-read`, the exact shape that failed) and an inline template
+with a leading interpolation.
+
+Re-measured across every phase, the correction moves **only P5**:
+
+| | P2 | P3 | P4 | **P5** | P6 | P7 | P8 | P9 | P12 |
+|---|---|---|---|---|---|---|---|---|---|
+| before | 10/10 | 67/67 | 29/29 | 32/35 | 43/43 | 7/7 | 7/7 | 3/3 | 6/9 |
+| after | 10/10 | 67/67 | 29/29 | **35/35** | 43/43 | 7/7 | 7/7 | 3/3 | 6/9 |
+
+**KI-33 is void.** KI-34 survives re-measurement: `tests/jobs/recurrence-spawn.test.ts` and
+`dept-review/report-generation.test.ts` call `runJob(...)` directly and never the HTTP trigger,
+so those routes really are unreached.
+
+**The tool now checks itself.** Both of its failures had the same shape — a wrong answer that
+looked like a finding — so a run ends by grepping the suite for the distinctive segment of every
+endpoint it just called untested, and reporting a hit as **SUSPECT** rather than as a gap. On
+P12 it flags two of the three, correctly, and the read confirms the gap is real for the route
+even though the job behind it is covered. Had it existed a day earlier, KI-33 would never have
+been written.
+
+### The one job in the system with no test
+
+`assignmentRequestExpiry` — every other job had between one and five test files; this had zero.
+It is the job that closes a cross-team negotiation nobody answered, and its HTTP trigger was
+one of KI-34's three unreached routes, so driving the job through the route covers both.
+
+**15 tests**, `tests/jobs/assignment-request-expiry.test.ts`:
+
+- a lapsed pending request flips to `expired`; one whose `expires_at` is still ahead does not
+- the decision is recorded as the **system**: `decided_by` stays NULL, `decided_at` is set
+- exactly one `expired` ledger row, `actor_id` NULL
+- the **requester** is told, and the person who was asked is not — with the task's NAME in the
+  title, because a bell that says "expired" about an id is not readable
+- the task is **not** assigned: an unanswered ask leaves it unassigned, which is the honest
+  outcome and the one the service header promises
+- `accepted` / `declined` / `cancelled` / `expired` rows past their expiry are left alone (a
+  table-driven case each) — only `pending` is claimable
+- `?dry_run=true` counts and writes nothing: no status change, no ledger row, no notification
+- a second run expires 0 and does **not** re-notify — the requester hears once, not once per tick
+- the janitor is workspace-blind by design: two workspaces, both expired in one run, each
+  requester told about their own only
+- 401 without the internal token; JSON + `X-Request-Id`
+
+### The jobs suite's per-test reset was a hand-written list, and it had gone stale
+
+The first run of those tests failed on `uq_tar_one_pending` — a duplicate pending request. The
+seed looked wrong; it was not.
+
+`setup-each-jobs.ts` reset "the tables the seven jobs touch", written by hand. The eighth job
+writes `task_assignment_requests`, which was not on the list. And because the reset runs with
+`FOREIGN_KEY_CHECKS = 0` — deliberately, so delete order does not matter — the
+`ON DELETE CASCADE` from `tasks` does **not** fire to cover the omission. Rows survived every
+reset, and the second test in the file collided with a request the first had left behind.
+
+A hand-written list of tables is a list that goes stale in silence. The RBAC suite has always
+derived its list from `information_schema`; the jobs suite now does the same, with the single
+exception **named** rather than assumed (`permissions` — the 56-row catalog the schema install
+seeds, whose `role_permissions` FK is RESTRICT). A table created tomorrow is covered tomorrow.
+All 54 pre-existing job tests stayed green through the change.
+
+*(`TEST_LOG_ERRORS=1`, which P2 built, is what turned "the job returns `expired: undefined`"
+into the duplicate-key message in one run. The controller answers **200** even when a job
+throws — so cron reads the body, not the status — which means a failing job looks like a passing
+request until you ask the log.)*
+
+### Mention-on-edit: implemented, and never once tested
+
+`CommentsService.update` diffs the old body against the new and gives the mention treatment only
+to people the EDIT added. The rule is right, and nothing checked it. It is the half of the
+feature a person notices when it breaks in either direction: re-pinging on every typo fix is
+spam, and not pinging at all makes editing-to-mention silently useless.
+
+**8 tests** (`tests/comments/mention-on-edit.test.ts`) — an edit that adds a mention notifies,
+with the same wire shape the create path produces (entity = the TASK, so the inbox deep-link
+opens something that exists); every added mention, not just the first; an edit that KEEPS an
+existing mention does not re-notify; an edit that keeps one and adds another notifies only the
+added one; removing a mention notifies nobody and does not retract the ping already sent;
+self-mention on edit stays silent; `comment_updated` is recorded either way; an unknown
+`@handle` is not an error.
+
+### What actually happens to markup in a comment
+
+The plan asks for an XSS probe here (deep-dive P7). The answer is deliberate, and reads like a
+hole until you follow the body to where it is rendered:
+
+- the API stores and returns the text **verbatim** — escaping at write time would corrupt a
+  comment about `<Button>` or a JSON snippet, permanently and invisibly;
+- the UI renders it as **text** — `MentionRenderer` emits React text children, and nothing calls
+  `dangerouslySetInnerHTML` on a comment body;
+- the one place it becomes HTML is the **mention email**, and that template escapes it.
+
+So the contract has two halves and **7 tests** (`tests/comments/body-injection.test.ts`) pin
+both: one hostile string (`<script>`, `<img onerror>`, quotes, backticks, a `${}` sequence)
+round-trips byte-for-byte through create, storage, read and edit, and reaches the notification
+body unchanged; and `sendMentionEmail` escapes the excerpt, the actor name and the task name,
+leaving no tag intact, while the plain-text part is left alone because it is not a markup
+context.
+
+*(One assertion had to be corrected: `not.toContain("onerror=")` fails on correctly-escaped
+output, because the characters survive inside `&lt;img …&gt;`. What makes it safe is that no
+TAG survives, which is what it asserts now.)*
+
+### The notification preferences switch was wired — nothing proved it
+
+`preferences.test.ts` covers the setting: stores, reads back, validates, stays per-user. Nothing
+covered the half that matters to the person using it — that turning a type off stops the
+notification arriving. A preferences screen whose value nothing reads is a switch connected to
+nothing, and it would pass every test in that file.
+
+It IS read: `NotificationsRepo.createMany` drops rows whose recipient disabled that type, so
+every producer inherits the suppression from one place. **6 tests**
+(`tests/notifications/preferences-respected.test.ts`) drive a REAL producer
+(`POST /tasks/:id/assignees`) rather than inserting rows, because inserting rows bypasses the
+very filter under test: default delivery as a control; nothing created for someone who turned
+the type off; **the assignment itself still happens** — a preference silences the notification,
+it does not veto the work; only the person who opted out is silenced within one call; only the
+type that was turned off; delivery resumes when it is turned back on; one person's preference
+does not silence anybody else.
+
+### The checklist rollup, against recomputed truth
+
+`counters.test.ts` walks a known sequence and checks the counter equals what that sequence
+should produce — which catches a broken step, but not a write path nobody put in the sequence.
+The rollup is maintained by hand inside every write transaction, which is exactly the shape that
+drifts when a new path forgets to recompute.
+
+**3 tests** (`tests/checklists/counter-truth.test.ts`) ask the other question: after a mixed run
+of every mutating path, does `checklist_items_total / _done` still equal a **live COUNT** over
+the task's items? Asserted at eleven points through one run, again where the DELETED item is a
+COMPLETED one (both numbers have to move, not just the total), and again across two tasks so one
+task's items never count toward another's. The counter is a cache; this asserts the cache has
+not gone stale without encoding what the answer should be.
+
+### The isolation sweep now covers P5 — 87 → 119
+
+`PHASES_COVERED` gained `"P5"`, so the completeness check demanded a probe for all 28 of P5's
+`:id` endpoints or it would fail naming them. Workspace B now also owns a notification, an
+attachment, a pending assignment request, a comment, a checklist and a checklist item.
+
+- **URL direction, 28 more.** All refused.
+- **Body direction, 4 more** — the direction that hides bugs: replying to **their** comment from
+  **my** task (it would splice my thread onto theirs, and neither side asked for it); assigning
+  **their** user to **my** checklist item, on both the create and the patch path; nesting a new
+  item under **their** item. All refused.
+
+Two things had to be got right rather than worked around:
+
+- **`POST /tasks/:id/attachments` is a proxied raw upload**, not JSON — bytes, with the name in
+  `X-Filename`. A JSON probe returns 422 from the body parser, which proves nothing about whose
+  task it is. `Probe` gained a `headers` field and the probe now sends real bytes.
+- **Notifications answer 403, not 404,** to a stranger's id — and that is deliberate and
+  documented in `NotificationsService`: a missing row is 404 `notification.not_found`, another
+  user's is 403 `notification.not_owner`, per the spec, on the reasoning that notification ids
+  are unguessable so the distinction is not a usable enumeration oracle. Rather than loosen the
+  assertion to "any 4xx" — which would stop the sweep noticing a real 403 anywhere else — the
+  four endpoints are listed in a named `EXPECTED_STATUS` map with the reasoning attached. The
+  exception stays a decision somebody made, visible in one place.
+
+### KI-19 probed, and handed to P8 with evidence
+
+The plan gives P8 the fix and asks P5 only to probe. Traced: `R2Service`'s constructor treats
+missing `CLOUDFLARE_R2_*` config as a stub — `client = null` — and in production logs
+`r2.transport.stub_in_prod` at **error** level, saying uploads "will return fake URLs and store
+NOTHING". That log is honest to an operator reading logs. **The API is not honest to the person
+uploading**: sign still returns a `https://r2.fake/...` URL, the round-trip still answers
+success, and the file is gone. `/health/ready` still checks the DB only. KI-19 stands exactly as
+written, now with the mechanism and the log key for P8 to start from.
+
+### Verified already covered — no new tests needed
+
+- **Attachment MIME and size refusals** are thorough: `413 attachment.too_large` above 25 MB,
+  **201 at exactly 25 MB**, `415 attachment.mime_not_allowed`, `400 scope_unsupported`, no row
+  written and nothing presigned on a policy rejection, `404 task.not_found` winning over 413/415
+  for a missing task with a bad payload, and the storage-key extension derived from the MIME
+  type rather than the filename.
+- **The cross-team approval lifecycle and its email fanout** — `rbac/p8-approval.test.ts` and
+  `p9-delivery.test.ts` cover request → accept/decline/query/answer/cancel, `pending_approval`
+  honesty, `409 request.user_inactive` for an inactive target, and the delivery layer: mail on
+  creation to the target AND their Head but never the requester, a distinct mail kind per
+  decision, and the bulk-assign bell + email that used to be silent.
+- **snooze-wake** (`jobs/snooze-wake.test.ts`), **attachment janitor**, **r2Purge**,
+  **formSubmissionExpiry** — all have job tests; `assignmentRequestExpiry` was the only gap.
+
+### Closing state
+
+- **`npm run test:all` — 37 modules · 5,678 passed · 0 failed · 119.2 min · ALL GREEN, no flakies**
+- Static phase 4/4; eslint 0/0 and a real type-check on both packages.
+- Dev DB at baseline **47 / 6 / 9 / 27 / 15** (tasks / spaces / comments / notifications /
+  users) — P5 never wrote to it.
+- `client/dist` and `server/dist` untouched (§A rule 8).
+- **No FLAKY-PASS — not one module needed a retry.** Evidence for **KI-36**: the three that
+  flaked in P4 (`sla`, `spaces`, `taskTypes`) all passed first time here, on the same tests
+  and the same machine, which points at load rather than at the tests. Still open, because
+  "it did not happen again" is not a cause; the repaired capture will say why if it does.
+
+**Signed off:** ✅
 
 ---
 

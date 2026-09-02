@@ -2,6 +2,7 @@ process.env.NODE_ENV = "test";
 
 import { connectTestDb, disconnectTestDb } from "./db";
 import { getPool } from "../../src/db/client";
+import { Config } from "../../src/config";
 
 /**
  * Per-file setup for the §28 Background-jobs suite.
@@ -20,27 +21,25 @@ import { getPool } from "../../src/db/client";
  */
 jest.setTimeout(60000);
 
-const TABLES = [
-    // RBAC (P11): assignments/grants/roles are per-workspace rows and must not
-    // survive a reset, or a later test inherits another test's authority.
-    "user_roles",
-    "role_permissions",
-    "roles",
-    "notifications",
-    "attachments",
-    "task_assignees",
-    "task_watchers",
-    "task_tags",
-    "task_custom_field_values",
-    "task_activity",
-    "tasks",
-    "on_call_shifts",
-    "sessions",
-    "password_reset_tokens",
-    "users",
-    "workspace_activity",
-    "workspaces",
-];
+/**
+ * P5: this used to be a hand-written list of "the tables the seven jobs touch",
+ * and a hand-written list is a list that goes stale in silence. The eighth job
+ * (`assignment-request-expiry`) writes `task_assignment_requests`, which was not
+ * on it — and because the reset runs with `FOREIGN_KEY_CHECKS = 0`, the
+ * `ON DELETE CASCADE` from `tasks` does NOT fire to cover the omission. Rows
+ * survived every reset and the second test in the file hit the
+ * `uq_tar_one_pending` unique index on a request the first test had left behind.
+ *
+ * So the list is now derived from `information_schema`, the way the RBAC suite
+ * has always done it: a new table is covered the day it is created, and nobody
+ * has to remember. The one exception is named rather than assumed.
+ */
+const KEEP = new Set([
+    // The 56-permission catalog is seeded by the schema install, not by tests,
+    // and `role_permissions → permissions` is RESTRICT: deleting it would break
+    // every grant a test makes, to protect nothing a test wrote.
+    "permissions",
+]);
 
 beforeAll(async () => {
     await connectTestDb();
@@ -53,9 +52,16 @@ afterAll(async () => {
 beforeEach(async () => {
     const conn = await getPool().getConnection();
     try {
+        const [rows] = (await conn.query(
+            `SELECT TABLE_NAME FROM information_schema.TABLES
+             WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE'`,
+            [Config.DB_NAME],
+        )) as [Array<{ TABLE_NAME: string }>, unknown];
+
         await conn.query("SET FOREIGN_KEY_CHECKS = 0");
-        for (const table of TABLES) {
-            await conn.query(`DELETE FROM \`${table}\``);
+        for (const { TABLE_NAME } of rows) {
+            if (KEEP.has(TABLE_NAME)) continue;
+            await conn.query(`DELETE FROM \`${TABLE_NAME}\``);
         }
         await conn.query("SET FOREIGN_KEY_CHECKS = 1");
     } finally {
