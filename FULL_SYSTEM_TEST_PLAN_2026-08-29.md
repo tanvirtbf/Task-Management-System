@@ -162,7 +162,7 @@ Re-verified ✔ = probed again today, still true.
 | KI-30 | **Opened by P2.** `client/public/sw.js` is shipped code no lint rule touches — `eslint.config.js` matches only `**/*.{ts,tsx}` | open | **P11** |
 | KI-31 | **Opened by P2.** `assistant` is the gate's first module and so pays the cold ts-jest cache inside a test; it went FLAKY-PASS once. `setup-each-auth.ts` shows the fix (warm the app in `beforeAll`) | open | **P9** |
 | KI-32 | **Opened by P3.** Custom fields are the only named entity with no uniqueness rule — no unique index and no service check, so one workspace can hold two fields called "Priority". Behaviour is now pinned by a test; whether to constrain it is a decision | open | **GATE** |
-| KI-33 | **Opened by P4** (measured by the reach mapper). Three notification endpoints no test has ever called: `POST /notifications/mark-all-read`, `POST /notifications/:id/unread`, `POST /notifications/:id/snooze` | open | **P5** |
+| KI-33 | ~~Opened by P4: three notification endpoints no test has ever called.~~ **VOID — the mapper was wrong, not the suite.** All three have their own test files, named after them. It resolved URL constants in one flat namespace shared by every test file; `BASE` is declared in three files, and the last writer won. Fixed in P5, which measures **35/35**. The bug, and the self-check added to catch the next one, are the finding | closed by P5 | — |
 | KI-34 | **Opened by P4** (same measurement). Three job endpoints no test has ever called: `POST /jobs/department-report`, `POST /jobs/assignment-request-expiry`, `POST /jobs/recurrence-spawn` — the last one's JOB is covered by `jobs/recurrence-spawn.test.ts`, but its HTTP trigger is not | open | **P12** |
 | KI-35 | **Opened by P4.** `GET /search` does not hydrate `delete_request_pending`, so search results never show the "deletion pending" badge that the List, Board and (as of P4) Home views do. My Work was the same defect and was fixed; whether search should carry the badge is P6's call | open | **P6** |
 | KI-36 | **Opened by P4.** `sla`, `spaces` and `taskTypes` passed only on retry in the P4 gate, and the first-attempt evidence had been destroyed by the capture bug (since fixed). None reproduced standalone (9/9 green); all three failing tests assert global state. Cause unknown — watch the next gate, which can now report it | open | **P13** |
@@ -1292,11 +1292,16 @@ route looked untested. Fixed, and then re-run across every phase as a control:
 
 | | P2 | P3 | **P4** | P5 | P6 | P7 | P8 | P9 | P12 |
 |---|---|---|---|---|---|---|---|---|---|
-| reached | 10/10 | 67/67 | **29/29** | **32/35** | 43/43 | 7/7 | 7/7 | 3/3 | **6/9** |
+| reached | 10/10 | 67/67 | **29/29** | ~~32/35~~ **35/35** | 43/43 | 7/7 | 7/7 | 3/3 | **6/9** |
 
 So P4 had **no reach gap at all**, and the phase was entirely depth. Two gaps that matter came
-out of it, and one of them was a live defect. (The P5 and P12 gaps are real and now carried as
-KI-33 and KI-34 for their owning phases — six endpoints no test has ever called.)
+out of it, and one of them was a live defect.
+
+> **Corrected by P5.** The P5 column read 32/35 when this record was written, and it was wrong —
+> a second mapper bug, of the same family as the query-string one. It is **35/35**; KI-33 is
+> void. The P12 column survives re-measurement and KI-34 stands. Left visible rather than
+> quietly overwritten, because "the tool that measures reach was wrong twice" is the more
+> durable finding.
 
 ### What ran
 
@@ -1488,7 +1493,9 @@ day to free disk. A method that depends on a tool that a cleanup can erase is no
 Promoted to `server/scripts/reach.cjs` with `npm run reach -- P5`, its root derived from
 `__dirname` instead of `E:/…`, and the query-string lesson written into its own header so the
 next person distrusts it before distrusting the suite. Verified from the repo: **P4 29/29**,
-**P5 32/35** — the same numbers this record quotes.
+**P5 32/35** — the same numbers this record quotes. *(P5 then found a second bug in it and
+re-measured that column at 35/35 — see the corrected table above. Promoting it is what made
+that fixable at all.)*
 
 ### Closing state
 
