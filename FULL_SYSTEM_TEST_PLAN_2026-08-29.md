@@ -1494,7 +1494,9 @@ next person distrusts it before distrusting the suite. Verified from the repo: *
 
 - **`npm run test:all` — 37 modules · 5,607 passed · 0 failed · 120.7 min · ALL GREEN**
 - Static phase 4/4; eslint 0/0 and a real type-check on both packages.
-- Dev DB at baseline **47 / 6 / 9 / 27 / 15** — P4 never wrote to it.
+- Dev DB at baseline **47 / 6 / 9 / 27 / 15** — P4 never wrote to it. (Five phases have quoted
+  that tuple without once saying what it counts, which is long enough: it is
+  **tasks / spaces / comments / notifications / users**. `lists` is 18 and is not in it.)
 - `client/dist` and `server/dist` untouched (§A rule 8).
 
 *(The first attempt at this gate went red across seven modules and the whole client suite,
