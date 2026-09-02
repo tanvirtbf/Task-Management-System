@@ -5,6 +5,7 @@ import {
     type MyTaskBucket,
     type MyTaskRow,
 } from "../repositories/HomeRepo";
+import type { TaskDeleteRequestsRepo } from "../repositories/TaskDeleteRequestsRepo";
 import { TasksRepo } from "../repositories/TasksRepo";
 import type { WorkspaceRepo } from "../repositories/WorkspaceRepo";
 import { toWireTask, type WireTask } from "../serializers/taskSerializer";
@@ -48,6 +49,12 @@ export class HomeService {
         private homeRepo: HomeRepo,
         private tasksRepo: TasksRepo,
         private workspaceRepo: WorkspaceRepo,
+        /**
+         * Optional, mirroring `TasksService`: the delete-request repo only
+         * exists to hydrate the "deletion pending" badge, and a caller that has
+         * not wired it should degrade to `false` rather than fail to construct.
+         */
+        private deleteRequests?: TaskDeleteRequestsRepo,
     ) {}
 
     /** The workspace's IANA zone, with the Dhaka business default as fallback. */
@@ -158,12 +165,21 @@ export class HomeService {
 
         const ids = rows.map((row) => row.id);
         const redactGuest = role === Roles.GUEST;
-        const [assignees, watchers, tags, customFieldValues] =
+        const [assignees, watchers, tags, customFieldValues, pendingDeletes] =
             await Promise.all([
                 this.tasksRepo.assigneesByTask(ids),
                 this.tasksRepo.watchersByTask(ids),
                 this.tasksRepo.tagsByTask(ids),
                 this.tasksRepo.customFieldValuesByTask(ids, redactGuest),
+                // P4: My Work renders the "deletion pending" badge from this
+                // flag, exactly as the List and Board views do — and this
+                // surface was not looking it up, so it defaulted to false. The
+                // same task warned you it was about to be destroyed in one
+                // place and said nothing on the Home page, which is where most
+                // people look first. One batched, indexed lookup over the ids
+                // already in hand; `listByList` has always done the same.
+                this.deleteRequests?.pendingTaskIds(ids) ??
+                    Promise.resolve(new Set<string>()),
             ]);
 
         return rows.map((row) =>
@@ -172,6 +188,7 @@ export class HomeService {
                 watchers: watchers.get(row.id) ?? [],
                 tags: tags.get(row.id) ?? [],
                 customFieldValues: customFieldValues.get(row.id) ?? {},
+                deleteRequestPending: pendingDeletes.has(row.id),
             }),
         );
     }

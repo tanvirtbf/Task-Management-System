@@ -12,7 +12,13 @@ import {
     makeWorkspace,
 } from "../test-utils/factories";
 import { getDb } from "../../src/db/client";
-import { customFields, roles, templates } from "../../src/db/schema";
+import {
+    customFields,
+    roles,
+    taskDeleteRequests,
+    taskDependencies,
+    templates,
+} from "../../src/db/schema";
 import { fakeId } from "../../src/utils";
 
 /* eslint-disable @typescript-eslint/no-var-requires -- `scripts/endpoints.cjs`
@@ -56,6 +62,13 @@ const { allEndpoints } = require("../../scripts/endpoints.cjs") as {
 
 jest.setTimeout(60000);
 
+/**
+ * The phases whose endpoints this sweep covers. Extend it — do not start a
+ * second sweep — when a later phase adds routes; the completeness test reads
+ * this list and will name anything left without a probe.
+ */
+const PHASES_COVERED = ["P3", "P4"];
+
 interface Foreign {
     workspaceId: string;
     userId: string;
@@ -66,6 +79,9 @@ interface Foreign {
     taskTypeId: string;
     tagId: string;
     taskId: string;
+    secondTaskId: string;
+    dependencyId: string;
+    deleteRequestId: string;
     templateId: string;
     customFieldId: string;
     roleId: string;
@@ -247,6 +263,81 @@ const PROBES: Probe[] = [
 
     // ── roles (read side) ───────────────────────────────────────────────────
     { method: "get", route: "/api/v1/roles/:id/holders", url: (b) => `/api/v1/roles/${b.roleId}/holders` },
+
+    // ═══ P4 — tasks core ════════════════════════════════════════════════════
+    { method: "get", route: "/api/v1/tasks/:id", url: (b) => `/api/v1/tasks/${b.taskId}` },
+    {
+        method: "patch",
+        route: "/api/v1/tasks/:id",
+        url: (b) => `/api/v1/tasks/${b.taskId}`,
+        body: () => ({ name: "Probe" }),
+    },
+    { method: "delete", route: "/api/v1/tasks/:id", url: (b) => `/api/v1/tasks/${b.taskId}` },
+    { method: "post", route: "/api/v1/tasks/:id/archive", url: (b) => `/api/v1/tasks/${b.taskId}/archive` },
+    { method: "post", route: "/api/v1/tasks/:id/unarchive", url: (b) => `/api/v1/tasks/${b.taskId}/unarchive` },
+    { method: "get", route: "/api/v1/tasks/:id/subtasks", url: (b) => `/api/v1/tasks/${b.taskId}/subtasks` },
+    { method: "get", route: "/api/v1/tasks/:id/activity", url: (b) => `/api/v1/tasks/${b.taskId}/activity` },
+    { method: "get", route: "/api/v1/tasks/:id/reviews", url: (b) => `/api/v1/tasks/${b.taskId}/reviews` },
+    { method: "get", route: "/api/v1/tasks/:id/dependencies", url: (b) => `/api/v1/tasks/${b.taskId}/dependencies` },
+    {
+        method: "post",
+        route: "/api/v1/tasks/:id/assignees",
+        url: (b) => `/api/v1/tasks/${b.taskId}/assignees`,
+        body: (b) => ({ user_ids: [b.secondUserId] }),
+    },
+    {
+        method: "delete",
+        route: "/api/v1/tasks/:id/assignees/:userId",
+        url: (b) => `/api/v1/tasks/${b.taskId}/assignees/${b.secondUserId}`,
+    },
+    { method: "post", route: "/api/v1/tasks/:id/watchers/self", url: (b) => `/api/v1/tasks/${b.taskId}/watchers/self` },
+    { method: "delete", route: "/api/v1/tasks/:id/watchers/self", url: (b) => `/api/v1/tasks/${b.taskId}/watchers/self` },
+    {
+        method: "post",
+        route: "/api/v1/tasks/:id/tags",
+        url: (b) => `/api/v1/tasks/${b.taskId}/tags`,
+        body: (b) => ({ tag_ids: [b.tagId] }),
+    },
+    {
+        method: "delete",
+        route: "/api/v1/tasks/:id/tags/:tagId",
+        url: (b) => `/api/v1/tasks/${b.taskId}/tags/${b.tagId}`,
+    },
+    {
+        method: "post",
+        route: "/api/v1/tasks/:id/review",
+        url: (b) => `/api/v1/tasks/${b.taskId}/review`,
+        body: () => ({ status: "approved" }),
+    },
+    {
+        method: "patch",
+        route: "/api/v1/tasks/:id/sla",
+        url: (b) => `/api/v1/tasks/${b.taskId}/sla`,
+        body: () => ({ sla_due_at: "2027-01-01T00:00:00.000Z" }),
+    },
+    {
+        method: "post",
+        route: "/api/v1/tasks/:id/delete-request",
+        url: (b) => `/api/v1/tasks/${b.taskId}/delete-request`,
+        body: () => ({ reason: "probe" }),
+    },
+    { method: "get", route: "/api/v1/tasks/:id/delete-request", url: (b) => `/api/v1/tasks/${b.taskId}/delete-request` },
+    { method: "delete", route: "/api/v1/task-dependencies/:id", url: (b) => `/api/v1/task-dependencies/${b.dependencyId}` },
+    {
+        method: "post",
+        route: "/api/v1/delete-requests/:id/approve",
+        url: (b) => `/api/v1/delete-requests/${b.deleteRequestId}/approve`,
+    },
+    {
+        method: "post",
+        route: "/api/v1/delete-requests/:id/reject",
+        url: (b) => `/api/v1/delete-requests/${b.deleteRequestId}/reject`,
+    },
+    {
+        method: "post",
+        route: "/api/v1/delete-requests/:id/cancel",
+        url: (b) => `/api/v1/delete-requests/${b.deleteRequestId}/cancel`,
+    },
 ];
 
 /** Workspace B — a neighbour with one of everything. */
@@ -296,6 +387,38 @@ const buildForeign = async (): Promise<Foreign> => {
         createdBy: owner.id,
     });
 
+    // A second task, so B can own a dependency between two of its own tasks.
+    const secondTask = await makeTask({
+        workspaceId: ws.id,
+        createdBy: owner.id,
+        listId: list.id,
+        statusId: status.id,
+        taskTypeId: taskType.id,
+    });
+
+    const dependencyId = fakeId("dep");
+    await db.insert(taskDependencies).values({
+        id: dependencyId,
+        taskId: task.id,
+        relatedTaskId: secondTask.id,
+        depType: "blocks",
+        createdBy: owner.id,
+    });
+
+    const deleteRequestId = fakeId("tdr");
+    await db.insert(taskDeleteRequests).values({
+        id: deleteRequestId,
+        workspaceId: ws.id,
+        spaceId: space.id,
+        taskId: secondTask.id,
+        taskName: "Neighbour task",
+        requestedBy: owner.id,
+        reason: "housekeeping",
+        status: "pending",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+    });
+
     // `makeWorkspace` seeds the four system roles, which is what a real
     // deployment looks like — so B always has a role id to probe.
     const [role] = await db
@@ -314,6 +437,9 @@ const buildForeign = async (): Promise<Foreign> => {
         taskTypeId: taskType.id,
         tagId: tag.id,
         taskId: task.id,
+        secondTaskId: secondTask.id,
+        dependencyId,
+        deleteRequestId,
         templateId,
         customFieldId,
         roleId: role.id,
@@ -326,6 +452,9 @@ interface Mine {
     userId: string;
     spaceId: string;
     listId: string;
+    statusId: string;
+    taskTypeId: string;
+    taskId: string;
 }
 
 describe("Tenant isolation — a neighbour's ids are simply not there", () => {
@@ -350,11 +479,23 @@ describe("Tenant isolation — a neighbour's ids are simply not there", () => {
             spaceId: space.id,
             createdBy: owner.id,
         });
+        const status = await makeStatus({ scopeId: list.id });
+        const taskType = await makeTaskType({ workspaceId: ws.id });
+        const task = await makeTask({
+            workspaceId: ws.id,
+            createdBy: owner.id,
+            listId: list.id,
+            statusId: status.id,
+            taskTypeId: taskType.id,
+        });
         mine = {
             workspaceId: ws.id,
             userId: owner.id,
             spaceId: space.id,
             listId: list.id,
+            statusId: status.id,
+            taskTypeId: taskType.id,
+            taskId: task.id,
         };
 
         foreign = await buildForeign();
@@ -365,7 +506,10 @@ describe("Tenant isolation — a neighbour's ids are simply not there", () => {
         // with an `:id` and no probe fails HERE, naming it — instead of the new
         // endpoint quietly never being asked the question.
         const needed = allEndpoints()
-            .filter((e) => e.phase === "P3" && e.path.includes("/:"))
+            .filter(
+                (e) =>
+                    PHASES_COVERED.includes(e.phase) && e.path.includes("/:"),
+            )
             .map((e) => `${e.method} ${e.path}`);
         const covered = new Set(
             PROBES.map((p) => `${p.method.toUpperCase()} ${p.route}`),
@@ -473,6 +617,72 @@ describe("Tenant isolation — a neighbour's ids are simply not there", () => {
                         scope_id: theirs.listId,
                         name: "Smuggled field",
                         type: "text",
+                    }),
+            },
+
+            // ── P4 ──────────────────────────────────────────────────────────
+            {
+                label: "POST /tasks into their list",
+                expected: 404,
+                run: (mine, theirs) =>
+                    client.post("/api/v1/tasks").send({
+                        primary_list_id: theirs.listId,
+                        name: "Smuggled task",
+                    }),
+            },
+            {
+                label: "POST /tasks in MY list with their status_id",
+                expected: 422,
+                run: (mine, theirs) =>
+                    client.post("/api/v1/tasks").send({
+                        primary_list_id: mine.listId,
+                        name: "Smuggled status",
+                        status_id: theirs.statusId,
+                    }),
+            },
+            {
+                label: "POST /tasks in MY list with their task_type_id",
+                expected: 422,
+                run: (mine, theirs) =>
+                    client.post("/api/v1/tasks").send({
+                        primary_list_id: mine.listId,
+                        name: "Smuggled type",
+                        task_type_id: theirs.taskTypeId,
+                    }),
+            },
+            {
+                label: "POST /tasks/:id/assignees adding their user to MY task",
+                expected: 422,
+                run: (mine, theirs) =>
+                    client
+                        .post(`/api/v1/tasks/${mine.taskId}/assignees`)
+                        .send({ user_ids: [theirs.userId] }),
+            },
+            {
+                label: "POST /tasks/:id/tags putting their tag on MY task",
+                expected: 422,
+                run: (mine, theirs) =>
+                    client
+                        .post(`/api/v1/tasks/${mine.taskId}/tags`)
+                        .send({ tag_ids: [theirs.tagId] }),
+            },
+            {
+                label: "POST /task-dependencies linking MY task to theirs",
+                expected: 404,
+                run: (mine, theirs) =>
+                    client.post("/api/v1/task-dependencies").send({
+                        task_id: mine.taskId,
+                        related_task_id: theirs.taskId,
+                        type: "blocks",
+                    }),
+            },
+            {
+                label: "POST /tasks/bulk over their task ids",
+                expected: 404,
+                run: (mine, theirs) =>
+                    client.post("/api/v1/tasks/bulk").send({
+                        ids: [theirs.taskId],
+                        patch: { priority: 1 },
                     }),
             },
         ];

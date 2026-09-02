@@ -15,6 +15,7 @@
         "test:all": "node scripts/test-all.cjs",
         "typecheck": "tsc --noEmit -p tsconfig.tests.json",
         "endpoints": "node scripts/endpoints.cjs",
+        "reach": "node scripts/reach.cjs",
         "test:watch": "jest --watch --runInBand",
         "db:generate": "drizzle-kit generate",
         "db:migrate": "tsx src/db/migrate.ts",

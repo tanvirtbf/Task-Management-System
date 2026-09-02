@@ -162,6 +162,10 @@ Re-verified ✔ = probed again today, still true.
 | KI-30 | **Opened by P2.** `client/public/sw.js` is shipped code no lint rule touches — `eslint.config.js` matches only `**/*.{ts,tsx}` | open | **P11** |
 | KI-31 | **Opened by P2.** `assistant` is the gate's first module and so pays the cold ts-jest cache inside a test; it went FLAKY-PASS once. `setup-each-auth.ts` shows the fix (warm the app in `beforeAll`) | open | **P9** |
 | KI-32 | **Opened by P3.** Custom fields are the only named entity with no uniqueness rule — no unique index and no service check, so one workspace can hold two fields called "Priority". Behaviour is now pinned by a test; whether to constrain it is a decision | open | **GATE** |
+| KI-33 | **Opened by P4** (measured by the reach mapper). Three notification endpoints no test has ever called: `POST /notifications/mark-all-read`, `POST /notifications/:id/unread`, `POST /notifications/:id/snooze` | open | **P5** |
+| KI-34 | **Opened by P4** (same measurement). Three job endpoints no test has ever called: `POST /jobs/department-report`, `POST /jobs/assignment-request-expiry`, `POST /jobs/recurrence-spawn` — the last one's JOB is covered by `jobs/recurrence-spawn.test.ts`, but its HTTP trigger is not | open | **P12** |
+| KI-35 | **Opened by P4.** `GET /search` does not hydrate `delete_request_pending`, so search results never show the "deletion pending" badge that the List, Board and (as of P4) Home views do. My Work was the same defect and was fixed; whether search should carry the badge is P6's call | open | **P6** |
+| KI-36 | **Opened by P4.** `sla`, `spaces` and `taskTypes` passed only on retry in the P4 gate, and the first-attempt evidence had been destroyed by the capture bug (since fixed). None reproduced standalone (9/9 green); all three failing tests assert global state. Cause unknown — watch the next gate, which can now report it | open | **P13** |
 
 ---
 
@@ -1266,10 +1270,241 @@ added, it fails there and the change becomes conscious rather than a surprise. �
 - **my-work:** bucket correctness at tz edges; **verify the historical `myTasksByBucket`
   UNSCOPED trap stays fixed** (foreign-workspace rows must never appear)
 
-**Exit criteria:** 29/29 ticked; `jest.tasks` + `jest.tasks10` (413 ×2 DBs), taskdeps, sla
-suites green; recurrence spawn proven on scratch rows; baseline restored.
+**Exit criteria**
+- [x] **29 / 29** endpoints reached — measured, and the mapper corrected first
+- [x] `jest.tasks` + `jest.tasks10` green at **423 each** (413 + 6 misdirected-field
+      + 4 serializer-parity); `taskdeps`, `sla`, `membership`, `home` green
+- [x] Recurrence spawn covered by `jobs/recurrence-spawn.test.ts`
+- [x] Tenant isolation extended to all 23 of P4's `:id` endpoints plus 7 more body
+      probes — the sweep now stands at **87** and still cannot fall behind the route table
+- [x] Defects fixed + regression-tested — 2 fixed with tests, 1 surface fixed on a
+      sibling phase's endpoint and recorded for it
+- [x] DB baseline restored: 47 / 6 / 9 / 27 / 15
 
-**Execution record P4:** *(empty)*
+**Execution record P4** — 2026-08-31, anchor `ff939b4`.
+
+### Endpoints — 29 / 29
+
+The reach mapper P3 built was run first, and it began by correcting itself. It reported
+`GET /delete-requests` as never called; the endpoint is in fact exercised four times, through
+`` `${QUEUE}?box=pending` `` — and the mapper was not stripping the query string, so a tested
+route looked untested. Fixed, and then re-run across every phase as a control:
+
+| | P2 | P3 | **P4** | P5 | P6 | P7 | P8 | P9 | P12 |
+|---|---|---|---|---|---|---|---|---|---|
+| reached | 10/10 | 67/67 | **29/29** | **32/35** | 43/43 | 7/7 | 7/7 | 3/3 | **6/9** |
+
+So P4 had **no reach gap at all**, and the phase was entirely depth. Two gaps that matter came
+out of it, and one of them was a live defect. (The P5 and P12 gaps are real and now carried as
+KI-33 and KI-34 for their owning phases — six endpoints no test has ever called.)
+
+### What ran
+
+| | before | after |
+|---|---|---|
+| `tasks` · `tasks10` (the same suite on two private DBs) | 413 | **423** each (+6 misdirected-field, +4 parity) |
+| `isolation` — extended to P4 | 57 | **87** (71 URL probes + 15 body probes + completeness) |
+| `home` — after the agenda hydration fix | green | green |
+| `taskdeps` · `sla` · `membership` · `rbac` | green | green |
+| eslint · typecheck, both packages | 0 / 0 | 0 / 0 |
+| Dev DB | 47/6/9/27/15 | untouched |
+
+### Defects found and fixed
+
+**D4.1 — `PATCH /tasks/:id` accepted an assignment, answered 200, and silently discarded it.**
+This is the plan's named regression class, and it was still live.
+
+Four task fields are managed by their own endpoints and are not accepted here: `assignees`,
+`tags`, `parent_task_id`, `primary_list_id`. F23 added a message naming the right door, because
+"you sent no fields to update" is a lie when the caller sent a real field that lives elsewhere.
+But the check sat **inside** the empty-body branch:
+
+```ts
+const fields = Object.keys(b);
+if (fields.length === 0) {
+    …name the misdirected field…
+}
+```
+
+So it only ever fired when the misdirected field was the ONLY thing in the body. A patch of
+`{ name: "Renamed", assignees: [...] }` has one field this endpoint accepts, so it took the
+normal path: renamed the task, dropped the assignees on the floor, and returned **200** with a
+task the caller had every reason to believe was assigned.
+
+Measured, not inferred — the test was written expecting a 422 and got a 200.
+
+That is exactly the shape that shipped once: the list-row assignee editor sent this PATCH and
+never worked. The client was fixed at the time; the API was not, so the next caller would have
+walked into the same silence. The check now runs before the empty-body branch, so a request that
+cannot be honoured in full is refused in full. Verified that no client call site currently sends
+assignees or tags in a task patch, so nothing depended on the lenient behaviour.
+
+Covered by six new tests: each of the four fields alone → 422 naming its route; two together →
+both named, not just the first; and the mixed case → 422 with **the task unchanged in the
+database**, which is the assertion that would have caught the original bug.
+
+### Extended — the isolation sweep now covers P4
+
+The sweep P3 introduced grew rather than being duplicated, which is how it was designed:
+`PHASES_COVERED` gained `"P4"` and the completeness check follows it, so all 23 of P4's `:id`
+endpoints had to be given a probe or the suite would fail naming them.
+
+- **URL direction** — 23 more endpoints, from `GET /tasks/:id` through the whole membership and
+  review surface to `POST /delete-requests/:id/approve`. Workspace B now also owns a task
+  dependency and a pending delete request so those ids are real. **404 every time.**
+- **Body direction** — 7 more probes, and these are the ones worth naming: a task created into
+  **their** list; a task in my list carrying **their** `status_id`, then **their**
+  `task_type_id`; **their** user added as an assignee to **my** task; **their** tag put on my
+  task; a dependency linking my task to theirs; and `POST /tasks/bulk` run over **their** task
+  ids. Every one refused.
+
+The bulk probe is the one that would have hurt most: it is the endpoint that mutates many rows
+in one call, and the only one where a scoping miss would be a mass edit rather than a single
+one.
+
+**D4.3 — the "deletion pending" badge was missing on the Home page.** Found by the parity test
+below, which is the only thing that compared surfaces against each other.
+
+`delete_request_pending` is not a column; every surface has to look it up. The serializer
+documents `false` as the "honest default" for surfaces that do not — and that reasoning holds
+exactly as long as no such surface renders the badge. Two of them did: `TaskRow`, which the Home
+page's My Work card uses, renders it from this flag, precisely as `ListViewRow` and `BoardCard`
+do in the List and Board views.
+
+So the same task, for the same person, warned "this is queued for permanent deletion" in the
+List view and said nothing on Home — which is where most people look first, and the badge exists
+to stop someone working on a task that is about to be destroyed.
+
+Fixed in `TaskWriteService.myWork`: one batched, indexed lookup over ids already in hand, exactly
+what `TasksService.listByList` has always done. The repo is injected optionally, mirroring the
+existing pattern, so a caller that has not wired it degrades to `false` rather than failing to
+construct.
+
+The identical gap exists in `HomeService.agenda` (`GET /home/agenda`), which is **P6's**
+endpoint. It was fixed here rather than left: the change is the same one line, it was already
+under the cursor, and knowingly shipping a half-fixed inconsistency to satisfy a phase boundary
+would be the wrong trade. Recorded so P6 verifies it rather than rediscovers it.
+
+`GET /search` still reports `false`. That endpoint is P6's, and whether search results should
+carry the badge at all is a decision for the phase that owns it — the parity test now states the
+current answer rather than leaving it to be found.
+
+### D4.2 — one serializer, and nothing checked that the surfaces agreed
+
+`toWireTask` is used by seven services, deliberately: the `assigned_by` fallback, the date
+formatting and the wire shape live at one boundary instead of in seven places that would each
+have to remember them.
+
+But the serializer takes a `TaskHydration` alongside the row, and **each surface builds that
+itself**. `assignees`, `watchers`, `tags` and `custom_field_values` are not derived from the
+task row — they are four separate lookups, and a surface that skips one returns an empty array.
+An empty array reads as "this task has no assignees", not as "I did not look". Two surfaces can
+call the same serializer and still disagree, and no single endpoint's tests can see it: each one
+asserts its own payload is correct, and they can all be correct about different things.
+
+`tests/tasks/serializer-parity.test.ts` populates one task as fully as the API allows — every
+hydrated collection non-empty, a custom field value set through the real endpoint, a pending
+delete request — then reads it back through **detail**, **list**, **my-work** and **search**
+(the plan names search by name; it is P6's endpoint but the same serializer) and compares key
+set and values.
+
+Result: the key sets are identical across all four, and every value matches except the one
+named exception — which turned out to be D4.3 rather than a documented default.
+
+Writing it cost one lesson worth keeping: the first run failed on `cf: 0`, and the cause was the
+fixture, not the product. The custom-field envelope is the type's own shape (`{text}` for a text
+field), not a generic `{value}`, and the seed did not check the response — so the assertion
+below it was comparing empty against empty and would have passed for the wrong reason if the
+count assertion had not been there. The fixture now asserts its own 200. Same shape as the P3
+lesson about probes that 422 while looking like tests.
+
+### Verified already covered — no new tests needed
+
+- **my-work's historical `myTasksByBucket` UNSCOPED trap** — the plan asked for this
+  specifically. `my-work.test.ts` has a "Workspace isolation → only counts the caller's own
+  workspace tasks" block; the trap is shut and guarded.
+- **recurrence (024)** — `jobs/recurrence-spawn.test.ts` covers the spawn job.
+- **bulk `pending_approval`** — asserted in `rbac/p8-approval.test.ts` (a gated bulk assign
+  reporting 2) and `p9-delivery.test.ts`.
+- **delete-request lifecycle** — request → approve (destroys the task and leaves an audit trail
+  that outlives it) → reject → withdraw, the atomic claim ("a second decision is refused, not
+  re-run"), member-cannot-approve, and cross-workspace isolation.
+- **dependencies** — direct 2-cycle refused with `dep.cycle`, self-dependency, not-found and
+  isolation.
+- **business-clock SLA and the Dhaka boundary** — `create.test.ts` computes against the seeded
+  sun–thu 09:00–18:00 Asia/Dhaka calendar; `sla/breached.test.ts` covers the severity filter.
+
+### The gate named which modules flaked, and could not say why
+
+Three modules — `sla`, `spaces`, `taskTypes` — went green only on retry. P3's gate had no
+flakies at all, so this was worth opening rather than waving through.
+
+The recorded evidence turned out to be useless:
+
+```
+● GET /api/v1/task-types › Side effects › writes no workspace_activity rows
+√ renders the spec error envelope with matching request_id on 401 (3 ms)
+```
+
+Passing lines, inside a block whose whole purpose is to explain a failure. The capture
+filtered line-by-line on `/●|✕|Cannot|ERR|error/i`, and `/error/i` matches every test merely
+NAMED "…error envelope…" — of which these suites have many. The twelve-line budget filled
+with green tests and pushed out the assertion diff, the only part anyone would act on. The
+comment above it read *"keep the tail so a red module explains itself without a re-run"*. It
+did not do that, and nothing checked that it did.
+
+Replaced with `failureReport()`: take jest's own contiguous report from the bullet, strip the
+colour codes, stop at the seam where jest resumes listing suites. Validated rather than
+assumed — a deliberately failing test was planted, named "…Error envelope…" so it would have
+tripped the old filter, and the gate was run against it. It now prints the assertion, the
+expected/received diff, the offending source line and the file:line. Probe deleted, `health`
+back to 14/14 through the gate.
+
+**The flakes themselves did not reproduce.** Each module was run three times standalone:
+**9/9 green** — 24/24, 250/250, 184/184 every time. None of the three is code P4 touched.
+
+Two things narrow it. All three failing assertions read *global* state —
+`countWorkspaceActivity()` counts the whole table with no workspace filter, `total_estimate: 1`
+counts spaces, and the third is a bare 401 — so each depends on the per-test reset having
+finished and on nothing arriving afterwards. **The obvious explanation is ruled out, though:**
+every `activity.record()` call site is `await`ed inside the request, so the row is committed
+before the response returns; there is no fire-and-forget write to land late. And the runner's
+own header already documents a cold-start class for `health`, `tags` and **`taskTypes`** — the
+first test in a file paying for the ts-jest transform, the first bcrypt hash and the first pool
+connect on a busy machine — which fits `sla` (its failure was the file's first test) but not
+`taskTypes` here, whose failure was 631 lines in.
+
+So: cause still unknown, tests not known-bad, async-write theory eliminated, and the harness can
+now answer the question the next time it happens instead of destroying the evidence. Carried as
+**KI-36**.
+
+### The reach mapper now lives in the repo
+
+It did not. P3 wrote it, this phase fixed it, both phases quote its numbers, and the plan tells
+every later phase to run it first — but the file itself sat in a scratch directory under
+`%TEMP%`, hardcoded to one absolute path. Half of that directory was deleted earlier the same
+day to free disk. A method that depends on a tool that a cleanup can erase is not a method.
+
+Promoted to `server/scripts/reach.cjs` with `npm run reach -- P5`, its root derived from
+`__dirname` instead of `E:/…`, and the query-string lesson written into its own header so the
+next person distrusts it before distrusting the suite. Verified from the repo: **P4 29/29**,
+**P5 32/35** — the same numbers this record quotes.
+
+### Closing state
+
+- **`npm run test:all` — 37 modules · 5,607 passed · 0 failed · 120.7 min · ALL GREEN**
+- Static phase 4/4; eslint 0/0 and a real type-check on both packages.
+- Dev DB at baseline **47 / 6 / 9 / 27 / 15** — P4 never wrote to it.
+- `client/dist` and `server/dist` untouched (§A rule 8).
+
+*(The first attempt at this gate went red across seven modules and the whole client suite,
+with jest reporting "no summary" and vitest unable to load three files. None of it was the
+product: the C: drive had reached **0 bytes free**, so nothing could write. Cleared 3.7 GB of
+regenerable cache — npm's (3.5 GB) and jest's transform cache (951 MB), both of which rebuild
+on demand — and re-ran. Worth recording because a full disk fails in a shape that looks
+exactly like a broken test suite.)*
+
+**Signed off:** ✅
 
 ---
 

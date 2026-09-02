@@ -111,6 +111,37 @@ const runNode = (entry, argv, cwd) =>
 const JEST_BIN = path.join(SERVER, "node_modules", "jest", "bin", "jest.js");
 const VITEST_BIN = path.join(CLIENT, "node_modules", "vitest", "vitest.mjs");
 
+// A line-by-line filter cannot say WHY a module failed: /error/i matches every
+// test merely NAMED "…error envelope…", so the capture filled with green lines
+// and pushed out the assertion diff — the one part worth keeping. Jest already
+// prints a contiguous failure report; take that verbatim instead.
+const failureReport = (out) => {
+    const lines = out.split("\n");
+    const start = lines.findIndex(
+        (l) => l.includes("●") && !/●\s*Console/.test(l),
+    );
+    if (start === -1) {
+        // No bullet at all: the run died before jest could report (a config
+        // error, an OOM, a killed worker). Those messages ARE the evidence.
+        return lines
+            .filter((l) => /Cannot|ERR_|FATAL|heap|not found/i.test(l))
+            .slice(0, 12);
+    }
+    // Jest prints the report, then resumes listing suites. Cut at that seam so
+    // the evidence is the failure and nothing else, and strip the colour codes
+    // — they are unreadable once the line is re-printed inside this summary.
+    const report = [];
+    for (const raw of lines.slice(start, start + 40)) {
+        // ANSI colour codes ARE control characters; stripping them is the point.
+        // eslint-disable-next-line no-control-regex
+        const l = raw.replace(/\u001b\[[0-9;]*m/g, "").trimEnd();
+        if (report.length && /^\s*(PASS|FAIL|Test Suites:|Tests:)\b/.test(l)) break;
+        if (l.trim() !== "") report.push(l);
+        if (report.length >= 22) break;
+    }
+    return report;
+};
+
 const runJest = (cfg) => {
     // jest writes its summary to stderr; capture both and merge.
     const r = runNode(JEST_BIN, ["-c", cfg, "--runInBand", "--silent"], SERVER);
@@ -126,7 +157,7 @@ const runJest = (cfg) => {
         suites: s ? Number(s[3] || 0) : null,
         suitesFailed: s ? Number(s[1] || 0) : null,
         // Keep the tail so a red module explains itself without a re-run.
-        tail: out.split("\n").filter((l) => /●|✕|Cannot|ERR|error/i.test(l)).slice(0, 12),
+        tail: failureReport(out),
     };
 };
 

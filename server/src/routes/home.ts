@@ -7,6 +7,7 @@ import { HomeController } from "../controllers/HomeController";
 import { HomeService } from "../services/HomeService";
 import { HomeRepo } from "../repositories/HomeRepo";
 import { TasksRepo } from "../repositories/TasksRepo";
+import { TaskDeleteRequestsRepo } from "../repositories/TaskDeleteRequestsRepo";
 import { WorkspaceRepo } from "../repositories/WorkspaceRepo";
 import { getDb } from "../db/client";
 import logger from "../config/logger";
@@ -23,7 +24,12 @@ const router = express.Router();
 const db = getDb();
 const homeRepo = new HomeRepo(db);
 const tasksRepo = new TasksRepo(db);
-const homeService = new HomeService(homeRepo, tasksRepo, new WorkspaceRepo(db));
+const homeService = new HomeService(
+    homeRepo,
+    tasksRepo,
+    new WorkspaceRepo(db),
+    new TaskDeleteRequestsRepo(db),
+);
 const homeController = new HomeController(homeService, logger);
 
 // ─── GET /api/v1/home/kpis ───────────────────────────────────────────────────

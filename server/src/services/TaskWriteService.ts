@@ -9,6 +9,7 @@ import { Roles, type Role } from "../constants";
 import type { ListsRepo } from "../repositories/ListsRepo";
 import type { StatusesRepo } from "../repositories/StatusesRepo";
 import type { TaskTypesRepo } from "../repositories/TaskTypesRepo";
+import type { TaskDeleteRequestsRepo } from "../repositories/TaskDeleteRequestsRepo";
 import type { TasksRepo } from "../repositories/TasksRepo";
 import type { TaskMembershipRepo } from "../repositories/TaskMembershipRepo";
 import type { AttachmentsRepo } from "../repositories/AttachmentsRepo";
@@ -520,6 +521,12 @@ export class TaskWriteService {
         private wsActivity: WorkspaceActivityRepo,
         private reads: TasksService,
         private logger: Logger,
+        /**
+         * Optional, mirroring `TasksService`: it exists only to hydrate the
+         * "deletion pending" badge, so a caller that has not wired it degrades
+         * to `false` rather than failing to construct.
+         */
+        private deleteRequestsRepo?: TaskDeleteRequestsRepo,
     ) {}
 
     /**
@@ -1726,12 +1733,22 @@ export class TaskWriteService {
         );
         const ids = rows.map((r) => r.task.id);
         const redactGuest = input.role === Roles.GUEST;
-        const [assignees, watchers, tags, customFieldValues] =
+        const [assignees, watchers, tags, customFieldValues, pendingDeletes] =
             await Promise.all([
                 this.tasks.assigneesByTask(ids),
                 this.tasks.watchersByTask(ids),
                 this.tasks.tagsByTask(ids),
                 this.tasks.customFieldValuesByTask(ids, redactGuest),
+                // P4 (D4.3): My Work renders the "deletion pending" badge from
+                // this flag — `TaskRow` does, exactly as `ListViewRow` and
+                // `BoardCard` do. This surface was not looking it up, so it
+                // defaulted to `false`, and the same task warned you it was
+                // about to be permanently deleted in the List view while saying
+                // nothing on the Home page. One batched, indexed lookup over
+                // ids already in hand; `TasksService.listByList` has always
+                // done the same.
+                this.deleteRequestsRepo?.pendingTaskIds(ids) ??
+                    Promise.resolve(new Set<string>()),
             ]);
         const wire = (t: (typeof rows)[number]["task"]): WireTask =>
             toWireTask(t, {
@@ -1739,6 +1756,7 @@ export class TaskWriteService {
                 watchers: watchers.get(t.id) ?? [],
                 tags: tags.get(t.id) ?? [],
                 customFieldValues: customFieldValues.get(t.id) ?? {},
+                deleteRequestPending: pendingDeletes.has(t.id),
             });
 
         // "Today" is a BUSINESS day, not the box's day: these buckets decide what

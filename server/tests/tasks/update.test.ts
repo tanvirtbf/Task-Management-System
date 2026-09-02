@@ -73,6 +73,96 @@ const seed = async (role: Role = "member", typeName?: string) => {
 };
 
 // ════════════════════════════════════════════════════════════════════════════
+describe("PATCH /api/v1/tasks/:id — fields that live on another endpoint", () => {
+    /**
+     * `assignees`, `tags`, `parent_task_id` and `primary_list_id` are all real
+     * task fields that this endpoint does NOT accept — each is managed by its
+     * own route. F23 (ISS-048) added a message naming the right door, because
+     * "you sent no fields to update" is a lie when the caller sent a field that
+     * simply lives elsewhere.
+     *
+     * Untested until P4, and worth more than it looks: a client that sends
+     * assignees here and is told nothing has no way to discover that the
+     * assignment silently did not happen. That exact shape shipped once — the
+     * list-row assignee editor sent this PATCH and never worked.
+     *
+     * Two cases, and the second is the one that matters. When the body contains
+     * ONLY a misdirected field there is nothing to update, so the controller
+     * reaches the guidance branch. When it also carries a field this endpoint
+     * DOES accept, the update proceeds — and the question is what happens to
+     * the misdirected key riding along with it.
+     */
+    const OTHER_ENDPOINT_FIELDS: Array<[string, unknown, RegExp]> = [
+        ["assignees", ["u-someone"], /POST \/tasks\/:id\/assignees/],
+        ["tags", ["tg-1"], /POST \/tasks\/:id\/tags/],
+        ["parent_task_id", "t-parent", /set at creation/],
+        ["primary_list_id", "l-other", /do not move between lists/],
+    ];
+
+    describe("alone in the body", () => {
+        it.each(OTHER_ENDPOINT_FIELDS)(
+            "%s → 422 naming the endpoint that owns it",
+            async (field, value, guidance) => {
+                const ctx = await seed();
+
+                const res = await ctx.client
+                    .patch(PATH(ctx.task.id))
+                    .send({ [field]: value });
+
+                expect(res.status).toBe(422);
+                const details = (
+                    res.body as { error: { details?: { field?: string; issue: string }[] } }
+                ).error.details;
+                expect(details).toBeDefined();
+                const mine = details!.find((d) => d.field === field);
+                expect(mine).toBeDefined();
+                // The message has to name the ROUTE. "Invalid field" would be
+                // true and useless.
+                expect(mine!.issue).toMatch(guidance);
+            },
+        );
+
+        it("names every misdirected field at once, not just the first", async () => {
+            const ctx = await seed();
+
+            const res = await ctx.client
+                .patch(PATH(ctx.task.id))
+                .send({ assignees: ["u-1"], tags: ["tg-1"] });
+
+            expect(res.status).toBe(422);
+            const details = (
+                res.body as { error: { details: { field?: string }[] } }
+            ).error.details;
+            expect(details.map((d) => d.field).sort()).toEqual([
+                "assignees",
+                "tags",
+            ]);
+        });
+    });
+
+    describe("riding along with a field this endpoint DOES accept", () => {
+        it("refuses the whole patch rather than applying half of it", async () => {
+            // The dangerous case. If the recognised field is applied and the
+            // misdirected one is dropped, the caller gets a 200 and a task that
+            // is renamed but NOT assigned — and nothing anywhere says so. A
+            // request that cannot be honoured in full should not be honoured in
+            // part.
+            const ctx = await seed();
+            const before = await taskRow(ctx.task.id);
+
+            const res = await ctx.client
+                .patch(PATH(ctx.task.id))
+                .send({ name: "Renamed", assignees: [ctx.user.id] });
+
+            expect(res.status).toBe(422);
+
+            // And nothing was written.
+            const after = await taskRow(ctx.task.id);
+            expect(after.name).toBe(before.name);
+        });
+    });
+});
+
 describe("PATCH /api/v1/tasks/:id", () => {
     // ─── a. Happy path ──────────────────────────────────────────────────────
     describe("Happy path", () => {

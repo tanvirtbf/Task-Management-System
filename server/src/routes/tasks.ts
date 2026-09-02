@@ -145,6 +145,7 @@ const taskWriteService = new TaskWriteService(
     new WorkspaceActivityRepo(db),
     tasksService,
     logger,
+    new TaskDeleteRequestsRepo(db),
 );
 const taskWriteController = new TaskWriteController(taskWriteService, logger);
 
