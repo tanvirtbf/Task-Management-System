@@ -1,4 +1,4 @@
-import { Button, Input, Dropdown } from "antd";
+import { Button, Input, Dropdown, Popover, Switch } from "antd";
 import {
     ArrowUpDown,
     Group as GroupIcon,
@@ -32,6 +32,8 @@ interface ListViewToolbarProps {
     onMeModeChange: (v: boolean) => void;
     showClosedTasks: boolean;
     onShowClosedChange: (v: boolean) => void;
+    showArchived: boolean;
+    onShowArchivedChange: (v: boolean) => void;
     sortBy: SortKey;
     onSortByChange: (s: SortKey) => void;
     sortDir: "asc" | "desc";
@@ -60,6 +62,8 @@ export const ListViewToolbar = ({
     onMeModeChange,
     showClosedTasks,
     onShowClosedChange,
+    showArchived,
+    onShowArchivedChange,
     sortBy,
     onSortByChange,
     sortDir,
@@ -219,13 +223,59 @@ export const ListViewToolbar = ({
                     allowClear
                 />
 
-                <Button
-                    type="text"
-                    size="small"
-                    icon={<Settings2 size={13} strokeWidth={1.75} />}
-                    title="View settings"
-                    aria-label="View settings"
-                />
+                {/*
+                 * This button had no `onClick` at all — it rendered, looked
+                 * enabled, and did nothing, which is how it was reported. It
+                 * now opens the one view setting that had nowhere to live:
+                 * archived tasks were invisible everywhere in this client,
+                 * even though the API has always accepted `include_archived`.
+                 */}
+                <Popover
+                    trigger="click"
+                    placement="bottomRight"
+                    content={
+                        <div style={{ width: 260 }}>
+                            <div
+                                style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "space-between",
+                                    gap: 12,
+                                }}
+                            >
+                                <div>
+                                    <div style={{ fontWeight: 500 }}>
+                                        Show archived tasks
+                                    </div>
+                                    <div
+                                        style={{
+                                            fontSize: 12,
+                                            color: tokens.colors.textMuted,
+                                            marginTop: 2,
+                                        }}
+                                    >
+                                        Archived tasks are hidden by default.
+                                        Open one to restore it.
+                                    </div>
+                                </div>
+                                <Switch
+                                    size="small"
+                                    checked={showArchived}
+                                    onChange={onShowArchivedChange}
+                                    aria-label="Show archived tasks"
+                                />
+                            </div>
+                        </div>
+                    }
+                >
+                    <Button
+                        type={showArchived ? "primary" : "text"}
+                        size="small"
+                        icon={<Settings2 size={13} strokeWidth={1.75} />}
+                        title="View settings"
+                        aria-label="View settings"
+                    />
+                </Popover>
             </div>
         </div>
     );

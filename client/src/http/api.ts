@@ -764,7 +764,20 @@ export const tasksApi = {
     // old call silently discarded `pagination` — List/Board/Calendar and the
     // dependency picker only ever saw the oldest 50 tasks. Follow next_cursor
     // to exhaustion so every view renders the COMPLETE list.
-    listByList: async (listId: string): Promise<Task[]> => {
+    /**
+     * `includeArchived` surfaces archived tasks, which nothing in this client
+     * ever asked for before.
+     *
+     * That mattered more than it sounds: `DELETE /tasks/:id` is a soft delete
+     * that only sets `archived_at`, and "Restore" lives in the task drawer — so
+     * an archived task was fully alive on the server, restorable in one click,
+     * and reachable ONLY by somebody who still had its URL. Every list, board
+     * and search hid it. Archiving was, in practice, losing it.
+     */
+    listByList: async (
+        listId: string,
+        opts: { includeArchived?: boolean } = {},
+    ): Promise<Task[]> => {
         type TasksPage = {
             data: WireTask[];
             pagination?: { nextCursor: string | null; hasMore: boolean };
@@ -774,7 +787,13 @@ export const tasksApi = {
         do {
             const page: TasksPage = (
                 await api.get<TasksPage>(`/lists/${listId}/tasks`, {
-                    params: { limit: 200, ...(cursor ? { cursor } : {}) },
+                    params: {
+                        limit: 200,
+                        ...(opts.includeArchived
+                            ? { include_archived: true }
+                            : {}),
+                        ...(cursor ? { cursor } : {}),
+                    },
                 })
             ).data;
             all.push(...page.data);

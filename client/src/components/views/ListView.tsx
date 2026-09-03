@@ -48,6 +48,14 @@ export const ListView = ({ listId }: ListViewProps) => {
     const [search, setSearch] = useState("");
     const [meMode, setMeMode] = useState(false);
     const [showClosedTasks, setShowClosedTasks] = useState(false);
+    /**
+     * Archived tasks were unreachable from this client entirely. `DELETE` on a
+     * task is a soft delete (`archived_at`), "Restore" lives in the drawer, and
+     * no list ever asked the API for archived rows — so the only way back was a
+     * URL somebody had kept. Off by default; the toggle lives in the toolbar's
+     * settings popover.
+     */
+    const [showArchived, setShowArchived] = useState(false);
     const [sortBy, setSortBy] = useState<SortKey>("default");
     const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
     const [filters, setFilters] = useState<TaskFilterState>(
@@ -56,8 +64,11 @@ export const ListView = ({ listId }: ListViewProps) => {
     const [activeDragTask, setActiveDragTask] = useState<Task | null>(null);
 
     const { data: tasks = [], isLoading } = useQuery({
-        queryKey: ["tasks-by-list", listId],
-        queryFn: () => tasksApi.listByList(listId),
+        // `showArchived` is part of the key: without it the two result sets
+        // would share a cache entry and toggling would show stale rows.
+        queryKey: ["tasks-by-list", listId, { archived: showArchived }],
+        queryFn: () =>
+            tasksApi.listByList(listId, { includeArchived: showArchived }),
     });
 
     const { data: statuses = [] } = useStatuses(listId);
@@ -202,6 +213,8 @@ export const ListView = ({ listId }: ListViewProps) => {
                 onMeModeChange={setMeMode}
                 showClosedTasks={showClosedTasks}
                 onShowClosedChange={setShowClosedTasks}
+                showArchived={showArchived}
+                onShowArchivedChange={setShowArchived}
                 sortBy={sortBy}
                 onSortByChange={setSortBy}
                 sortDir={sortDir}

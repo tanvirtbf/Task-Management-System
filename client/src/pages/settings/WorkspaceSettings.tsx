@@ -284,12 +284,15 @@ const WorkspaceSettings = () => {
                  */}
             </SettingsSection>
 
-            <SettingsSection
-                title="Danger zone"
-                description="Irreversible actions — proceed with caution."
-            >
-                <Button danger>Delete workspace</Button>
-            </SettingsSection>
+            {/*
+             * The "Danger zone" held a red `Delete workspace` button with no
+             * `onClick` — and there is no `DELETE /workspace` endpoint to give
+             * it. A control that names the most destructive action in the
+             * product and silently does nothing is worse than no control: it
+             * teaches people that buttons here may not work. Removed until the
+             * capability exists; deleting a workspace is an operator action
+             * today (see the deploy runbook).
+             */}
         </div>
     );
 };

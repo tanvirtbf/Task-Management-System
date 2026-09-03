@@ -1,5 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
-import { useParams, useSearchParams, NavLink } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+    useParams,
+    useSearchParams,
+    NavLink,
+    useNavigate,
+} from "react-router-dom";
 import {
     LayoutList,
     LayoutGrid,
@@ -8,7 +13,7 @@ import {
     MoreHorizontal,
     UserPlus,
 } from "lucide-react";
-import { Alert, Button } from "antd";
+import { Alert, Button, Dropdown, Modal, message } from "antd";
 import { listsApi, spacesApi, tasksApi } from "../../http/api";
 import { useUserMap } from "../../hooks/useReferenceData";
 import { AssigneeStack } from "../../components/ui/AssigneeStack";
@@ -35,6 +40,8 @@ const ListPage = () => {
     const [searchParams, setSearchParams] = useSearchParams();
     const openTaskId = searchParams.get("task");
     const isMobile = useIsMobile();
+    const navigate = useNavigate();
+    const qc = useQueryClient();
 
     // Default view is "list"; URL `:viewId` (e.g., "board") overrides
     const currentView = viewId ?? "list";
@@ -238,20 +245,98 @@ const ListPage = () => {
                         {members.length > 0 && (
                             <AssigneeStack users={members} max={4} />
                         )}
+                        {/* Both of these rendered with no handler at all —
+                            reported as "clicking does nothing". Invite goes to
+                            where the invite flow actually lives; the overflow
+                            menu now offers the list actions the API has always
+                            had (`PATCH /lists/:id`, `/archive`, `DELETE`). */}
                         <Button
                             size="small"
                             icon={<UserPlus size={13} strokeWidth={1.75} />}
+                            onClick={() => navigate("/settings/members")}
                         >
                             Invite
                         </Button>
-                        <Button
-                            size="small"
-                            type="text"
-                            aria-label="List actions"
-                            icon={
-                                <MoreHorizontal size={14} strokeWidth={1.75} />
-                            }
-                        />
+                        <Dropdown
+                            trigger={["click"]}
+                            menu={{
+                                items: [
+                                    {
+                                        key: "archive",
+                                        label: list?.archivedAt
+                                            ? "Unarchive list"
+                                            : "Archive list",
+                                        onClick: () => {
+                                            if (!listId) return;
+                                            const fn = list?.archivedAt
+                                                ? listsApi.unarchive
+                                                : listsApi.archive;
+                                            void fn(listId).then(() => {
+                                                message.success(
+                                                    list?.archivedAt
+                                                        ? "List unarchived"
+                                                        : "List archived",
+                                                );
+                                                void qc.invalidateQueries({
+                                                    queryKey: ["list", listId],
+                                                });
+                                                void qc.invalidateQueries({
+                                                    queryKey: ["lists"],
+                                                });
+                                            });
+                                        },
+                                    },
+                                    { type: "divider" as const },
+                                    {
+                                        key: "delete",
+                                        label: "Delete list",
+                                        danger: true,
+                                        onClick: () => {
+                                            if (!listId) return;
+                                            // Deleting a list takes its tasks
+                                            // with it, so this one asks first.
+                                            Modal.confirm({
+                                                title: `Delete "${list?.name ?? "this list"}"?`,
+                                                content:
+                                                    "The list and everything in it will be removed. This cannot be undone.",
+                                                okText: "Delete",
+                                                okButtonProps: {
+                                                    danger: true,
+                                                },
+                                                onOk: () =>
+                                                    listsApi
+                                                        .delete(listId)
+                                                        .then(() => {
+                                                            message.success(
+                                                                "List deleted",
+                                                            );
+                                                            void qc.invalidateQueries(
+                                                                {
+                                                                    queryKey: [
+                                                                        "lists",
+                                                                    ],
+                                                                },
+                                                            );
+                                                            navigate("/");
+                                                        }),
+                                            });
+                                        },
+                                    },
+                                ],
+                            }}
+                        >
+                            <Button
+                                size="small"
+                                type="text"
+                                aria-label="List actions"
+                                icon={
+                                    <MoreHorizontal
+                                        size={14}
+                                        strokeWidth={1.75}
+                                    />
+                                }
+                            />
+                        </Dropdown>
                     </div>
                 </div>
 

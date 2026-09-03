@@ -211,7 +211,13 @@ const ProfileSettings = () => {
                             {user.email} · {user.role}
                         </div>
                     </div>
-                    <Button size="small">Change avatar</Button>
+                    {/*
+                     * "Change avatar" had no handler and there is no avatar
+                     * upload to wire it to — `PATCH /users/:id` accepts an
+                     * `avatar_url`, but nothing in the product produces one.
+                     * Removed rather than left as a button that does nothing;
+                     * the initials avatar beside it is what people see today.
+                     */}
                 </div>
 
                 <SettingsFieldRow label="First name">

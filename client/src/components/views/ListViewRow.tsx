@@ -209,6 +209,28 @@ export const ListViewRow = ({
                 />
             </div>
 
+            {/* Only ever visible with the toolbar's "Show archived" on, and
+                needed the moment it is: without it an archived task is
+                indistinguishable from a live one in the same list. */}
+            {task.archivedAt && (
+                <span
+                    title="Archived — open the task to restore it"
+                    style={{
+                        flexShrink: 0,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 3,
+                        fontSize: 10,
+                        padding: "1px 6px",
+                        borderRadius: 999,
+                        color: tokens.colors.textMuted,
+                        border: `1px solid ${tokens.colors.border}`,
+                    }}
+                >
+                    Archived
+                </span>
+            )}
+
             {/* upgrades/023 — a permanent delete is waiting on an admin. The
                 task itself is untouched, so this is a flag, not a state. */}
             {task.deleteRequestPending && (
