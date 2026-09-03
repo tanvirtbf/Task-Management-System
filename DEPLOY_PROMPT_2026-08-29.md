@@ -8,7 +8,7 @@ part below the line to a Claude session there.
 > read 500s, and its own canary check could not have caught it. That file is deleted.
 >
 > **Refreshed 2026-09-03** for the test-plan work P0–P6:
-> - new build ⇒ **new canary hash** (`index-RU3OSsKx.js`);
+> - new build ⇒ **new canary hash** (`index-03KaeTLH.js`);
 > - **step 4's canary was broken and is rewritten** — it curled `/api/v1/tasks`, a route
 >   that does not exist, so it answered `404` on a healthy API *and* would have answered
 >   `404` with the upgrades missing. It never touched the database. See step 4b.
@@ -25,7 +25,7 @@ improvising.
 - App repo: `/var/www/html/tasks-beautybooth`, branch `main`.
 - **Target: the tip of `origin/main`.** Confirm it matches the SHA you were given in the
   handover message. The build in it is identified by its entry bundle —
-  `client/dist/index.html` must reference **`assets/index-RU3OSsKx.js`**. That hash is the
+  `client/dist/index.html` must reference **`assets/index-03KaeTLH.js`**. That hash is the
   reliable canary: it changes with every rebuild, so if it is present, the artifacts are
   the intended ones.
 - This box has ~560MB free RAM and runs 5 other live apps. **NEVER run `npm run build`,
@@ -156,7 +156,7 @@ git pull --ff-only origin main
 git log --oneline -1                                  # matches the handover SHA
 ls -la server/dist/server.js client/dist/index.html    # artifacts present
 grep -o 'assets/index-[^"]*\.js' client/dist/index.html | head -1
-                                                      # MUST be assets/index-RU3OSsKx.js
+                                                      # MUST be assets/index-03KaeTLH.js
 ```
 
 ## Step 4 — restart the API
@@ -233,7 +233,7 @@ deploy/cron/run-job.sh recurrence-spawn --dry-run   # expect ok:true JSON
 ```bash
 curl -s -o /dev/null -w "%{http_code}\n" https://tasks.beautybooth.com.bd   # 200
 curl -s https://tasks.beautybooth.com.bd | grep -o 'assets/index-[^"]*\.js' | head -2
-# must include index-RU3OSsKx.js — if it still shows the old hash, the browser or a
+# must include index-03KaeTLH.js — if it still shows the old hash, the browser or a
 # cache is serving a stale index.html; check nginx is pointed at client/dist
 ```
 

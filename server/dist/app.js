@@ -6,7 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
-const config_1 = require("./config");
+const cors_2 = require("./config/cors");
 const requestId_1 = require("./middlewares/requestId");
 const securityHeaders_1 = require("./middlewares/securityHeaders");
 const requestLogger_1 = require("./middlewares/requestLogger");
@@ -67,27 +67,18 @@ app.use(securityHeaders_1.securityHeaders);
 // correlation; sits before routing so it measures the whole handler). Feeds
 // `GET /metrics`.
 app.use(metrics_1.metricsMiddleware);
-// CORS — allow the frontend(s) defined in .env. `FRONTEND_URL` is the dev
-// app; `CORS_ALLOWED_ORIGINS` is a comma-separated production list.
-const corsOrigins = [];
-if (config_1.Config.FRONTEND_URL)
-    corsOrigins.push(config_1.Config.FRONTEND_URL);
-if (config_1.Config.CORS_ALLOWED_ORIGINS) {
-    corsOrigins.push(...config_1.Config.CORS_ALLOWED_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean));
-}
-// Allow the configured origins PLUS any localhost / private-LAN origin on any
-// port, so another device on the same Wi-Fi (e.g. http://192.168.1.50:5173) can
-// use the app without per-IP config. Only loopback + RFC-1918 private ranges are
-// reflected — never an arbitrary public site.
-const LAN_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$/i;
+// CORS — the origin decision lives in `config/cors.ts` so it can be tested
+// without booting every router (they build repositories at module load, so
+// importing this file needs a live database first). `credentials: true` is what
+// makes the policy matter: a reflected origin can call the API AS the signed-in
+// user. KI-16 — the private-LAN allowance is now dev-only; see that module.
 app.use((0, cors_1.default)({
     origin: (origin, cb) => {
         // No Origin header → same-origin / curl / server-to-server.
         if (!origin)
             return cb(null, true);
-        if (corsOrigins.includes(origin) || LAN_ORIGIN.test(origin)) {
+        if ((0, cors_2.isOriginAllowed)(origin))
             return cb(null, true);
-        }
         // F13 (ISS-085 / ISS-009): reject by SAYING NO, not by throwing.
         // `cb(new Error(...))` made the cors middleware throw, which
         // reached the global handler as an unknown error — every rejected

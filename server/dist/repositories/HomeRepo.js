@@ -92,7 +92,17 @@ class HomeRepo {
         // RBAC P19 — the two workspace-wide KPI series counted the
         // whole company for everyone; now they count what the
         // reader may actually see.
-        await (0, context_1.listScopeFilter)(schema_1.tasks.primaryListId)))
+        //
+        // P7: "may actually see" has to include the `own` escape,
+        // or the tile contradicts the app around it. A person whose
+        // only `task.view` reach is `own` CAN open the two tasks
+        // they created or were assigned outside their spaces — the
+        // detail route returns them, My Work lists them — while
+        // this counted `denyAll()` and rendered **0**. Same shape as
+        // KI-14: a count that disagrees with the rows beside it.
+        // `slaBreachesSeries` below already composes both for
+        // exactly this reason.
+        await (0, context_1.listScopeFilter)(schema_1.tasks.primaryListId, await (0, ownEscape_1.taskOwnEscape)())))
             .groupBy(DAY);
     }
     /** slaBreaches: workspace tasks past `sla_due_at`, not completed, not archived. */
