@@ -69,9 +69,10 @@ type Client = Awaited<ReturnType<typeof makeLoggedInClient>>;
 /**
  * Set one notification type on/off, through the real endpoint, as that person.
  *
- * Takes a CLIENT, not a user: logging the same person in twice inside one test
- * mints the same token in the same second and collides on
- * `sessions.uq_sessions_token_hash`.
+ * Takes a CLIENT, not a user, so the scene signs everybody in once. (This began
+ * as a workaround: two sign-ins for one user inside a second minted the same
+ * token and collided on `sessions.uq_sessions_token_hash`. P6 fixed that in the
+ * factory; passing the client is still the clearer shape.)
  */
 const setPref = async (own: Client, type: string, inAppEnabled: boolean) => {
     const res = await own

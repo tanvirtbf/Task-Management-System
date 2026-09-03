@@ -143,7 +143,7 @@ Re-verified ✔ = probed again today, still true.
 | KI-11 | `server/email_test.ts` — committed dev tool that sends a REAL email to a hardcoded gmail | ✅ **CLOSED P1** | moved to `server/scripts/email-test.ts`; `MAIL_TEST_TO` required, no address in the repo |
 | KI-12 | No automated `schema.sql ↔ Drizzle ↔ upgrades` parity test; drizzle-kit frozen chain drifted; `_post.sql` misses 2 triggers | ✅ **TEST EXISTS P1** | `jest.schema.config.cjs` — parity 6/6 + session-clock 4/4, in the gate (35th module). **P12** still owns the restore drill |
 | KI-13 | `db:seed:demo` leaves `tasks.assigned_by` unfilled (wire falls back to created_by) | ✅ **CLOSED P1** | 46/46 tasks + 46/46 assignee rows filled with a real assigner, verified on a throwaway DB (D1.10) |
-| KI-14 | `/eng/home` leaks Engineering's open-bug **count** to every team (`openCountAndTopByType` has no `listScopeFilter`) | ✔ still absent | **P6** fix · P7 re-verify |
+| KI-14 | ~~`/eng/home` leaks Engineering's open-bug **count** to every team.~~ **CLOSED by P6** — measured live (the tile said 2 where the viewer could see 1, next to a preview of one), fixed with the same predicate the hydrator already applied, and pinned by five tests incl. an unrestricted-admin control. `staleTicketIds` had the same shape (LIMIT before scope) and was fixed with it | closed | P7 re-verify |
 | KI-15 | Assistant chat kept forever, plaintext: no retention job, no DELETE, no history UI (dev: 2,197 convs / 4,393 msgs / 1.6 MB text) | ✔ | **P9** tests what exists · retention/UI → GATE |
 | KI-16 | CORS reflects any private-LAN origin in prod (`app.ts:88,95`) | carried | **P7** |
 | KI-17 | No `If-Match` anywhere — task PATCH is last-write-wins | carried | **P7** probe → GATE |
@@ -164,8 +164,9 @@ Re-verified ✔ = probed again today, still true.
 | KI-32 | **Opened by P3.** Custom fields are the only named entity with no uniqueness rule — no unique index and no service check, so one workspace can hold two fields called "Priority". Behaviour is now pinned by a test; whether to constrain it is a decision | open | **GATE** |
 | KI-33 | ~~Opened by P4: three notification endpoints no test has ever called.~~ **VOID — the mapper was wrong, not the suite.** All three have their own test files, named after them. It resolved URL constants in one flat namespace shared by every test file; `BASE` is declared in three files, and the last writer won. Fixed in P5, which measures **35/35**. The bug, and the self-check added to catch the next one, are the finding | closed by P5 | — |
 | KI-34 | **Opened by P4** (same measurement). Three job endpoints no test has ever called: `POST /jobs/department-report`, `POST /jobs/assignment-request-expiry`, `POST /jobs/recurrence-spawn` — the last one's JOB is covered by `jobs/recurrence-spawn.test.ts`, but its HTTP trigger is not | open | **P12** |
-| KI-35 | **Opened by P4.** `GET /search` does not hydrate `delete_request_pending`, so search results never show the "deletion pending" badge that the List, Board and (as of P4) Home views do. My Work was the same defect and was fixed; whether search should carry the badge is P6's call | open | **P6** |
+| KI-35 | ~~`GET /search` does not hydrate `delete_request_pending`.~~ **CLOSED by P6**, which took the decision: search hydrates it like every other task surface. Nothing visible changes today (no component renders the badge in results), but P4 showed what a `false` default does once one does, and search is a primary way people reach a task. The serializer-parity test now compares the whole payload with no exceptions | closed | — |
 | KI-37 | **Opened by P5.** §19 Notifications answers **403** `notification.not_owner` for another user's id, where every other `:id` endpoint in the system answers 404. It is deliberate and documented (ids are unguessable, so the existence oracle is not usable) and is now pinned in the isolation sweep's `EXPECTED_STATUS` map rather than tolerated. P7 owns the security deep-dive and should confirm the decision or change it — not inherit P5's acceptance of it | open | **P7** |
+| KI-38 | **Opened by P6.** `GET /sprints/:id/tasks` used to answer `200 []` for a sprint that does not exist, was deleted, or belongs to another workspace, while `GET /sprints/:id` answered 404 — so a stale sprint board rendered as "no tasks" rather than an error. Fixed here (the route resolves the sprint first); logged because the SHAPE — a list endpoint that never validates its parent — is worth sweeping for elsewhere | fixed, class open | **P7** |
 | KI-36 | **Opened by P4.** `sla`, `spaces` and `taskTypes` passed only on retry in the P4 gate, and the first-attempt evidence had been destroyed by the capture bug (since fixed). None reproduced standalone (9/9 green); all three failing tests assert global state. Cause unknown — watch the next gate, which can now report it | open | **P13** |
 
 ---
@@ -1807,10 +1808,227 @@ engineering (4) · sprints (11) · onCall (4) · forms (13) · dept (spaces revi
   at rest (005), submission expiry job, spam/abuse limits on the public endpoint, submissions
   list API (feeds the GATE viewer later)
 
-**Exit criteria:** 43/43 ticked; eng/home/search/sse/reports/sprints/oncall/forms suites green;
-KI-14 closed with proof; baseline restored.
+**Exit criteria**
+- [x] **43 / 43** endpoints reached — measured; the phase was entirely depth
+- [x] `eng` 83 · `home` **33** · `search` **42** · `sse` **15** · `deptreview` 122 ·
+      `sprints` 164 · `oncall` 81 · `forms` **92** · `isolation` **145** — all green
+- [x] **KI-14 closed with proof** — the leak measured live (count said 2 where the viewer
+      could see 1), fixed, and pinned by five tests including an unrestricted-admin control
+- [x] **KI-35 decided** — search hydrates the badge; the parity test now compares the whole
+      payload with no exceptions left
+- [x] Tenant isolation extended to P6: 119 → **145**, with the two routes it cannot ask
+      named and asked a different way instead
+- [x] Defects fixed + regression-tested; DB baseline restored
 
-**Execution record P6:** *(empty)*
+**Execution record P6** — 2026-09-03, anchor `4a19b35`.
+
+### Endpoints — 43 / 43
+
+The mapper ran first and came back clean, so — like P4 — the phase was entirely depth. It also
+now checks itself, and had nothing to flag.
+
+### KI-14, closed with proof
+
+Opened by the 2026-07-29 scan and carried through three more of them: *"`/eng/home` leaks
+Engineering's open-bug count to every team (`openCountAndTopByType` has no `listScopeFilter`)"*.
+Still exactly true.
+
+**Measured before touching anything.** A viewer clamped to one team, holding one visible bug and
+one invisible one:
+
+| | tile said | viewer could see |
+|---|---|---|
+| `open_bugs.count` | **2** | 1 |
+| `open_incidents.count` | **1** | 0 |
+
+The preview ids beside those counts were fine — they go through
+`TasksRepo.findManyByIdsInWorkspace`, which applies the scope filter, and the invisible ones drop
+out during hydration. So the endpoint returned **a count of 2 over a list of one**, which is both
+the leak and the tell: a tile is a single claim, and this one disagreed with itself on screen.
+
+Fixed by giving the count the same predicate the hydrator already used. Five tests, in
+`rbac/p5-leak-closure.test.ts` where the scoped-user fixture lives: the count excludes another
+team's bugs; the count equals its own preview length; incidents likewise; **an unrestricted admin
+still sees the whole workspace** (the control — a fix that just returned zero would pass the
+first three); and the stale-tickets bucket.
+
+**`staleTicketIds` had the same shape and is fixed too.** Not a leak — invisible rows were
+dropped downstream — but the `LIMIT` was applied *before* scoping, oldest-first. Another team's
+ancient tickets could spend the whole budget and hand the caller an empty bucket while their own
+stale work sat there. Same predicate, same fix.
+
+*(Checked rather than assumed: `HomeRepo`'s two workspace-wide KPI series were already scoped —
+RBAC P19 did that. `/eng/home` was the one that got missed, which is precisely what KI-14 said.)*
+
+### KI-35 decided: search hydrates the badge
+
+P4 left this to P6, which owns the endpoint. The decision is **yes**, and the reasoning matters
+more than the outcome:
+
+No component renders the "deletion pending" badge in the search results list today, so nothing
+visible changes. But P4 had already found what happens when a surface defaults `false` and a
+component later renders it — My Work said nothing while the List view warned that the same task
+was queued for permanent deletion. The serializer calls `false` an "honest default"; it is
+honest only until someone reads it. Search is a primary way people reach a task, and the cost is
+one batched, indexed lookup over ids already in hand.
+
+So `SearchService` takes `TaskDeleteRequestsRepo` optionally, exactly as `TasksService` and
+`TaskWriteService` do, and the parity test's exclusion list is now **empty** — it compares the
+whole payload across detail / list / my-work / search with no exceptions left.
+
+*(The assistant builds its own `SearchService` without that repo. Checked, not assumed: the
+assistant's tools project their own compact shapes and never emit the flag, so nothing there
+defaults to a wrong answer.)*
+
+### A read endpoint that answered 200 for a sprint that does not exist
+
+Found by the isolation sweep. `GET /sprints/:id/tasks` never resolved the sprint — it went
+straight to a task query filtered on `sprint_id` **and** `workspace_id`. Tenant-safe, so no data
+crossed; but a foreign sprint id, a deleted one and a typo all returned `200 []`, while the
+sibling `GET /sprints/:id` returned 404.
+
+"This sprint has no tasks" and "there is no such sprint" are different sentences, and a board
+rendering the first for the second is the same quiet lie as P4's patch that reported success for
+an assignment it discarded. The route now resolves the sprint first, reusing `getById`'s own 404
+rather than inventing a second one. `sprints` stayed green at 164.
+
+### A test that asserted the endpoint answered, not that it was safe
+
+`rbac/p6-switch-matrix.test.ts` carried the comment *"Search cannot surface the other team"* over
+this:
+
+```ts
+const found = await s.mktMember.client.get(`/api/v1/search?q=${…}`);
+expect(found.status).toBe(200);
+```
+
+Which is equally true of a search that leaks everything. It also queried an **id prefix**, which
+is not what a person types. Now it searches by name and checks both directions — their team's
+tasks are absent AND the caller's own two are present — so it cannot pass because search happens
+to be returning nothing. It passes; the property was real, nothing was checking it.
+
+### The dueToday tile and the agenda are one claim
+
+`GET /home/kpis`'s `dueToday` and `GET /home/agenda` are the same sentence twice, computed by two
+repo methods from two queries, and nothing had ever compared them. **10 tests** that never assert
+a number — only that the two AGREE — across the rows that separate the definitions: done,
+archived, unassigned, someone else's, due tomorrow, due yesterday, and a realistic mix.
+
+Plus the timezone half the plan asked for. Both read `todayInZone(workspaces.timezone)`, so a
+workspace in **Pacific/Kiritimati** (UTC+14, a different calendar day from Dhaka for part of every
+day) is where they would part company if one asked the OS instead. They agree. And the one case
+where disagreement is CORRECT is pinned too: `?date=` moves the agenda while the tile still means
+today, so a future "fix" cannot make the tile follow the query string.
+
+They agreed everywhere. This is a property pinned, not a bug found — which is the honest outcome
+and worth the same care.
+
+### Search, in the language people actually type
+
+The suite had **no non-ASCII term anywhere**, in a product whose staff name tasks in Bangla. And
+`escapeLike` escapes three characters (`\`, `%`, `_`) while only `%` was ever tested — `_` is
+SQL's single-character wildcard, so an unescaped one turns a search for `Q3_report` into a search
+for `Q3?report`.
+
+**10 tests.** Bangla by full name, by substring, a different Bangla word not matching, mixed
+Bangla+English found from either half, an emoji, ASCII case-insensitivity; then `_`, `%` and `\`
+each proven literal against decoys that a wildcard would have matched, and a query of only
+wildcards. All correct as built. Test names stay ASCII deliberately, so a jest run remains
+readable in a terminal that cannot render Bangla — the data carries the script, not the output.
+
+### Two things the plan asked about the public form, both untested
+
+**Encryption at rest.** Every existing test asks the API, and the API decrypts on the way out, so
+a regression that stopped encrypting would have left all of them green — and the reader is
+deliberately lenient, returning the stored value unchanged on any failure "so a single bad row
+never 500s the whole page". Correct for legacy rows, and exactly why plaintext would go
+unnoticed. These forms carry customer names, phone numbers and addresses. **3 tests** read the
+raw column: the `{ciphertext, iv, authTag}` envelope is there, none of the three secrets appears
+in it, not even the field name `phone`; two identical submissions produce **different** ciphertext
+(a per-row IV — without it the store leaks which customers said the same thing); and the admin
+read path still returns the plaintext, because encryption nobody can read gets removed by the
+next person.
+
+**The abuse limit.** `publicFormLimiter` (30/min/IP) guards the only unauthenticated surface in
+the system, where each submission creates a real task and notifies a real team — and it had never
+executed in a test, the same shape P2 found across the auth limiters. **4 tests**, opting in with
+`ENABLE_RATE_LIMIT=1` and leaving `NODE_ENV` alone (§A rule 4): 30 pass and the 31st is
+`429 rate.exceeded`; the view and submit routes share ONE bucket, so alternating cannot buy 60;
+it is keyed per IP, so one abuser does not lock out a customer on another connection; and a 429
+creates no task — the expensive path never runs.
+
+### Two tabs
+
+The SSE suite was thorough on one connection, and a single connection cannot see the failure that
+matters: a registry keyed on the USER rather than the CONNECTION delivers to whichever tab
+registered last and the other goes quiet — reported as "the inbox is flaky", invisible to every
+existing test. **3 tests**: both connections receive the same notification, each gets its own
+`connected` frame, and closing one does not stop the other.
+
+### The isolation sweep now covers P6 — 119 → 145
+
+`PHASES_COVERED` gained `"P6"`; the completeness check named all 26 endpoints needing a probe and
+they were written. Four things were decided rather than worked around:
+
+- **Two routes are excluded, with the reason written down** — `GET/POST /public/forms/:slug` are
+  PUBLIC by design (the slug IS the capability; answering 404 to a stranger would break the
+  feature for every customer), and `PUT/DELETE /on-call/:weekStart` take a **date**, identical in
+  every workspace, so there is no foreign id to hold. A new `NOT_AN_ID_PROBE` set carries both,
+  with the reasoning, so the exclusion stays a decision instead of a silent gap.
+- **Both are then asked the question that DOES apply**, in the effect direction: writing my
+  on-call week leaves the neighbour's row byte-identical, and a public submit made by somebody
+  signed into another workspace lands the task in the FORM's workspace, never the caller's.
+- Two more body probes: pulling **their** task into **my** sprint, and creating a form in
+  **their** list. Both refused.
+- The three probes that first came back 422 were **my** bodies, not the product's answer —
+  `items` shapes for the field-reorder and postmortem endpoints. A probe the validator rejects
+  proves the body parser works and nothing about whose data it is, so they were corrected rather
+  than accepted.
+
+### A trap fixed at the source instead of remembered
+
+`makeLoggedInClient` signs a JWT over `{sub, role, workspaceId, id: "pending"}` plus a
+one-second `iat`, so signing the same user twice inside one second produced the **same** token and
+`sessions.uq_sessions_token_hash` rejected the second sign-in. It reads as a duplicate-key error
+with nothing connecting it to logging in twice. P5 worked around it; P6 hit it again modelling a
+person with two browser tabs — twice is enough. The placeholder is now a fresh id per call, and
+the P5 comment that described it as a live hazard was corrected.
+
+*(Two tabs share a session in a real browser anyway, so that test uses one client for both
+connections — the accurate model, reached by way of the bug.)*
+
+### Verified already covered — no new tests needed
+
+- **Weekly reports.** `report-stats.test.ts` is thorough where it counts: the Dhaka week
+  boundary and its six-hour band on both edges, `completed_late` on the Dhaka calendar day,
+  distinct-task approve/flag with the undo chain, `self_reviewed`, unassigned work in the
+  synthetic `user:null` row, archived rules, and point-in-time vs window. Generation, regenerate
+  (which must not re-notify) and the ack flow are covered in `report-generation` and
+  `reports-actions`.
+- **On-call at week boundaries**, the tz-sensitive part the plan flagged: both inclusive edges,
+  a shift entirely past, one entirely future, several straddling today (most-recent `week_start`
+  wins), and a deactivated engineer still resolving — all keyed to `dhakaDayOffset` rather than
+  the box's day.
+- **Sprints lifecycle** — 164 tests across create/list/active/get/start/close/delete and task
+  add/remove.
+
+### Closing state
+
+- **`npm run test:all` — 37 modules · 5,739 passed · 0 failed · 130.2 min · ALL GREEN**
+- Static phase 4/4; eslint 0/0 and a real type-check on both packages.
+- Dev DB at baseline **47 / 6 / 9 / 27 / 15** — P6 never wrote to it.
+- `client/dist` and `server/dist` untouched (§A rule 8).
+
+*(This gate took two attempts, and the first one is **KI-36's second data point**. It came
+back with `deptreview` red at 121/122 and five more modules green only on retry — while a
+different project's Next dev server was running on the same machine. The re-run, alone on the
+box, was ALL GREEN with `deptreview` at 122/122 and the same two modules flaking that flaked
+in P4. Nothing in the tree changed between the two. That is not proof of a cause, but it is
+the second time load has produced exactly this shape, and the first time the shape included a
+module going fully red — so a red gate is now worth checking the machine for before it is
+believed.)*
+
+**Signed off:** ✅
 
 ---
 

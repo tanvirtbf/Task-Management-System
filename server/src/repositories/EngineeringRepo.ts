@@ -26,6 +26,8 @@ import {
     type TaskPostmortem,
 } from "../db/schema";
 import { dhakaToday } from "../utils/dhakaTime";
+import { listScopeFilter } from "../rbac/context";
+import { taskOwnEscape } from "../rbac/ownEscape";
 import type { DbExecutor } from "./types";
 
 /** Status groups that count as "closed work" — excluded from the open rollups. */
@@ -177,9 +179,17 @@ export class EngineeringRepo {
     }
 
     /**
-     * Total + the newest `topLimit` ids of OPEN tasks of one type in the
-     * workspace (open = status_group ∉ done/closed, not archived). Reused for the
+     * Total + the newest `topLimit` ids of OPEN tasks of one type the CALLER
+     * CAN SEE (open = status_group ∉ done/closed, not archived). Reused for the
      * open-bugs and open-incidents tiles.
+     *
+     * KI-14: this used to filter on workspace and type alone, while the preview
+     * ids beside the count were hydrated through a scoped read. A user clamped
+     * to one team therefore got the whole workspace's number next to a list
+     * that excluded most of it — the count was a leak of Engineering's open-bug
+     * volume to every team, and the count/preview disagreement was how it
+     * showed. The visibility predicate is now the same one the hydrator applies,
+     * so the tile is a single consistent claim.
      */
     async openCountAndTopByType(
         workspaceId: string,
@@ -191,6 +201,7 @@ export class EngineeringRepo {
             eq(tasks.taskTypeId, taskTypeId),
             isNull(tasks.archivedAt),
             notInArray(statuses.statusGroup, [...DONE_GROUPS]),
+            await listScopeFilter(tasks.primaryListId, await taskOwnEscape()),
         );
         const [c] = await this.db
             .select({ value: count() })
@@ -280,6 +291,12 @@ export class EngineeringRepo {
                     isNull(tasks.archivedAt),
                     notInArray(statuses.statusGroup, [...DONE_GROUPS]),
                     sql`${tasks.updatedAt} < (NOW() - INTERVAL ${sql.raw(String(STALE_DAYS))} DAY)`,
+                    // Same predicate as the hydrator (KI-14's family). Invisible
+                    // rows were already dropped downstream, but the LIMIT was
+                    // spent on them first — oldest-first, so another team's
+                    // ancient tickets could push the caller's own out of a
+                    // bucket that then looked empty.
+                    await listScopeFilter(tasks.primaryListId, await taskOwnEscape()),
                 ),
             )
             .orderBy(asc(tasks.updatedAt))

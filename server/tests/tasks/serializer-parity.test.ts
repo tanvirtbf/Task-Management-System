@@ -174,24 +174,21 @@ describe("Task serializer parity across surfaces", () => {
         expect(keys(fromSearch!)).toEqual(keys(detail));
 
         /**
-         * And the same VALUES — with one field excluded, and the exclusion is
-         * itself the finding.
+         * And the same VALUES — every field, with no exceptions left.
          *
-         * `delete_request_pending` comes from the hydration, not the row, so
-         * every surface has to look it up. The serializer calls `false` the
-         * "honest default" for surfaces that do not, which holds only as long
-         * as no such surface renders the badge — and two of them did.
-         * P4 fixed My Work (D4.3). Search still reports `false`; that endpoint
-         * is P6's, and whether search results should carry the badge at all is
-         * P6's decision to take.
-         *
-         * Anything ELSE differing is a plain failure.
+         * There used to be one. `delete_request_pending` comes from the
+         * hydration rather than the row, so each surface has to look it up, and
+         * the serializer called `false` the "honest default" for those that did
+         * not. That default stopped being honest the moment a component
+         * rendered the badge: My Work said nothing while the List view warned
+         * the task was about to be permanently deleted (P4, D4.3). Search was
+         * the last surface still defaulting, and P6 — which owns that endpoint —
+         * decided it should hydrate like the others (KI-35). So the exclusion
+         * list is empty, and this now compares the whole payload.
          */
-        const SURFACE_DEPENDENT = new Set(["delete_request_pending"]);
         const compare = (surface: WireTaskish, label: string) => {
             const differing = Object.keys(detail).filter(
                 (k) =>
-                    !SURFACE_DEPENDENT.has(k) &&
                     JSON.stringify(surface[k]) !== JSON.stringify(detail[k]),
             );
             expect({ label, differing }).toEqual({ label, differing: [] });
@@ -201,20 +198,17 @@ describe("Task serializer parity across surfaces", () => {
         compare(fromSearch!, "search");
     });
 
-    it("records WHICH surfaces report a pending delete request", async () => {
-        // The exception above, pinned as a fact rather than left implicit. If a
-        // surface starts or stops hydrating it, this test says so — and the
-        // question "should search show the badge?" becomes a decision someone
-        // takes on purpose.
+    it("every surface reports a pending delete request, not just some", async () => {
+        // Kept as its own test even though the comparison above now covers it,
+        // because this one names the four surfaces and fails with a readable
+        // diff — "search: false" rather than "differing: [delete_request_pending]".
         //
-        // My Work was `false` here when this test was first written, and that
-        // was a real defect rather than a documented default: `TaskRow` renders
-        // the badge on the Home page exactly as `ListViewRow` does in the List
-        // view, so the same task warned you it was about to be permanently
-        // deleted in one place and said nothing in the other. Fixed in P4
-        // (D4.3). Search still reports `false` — that endpoint belongs to P6,
-        // which owns the decision about whether search results should carry the
-        // badge at all.
+        // Both defects it caught are worth remembering. My Work was `false`
+        // when this file was written: `TaskRow` renders the badge on the Home
+        // page exactly as `ListViewRow` does in the List view, so the same task
+        // warned you it was about to be permanently deleted in one place and
+        // said nothing in the other (P4, D4.3). Search was `false` until P6
+        // decided it should hydrate like the rest (KI-35).
         const ctx = await seedFullTask();
 
         const detail = (await ctx.client.get(`/api/v1/tasks/${ctx.task.id}`))
@@ -243,7 +237,7 @@ describe("Task serializer parity across surfaces", () => {
             detail: true,
             list: true,
             myWork: true,
-            search: false,
+            search: true,
         });
     });
 

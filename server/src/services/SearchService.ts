@@ -6,6 +6,7 @@ import {
     type SearchSpaceRow,
 } from "../repositories/SearchRepo";
 import { TasksRepo } from "../repositories/TasksRepo";
+import { TaskDeleteRequestsRepo } from "../repositories/TaskDeleteRequestsRepo";
 import { toWireTask, type WireTask } from "../serializers/taskSerializer";
 import { toWireUser, type WireUser } from "../serializers/userSerializer";
 import type { SearchType, WireSearchComment } from "../types/search";
@@ -116,6 +117,12 @@ export class SearchService {
     constructor(
         private searchRepo: SearchRepo,
         private tasksRepo: TasksRepo,
+        /**
+         * Optional, mirroring `TasksService` and `TaskWriteService`: it exists
+         * only to hydrate the "deletion pending" badge, so a caller that has
+         * not wired it degrades to `false` rather than failing to construct.
+         */
+        private deleteRequestsRepo?: TaskDeleteRequestsRepo,
     ) {}
 
     async search(input: SearchInput): Promise<SearchResult> {
@@ -162,12 +169,21 @@ export class SearchService {
         if (taskRows.length > 0) {
             const ids = taskRows.map((row) => row.id);
             const redactGuest = input.role === Roles.GUEST;
-            const [assignees, watchers, tags, customFieldValues] =
+            const [assignees, watchers, tags, customFieldValues, pendingDeletes] =
                 await Promise.all([
                     this.tasksRepo.assigneesByTask(ids),
                     this.tasksRepo.watchersByTask(ids),
                     this.tasksRepo.tagsByTask(ids),
                     this.tasksRepo.customFieldValuesByTask(ids, redactGuest),
+                    // KI-35, decided in P6: search hydrates the flag like every
+                    // other task surface. No component renders the badge in the
+                    // results list TODAY, so nothing visible changes — but P4
+                    // found that a serializer default of `false` stops being an
+                    // "honest default" the moment one does, and search is a
+                    // primary way people reach a task. One batched, indexed
+                    // lookup over ids already in hand.
+                    this.deleteRequestsRepo?.pendingTaskIds(ids) ??
+                        Promise.resolve(new Set<string>()),
                 ]);
             tasks = taskRows.map((row) =>
                 toWireTask(row, {
@@ -175,6 +191,7 @@ export class SearchService {
                     watchers: watchers.get(row.id) ?? [],
                     tags: tags.get(row.id) ?? [],
                     customFieldValues: customFieldValues.get(row.id) ?? {},
+                    deleteRequestPending: pendingDeletes.has(row.id),
                 }),
             );
         }

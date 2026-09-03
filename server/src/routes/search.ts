@@ -7,6 +7,7 @@ import { SearchController } from "../controllers/SearchController";
 import { SearchService } from "../services/SearchService";
 import { SearchRepo } from "../repositories/SearchRepo";
 import { TasksRepo } from "../repositories/TasksRepo";
+import { TaskDeleteRequestsRepo } from "../repositories/TaskDeleteRequestsRepo";
 import { getDb } from "../db/client";
 import logger from "../config/logger";
 import authenticate from "../middlewares/authenticate";
@@ -18,11 +19,17 @@ const router = express.Router();
 
 // ─── DI wiring ───────────────────────────────────────────────────────────────
 // SearchRepo owns the five LIKE queries; TasksRepo is reused (read-only) for the
-// batched task hydration — neither is mutated.
+// batched task hydration — neither is mutated. TaskDeleteRequestsRepo supplies
+// the "deletion pending" flag (KI-35), the same way the List and My Work
+// surfaces get it.
 const db = getDb();
 const searchRepo = new SearchRepo(db);
 const tasksRepo = new TasksRepo(db);
-const searchService = new SearchService(searchRepo, tasksRepo);
+const searchService = new SearchService(
+    searchRepo,
+    tasksRepo,
+    new TaskDeleteRequestsRepo(db),
+);
 const searchController = new SearchController(searchService, logger);
 
 // ─── GET /api/v1/search ──────────────────────────────────────────────────────

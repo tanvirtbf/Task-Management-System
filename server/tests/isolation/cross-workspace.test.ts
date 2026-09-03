@@ -4,6 +4,7 @@ import {
     makeList,
     makeLoggedInClient,
     makeSpace,
+    makeSprint,
     makeStatus,
     makeTag,
     makeTask,
@@ -18,8 +19,13 @@ import {
     checklists,
     comments,
     customFields,
+    departmentReports,
+    formFields,
+    forms,
     notifications,
+    onCallShifts,
     roles,
+    tasks,
     taskAssignmentRequests,
     taskDeleteRequests,
     taskDependencies,
@@ -73,7 +79,7 @@ jest.setTimeout(60000);
  * second sweep — when a later phase adds routes; the completeness test reads
  * this list and will name anything left without a probe.
  */
-const PHASES_COVERED = ["P3", "P4", "P5"];
+const PHASES_COVERED = ["P3", "P4", "P5", "P6"];
 
 interface Foreign {
     workspaceId: string;
@@ -98,6 +104,11 @@ interface Foreign {
     commentId: string;
     checklistId: string;
     checklistItemId: string;
+    // ── P6: the read models and product surfaces ────────────────────────────
+    reportId: string;
+    formId: string;
+    formFieldId: string;
+    sprintId: string;
 }
 
 interface Probe {
@@ -115,6 +126,30 @@ interface Probe {
      */
     headers?: Record<string, string>;
 }
+
+/**
+ * Routes whose path parameter is not an identifier a neighbour owns, so "hold
+ * their id and expect a 404" is not a question that can be asked of them.
+ *
+ * Excluding is not the same as not testing: each is covered where the property
+ * actually lives, and the reason is written here rather than in someone's head.
+ */
+const NOT_AN_ID_PROBE = new Set([
+    // 🔓 PUBLIC by design. A published form is meant to be openable by anyone
+    // holding the link — that is the entire feature, and the slug is the
+    // capability. Answering 404 to another workspace's owner would break it
+    // for every customer too. What DOES matter is that submitting through it
+    // cannot reach across tenants, and that is asserted in the body direction
+    // below (`public submit lands in the form's OWN workspace`).
+    "GET /api/v1/public/forms/:slug",
+    "POST /api/v1/public/forms/:slug/submit",
+    // The parameter is a DATE (`2026-09-07`), identical in every workspace, so
+    // there is no foreign id to hold. The isolation question here is about the
+    // EFFECT, not the lookup — asserted in the body direction below
+    // (`writing my on-call week leaves the neighbour's untouched`).
+    "PUT /api/v1/on-call/:weekStart",
+    "DELETE /api/v1/on-call/:weekStart",
+]);
 
 /**
  * Endpoints that answer something other than 404 to a stranger's id, and why.
@@ -554,6 +589,136 @@ const PROBES: Probe[] = [
         route: "/api/v1/checklist-items/:id",
         url: (b) => `/api/v1/checklist-items/${b.checklistItemId}`,
     },
+
+    // ── P6: reports ─────────────────────────────────────────────────────────
+    {
+        method: "get",
+        route: "/api/v1/reports/:id",
+        url: (b) => `/api/v1/reports/${b.reportId}`,
+    },
+    {
+        method: "patch",
+        route: "/api/v1/reports/:id",
+        url: (b) => `/api/v1/reports/${b.reportId}`,
+        body: () => ({ head_note: "probe" }),
+    },
+    {
+        method: "post",
+        route: "/api/v1/reports/:id/ack",
+        url: (b) => `/api/v1/reports/${b.reportId}/ack`,
+    },
+
+    // ── P6: forms ───────────────────────────────────────────────────────────
+    {
+        method: "get",
+        route: "/api/v1/lists/:listId/forms",
+        url: (b) => `/api/v1/lists/${b.listId}/forms`,
+    },
+    {
+        method: "get",
+        route: "/api/v1/forms/:id",
+        url: (b) => `/api/v1/forms/${b.formId}`,
+    },
+    {
+        method: "patch",
+        route: "/api/v1/forms/:id",
+        url: (b) => `/api/v1/forms/${b.formId}`,
+        body: () => ({ title: "Probe" }),
+    },
+    {
+        method: "delete",
+        route: "/api/v1/forms/:id",
+        url: (b) => `/api/v1/forms/${b.formId}`,
+    },
+    {
+        method: "get",
+        route: "/api/v1/forms/:id/submissions",
+        url: (b) => `/api/v1/forms/${b.formId}/submissions`,
+    },
+    {
+        method: "post",
+        route: "/api/v1/forms/:id/fields",
+        url: (b) => `/api/v1/forms/${b.formId}/fields`,
+        body: () => ({
+            field_kind: "task_attr",
+            field_key: "name",
+            label: "Probe",
+        }),
+    },
+    {
+        method: "patch",
+        route: "/api/v1/forms/:id/fields/reorder",
+        url: (b) => `/api/v1/forms/${b.formId}/fields/reorder`,
+        body: (b) => ({ items: [{ id: b.formFieldId, position: 0 }] }),
+    },
+    {
+        method: "patch",
+        route: "/api/v1/form-fields/:id",
+        url: (b) => `/api/v1/form-fields/${b.formFieldId}`,
+        body: () => ({ label: "Probe" }),
+    },
+    {
+        method: "delete",
+        route: "/api/v1/form-fields/:id",
+        url: (b) => `/api/v1/form-fields/${b.formFieldId}`,
+    },
+
+    // ── P6: sprints ─────────────────────────────────────────────────────────
+    {
+        method: "get",
+        route: "/api/v1/sprints/:id",
+        url: (b) => `/api/v1/sprints/${b.sprintId}`,
+    },
+    {
+        method: "patch",
+        route: "/api/v1/sprints/:id",
+        url: (b) => `/api/v1/sprints/${b.sprintId}`,
+        body: () => ({ name: "Probe" }),
+    },
+    {
+        method: "delete",
+        route: "/api/v1/sprints/:id",
+        url: (b) => `/api/v1/sprints/${b.sprintId}`,
+    },
+    {
+        method: "post",
+        route: "/api/v1/sprints/:id/start",
+        url: (b) => `/api/v1/sprints/${b.sprintId}/start`,
+    },
+    {
+        method: "post",
+        route: "/api/v1/sprints/:id/close",
+        url: (b) => `/api/v1/sprints/${b.sprintId}/close`,
+    },
+    {
+        method: "get",
+        route: "/api/v1/sprints/:id/tasks",
+        url: (b) => `/api/v1/sprints/${b.sprintId}/tasks`,
+    },
+    {
+        method: "post",
+        route: "/api/v1/sprints/:id/tasks",
+        url: (b) => `/api/v1/sprints/${b.sprintId}/tasks`,
+        body: (b) => ({ task_ids: [b.taskId] }),
+    },
+    {
+        method: "delete",
+        route: "/api/v1/sprints/:id/tasks/:taskId",
+        url: (b) => `/api/v1/sprints/${b.sprintId}/tasks/${b.taskId}`,
+    },
+
+    // ── P6: engineering postmortems (the :id is an incident TASK) ───────────
+    {
+        method: "get",
+        route: "/api/v1/eng/incidents/:id/postmortem",
+        url: (b) => `/api/v1/eng/incidents/${b.taskId}/postmortem`,
+    },
+    {
+        method: "post",
+        route: "/api/v1/eng/incidents/:id/postmortem",
+        url: (b) => `/api/v1/eng/incidents/${b.taskId}/postmortem`,
+        body: () => ({ items: { "Timeline written": true } }),
+    },
 ];
 
 /** Workspace B — a neighbour with one of everything. */
@@ -702,6 +867,50 @@ const buildForeign = async (): Promise<Foreign> => {
         position: 0,
     });
 
+    // ── P6: the read models. A weekly report, a public form with a field,
+    // and a sprint — the four things P6's `:id` routes address.
+    const reportId = fakeId("rpt");
+    await db.insert(departmentReports).values({
+        id: reportId,
+        workspaceId: ws.id,
+        spaceId: space.id,
+        weekStart: "2026-08-24",
+        weekEnd: "2026-08-30",
+        headUserId: owner.id,
+        payload: { completed: 3 },
+        generatedBy: owner.id,
+        generatedAt: new Date(),
+    });
+
+    const formId = fakeId("frm");
+    await db.insert(forms).values({
+        id: formId,
+        listId: list.id,
+        title: "Neighbour intake",
+        isPublic: true,
+        publicSlug: `neighbour-${fakeId("s").slice(-8)}`,
+        createdBy: owner.id,
+    });
+    const formFieldId = fakeId("ffld");
+    await db.insert(formFields).values({
+        id: formFieldId,
+        formId,
+        fieldKind: "task_attr",
+        fieldKey: "name",
+        label: "Your name",
+        position: 0,
+    });
+
+    const sprintId = (
+        await makeSprint({
+            workspaceId: ws.id,
+            name: "Neighbour sprint 1",
+            startDate: "2026-08-24",
+            endDate: "2026-09-06",
+            status: "planned",
+        })
+    ).id;
+
     // `makeWorkspace` seeds the four system roles, which is what a real
     // deployment looks like — so B always has a role id to probe.
     const [role] = await db
@@ -732,6 +941,10 @@ const buildForeign = async (): Promise<Foreign> => {
         commentId,
         checklistId,
         checklistItemId,
+        reportId,
+        formId,
+        formFieldId,
+        sprintId,
     };
 };
 
@@ -811,14 +1024,16 @@ describe("Tenant isolation — a neighbour's ids are simply not there", () => {
         foreign = await buildForeign();
     });
 
-    it("has a probe for every P3 endpoint that takes an id", () => {
+    it("has a probe for every covered endpoint that takes an id", () => {
         // Read from the live route table rather than a copy, so adding a route
         // with an `:id` and no probe fails HERE, naming it — instead of the new
         // endpoint quietly never being asked the question.
         const needed = allEndpoints()
             .filter(
                 (e) =>
-                    PHASES_COVERED.includes(e.phase) && e.path.includes("/:"),
+                    PHASES_COVERED.includes(e.phase) &&
+                    e.path.includes("/:") &&
+                    !NOT_AN_ID_PROBE.has(`${e.method} ${e.path}`),
             )
             .map((e) => `${e.method} ${e.path}`);
         const covered = new Set(
@@ -1039,6 +1254,34 @@ describe("Tenant isolation — a neighbour's ids are simply not there", () => {
                         )
                         .send({ assignee_id: theirs.userId }),
             },
+
+            // ── P6 ──────────────────────────────────────────────────────────
+            {
+                label: "POST /sprints/:id/tasks pulling THEIR task into MY sprint",
+                expected: 404,
+                run: async (mine, theirs) => {
+                    const created = await client
+                        .post("/api/v1/sprints")
+                        .send({
+                            name: "My sprint",
+                            start_date: "2026-08-24",
+                            end_date: "2026-09-06",
+                        });
+                    expect(created.status).toBe(201);
+                    return client
+                        .post(`/api/v1/sprints/${created.body.id}/tasks`)
+                        .send({ task_ids: [theirs.taskId] });
+                },
+            },
+            {
+                label: "POST /forms into THEIR list",
+                expected: 404,
+                run: (mine, theirs) =>
+                    client.post("/api/v1/forms").send({
+                        list_id: theirs.listId,
+                        title: "Smuggled form",
+                    }),
+            },
         ];
 
         it.each(BODY_PROBES.map((p) => [p.label, p] as const))(
@@ -1055,6 +1298,70 @@ describe("Tenant isolation — a neighbour's ids are simply not there", () => {
                 expect(res.status).toBeGreaterThanOrEqual(400);
             },
         );
+
+        /**
+         * The two P6 routes the URL sweep cannot ask about, asked properly.
+         *
+         * Neither takes an id a neighbour owns — one is deliberately public,
+         * the other is keyed by a calendar date every workspace shares — so
+         * the question is not "is it refused?" but "does it stay inside its own
+         * tenant?". See `NOT_AN_ID_PROBE` for why they are excluded above.
+         */
+        it("writing MY on-call week leaves the neighbour's week untouched", async () => {
+            const week = "2026-08-24";
+            const theirEngineer = foreign.userId;
+
+            const before = await getDb()
+                .select({ id: onCallShifts.id })
+                .from(onCallShifts)
+                .where(eq(onCallShifts.workspaceId, foreign.workspaceId));
+
+            const mineWrite = await client
+                .put(`/api/v1/on-call/${week}`)
+                .send({ engineer_id: mine.userId });
+            expect(mineWrite.status).toBeLessThan(300);
+
+            // Their engineer cannot be named from my workspace…
+            const theirs = await client
+                .put(`/api/v1/on-call/${week}`)
+                .send({ engineer_id: theirEngineer });
+            expect(theirs.status).toBeGreaterThanOrEqual(400);
+
+            // …and their schedule for that same week is exactly as it was.
+            const after = await getDb()
+                .select({ id: onCallShifts.id })
+                .from(onCallShifts)
+                .where(eq(onCallShifts.workspaceId, foreign.workspaceId));
+            expect(after).toEqual(before);
+        });
+
+        it("a public submit lands in the FORM's workspace, never the caller's", async () => {
+            // The slug is a capability: anyone holding it may submit, including
+            // somebody signed into another workspace. What must hold is that the
+            // resulting task belongs to the form's tenant.
+            const [form] = await getDb()
+                .select({ slug: forms.publicSlug })
+                .from(forms)
+                .where(eq(forms.id, foreign.formId));
+
+            const res = await client
+                .post(`/api/v1/public/forms/${form.slug}/submit`)
+                .send({ data: { name: "Outsider" } });
+
+            // Whether it succeeds is the form's own business (it may lack a
+            // default task type); what matters is that nothing landed in MY
+            // workspace.
+            if (res.status === 201) {
+                const [task] = await getDb()
+                    .select({ workspaceId: tasks.workspaceId })
+                    .from(tasks)
+                    .where(eq(tasks.id, res.body.task_id));
+                expect(task.workspaceId).toBe(foreign.workspaceId);
+                expect(task.workspaceId).not.toBe(mine.workspaceId);
+            } else {
+                expect(res.status).toBeGreaterThanOrEqual(400);
+            }
+        });
     });
 
     it.each(PROBES.map((p) => [`${p.method.toUpperCase()} ${p.route}`, p] as const))(

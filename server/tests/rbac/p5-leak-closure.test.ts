@@ -3,7 +3,7 @@ import { getDb } from "../../src/db/client";
 import * as schema from "../../src/db/schema";
 import { resetPolicy } from "../../src/rbac/policy";
 import { fakeId } from "../../src/utils";
-import { makeSprint, makeTask } from "../test-utils/factories";
+import { makeSprint, makeTask, makeTaskType } from "../test-utils/factories";
 import {
     makeRbacList,
     makeRbacSpace,
@@ -263,5 +263,122 @@ describe("P5 — a narrow-scoped user cannot reach the other team through ANY si
                 );
         expect(await notifsFor(outsider.id)).toHaveLength(0); // leak closed
         expect(await notifsFor(teammate.id)).toHaveLength(1); // still works
+    });
+
+    /**
+     * KI-14, opened by the 2026-07-29 scan and carried through three of them.
+     *
+     * `/eng/home` counts open bugs and incidents with a query that filters on
+     * workspace and task type and nothing else, while the PREVIEW ids beside
+     * the count are hydrated through a scoped read. So a narrow-scoped user
+     * got the whole workspace's number next to an empty list — the count is
+     * the leak, and the disagreement is how you notice it.
+     */
+    describe("KI-14 — /eng/home counts only what the caller can see", () => {
+        const engHome = "/api/v1/eng/home";
+
+        const seedBugs = async () => {
+            const s = await seed();
+            const bugType = await makeTaskType({
+                workspaceId: s.ws.id,
+                name: "Bug",
+            });
+            const incidentType = await makeTaskType({
+                workspaceId: s.ws.id,
+                name: "Incident",
+            });
+            const mine = await makeTask({
+                workspaceId: s.ws.id,
+                listId: s.listA,
+                createdBy: s.admin.id,
+                taskTypeId: bugType.id,
+                name: "My team's bug",
+            });
+            const theirs = await makeTask({
+                workspaceId: s.ws.id,
+                listId: s.listB,
+                createdBy: s.admin.id,
+                taskTypeId: bugType.id,
+                name: "Other team's bug",
+            });
+            const theirIncident = await makeTask({
+                workspaceId: s.ws.id,
+                listId: s.listB,
+                createdBy: s.admin.id,
+                taskTypeId: incidentType.id,
+                name: "Other team's incident",
+            });
+            return { ...s, mine, theirs, theirIncident };
+        };
+
+        it("does not count another team's open bugs", async () => {
+            const { viewer, mine, theirs } = await seedBugs();
+
+            const res = await viewer.client.get(engHome);
+
+            expect(res.status).toBe(200);
+            expect(res.body.open_bugs.count).toBe(1);
+            const ids = res.body.open_bugs.top.map((t: { id: string }) => t.id);
+            expect(ids).toContain(mine.id);
+            expect(ids).not.toContain(theirs.id);
+        });
+
+        it("the count AGREES with the preview it sits next to", async () => {
+            const { viewer } = await seedBugs();
+
+            const res = await viewer.client.get(engHome);
+
+            // The whole tile is one claim. A count of 2 over an empty list is
+            // what this bug looked like from the browser.
+            expect(res.body.open_bugs.count).toBe(res.body.open_bugs.top.length);
+            expect(res.body.open_incidents.count).toBe(
+                res.body.open_incidents.top.length,
+            );
+        });
+
+        it("does not count another team's open incidents", async () => {
+            const { viewer } = await seedBugs();
+
+            const res = await viewer.client.get(engHome);
+
+            expect(res.body.open_incidents.count).toBe(0);
+            expect(res.body.open_incidents.top).toEqual([]);
+        });
+
+        it("an unrestricted admin still sees the whole workspace", async () => {
+            const { admin, mine, theirs } = await seedBugs();
+
+            const res = await admin.client.get(engHome);
+
+            expect(res.status).toBe(200);
+            expect(res.body.open_bugs.count).toBe(2);
+            const ids = res.body.open_bugs.top.map((t: { id: string }) => t.id);
+            expect(ids).toEqual(expect.arrayContaining([mine.id, theirs.id]));
+            expect(res.body.open_incidents.count).toBe(1);
+        });
+
+        it("stale_tickets shows MY stale ticket even when the other team has more", async () => {
+            const s = await seedBugs();
+            const old = new Date(Date.now() - 30 * 24 * 3600 * 1000);
+            // Their team's are older, so a limit applied BEFORE scoping would
+            // spend the whole budget on rows the caller cannot see and hand
+            // back an empty list.
+            for (const t of [s.theirs, s.theirIncident]) {
+                await db()
+                    .update(schema.tasks)
+                    .set({ updatedAt: old })
+                    .where(eq(schema.tasks.id, t.id));
+            }
+            await db()
+                .update(schema.tasks)
+                .set({ updatedAt: new Date(Date.now() - 20 * 24 * 3600 * 1000) })
+                .where(eq(schema.tasks.id, s.mine.id));
+
+            const res = await s.viewer.client.get(engHome);
+
+            const ids = res.body.stale_tickets.map((t: { id: string }) => t.id);
+            expect(ids).toContain(s.mine.id);
+            expect(ids).not.toContain(s.theirs.id);
+        });
     });
 });

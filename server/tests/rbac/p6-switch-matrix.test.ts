@@ -158,10 +158,20 @@ describe("P6 — the switch, in the production shape", () => {
         expect(kpis.body.openTeamTasks.value).toBe(2);
 
         // Search cannot surface the other team.
+        //
+        // This used to assert only that the endpoint answered 200, which is
+        // true of a search that leaks everything. Ask it by NAME — an id
+        // prefix is not what a person types — and check both directions, so
+        // the test cannot pass because search is simply returning nothing.
         const found = await s.mktMember.client.get(
-            `/api/v1/search?q=${encodeURIComponent(s.engTask.id.slice(0, 8))}`,
+            `/api/v1/search?q=${encodeURIComponent("Task")}&types=task`,
         );
         expect(found.status).toBe(200);
+        const ids = (found.body.tasks as { id: string }[]).map((t) => t.id);
+        expect(ids).toEqual(
+            expect.arrayContaining([s.mktTask1.id, s.mktTask2.id]),
+        );
+        expect(ids).not.toContain(s.engTask.id);
     });
 
     it("the head sees their whole department and its review surface", async () => {

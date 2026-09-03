@@ -164,7 +164,18 @@ export const makeLoggedInClient = async (user: {
     };
 
     // Persist a real session row and bind the refresh token's `id` claim to it.
-    const tempRefresh = tokens.generateRefreshToken({ ...payload, id: "pending" });
+    //
+    // The placeholder is a fresh id per call, not the literal "pending": the
+    // temp token is a JWT over these claims plus a one-second `iat`, so signing
+    // the same user twice inside one second produced the SAME token, and
+    // `sessions.uq_sessions_token_hash` rejected the second sign-in. Two tests
+    // have now lost a run to that — one modelling a person with two browser
+    // tabs, one just toggling a setting as another user — and the failure reads
+    // as a duplicate-key error with nothing to connect it to logging in twice.
+    const tempRefresh = tokens.generateRefreshToken({
+        ...payload,
+        id: fakeId("pending"),
+    });
     const session = await tokens.persistSession({
         userId: user.id,
         refreshToken: tempRefresh,
