@@ -28,7 +28,12 @@ jspm_packages/
 .eslintcache
 
 # Build output
-dist
+# `dist` is DELIBERATELY tracked — see the root .gitignore. The production box
+# cannot build (~560MB free, five other apps), so pm2 runs `server/dist` straight
+# from the working tree. Ignoring it here while it is tracked means a build that
+# adds a NEW file has that file silently skipped by `git add`, and the deploy gets
+# a half-updated bundle. tsc happens to overwrite in place today; that is luck,
+# not a guarantee.
 build
 
 # Environment files

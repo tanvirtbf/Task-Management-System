@@ -8,6 +8,7 @@ const HomeController_1 = require("../controllers/HomeController");
 const HomeService_1 = require("../services/HomeService");
 const HomeRepo_1 = require("../repositories/HomeRepo");
 const TasksRepo_1 = require("../repositories/TasksRepo");
+const TaskDeleteRequestsRepo_1 = require("../repositories/TaskDeleteRequestsRepo");
 const WorkspaceRepo_1 = require("../repositories/WorkspaceRepo");
 const client_1 = require("../db/client");
 const logger_1 = __importDefault(require("../config/logger"));
@@ -21,7 +22,7 @@ const router = express_1.default.Router();
 const db = (0, client_1.getDb)();
 const homeRepo = new HomeRepo_1.HomeRepo(db);
 const tasksRepo = new TasksRepo_1.TasksRepo(db);
-const homeService = new HomeService_1.HomeService(homeRepo, tasksRepo, new WorkspaceRepo_1.WorkspaceRepo(db));
+const homeService = new HomeService_1.HomeService(homeRepo, tasksRepo, new WorkspaceRepo_1.WorkspaceRepo(db), new TaskDeleteRequestsRepo_1.TaskDeleteRequestsRepo(db));
 const homeController = new HomeController_1.HomeController(homeService, logger_1.default);
 // ─── GET /api/v1/home/kpis ───────────────────────────────────────────────────
 // 🔐 any authenticated member. The 6 home KPI tiles, scoped to the caller's

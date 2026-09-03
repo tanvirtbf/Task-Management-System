@@ -1,11 +1,17 @@
-# Deploy prompt — paste this to Claude on the production server (2026-08-29)
+# Deploy prompt — production server (written 2026-08-29, refreshed 2026-09-03)
 
-Copy everything between the lines below and paste it to the Claude session running on the
-DigitalOcean box (209.38.65.61).
+Run these steps on the DigitalOcean box (209.38.65.61) — either by hand, or by pasting the
+part below the line to a Claude session there.
 
 > Replaces `DEPLOY_PROMPT_2026-08-19.md`, which was written before upgrade `025` existed
 > and would have restarted the API against a DB without `tasks.assigned_by` — every task
 > read 500s, and its own canary check could not have caught it. That file is deleted.
+>
+> **Refreshed 2026-09-03** for the test-plan work P0–P6:
+> - new build ⇒ **new canary hash** (`index-RU3OSsKx.js`);
+> - **step 4's canary was broken and is rewritten** — it curled `/api/v1/tasks`, a route
+>   that does not exist, so it answered `404` on a healthy API *and* would have answered
+>   `404` with the upgrades missing. It never touched the database. See step 4b.
 
 ---
 
@@ -19,7 +25,7 @@ improvising.
 - App repo: `/var/www/html/tasks-beautybooth`, branch `main`.
 - **Target: the tip of `origin/main`.** Confirm it matches the SHA you were given in the
   handover message. The build in it is identified by its entry bundle —
-  `client/dist/index.html` must reference **`assets/index-BsaNyQ79.js`**. That hash is the
+  `client/dist/index.html` must reference **`assets/index-RU3OSsKx.js`**. That hash is the
   reliable canary: it changes with every rebuild, so if it is present, the artifacts are
   the intended ones.
 - This box has ~560MB free RAM and runs 5 other live apps. **NEVER run `npm run build`,
@@ -150,7 +156,7 @@ git pull --ff-only origin main
 git log --oneline -1                                  # matches the handover SHA
 ls -la server/dist/server.js client/dist/index.html    # artifacts present
 grep -o 'assets/index-[^"]*\.js' client/dist/index.html | head -1
-                                                      # MUST be assets/index-BsaNyQ79.js
+                                                      # MUST be assets/index-RU3OSsKx.js
 ```
 
 ## Step 4 — restart the API
@@ -162,11 +168,53 @@ pm2 logs bbtasks-api --lines 30 --nostream
 #         "Listening on port 5501" · no errors
 curl -s http://127.0.0.1:5501/health          # {"status":"ok",...}
 curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:5501/health/ready   # 200
-curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:5501/api/v1/tasks   # 401
 ```
-That last check is the canary: **401 (unauthorized) is correct; a 500 means the DB
-upgrades did not actually apply** — stop, re-verify step 2 (including `025` this time),
-and only roll back (step 7) if it cannot be resolved.
+
+### Step 4b — the canary that actually reads a task
+
+> **This replaces the old check, which was broken.** The previous prompt said to
+> `curl /api/v1/tasks` and expect `401`. **That route does not exist** — it answers `404`
+> on a perfectly healthy API (tasks are read through `/lists/:id/tasks`, `/tasks/my-work`
+> and `/tasks/:id`). Worse, a `404` comes from the router *before any database access*, so
+> if `025` had not applied, the check would still have said `404` and the deploy would have
+> been declared good while every task read in the app 500s. **The one check meant to catch
+> the catastrophic ordering mistake could not catch it.** Verified against a running API on
+> 2026-09-03.
+
+An unauthenticated request can never prove the DB is right — every protected route answers
+`401` before it touches a row. So log in as a real account and read tasks:
+
+```bash
+# Use a real account you can log in as. The password is not echoed.
+read -r -p "email: " EMAIL
+read -r -s -p "password: " PW; echo
+
+TOKEN=$(curl -s -X POST http://127.0.0.1:5501/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d "{\"email\":\"$EMAIL\",\"password\":\"$PW\"}" \
+  | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+[ -n "$TOKEN" ] && echo "logged in" || echo "LOGIN FAILED — stop here"
+
+curl -s -o /dev/null -w "my-work  = %{http_code}\n" \
+  -H "Authorization: Bearer $TOKEN" http://127.0.0.1:5501/api/v1/tasks/my-work
+curl -s -o /dev/null -w "kpis     = %{http_code}\n" \
+  -H "Authorization: Bearer $TOKEN" http://127.0.0.1:5501/api/v1/home/kpis
+
+# And prove the new columns are actually being served:
+curl -s -H "Authorization: Bearer $TOKEN" \
+  http://127.0.0.1:5501/api/v1/tasks/my-work | grep -c assigned_by
+```
+
+- `my-work` and `kpis` must both be **200**. A **500** means the DB upgrades did not
+  actually apply — stop, re-verify step 2 (including `025`), and only roll back (step 7)
+  if it cannot be resolved.
+- The last command must print a number **greater than 0** — that is `025`'s column arriving
+  in a real response, which is the thing this whole ordering rule exists to protect.
+- If the workspace genuinely has no tasks for that user, `my-work` returns `200` with empty
+  buckets and the `grep -c` prints `0`. In that case use an account that has tasks, or read
+  one list instead: `curl -H "Authorization: Bearer $TOKEN" .../api/v1/lists/<id>/tasks`.
+
+Then clear the token from your shell: `unset TOKEN PW`.
 
 ## Step 5 — cron (the recurrence job)
 
@@ -185,7 +233,7 @@ deploy/cron/run-job.sh recurrence-spawn --dry-run   # expect ok:true JSON
 ```bash
 curl -s -o /dev/null -w "%{http_code}\n" https://tasks.beautybooth.com.bd   # 200
 curl -s https://tasks.beautybooth.com.bd | grep -o 'assets/index-[^"]*\.js' | head -2
-# must include index-BsaNyQ79.js — if it still shows the old hash, the browser or a
+# must include index-RU3OSsKx.js — if it still shows the old hash, the browser or a
 # cache is serving a stale index.html; check nginx is pointed at client/dist
 ```
 
@@ -225,7 +273,26 @@ at all possible.
 
 ## What this deploy ships
 
-Everything from the 08-19 prompt that was never applied, plus two large pieces since:
+**Added 2026-09-03 — the bug fixes from the test plan (P0–P6).** These are the ones a
+person would notice; every one is covered by a regression test and the full gate is green
+(37 modules, 5,739 tests, 0 failures):
+
+- **`/eng/home` stopped leaking Engineering's open-bug count to every team.** The tile
+  counted the whole workspace while the preview beside it was correctly scoped, so a
+  Marketing or CS user saw a number they had no business seeing — and a count of 2 sitting
+  over a list of 1. The stale-tickets bucket had the same flaw and could hand a team an
+  empty list while their own stale work sat there.
+- **`PATCH /tasks/:id` no longer accepts an assignment and silently throws it away.** It
+  answered `200` while dropping the assignees on the floor; this shipped once already as
+  the list-row assignee editor that "never worked".
+- **The "queued for permanent deletion" badge now appears on Home and in search**, not only
+  in the List and Board views. The same task used to warn you in one place and say nothing
+  in another.
+- **"Report a bug" reaches someone again** — S0/S1 go to on-call, everything else to the
+  Engineering space head, and the API warns when neither exists.
+- **A stale or deleted sprint board says so** instead of rendering as "no tasks".
+
+Then everything from the 08-19 prompt that was never applied, plus two large pieces since:
 
 - **Permanent-delete admin approval** (needs `023`).
 - **Task recurrence that actually recurs** (needs `024` + the new cron line).

@@ -36,10 +36,18 @@ class HomeService {
     homeRepo;
     tasksRepo;
     workspaceRepo;
-    constructor(homeRepo, tasksRepo, workspaceRepo) {
+    deleteRequests;
+    constructor(homeRepo, tasksRepo, workspaceRepo, 
+    /**
+     * Optional, mirroring `TasksService`: the delete-request repo only
+     * exists to hydrate the "deletion pending" badge, and a caller that has
+     * not wired it should degrade to `false` rather than fail to construct.
+     */
+    deleteRequests) {
         this.homeRepo = homeRepo;
         this.tasksRepo = tasksRepo;
         this.workspaceRepo = workspaceRepo;
+        this.deleteRequests = deleteRequests;
     }
     /** The workspace's IANA zone, with the Dhaka business default as fallback. */
     async zoneOf(workspaceId) {
@@ -120,17 +128,27 @@ class HomeService {
             return [];
         const ids = rows.map((row) => row.id);
         const redactGuest = role === constants_1.Roles.GUEST;
-        const [assignees, watchers, tags, customFieldValues] = await Promise.all([
+        const [assignees, watchers, tags, customFieldValues, pendingDeletes] = await Promise.all([
             this.tasksRepo.assigneesByTask(ids),
             this.tasksRepo.watchersByTask(ids),
             this.tasksRepo.tagsByTask(ids),
             this.tasksRepo.customFieldValuesByTask(ids, redactGuest),
+            // P4: My Work renders the "deletion pending" badge from this
+            // flag, exactly as the List and Board views do — and this
+            // surface was not looking it up, so it defaulted to false. The
+            // same task warned you it was about to be destroyed in one
+            // place and said nothing on the Home page, which is where most
+            // people look first. One batched, indexed lookup over the ids
+            // already in hand; `listByList` has always done the same.
+            this.deleteRequests?.pendingTaskIds(ids) ??
+                Promise.resolve(new Set()),
         ]);
         return rows.map((row) => (0, taskSerializer_1.toWireTask)(row, {
             assignees: assignees.get(row.id) ?? [],
             watchers: watchers.get(row.id) ?? [],
             tags: tags.get(row.id) ?? [],
             customFieldValues: customFieldValues.get(row.id) ?? {},
+            deleteRequestPending: pendingDeletes.has(row.id),
         }));
     }
 }

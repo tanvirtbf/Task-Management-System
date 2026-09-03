@@ -22,6 +22,13 @@ const config_1 = require("../config");
  */
 class MailService {
     logger;
+    /**
+     * Parameterised on purpose. `Transporter<T = any>` defaults its result type
+     * to `any`, so a bare `Transporter` makes `sendMail()` return `any` and
+     * every field read off the result — `info.messageId` in the log below —
+     * completely unchecked. Naming the SMTP result type is what that default
+     * was quietly hiding.
+     */
     transporter;
     from;
     /** The bare envelope address, for messages that override the display name. */

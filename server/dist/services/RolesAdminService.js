@@ -264,6 +264,21 @@ class RolesAdminService {
         return this.assignments.listBySpace(spaceId, workspaceId);
     }
     async assignmentsForUser(workspaceId, userId) {
+        // Resolve the user first, exactly as `assign()` does for the POST on
+        // this same URL. Without it the query is still workspace-scoped — so no
+        // foreign data is returned — but a user from another workspace, or one
+        // that does not exist at all, answers `200 {data: []}` instead of 404.
+        //
+        // That is the same answer as "a real colleague of yours who holds no
+        // roles", which makes the response unreadable at the call site: the
+        // roles panel cannot tell "this person has nothing assigned" from "this
+        // id is not yours", and shows the reassuring one. Every sibling
+        // endpoint on `/users/:id` answers 404 here; this was the exception,
+        // found by the P3 tenant-isolation sweep.
+        const user = await this.users.findByIdInWorkspace(userId, workspaceId);
+        if (!user) {
+            throw errors_1.AppError.notFound("user.not_found", "User not found");
+        }
         return this.assignments.listForUser(userId, workspaceId);
     }
     /** Re-sync the legacy mirror after any assignment write (used by tests). */

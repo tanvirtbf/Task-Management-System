@@ -48,13 +48,14 @@ Most pages have a fixed web address, so you can link straight to them. When you 
 - [Home](/) — the dashboard you land on after signing in: how many tasks are assigned to you, how many are due today, overdue, and awaiting your review, plus today's agenda
 - [Inbox](/inbox) — your notifications
 - [Search](/search) — search everything
+- [Spaces](/spaces) — your Spaces and their Lists. On a phone there is no Sidebar, so this is the way in to a List.
 - [Department](/dept) — review team work (Owners/Admins/Heads)
 - [Reports](/reports) — weekly reports (Owners/Admins/Heads)
 - [Forms](/forms) — build intake forms
 - [SLA breaches](/sla) — what is past its SLA deadline right now
 - [Engineering](/eng) · [Sprint board](/eng/sprint) · [On-call rotation](/eng/on-call)
 - [Settings](/settings) — and inside it: [Profile](/settings/profile) · [Workspace](/settings/workspace) · [Members](/settings/members) · [Teams](/settings/teams) · [Roles & permissions](/settings/roles) · [Task types](/settings/task-types) · [Tags](/settings/tags) · [Statuses](/settings/statuses) · [Custom fields](/settings/custom-fields) · [Templates](/settings/templates) · [Import / Export](/settings/import-export)
-- Spaces, Lists and tasks DO each have their own address, but it contains an internal id that you cannot know — so **never write a link to a Space, List or task**. Tell the person to open it from the **Sidebar** Space tree instead (a task opens in a drawer on the right).
+- Spaces, Lists and tasks DO each have their own address, but it contains an internal id that you cannot know — so **never write a link to a Space, List or task**. Send the person to [Spaces](/spaces) to pick it — that works on any device — or to the **Sidebar** Space tree on a desktop (a task opens in a drawer on the right).
 
 ## Getting started
 Everyone lands on [Home](/) after signing in; it shows what is assigned to them. Setting up new structure (Owner/Admin): Sidebar **+** (or Workspace menu → New Space) creates a **Space**; open the Space and **+** adds a **List**, which automatically gets the 5 default statuses **To Do, In Progress, In Review, Done, Closed**; then add tasks to the List.

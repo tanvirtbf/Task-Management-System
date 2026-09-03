@@ -298,13 +298,20 @@ class TaskWriteService {
     wsActivity;
     reads;
     logger;
+    deleteRequestsRepo;
     constructor(db, lists, statuses, taskTypes, tasks, membership, users, tags, activity, notifications, attachmentsRepo, workspaces, 
     /**
      * Team-access P3: the hard-delete trail. `task_activity` rows die in
      * the FK cascade with their task, so the deletion event has to live
      * in the workspace-level log (entity_type 'task', upgrades/017).
      */
-    wsActivity, reads, logger) {
+    wsActivity, reads, logger, 
+    /**
+     * Optional, mirroring `TasksService`: it exists only to hydrate the
+     * "deletion pending" badge, so a caller that has not wired it degrades
+     * to `false` rather than failing to construct.
+     */
+    deleteRequestsRepo) {
         this.db = db;
         this.lists = lists;
         this.statuses = statuses;
@@ -320,6 +327,7 @@ class TaskWriteService {
         this.wsActivity = wsActivity;
         this.reads = reads;
         this.logger = logger;
+        this.deleteRequestsRepo = deleteRequestsRepo;
     }
     /**
      * The workspace's business calendar for `computeSlaDueAt` (F28 / D12.2), or
@@ -1213,17 +1221,28 @@ class TaskWriteService {
         const rows = await this.tasks.myWorkRows(input.userId, input.workspaceId);
         const ids = rows.map((r) => r.task.id);
         const redactGuest = input.role === constants_1.Roles.GUEST;
-        const [assignees, watchers, tags, customFieldValues] = await Promise.all([
+        const [assignees, watchers, tags, customFieldValues, pendingDeletes] = await Promise.all([
             this.tasks.assigneesByTask(ids),
             this.tasks.watchersByTask(ids),
             this.tasks.tagsByTask(ids),
             this.tasks.customFieldValuesByTask(ids, redactGuest),
+            // P4 (D4.3): My Work renders the "deletion pending" badge from
+            // this flag — `TaskRow` does, exactly as `ListViewRow` and
+            // `BoardCard` do. This surface was not looking it up, so it
+            // defaulted to `false`, and the same task warned you it was
+            // about to be permanently deleted in the List view while saying
+            // nothing on the Home page. One batched, indexed lookup over
+            // ids already in hand; `TasksService.listByList` has always
+            // done the same.
+            this.deleteRequestsRepo?.pendingTaskIds(ids) ??
+                Promise.resolve(new Set()),
         ]);
         const wire = (t) => (0, taskSerializer_1.toWireTask)(t, {
             assignees: assignees.get(t.id) ?? [],
             watchers: watchers.get(t.id) ?? [],
             tags: tags.get(t.id) ?? [],
             customFieldValues: customFieldValues.get(t.id) ?? {},
+            deleteRequestPending: pendingDeletes.has(t.id),
         });
         // "Today" is a BUSINESS day, not the box's day: these buckets decide what
         // the workspace calls overdue. F5 (ISS-058): the zone now comes from

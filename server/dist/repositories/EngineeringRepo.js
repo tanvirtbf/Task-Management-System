@@ -4,6 +4,8 @@ exports.EngineeringRepo = void 0;
 const drizzle_orm_1 = require("drizzle-orm");
 const schema_1 = require("../db/schema");
 const dhakaTime_1 = require("../utils/dhakaTime");
+const context_1 = require("../rbac/context");
+const ownEscape_1 = require("../rbac/ownEscape");
 /** Status groups that count as "closed work" — excluded from the open rollups. */
 const DONE_GROUPS = ["done", "closed"];
 /** A ticket untouched for this many days counts as stale on the Eng Home. */
@@ -116,12 +118,20 @@ class EngineeringRepo {
         return rows[0] ?? null;
     }
     /**
-     * Total + the newest `topLimit` ids of OPEN tasks of one type in the
-     * workspace (open = status_group ∉ done/closed, not archived). Reused for the
+     * Total + the newest `topLimit` ids of OPEN tasks of one type the CALLER
+     * CAN SEE (open = status_group ∉ done/closed, not archived). Reused for the
      * open-bugs and open-incidents tiles.
+     *
+     * KI-14: this used to filter on workspace and type alone, while the preview
+     * ids beside the count were hydrated through a scoped read. A user clamped
+     * to one team therefore got the whole workspace's number next to a list
+     * that excluded most of it — the count was a leak of Engineering's open-bug
+     * volume to every team, and the count/preview disagreement was how it
+     * showed. The visibility predicate is now the same one the hydrator applies,
+     * so the tile is a single consistent claim.
      */
     async openCountAndTopByType(workspaceId, taskTypeId, topLimit) {
-        const where = (0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId), (0, drizzle_orm_1.eq)(schema_1.tasks.taskTypeId, taskTypeId), (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt), (0, drizzle_orm_1.notInArray)(schema_1.statuses.statusGroup, [...DONE_GROUPS]));
+        const where = (0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId), (0, drizzle_orm_1.eq)(schema_1.tasks.taskTypeId, taskTypeId), (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt), (0, drizzle_orm_1.notInArray)(schema_1.statuses.statusGroup, [...DONE_GROUPS]), await (0, context_1.listScopeFilter)(schema_1.tasks.primaryListId, await (0, ownEscape_1.taskOwnEscape)()));
         const [c] = await this.db
             .select({ value: (0, drizzle_orm_1.count)() })
             .from(schema_1.tasks)
@@ -175,7 +185,13 @@ class EngineeringRepo {
             .select({ id: schema_1.tasks.id })
             .from(schema_1.tasks)
             .innerJoin(schema_1.statuses, (0, drizzle_orm_1.eq)(schema_1.statuses.id, schema_1.tasks.statusId))
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId), (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt), (0, drizzle_orm_1.notInArray)(schema_1.statuses.statusGroup, [...DONE_GROUPS]), (0, drizzle_orm_1.sql) `${schema_1.tasks.updatedAt} < (NOW() - INTERVAL ${drizzle_orm_1.sql.raw(String(STALE_DAYS))} DAY)`))
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId), (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt), (0, drizzle_orm_1.notInArray)(schema_1.statuses.statusGroup, [...DONE_GROUPS]), (0, drizzle_orm_1.sql) `${schema_1.tasks.updatedAt} < (NOW() - INTERVAL ${drizzle_orm_1.sql.raw(String(STALE_DAYS))} DAY)`, 
+        // Same predicate as the hydrator (KI-14's family). Invisible
+        // rows were already dropped downstream, but the LIMIT was
+        // spent on them first — oldest-first, so another team's
+        // ancient tickets could push the caller's own out of a
+        // bucket that then looked empty.
+        await (0, context_1.listScopeFilter)(schema_1.tasks.primaryListId, await (0, ownEscape_1.taskOwnEscape)())))
             .orderBy((0, drizzle_orm_1.asc)(schema_1.tasks.updatedAt))
             .limit(limit);
         return rows.map((r) => r.id);

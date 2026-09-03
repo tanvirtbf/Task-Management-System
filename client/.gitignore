@@ -8,7 +8,10 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-dist
+# `dist` is DELIBERATELY tracked — see the root .gitignore. The production box
+# cannot build, so the bundle ships in git. Ignoring it here while it is tracked
+# is what let a rebuild stage the new index.html and the deleted old assets
+# without the new ones.
 dist-ssr
 *.local
 

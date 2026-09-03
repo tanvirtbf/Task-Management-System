@@ -49,9 +49,22 @@ router.get("/sprints/active", authenticate_1.default, (req, res, next) => contro
 router.get("/sprints/:id", authenticate_1.default, sprints_1.sprintIdParamValidator, validate_1.validate, (req, res, next) => controller.getById(req, res, next));
 // GET /api/v1/sprints/:id/tasks (🔐) — the sprint's tasks across ALL lists
 // (a sprint spans lists). Bare hydrated WireTask[]; empty array if none.
+//
+// P6: this used to go straight to the task query, which is workspace-scoped —
+// so no data ever crossed a tenant, but a sprint id from ANOTHER workspace (or
+// one that never existed, or one just deleted) answered `200 []` while its
+// sibling `GET /sprints/:id` answered 404. "This sprint has no tasks" and "there
+// is no such sprint" are different sentences, and a board rendering the first
+// for the second is the same class of quiet lie as returning success for a
+// write that did not happen. Resolving the sprint first makes the two routes
+// agree, and reuses `getById`'s own 404 rather than inventing a second one.
 router.get("/sprints/:id/tasks", authenticate_1.default, sprints_1.sprintIdParamValidator, validate_1.validate, async (req, res, next) => {
     try {
         const r = req;
+        await service.getById({
+            id: r.params.id,
+            workspaceId: r.auth.workspaceId,
+        });
         const data = await tasksReadService.listBySprint({
             sprintId: r.params.id,
             workspaceId: r.auth.workspaceId,

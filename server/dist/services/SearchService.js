@@ -83,9 +83,17 @@ const toWireComment = (c) => ({
 class SearchService {
     searchRepo;
     tasksRepo;
-    constructor(searchRepo, tasksRepo) {
+    deleteRequestsRepo;
+    constructor(searchRepo, tasksRepo, 
+    /**
+     * Optional, mirroring `TasksService` and `TaskWriteService`: it exists
+     * only to hydrate the "deletion pending" badge, so a caller that has
+     * not wired it degrades to `false` rather than failing to construct.
+     */
+    deleteRequestsRepo) {
         this.searchRepo = searchRepo;
         this.tasksRepo = tasksRepo;
+        this.deleteRequestsRepo = deleteRequestsRepo;
     }
     async search(input) {
         const q = input.q.trim();
@@ -126,17 +134,27 @@ class SearchService {
         if (taskRows.length > 0) {
             const ids = taskRows.map((row) => row.id);
             const redactGuest = input.role === constants_1.Roles.GUEST;
-            const [assignees, watchers, tags, customFieldValues] = await Promise.all([
+            const [assignees, watchers, tags, customFieldValues, pendingDeletes] = await Promise.all([
                 this.tasksRepo.assigneesByTask(ids),
                 this.tasksRepo.watchersByTask(ids),
                 this.tasksRepo.tagsByTask(ids),
                 this.tasksRepo.customFieldValuesByTask(ids, redactGuest),
+                // KI-35, decided in P6: search hydrates the flag like every
+                // other task surface. No component renders the badge in the
+                // results list TODAY, so nothing visible changes — but P4
+                // found that a serializer default of `false` stops being an
+                // "honest default" the moment one does, and search is a
+                // primary way people reach a task. One batched, indexed
+                // lookup over ids already in hand.
+                this.deleteRequestsRepo?.pendingTaskIds(ids) ??
+                    Promise.resolve(new Set()),
             ]);
             tasks = taskRows.map((row) => (0, taskSerializer_1.toWireTask)(row, {
                 assignees: assignees.get(row.id) ?? [],
                 watchers: watchers.get(row.id) ?? [],
                 tags: tags.get(row.id) ?? [],
                 customFieldValues: customFieldValues.get(row.id) ?? {},
+                deleteRequestPending: pendingDeletes.has(row.id),
             }));
         }
         const lists = listRows.map(toWireList);

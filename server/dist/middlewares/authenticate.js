@@ -36,7 +36,12 @@ const verifyJwt = (0, express_jwt_1.expressjwt)({
  * to the same 401 `auth.invalid_token` envelope as every other malformed token.
  */
 function authenticate(req, res, next) {
-    verifyJwt(req, res, (err) => {
+    // `void` rather than await: express-jwt v7 resolves its promise AFTER it
+    // has already reported failure through the `next` callback below, so
+    // there is nothing to await and no rejection path to lose. Marking it
+    // says that on purpose instead of leaving a floating promise for the
+    // next reader to wonder about.
+    void verifyJwt(req, res, (err) => {
         if (err)
             return next(err);
         const auth = req.auth;

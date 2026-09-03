@@ -527,19 +527,19 @@ class FormsService {
             role: constants_1.Roles.MEMBER,
             primaryListId: form.listId,
             name: typeof taskAttrs.name === "string" && taskAttrs.name.length > 0
-                ? taskAttrs.name
+                ? (taskAttrs.name)
                 : `${form.title} submission`,
             description: typeof taskAttrs.description === "string"
-                ? taskAttrs.description
+                ? (taskAttrs.description)
                 : undefined,
             priority: typeof taskAttrs.priority === "number"
-                ? taskAttrs.priority
+                ? (taskAttrs.priority)
                 : undefined,
             dueDate: typeof taskAttrs.due_date === "string"
-                ? taskAttrs.due_date
+                ? (taskAttrs.due_date)
                 : undefined,
             startDate: typeof taskAttrs.start_date === "string"
-                ? taskAttrs.start_date
+                ? (taskAttrs.start_date)
                 : undefined,
         });
         // 2. Custom-field values + submission row + notification (one tx).

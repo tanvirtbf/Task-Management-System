@@ -64,7 +64,7 @@ const tasksService = new TasksService_1.TasksService(listsRepo, tasksRepo, new T
 const tasksController = new TasksController_1.TasksController(tasksService, logger_1.default);
 const taskActivityService = new TaskActivityService_1.TaskActivityService(tasksRepo, activityRepo, usersRepo);
 const taskActivityController = new TaskActivityController_1.TaskActivityController(taskActivityService, logger_1.default);
-const taskWriteService = new TaskWriteService_1.TaskWriteService(db, listsRepo, statusesRepo, taskTypesRepo, tasksRepo, membershipRepo, usersRepo, tagsRepo, activityRepo, notificationsRepo, new AttachmentsRepo_1.AttachmentsRepo(db), new WorkspaceRepo_1.WorkspaceRepo(db), new WorkspaceActivityRepo_1.WorkspaceActivityRepo(db), tasksService, logger_1.default);
+const taskWriteService = new TaskWriteService_1.TaskWriteService(db, listsRepo, statusesRepo, taskTypesRepo, tasksRepo, membershipRepo, usersRepo, tagsRepo, activityRepo, notificationsRepo, new AttachmentsRepo_1.AttachmentsRepo(db), new WorkspaceRepo_1.WorkspaceRepo(db), new WorkspaceActivityRepo_1.WorkspaceActivityRepo(db), tasksService, logger_1.default, new TaskDeleteRequestsRepo_1.TaskDeleteRequestsRepo(db));
 const taskWriteController = new TaskWriteController_1.TaskWriteController(taskWriteService, logger_1.default);
 // ─── POST /api/v1/tasks ────────────────────────────────────────────────────
 // 🔐 Any workspace member. Creates a task in the caller's workspace: validates

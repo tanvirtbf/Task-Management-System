@@ -21,6 +21,21 @@ build/
 coverage/
 *.tsbuildinfo
 
+# …EXCEPT the two builds we deploy. The production box has ~560MB free and runs
+# five other apps, so it never builds — `client/dist` and `server/dist` ship in
+# git and nginx/pm2 serve them straight from the working tree.
+#
+# They were force-added once and then left ignored, which is a trap that nearly
+# broke a deploy: a rebuild renames every hashed asset, so `git add` staged the
+# MODIFIED `index.html` (pointing at `index-<new>.js`) and the 55 DELETED old
+# assets while silently skipping all 56 new ones — leaving an index that asks
+# for a bundle no longer in the repo. A blank site, from a commit that looked
+# fine. Un-ignoring them makes `git status` tell the truth instead.
+!client/dist/
+!client/dist/**
+!server/dist/
+!server/dist/**
+
 # ─── Test / tooling artifacts ────────────────────────────────────────────────
 client/test-results/
 playwright-report/
