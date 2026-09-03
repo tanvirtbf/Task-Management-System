@@ -96,10 +96,24 @@ const seedLists = async (
     await db.insert(lists).values(values);
 };
 
-const countWorkspaceActivity = async (): Promise<number> => {
+/**
+ * Activity rows FOR ONE WORKSPACE.
+ *
+ * Counting the whole table is order-dependent here: `setup-each-lists.ts`
+ * deliberately runs NO per-test reset (every test is workspace-scoped, and a
+ * truncate-all stalls on metadata locks), so rows left by earlier tests in the
+ * file accumulate. `task-types` had the identical helper and it flaked in the
+ * P6 gate — "expected 0, received 32" — which reads as machine noise. The claim
+ * is about THIS workspace; scoped, it says so.
+ */
+const countWorkspaceActivity = async (workspaceId: string): Promise<number> => {
     const db = getDb();
-    return (await db.select({ id: workspaceActivity.id }).from(workspaceActivity))
-        .length;
+    return (
+        await db
+            .select({ id: workspaceActivity.id })
+            .from(workspaceActivity)
+            .where(eq(workspaceActivity.workspaceId, workspaceId))
+    ).length;
 };
 
 const countLists = async (spaceId: string): Promise<number> => {
@@ -756,7 +770,7 @@ describe("GET /api/v1/spaces/:spaceId/lists", () => {
 
             await client.get(url(space.id));
 
-            expect(await countWorkspaceActivity()).toBe(0);
+            expect(await countWorkspaceActivity(u.workspaceId)).toBe(0);
         });
 
         it("does not change the list row count", async () => {

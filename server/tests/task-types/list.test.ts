@@ -79,10 +79,27 @@ const seedTaskTypes = async (workspaceId: string, rows: SeedTaskType[]) => {
     );
 };
 
-const countWorkspaceActivity = async (): Promise<number> => {
+/**
+ * Activity rows FOR ONE WORKSPACE.
+ *
+ * This counted the whole table until P6, which made it order-dependent and the
+ * only flaky test in this module: `setup-each-task-types.ts` deliberately runs
+ * NO per-test reset (every test is workspace-scoped, so a clean slate is
+ * unnecessary and a truncate-all stalls on metadata locks), so by the time this
+ * assertion ran, earlier tests in the file had left 32 rows behind and "expected
+ * 0, received 32" looked like machine flakiness. The retry passed only because a
+ * fresh jest run provisions a fresh database.
+ *
+ * The claim being made is "this READ endpoint writes no activity row" — which is
+ * about this workspace, not about the whole table. Scoped, it says that.
+ */
+const countWorkspaceActivity = async (workspaceId: string): Promise<number> => {
     const db = getDb();
     return (
-        await db.select({ id: workspaceActivity.id }).from(workspaceActivity)
+        await db
+            .select({ id: workspaceActivity.id })
+            .from(workspaceActivity)
+            .where(eq(workspaceActivity.workspaceId, workspaceId))
     ).length;
 };
 
@@ -635,7 +652,7 @@ describe("GET /api/v1/task-types", () => {
 
             await client.get(TASK_TYPES);
 
-            expect(await countWorkspaceActivity()).toBe(0);
+            expect(await countWorkspaceActivity(u.workspaceId)).toBe(0);
         });
 
         it("does not change the task_types row count", async () => {
