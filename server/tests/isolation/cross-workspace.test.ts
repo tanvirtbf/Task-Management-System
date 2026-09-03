@@ -30,6 +30,7 @@ import {
     taskDeleteRequests,
     taskDependencies,
     templates,
+    userRoleGrants,
 } from "../../src/db/schema";
 import { fakeId } from "../../src/utils";
 
@@ -79,7 +80,7 @@ jest.setTimeout(60000);
  * second sweep — when a later phase adds routes; the completeness test reads
  * this list and will name anything left without a probe.
  */
-const PHASES_COVERED = ["P3", "P4", "P5", "P6"];
+const PHASES_COVERED = ["P3", "P4", "P5", "P6", "P7"];
 
 interface Foreign {
     workspaceId: string;
@@ -109,6 +110,8 @@ interface Foreign {
     formId: string;
     formFieldId: string;
     sprintId: string;
+    // ── P7: an actual role ASSIGNMENT of B's, to revoke ──────────────────────
+    roleAssignmentId: string;
 }
 
 interface Probe {
@@ -707,6 +710,39 @@ const PROBES: Probe[] = [
         url: (b) => `/api/v1/sprints/${b.sprintId}/tasks/${b.taskId}`,
     },
 
+    // ── P7: the roles WRITE surface ─────────────────────────────────────────
+    // The sharpest family in the sweep: these endpoints GRANT things. Reaching
+    // a neighbour's role would not read their data, it would let you hand
+    // yourself their permissions.
+    {
+        method: "patch",
+        route: "/api/v1/roles/:id",
+        url: (b) => `/api/v1/roles/${b.roleId}`,
+        body: () => ({ name: "Probe" }),
+    },
+    {
+        method: "put",
+        route: "/api/v1/roles/:id/permissions",
+        url: (b) => `/api/v1/roles/${b.roleId}/permissions`,
+        body: () => ({ permissions: [{ key: "space.view", scope: "all" }] }),
+    },
+    {
+        method: "delete",
+        route: "/api/v1/roles/:id",
+        url: (b) => `/api/v1/roles/${b.roleId}`,
+    },
+    {
+        method: "post",
+        route: "/api/v1/users/:id/roles",
+        url: (b) => `/api/v1/users/${b.userId}/roles`,
+        body: (b) => ({ role_id: b.roleId }),
+    },
+    {
+        method: "delete",
+        route: "/api/v1/users/:id/roles/:assignmentId",
+        url: (b) => `/api/v1/users/${b.userId}/roles/${b.roleAssignmentId}`,
+    },
+
     // ── P6: engineering postmortems (the :id is an incident TASK) ───────────
     {
         method: "get",
@@ -919,6 +955,20 @@ const buildForeign = async (): Promise<Foreign> => {
         .where(eq(roles.workspaceId, ws.id))
         .limit(1);
 
+    // P7: B's own role assignment, so `DELETE /users/:id/roles/:assignmentId`
+    // has a real id to be refused rather than a fabricated one (which would
+    // 404 for the boring reason instead of the interesting one).
+    const roleAssignmentId = fakeId("ura");
+    await db.insert(userRoleGrants).values({
+        id: roleAssignmentId,
+        workspaceId: ws.id,
+        userId: second.id,
+        roleId: role.id,
+        scopeType: "workspace",
+        scopeId: null,
+        grantedBy: owner.id,
+    });
+
     return {
         workspaceId: ws.id,
         userId: owner.id,
@@ -945,6 +995,7 @@ const buildForeign = async (): Promise<Foreign> => {
         formId,
         formFieldId,
         sprintId,
+        roleAssignmentId,
     };
 };
 
