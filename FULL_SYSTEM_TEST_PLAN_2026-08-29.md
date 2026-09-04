@@ -145,9 +145,9 @@ Re-verified ✔ = probed again today, still true.
 | KI-13 | `db:seed:demo` leaves `tasks.assigned_by` unfilled (wire falls back to created_by) | ✅ **CLOSED P1** | 46/46 tasks + 46/46 assignee rows filled with a real assigner, verified on a throwaway DB (D1.10) |
 | KI-14 | ~~`/eng/home` leaks Engineering's open-bug **count** to every team.~~ **CLOSED by P6** — measured live (the tile said 2 where the viewer could see 1, next to a preview of one), fixed with the same predicate the hydrator already applied, and pinned by five tests incl. an unrestricted-admin control. `staleTicketIds` had the same shape (LIMIT before scope) and was fixed with it | closed | P7 re-verify |
 | KI-15 | Assistant chat kept forever, plaintext: no retention job, no DELETE, no history UI (dev: 2,197 convs / 4,393 msgs / 1.6 MB text) | ✔ | **P9** tests what exists · retention/UI → GATE |
-| KI-16 | CORS reflects any private-LAN origin in prod (`app.ts:88,95`) | carried | **P7** |
-| KI-17 | No `If-Match` anywhere — task PATCH is last-write-wins | carried | **P7** probe → GATE |
-| KI-18 | `task.view` scope `own` offered by roles UI but never narrows reads | carried | **P7** |
+| KI-16 | ~~CORS reflects any private-LAN origin.~~ **FIXED in P7.** With `credentials:true` that let any page on the office LAN act as the signed-in user against PRODUCTION. Now dev-only, decided per request, moved to `src/config/cors.ts`. There were **no CORS tests at all** — the code's claim that "P2 verified all 10 origin cases" was one curl run; 22 now | closed by P7 | — |
+| KI-17 | ~~No `If-Match` anywhere — task PATCH is last-write-wins.~~ **WRONG.** `GET` sets an ETag, `PATCH` honours `If-Match`, a stale one is refused `409 task.conflict` with the other writer's text intact — all measured in P7. The real gap is that it is **opt-in** and the web client defers it (R4, stated in `api.ts`). A client decision, not a server gap | corrected by P7 | **GATE** (client) |
+| KI-18 | ~~`task.view` scope `own` never narrows reads.~~ **True but for the wrong reason.** Row visibility comes from `space.view`; `task.view`'s scope only decides whether `taskOwnEscape()` contributes, and those predicates are OR-ed in — so `own` WIDENS, and is inert until `space.view` is narrowed. The catalog's prose is honest; the scope-selector metaphor misleads. Measuring it found a real defect: `openTeamSeries` omitted the own-escape, so a viewer who could open 3 tasks saw a tile saying 1 (KI-14's shape) — fixed | corrected by P7 | **GATE** (naming) |
 | KI-19 | R2 unconfigured in prod = silent upload loss; `/health/ready` checks DB only | carried | **P8** + P14 ops |
 | KI-20 | Hardcoded `dhakaToday()` at 11 sites (latent while single-workspace) | carried | **P12** |
 | KI-21 | 2 redundant indexes (comments, tcfv) | carried | **P13** |
@@ -2066,14 +2066,190 @@ believed.)*
    under `DISABLE_RATE_LIMIT=0`.
 
 **Exit criteria**
-- [ ] Role×endpoint matrix run across all 6 personas × the P2–P6 families — 0 unexpected
-      2xx, 0 unexpected 5xx; the 7 endpoints above ticked
-- [ ] Anti-enumeration: no `:id` family distinguishes "forbidden" from "absent"
-- [ ] XSS/SQLi/oversize/unicode/traversal probe sheet — every one either safe or fixed here
-- [ ] KI-14 re-verified closed · KI-16 fixed with a test · KI-17 and KI-18 decided and written
-- [ ] `npm run test:all` green; baseline restored
+- [x] **7 / 7** endpoints — the six `roles` WRITE routes and `GET /me/permissions`
+- [x] Role×endpoint matrix — **already covered** across the `rbac` module's 22 files
+      (`p5-leak-closure`, `p6-switch-matrix`, `p7-edit-matrix`, `p8-approval`,
+      `p9-delivery`), two of which P7 extended. A second matrix over the same ground
+      would add tests without adding proof, so it was not written
+- [x] Anti-enumeration: the isolation sweep now stands at **150** and covers P3–P7;
+      §19's 403 is the ONE exception, named and reasoned (KI-37, decided: keep)
+- [x] Probe sheet — new **`security`** gate module, **60** probes: SQLi, unicode/Bangla,
+      the character-not-byte length ceiling, oversize + nested + malformed bodies, path
+      traversal, token forgery, and the concurrency behaviour. All safe as found
+- [x] **KI-16 FIXED** with 22 tests (there were none) · **KI-14 re-verified** and a
+      sibling defect found and fixed · **KI-17 and KI-18 both WRONG**, corrected and
+      written down
+- [x] `npm run test:all` green; baseline restored
 
-**Execution record P7:** *(empty)*
+**Execution record P7** — 2026-09-03, anchor `d6f7b58`.
+
+### Endpoints — 7 / 7
+
+The seven P3 deferred here — the six `roles` WRITE routes plus `GET /me/permissions`, the
+endpoint the whole client gates on — were all already reached. So P7, like P4 and P6, was
+depth: not "what is untested" but "what has never been asked".
+
+### D7.1 — KI-16: the CORS policy reflected the whole office network, in production
+
+`app.ts` allowed the configured origins **plus** any loopback or RFC-1918 origin, on any port,
+in every environment. With `credentials: true`, an origin this reflects can call the API **as
+the signed-in user** and read the replies.
+
+On a ~100-person office network that is not theoretical. Any page served from any machine on
+the LAN — a colleague's dev server, a device somebody plugged in — could act as whoever was
+logged in. The allowance exists for a real reason (reaching the dev server from a phone on the
+same wifi); that reason does not exist in production, where nginx serves the client from the
+API's own origin and ordinary use is same-origin.
+
+Fixed: LAN reflection is now dev-only. Decided **per request** rather than at module load,
+because the obvious alternative — `NODE_ENV=prod` in a test — is the trap P2 documented:
+`MailService` picks a REAL SMTP transport whenever `NODE_ENV` is not `"test"`, and this
+project's dev mailer delivers to real people. The decision moved to `src/config/cors.ts`, which
+also makes it answerable without booting every router (they build repositories at import, so a
+test that only wants to ask "is this origin allowed?" would otherwise need a live database).
+
+**And there were no CORS tests at all.** `app.ts` carried a comment saying *"P2 verified all 10
+origin cases, including the prefix and fragment tricks"* — that verification was somebody
+running curl once, and it left nothing behind. **22 tests** now cover the LAN set in both
+environments, the configured allowlist, and the origins that must never pass: suffix tricks
+(`…beautybooth.com.bd.evil.example`), an origin that merely looks private
+(`192.168.1.50.evil.example`), and `11.x` / `172.32.x` — public address space one digit outside
+the private ranges. Plus F13's rule that a rejected origin is answered, not 500'd.
+
+*(One test failed on the first run and the test was wrong: `http://localhost:5173` IS reflected
+in "production" mode, because it is `FRONTEND_URL` — an explicitly configured origin is allowed
+everywhere by design. The list is now computed as the LAN set MINUS whatever the environment
+names, with an assertion that something is left to prove.)*
+
+### D7.2 — KI-18 was wrong, and measuring it found a real defect
+
+The ledger said `task.view` scope `own` is *"offered by the roles UI but never narrows reads"*,
+and asked P7 to prove it and then decide: enforce it, or drop it from the catalog.
+
+Measured, and the literal claim is true — but for a reason neither option addresses:
+
+> **Row visibility comes from `space.view`, not from `task.view`.** `task.view`'s scope controls
+> one thing: whether `taskOwnEscape()` contributes its predicates, which are OR-ed into the
+> space filter and therefore only ever ADD rows.
+
+So `own` is a **widening**, and it is inert until `space.view` has been narrowed. An admin who
+sets it expecting "this person sees only their own tasks" gets the opposite of what they
+intended. The catalog's own prose is honest — *"a person still sees tasks they created or are
+assigned to even outside their spaces"* — so the text is right and the scope-selector metaphor
+is what misleads. Three combinations pinned, including the contrast that makes the point:
+dropping `own` REMOVES rows.
+
+**The defect this turned up:** `HomeRepo.openTeamSeries` applied the space filter **without** the
+own-escape. A viewer who could open three tasks — the detail route returns them, My Work lists
+them — saw a Home tile saying **one**. Exactly KI-14's shape, in a repo whose sibling
+`slaBreachesSeries` already composes both *"so the tile's number and the queue's rows can never
+disagree"*. Fixed and pinned.
+
+### D7.3 — KI-17 was wrong too: the optimistic lock exists and works
+
+*"No `If-Match` anywhere — task PATCH is last-write-wins."* One read disproved it: `GET
+/tasks/:id` sets an `ETag` from `updated_at`, `TaskWriteController` forwards `If-Match`, and
+`TaskWriteService.update` throws `409 task.conflict` on a mismatch.
+
+Measured: a matching ETag is accepted; a stale one is **refused, with the other writer's text
+intact**. What is actually missing is smaller and different — the lock is **opt-in**, and the
+web client defers it (`api.ts` says so: *"optimistic-concurrency (ETag/If-Match) is deferred
+(R4)"*). So the gate decision is a client one, not a server gap. **8 tests**, including what
+last-write-wins costs when no precondition is sent: two people editing one description, both
+told 200, one sentence gone with no trace.
+
+### The `security` gate module — questions nobody had asked
+
+Its own module because none of these belong to one router, and P8 will add to it.
+
+**Input abuse (35).** SQL injection through search, list filters and sort params — seven classic
+payloads each, with a row count checked afterwards, because "did it error?" is a weaker question
+than "is the table still there?". Names people actually type: Bangla, emoji, combining marks,
+tabs and newlines, all round-tripping unchanged. The 500-character ceiling accepted and **501
+refused** rather than truncated — storing 500 of 501 characters would be the caller believing
+something the database does not. Length counted in **characters, not bytes**, so a Bangla name
+is not silently a third of the allowance. Oversize bodies, 2000-deep nesting, malformed JSON
+(400, and no stack trace in the body). Path traversal on upload names. Hostile slugs on the
+public form route.
+
+Every one already safe. That is the point: *"we use a parameterised ORM"* is a belief until
+something checks, and the day somebody hand-writes one `sql.raw` for a sort order is the day it
+stops being true with nothing to notice.
+
+*(The ceiling test's first draft asserted 422 for a 500-character name and failed. The column is
+`varchar(500)` and the validator caps at 500 — the test's assumption was wrong, not the product.
+Reading the schema settled it.)*
+
+**Token forgery (17).** `alg: none` built by hand the way an attacker would; an RS256 token
+(algorithm confusion — the reason `algorithms: ["HS256"]` is pinned in `authenticate.ts`); the
+wrong secret; a **refresh token presented as an access token** (separate secrets are what stop
+this); a payload edited to `role: "owner"` after signing; expired; `nbf` in the future; six
+malformed shapes. All refused.
+
+And the window written down rather than guessed. `authenticate.ts` says plainly *"Access tokens
+are never checked against the `sessions` table"* — a deliberate design, already tightened by F10
+(an `exp` claim is mandatory; without it a leaked token was unrevocable). What remains is that
+**deactivating somebody does not stop the token already in their browser** — it stops the next
+refresh. Both halves are now asserted, so "we removed their access" means "within 15 minutes",
+and whoever deactivates a departing colleague should know that is the promise.
+
+### The isolation sweep now covers P7 — 145 → 150
+
+The five roles WRITE endpoints, which are the sharpest family in the sweep: reaching a
+neighbour's role would not read their data, it would let you **grant yourself their
+permissions**. Workspace B now owns a real role assignment so `DELETE /users/:id/roles/:id`
+is refused for the interesting reason rather than because the id was invented. All refused.
+
+### KI-37 decided: notifications keep their 403
+
+Opened in P5 for P7 to settle. §19 answers `403 notification.not_owner` for another user's id
+where every other `:id` family answers 404. **Keep it.** It is documented and reasoned in
+`NotificationsService` (ids are unguessable, so the distinction is not a usable enumeration
+oracle), and the sweep already pins it as a NAMED exception with that reasoning attached — so a
+403 appearing anywhere else still fails. Changing it would buy nothing and lose the spec's
+explicit intent.
+
+### The role×endpoint matrix — already there, and not rewritten
+
+The plan asks for 6 personas × the P2–P6 families. That coverage exists across the `rbac`
+module's 22 files — `p5-leak-closure`, `p6-switch-matrix`, `p7-edit-matrix`, `p8-approval`,
+`p9-delivery` are each role×endpoint probes, and P7 added to two of them. Writing a second
+matrix over the same ground would add tests without adding proof, so it was not written. What
+P7 DID add is the part that was missing: the probes above, which no matrix covers.
+
+### Closing state
+
+- **`npm run test:all` — 38 modules · 5,852 passed · 0 failed (4 FLAKY-PASS, all suspend/resume timeouts)**
+- Static phase 4/4; eslint 0/0 and a real type-check on both packages.
+- Dev DB at baseline **47 / 6 / 9 / 27 / 15** — re-counted, not assumed.
+
+**The four FLAKY-PASSes were the machine sleeping.** `tagsreview`, `taskTypes`,
+`taskdeps` and `tasks10` each failed once and passed on retry, and the runner's
+kept first-attempt output names the cause without ambiguity: every failure is a
+**timeout**, every one of them on that module's FIRST test or `beforeEach`, and
+`tasks10`'s is `getPool().getConnection()` timing out after 60 s — a hook waiting
+for a database connection that no longer existed. Windows Kernel-Power 42/107 and
+506/507 fired four times inside the run: modern standby dropped mysql2's pooled
+sockets, the first call after each resume hung, and the retry reconnected and
+passed in full (423/423 for `tasks10`). The run's 1275 minutes for ~100 minutes of
+work is the same fact from the other side — the runner's number was right.
+
+Worth writing down because the FIRST explanation was wrong and fitted well: C:
+was down to ~1 GB with 3.7 GB of MySQL binlogs on it, and free space fell all
+through the window the flakies appeared. It correlated and it was not the cause.
+The timeouts named the cause; the disk graph only agreed with it. (The binlogs are
+still worth purging — `log_bin` is ON with 30-day retention and `datadir` on C: —
+but that is dev-box hygiene, not this.)
+- ⚠️ **`client/dist` and `server/dist` are NO LONGER frozen.** §A rule 8 held them until
+  P14; that stopped being true on 2026-09-03, when the user asked for the P0–P6 work live.
+  Prod is now deployed and current (`7e661c8`), which changes what P14 is: an ops
+  certification rather than a first deploy.
+
+*(Interrupted mid-phase by two bugs the user hit in the live app — archived tasks
+invisible everywhere, and a settings button with no `onClick`. Both fixed and shipped
+before the gate ran; see the P7 addendum below.)*
+
+**Signed off:** ✅
 
 ---
 
