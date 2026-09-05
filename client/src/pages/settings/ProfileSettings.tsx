@@ -13,6 +13,7 @@ import {
     SettingsFieldRow,
 } from "../../components/settings/SettingsHeader";
 import { tokens } from "../../theme";
+import { getApiErrorMessage } from "../../http/client";
 
 const TIMEZONES = [
     "Asia/Dhaka",
@@ -68,9 +69,7 @@ const ProfileSettings = () => {
             message.success("Profile saved");
         },
         onError: (err) => {
-            message.error(
-                err instanceof Error ? err.message : "Failed to save profile",
-            );
+            message.error(getApiErrorMessage(err));
         },
     });
 
@@ -88,12 +87,11 @@ const ProfileSettings = () => {
             setNewPw("");
             setConfirmPw("");
         },
-        onError: (err) =>
-            message.error(
-                err instanceof Error
-                    ? err.message
-                    : "Failed to change password",
-            ),
+        // The worst of the five: a rejected password answers 422 with the
+        // failing RULE in `details[]`, and this showed "Request failed with
+        // status code 422" instead. The person is told no and not told why,
+        // on the one form where the reason is the entire point.
+        onError: (err) => message.error(getApiErrorMessage(err)),
     });
 
     // The full policy, not just a length check — otherwise the button enables

@@ -413,3 +413,112 @@ describe("getApiErrorMessage", () => {
         expect(getApiErrorMessage("not an error")).toBe("Something went wrong. Try again.");
     });
 });
+
+/**
+ * P10 §5 — the five API error shapes a person can actually hit, and the rule
+ * that each one has to produce a sentence rather than a status code.
+ *
+ * The defect this pins is not in `getApiErrorMessage`, which was always right.
+ * It is in the FIVE CALL SITES that bypassed it with
+ * `err instanceof Error ? err.message : "..."` — a line that looks defensive
+ * and is not, because for an AxiosError `err.message` is literally "Request
+ * failed with status code 422". Two of them were on the password form, where
+ * the server's 422 `details[]` is the only thing that says which rule failed.
+ *
+ * So this asserts the extractor's contract per status, and the sibling
+ * `error-surfaces.test.ts` asserts that the call sites use it.
+ */
+describe("P10 — every API error shape renders a sentence, not a status code", () => {
+    const apiError = (
+        status: number,
+        code: string,
+        message: string,
+        details?: Array<{ field?: string; issue: string }>,
+    ) => {
+        const err = new AxiosError(
+            `Request failed with status code ${status}`,
+            "ERR_BAD_REQUEST",
+            {} as InternalAxiosRequestConfig,
+            null,
+            {
+                status,
+                statusText: "",
+                data: {
+                    error: { code, message, request_id: "req_1", details },
+                },
+                headers: {},
+                config: {} as InternalAxiosRequestConfig,
+            },
+        );
+        return err;
+    };
+
+    it.each([
+        [
+            403,
+            "auth.forbidden",
+            "You don't have permission to perform this action",
+        ],
+        [404, "task.not_found", "Task t-9 does not exist"],
+        [409, "task.conflict", "This task was changed by someone else"],
+        [500, "internal.error", "Something went wrong on our end"],
+    ])("%s renders the server's own sentence", (status, code, msg) => {
+        const text = getApiErrorMessage(apiError(status, code, msg));
+        expect(text).toBe(msg);
+        // The thing that must never reach a person's screen.
+        expect(text).not.toContain("Request failed with status code");
+    });
+
+    it("422 renders the FIELD REASONS, not the generic envelope line", () => {
+        // "One or more fields failed validation" is true and useless. The
+        // reasons live in details[], and dropping them is how somebody ends up
+        // staring at a form that refuses them and says nothing.
+        const text = getApiErrorMessage(
+            apiError(
+                422,
+                "validation.failed",
+                "One or more fields failed validation",
+                [
+                    { field: "password", issue: "Must contain a number" },
+                    { field: "password", issue: "Must contain a symbol" },
+                ],
+            ),
+        );
+        expect(text).toContain("Must contain a number");
+        expect(text).toContain("Must contain a symbol");
+        expect(text).not.toContain("One or more fields");
+        expect(text).not.toContain("Request failed with status code");
+    });
+
+    it("caps a long detail list rather than printing a wall of text", () => {
+        const many = Array.from({ length: 7 }, (_, i) => ({
+            field: `f${i}`,
+            issue: `Reason ${i}`,
+        }));
+        const text = getApiErrorMessage(
+            apiError(422, "validation.failed", "…", many),
+        );
+        expect(text).toContain("Reason 0");
+        expect(text).toContain("(+4 more)");
+        expect(text).not.toContain("Reason 6");
+    });
+
+    it("an axios failure with NO envelope still avoids the status-code string where it can", () => {
+        // A proxy/nginx failure has no envelope to read. This is the honest
+        // limit of the extractor and is recorded rather than papered over: the
+        // fallback is axios's own message, which is why no call site should be
+        // fabricating its own version of this logic.
+        const bare = new AxiosError(
+            "Network Error",
+            "ERR_NETWORK",
+            {} as InternalAxiosRequestConfig,
+        );
+        expect(getApiErrorMessage(bare)).toBe("Network Error");
+    });
+
+    it("a non-Error value does not become '[object Object]' on screen", () => {
+        expect(getApiErrorMessage({ weird: true })).toBe(
+            "Something went wrong. Try again.",
+        );
+    });
+});

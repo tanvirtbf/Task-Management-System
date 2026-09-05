@@ -21,6 +21,7 @@ import {
 } from "../../components/settings/SettingsHeader";
 import { tokens } from "../../theme";
 import type { TaskType } from "../../types";
+import { getApiErrorMessage } from "../../http/client";
 
 const COLOR_PALETTE = [
     "#4F46E5",
@@ -66,10 +67,7 @@ const TaskTypesSettings = () => {
             qc.invalidateQueries({ queryKey: ["task-types"] });
             message.success("Task type deleted");
         },
-        onError: (err) =>
-            message.error(
-                err instanceof Error ? err.message : "Failed to delete",
-            ),
+        onError: (err) => message.error(getApiErrorMessage(err)),
     });
 
     return (

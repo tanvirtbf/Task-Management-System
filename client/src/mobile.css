@@ -102,7 +102,13 @@
        plan removes mobile drag outright (P7); hiding the handle now stops the
        app advertising an affordance that cannot work. Every drag action already
        has a non-drag path: tap opens the task, status changes through the
-       status control, scheduling through the due-date field. */
+       status control, scheduling through the due-date field.
+
+       P11 checked that last sentence and found ONE exception, now fixed: the
+       form builder's palette added a field by drag ONLY, so on a phone a form
+       could not be built at all — and no keyboard could reach it either. The
+       palette items are buttons now (tap / Enter / Space), so the claim above
+       is true again. Worth re-checking whenever a new drag surface appears. */
     .row-drag-handle {
         display: none !important;
     }

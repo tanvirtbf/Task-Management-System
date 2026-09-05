@@ -4,7 +4,23 @@ import { CountUp } from "../../components/ui/CountUp";
 import { tokens } from "../../theme";
 
 interface KpiCardProps {
-    kpi: HomeKpi;
+    /**
+     * KI-23: optional on purpose. `KpiRow` spreads six named fields straight
+     * out of the KPI payload, so a server that omits one — an older build, a
+     * partial response, a field renamed on the API side — used to reach
+     * `kpi.label` with `undefined` and throw during render.
+     *
+     * That is not a Home-page bug. `main.tsx` wraps the whole `RouterProvider`
+     * in the one ErrorBoundary, so the throw replaced the ENTIRE APP with the
+     * error screen until the person reloaded. One absent number, every route
+     * gone.
+     *
+     * The mobile `KpiStrip` already guards this way ("a KPI the server did not
+     * send should leave a gap, not take the page down") and left a note saying
+     * the desktop row had the same exposure. The guard lives HERE rather than
+     * at each call site so both callers — and the next one — inherit it.
+     */
+    kpi?: HomeKpi;
     color?: string;
     /**
      * F28 (ISS-082, D12.4): where this number can be inspected. F24 made these
@@ -20,6 +36,9 @@ export const KpiCard = ({
     color = tokens.colors.primary,
     to,
 }: KpiCardProps) => {
+    // Leave a gap, not a white screen. See the note on `kpi` above.
+    if (!kpi) return null;
+
     const card = (
     <div
         style={{

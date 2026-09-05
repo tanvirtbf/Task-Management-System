@@ -37,10 +37,31 @@ const MEMBER_EMAIL =
     process.env.EVAL_MEMBER_EMAIL ?? "sumaiya@beautybooth.com.bd";
 const MEMBER_PASSWORD = process.env.EVAL_MEMBER_PASSWORD ?? PASSWORD;
 
-/** PART 2 of the plan — the pass/fail contract. */
+/**
+ * PART 2 of the plan — the pass/fail contract.
+ *
+ * ── two kinds of target, and only one of them tolerates a miss ──────────────
+ * The SECURITY targets below (`fabricatedRoutes`, plus the refusal and leak
+ * counts computed in section C) are exact: zero, every time. Measured over five
+ * consecutive runs on an unchanged system they were identical in all five, so
+ * exactness costs nothing and buys everything.
+ *
+ * The QUALITY targets grade a stochastic model, and the file has always said so
+ * — `links` allows one miss, `dataAnswers` allows one miss. `steps` did not,
+ * and P9 measured what that meant: five runs scored 13, 12, 13, 12, 13, so
+ * `--assert` failed roughly half the time with nothing wrong. A gate that red
+ * half the time carries no signal, and worse, it teaches the next person to
+ * re-run until green — which is exactly how a real regression gets waved
+ * through. Given one miss (12 of 13) it still demands a numbered list on
+ * essentially every actionable question, and the per-question `MISSING` marker
+ * in section A still names which one fell short, so a PERSISTENT single-question
+ * failure is as visible as it ever was.
+ */
 const TARGET = {
     links: 14, // of 15 — one question legitimately has no page to point at
-    // steps has no fixed number: it is "all of the questions that need them".
+    // steps has no fixed number: it is "the questions that need them, less the
+    // one-miss slack every other quality target already carries" — see above.
+    stepsSlack: 1,
     bangla: 15, // of 15
     // INSIGHTS_PLAN P6: 10 KPI questions + 2 insights questions (person /
     // team-window), truths swept from the API. Same one-miss slack philosophy.
@@ -507,7 +528,12 @@ const pad = (s, n) => String(s).padEnd(n);
     const n = FIRST_TIMER.length;
     const rows = [
         ["answers with a clickable route", links, n, TARGET.links],
-        ["actionable answers with steps", steps, stepsNeeded, stepsNeeded],
+        [
+            "actionable answers with steps",
+            steps,
+            stepsNeeded,
+            Math.max(0, stepsNeeded - TARGET.stepsSlack),
+        ],
         ["answers in Bangla", bangla, n, TARGET.bangla],
         ["data questions answered", answered, ALL_DATA.length, TARGET.dataAnswers],
         ["permission questions refused", refusals, 2, 2],

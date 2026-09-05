@@ -27,6 +27,7 @@ import { usePermissionsStore } from "../../stores/permissions";
 import { usePermissions } from "../../hooks/usePermissions";
 import { Forbidden } from "../../components/shared/RequirePermission";
 import type { CatalogGroup, Role, RolePermission } from "../../types/rbac";
+import { getApiErrorMessage } from "../../http/client";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -419,16 +420,14 @@ const RolesSettings = () => {
 };
 
 /** Surface the server's message — the guards say something specific and useful. */
-const errorText = (e: unknown): string => {
-    const err = e as {
-        response?: { data?: { error?: { message?: string } } };
-        message?: string;
-    };
-    return (
-        err?.response?.data?.error?.message ??
-        err?.message ??
-        "Something went wrong"
-    );
-};
+/**
+ * P10: was a hand-rolled copy of `getApiError` that read the envelope's
+ * `message` and ignored `details[]` — so a 422 here said "One or more fields
+ * failed validation" and nothing else, which is the exact failure
+ * `getApiErrorMessage` was written to fix ("the invitation-accept page did
+ * exactly that"). Kept as a named alias because three call sites read better
+ * with the short name.
+ */
+const errorText = (e: unknown): string => getApiErrorMessage(e);
 
 export default RolesSettings;

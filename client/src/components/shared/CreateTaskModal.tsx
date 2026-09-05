@@ -8,6 +8,7 @@ import { useSpaceMap, useTaskTypes } from "../../hooks/useReferenceData";
 import { tokens } from "../../theme";
 import { PRIORITY_LABELS } from "../../types";
 import type { Priority, Task } from "../../types";
+import { getApiErrorMessage } from "../../http/client";
 
 interface Props {
     /** Pre-select a list. Otherwise the user picks one. */
@@ -80,7 +81,7 @@ export const CreateTaskModal = ({
         },
         onError: (err) =>
             message.error(
-                err instanceof Error ? err.message : "Failed to create task",
+                getApiErrorMessage(err),
             ),
     });
 

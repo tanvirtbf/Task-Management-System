@@ -123,9 +123,25 @@ const failureReport = (out) => {
     if (start === -1) {
         // No bullet at all: the run died before jest could report (a config
         // error, an OOM, a killed worker). Those messages ARE the evidence.
-        return lines
+        const named = lines
             .filter((l) => /Cannot|ERR_|FATAL|heap|not found/i.test(l))
             .slice(0, 12);
+        if (named.length > 0) return named;
+        // P9: and when NOTHING matches, keep the tail rather than nothing.
+        // A `health` FLAKY-PASS in the P9 gate reported no reason at all — the
+        // run had failed in some shape this filter did not anticipate, so the
+        // summary printed the module's name and an empty block, and the only
+        // way to find out was to re-run it seven times. An unexplained failure
+        // is the one you most need the output for; a last resort that is
+        // sometimes noisy beats one that is sometimes silent.
+        const tail = lines
+            // eslint-disable-next-line no-control-regex
+            .map((l) => l.replace(/\[[0-9;]*m/g, "").trimEnd())
+            .filter((l) => l.trim() !== "")
+            .slice(-14);
+        return tail.length > 0
+            ? ["(no jest failure report — last lines of the run:)", ...tail]
+            : ["(the run produced no output at all)"];
     }
     // Jest prints the report, then resumes listing suites. Cut at that seam so
     // the evidence is the failure and nothing else, and strip the colour codes

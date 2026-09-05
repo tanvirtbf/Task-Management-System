@@ -156,30 +156,49 @@ const FormBuilderPage = () => {
 
     const handleSave = () => save.mutate();
 
+    /**
+     * Put a palette field on the form.
+     *
+     * P11: this used to live inside `handleDragEnd`, which made dragging the
+     * ONLY way to add a field — and dnd-kit here fires `PointerSensor` with no
+     * `touch-action`, so on a phone the browser claims the gesture as a scroll
+     * and the drag never starts. The form builder was therefore unusable on
+     * touch: the palette looked interactive and could not be used. It was also
+     * unreachable by keyboard, since a `<div>` carrying drag listeners has no
+     * role, no tab stop and no Enter handler.
+     *
+     * `mobile.css`'s D5 note says "Every drag action already has a non-drag
+     * path" — true of the board, the calendar and the status list, and not of
+     * this one. Now it is true here too: drag, tap and Enter/Space all land in
+     * the same place, appending to the end exactly as the drop always did.
+     */
+    const addField = (fieldKey: string) => {
+        const isTaskAttr = fieldKey === "name" || fieldKey === "description";
+        if (usedFieldKeys.has(fieldKey)) {
+            message.warning("This field is already on the form");
+            return;
+        }
+        const cf = availableCustomFields.find((c) => c.id === fieldKey);
+        const newField: FormFieldDef = {
+            id: `ff-${Date.now()}`,
+            fieldKind: isTaskAttr ? "task_attr" : "custom_field",
+            fieldKey,
+            label: isTaskAttr
+                ? fieldKey.charAt(0).toUpperCase() + fieldKey.slice(1)
+                : cf?.name ?? fieldKey,
+            isRequired: false,
+            isHidden: false,
+            defaultValue: null,
+            position: draft.fields.length,
+        };
+        setDraft({ ...draft, fields: [...draft.fields, newField] });
+    };
+
     const handleDragEnd = (event: DragEndEvent) => {
         const { active, over } = event;
         if (!over) return;
         if (String(over.id) === "form-canvas") {
-            const fieldKey = String(active.id).replace(/^palette:/, "");
-            const isTaskAttr = fieldKey === "name" || fieldKey === "description";
-            if (usedFieldKeys.has(fieldKey)) {
-                message.warning("This field is already on the form");
-                return;
-            }
-            const cf = availableCustomFields.find((c) => c.id === fieldKey);
-            const newField: FormFieldDef = {
-                id: `ff-${Date.now()}`,
-                fieldKind: isTaskAttr ? "task_attr" : "custom_field",
-                fieldKey,
-                label: isTaskAttr
-                    ? fieldKey.charAt(0).toUpperCase() + fieldKey.slice(1)
-                    : cf?.name ?? fieldKey,
-                isRequired: false,
-                isHidden: false,
-                defaultValue: null,
-                position: draft.fields.length,
-            };
-            setDraft({ ...draft, fields: [...draft.fields, newField] });
+            addField(String(active.id).replace(/^palette:/, ""));
         }
     };
 
@@ -361,6 +380,7 @@ const FormBuilderPage = () => {
                         <FormFieldPalette
                             availableCustomFields={availableCustomFields}
                             usedFieldKeys={usedFieldKeys}
+                            onAdd={addField}
                         />
 
                         {/* Center canvas */}
@@ -427,9 +447,11 @@ type TabKey = "builder" | "settings" | "branding" | "preview";
 const FormFieldPalette = ({
     availableCustomFields,
     usedFieldKeys,
+    onAdd,
 }: {
     availableCustomFields: Array<{ id: string; name: string; type: CustomFieldType }>;
     usedFieldKeys: Set<string>;
+    onAdd: (fieldKey: string) => void;
 }) => (
     <aside
         style={{
@@ -457,6 +479,7 @@ const FormFieldPalette = ({
             label="Task name"
             icon={<Type size={14} strokeWidth={1.75} />}
             inUse={usedFieldKeys.has("name")}
+            onAdd={onAdd}
         />
 
         <div
@@ -478,6 +501,7 @@ const FormFieldPalette = ({
                 label={cf.name}
                 icon={TYPE_ICONS[cf.type]}
                 inUse={usedFieldKeys.has(cf.id)}
+                onAdd={onAdd}
             />
         ))}
         {availableCustomFields.length === 0 && (
@@ -500,21 +524,41 @@ const PaletteItem = ({
     label,
     icon,
     inUse,
+    onAdd,
 }: {
     key_: string;
     label: string;
     icon: React.ReactNode;
     inUse: boolean;
+    /** P11: the non-drag path — tap on touch, Enter/Space from the keyboard. */
+    onAdd: (fieldKey: string) => void;
 }) => {
     const { setNodeRef, attributes, listeners, isDragging } = useDraggable({
         id: `palette:${key_}`,
         disabled: inUse,
     });
+    const add = () => {
+        if (!inUse) onAdd(key_);
+    };
     return (
         <div
             ref={setNodeRef}
             {...attributes}
             {...listeners}
+            // Announced and operated as a button. dnd-kit's `attributes` already
+            // supply a role and tabIndex; these come after the spread so the
+            // tap/keyboard path wins where the two disagree.
+            role="button"
+            tabIndex={inUse ? -1 : 0}
+            aria-disabled={inUse}
+            title={inUse ? `${label} is already on the form` : `Add ${label}`}
+            onClick={add}
+            onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    add();
+                }
+            }}
             style={{
                 display: "flex",
                 alignItems: "center",

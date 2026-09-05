@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { spacesApi, listsApi } from "../../http/api";
 import { tokens } from "../../theme";
 import type { List } from "../../types";
+import { getApiErrorMessage } from "../../http/client";
 
 const COLORS = [
     "#4F46E5",
@@ -57,7 +58,7 @@ export const CreateListModal = ({
         },
         onError: (err) =>
             message.error(
-                err instanceof Error ? err.message : "Failed to create list",
+                getApiErrorMessage(err),
             ),
     });
 
