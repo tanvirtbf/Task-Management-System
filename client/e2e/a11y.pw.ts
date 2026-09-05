@@ -49,10 +49,32 @@ const CORE = [
 
 /**
  * Known `serious` findings, each one a decision rather than an oversight.
- * Empty to begin with: P11 measures first and fills this in ONLY for things it
- * consciously defers, so the list can never quietly absorb a regression.
+ *
+ * ── color-contrast · GATE, not a defer-and-forget ───────────────────────────
+ * `tokens.colors.textMuted` is `#94A3B8`, and P11 measured it on the three
+ * backgrounds it actually sits on:
+ *
+ *     #94A3B8 on #FFFFFF (page)     2.56 : 1
+ *     #94A3B8 on #F4F4F6 (sidebar)  2.33 : 1
+ *     #94A3B8 on #F3F4F6 (kbd chip) 2.33 : 1     — WCAG AA wants 4.5 : 1
+ *
+ * So every screen fails, on real UI text: the sidebar's section labels
+ * ("Engineering", "Favorites"), empty-state lines ("Star a list to pin it
+ * here"), and the keyboard-shortcut chips.
+ *
+ * It is one line to fix — and NOT one line to decide. The token has **301
+ * usages**, so it sets the visual character of the whole product, and the
+ * value that clears AA on all three backgrounds is about `#5B6779`
+ * (5.74 / 5.22 / 5.21), which is materially darker than today's light grey.
+ * `#64748B` (slate-500) clears the page at 4.76 but still misses the sidebar at
+ * 4.33, so the obvious one-step darkening is not enough either.
+ *
+ * That is a product-appearance decision for someone who can look at the result,
+ * not a correctness fix to slip in. Listed here so the gate stays honest and
+ * green while it is pending, and written up in the P11 record with the
+ * measurement and the exact change ready to apply.
  */
-const KNOWN_SERIOUS: string[] = [];
+const KNOWN_SERIOUS: string[] = ["color-contrast"];
 
 test.describe("accessibility", () => {
     for (const screen of CORE) {
@@ -127,21 +149,45 @@ test.describe("accessibility", () => {
         await page.waitForTimeout(600);
         await page.getByPlaceholder("you@company.local").focus();
 
+        /**
+         * Walk the focused element AND its first two ancestors.
+         *
+         * The first draft of this test measured `document.activeElement` alone
+         * and reported the app broken. It was measuring the wrong node: this
+         * field has a prefix icon, so antd renders the real input inside an
+         * `.ant-input-affix-wrapper` and puts the focus treatment on the
+         * WRAPPER. The inner input legitimately has no border and no shadow.
+         *
+         * The finding survived the correction, though — the wrapper's shadow
+         * was `rgba(0,0,0,0) 0 0 0 0`, transparent and zero-size, with the same
+         * border colour as unfocused. See the note in `index.css`.
+         */
         const visible = await page.evaluate(() => {
-            const el = document.activeElement as HTMLElement | null;
-            if (!el) return false;
-            const s = getComputedStyle(el);
-            const outline =
-                s.outlineStyle !== "none" && parseFloat(s.outlineWidth) > 0;
-            // antd marks focus with a box-shadow rather than an outline, which
-            // is equally visible and equally intentional.
-            const shadow = s.boxShadow !== "none" && s.boxShadow !== "";
-            const border = parseFloat(s.borderWidth) > 0;
-            return outline || shadow || border;
+            const isMarked = (el: HTMLElement): boolean => {
+                const s = getComputedStyle(el);
+                const outline =
+                    s.outlineStyle !== "none" && parseFloat(s.outlineWidth) > 0;
+                // A shadow that is transparent, or of zero size, is not a ring.
+                const shadow =
+                    s.boxShadow !== "none" &&
+                    s.boxShadow !== "" &&
+                    !/rgba\(0,\s*0,\s*0,\s*0\)\s+0px\s+0px\s+0px\s+0px/.test(
+                        s.boxShadow,
+                    );
+                return outline || shadow;
+            };
+            let n: HTMLElement | null =
+                document.activeElement as HTMLElement | null;
+            for (let i = 0; i < 3 && n; i++) {
+                if (isMarked(n)) return true;
+                n = n.parentElement;
+            }
+            return false;
         });
-        expect(visible, "focused input has a visible focus indicator").toBe(
-            true,
-        );
+        expect(
+            visible,
+            "focused input has a visible focus indicator (checked on the field and its wrapper)",
+        ).toBe(true);
     });
 
     test("focus trap: Tab inside an open modal stays inside it", async ({
@@ -163,25 +209,51 @@ test.describe("accessibility", () => {
         const dialog = page.getByRole("dialog").first();
         await expect(dialog).toBeVisible({ timeout: 10_000 });
 
-        // Tab a generous number of times; focus must never leave the dialog.
-        let escaped: string | null = null;
+        /**
+         * Tab a generous number of times and require focus to COME BACK.
+         *
+         * Not "never leaves": rc-dialog (antd's modal) implements the trap with
+         * sentinel elements at each end, so tabbing past the last control lands
+         * momentarily on the sentinel — and `document.activeElement` reads as
+         * `<body>` for that one press before the handler pulls focus back to the
+         * top of the dialog. The first draft of this test failed on exactly that
+         * and would have reported a working trap as broken.
+         *
+         * What a broken trap actually looks like is focus landing OUTSIDE and
+         * STAYING there, walking on into the page behind. So: a single
+         * transient is allowed, two in a row is not, and by the end focus must
+         * be back inside.
+         */
+        let consecutiveOutside = 0;
+        let worstRun = 0;
+        let lastOutside: string | null = null;
         for (let i = 0; i < 25; i++) {
             await page.keyboard.press("Tab");
-            const inside = await page.evaluate(() => {
+            const info = await page.evaluate(() => {
                 const el = document.activeElement;
-                if (!el) return true;
                 const dlg = document.querySelector('[role="dialog"]');
-                return dlg ? dlg.contains(el) : true;
+                return {
+                    inside: dlg && el ? dlg.contains(el) : true,
+                    where: `${el?.tagName}.${(el as HTMLElement)?.className ?? ""}`.slice(
+                        0,
+                        70,
+                    ),
+                };
             });
-            if (!inside) {
-                escaped = await page.evaluate(
-                    () =>
-                        `${document.activeElement?.tagName}.${document.activeElement?.className}`,
-                );
-                break;
+            if (info.inside) {
+                consecutiveOutside = 0;
+            } else {
+                consecutiveOutside += 1;
+                worstRun = Math.max(worstRun, consecutiveOutside);
+                lastOutside = info.where;
             }
         }
-        expect(escaped, "focus escaped the modal to").toBeNull();
+        expect(
+            worstRun,
+            `focus left the modal for ${worstRun} consecutive tabs (last at ${lastOutside}) — ` +
+                "one transient is rc-dialog's sentinel, more than one is a broken trap",
+        ).toBeLessThanOrEqual(1);
+        expect(consecutiveOutside, "focus ended outside the modal").toBe(0);
 
         // And Escape closes it — otherwise a keyboard user is stuck in the trap
         // they were just put in.

@@ -44,10 +44,34 @@ test("assistant widget reaches :5501, streams a reply, and persists across reloa
         expect(txt.trim().length).toBeGreaterThan(10);
     }).toPass({ timeout: 30_000 });
 
-    // KI-5 PROOF: the chat request targeted the backend (:5501), NOT the Vite origin (:5173).
+    /**
+     * KI-5 PROOF — the chat request must reach the API, not the page's own
+     * static origin.
+     *
+     * P10: this used to assert `:5501` outright, which is only true of a DEV
+     * run. `.env.production` sets `VITE_BACKEND_API_URL=/api/v1` so the shipped
+     * bundle is domain-independent and calls its OWN origin, which nginx
+     * proxies — so against a served production build the old assertion failed,
+     * and KI-5's guard silently did not apply to the artifact that actually
+     * ships. Both bases are correct; what must hold in both is that the request
+     * goes to `/api/v1/assistant/chat` at an origin that has an API behind it.
+     */
     expect(chatRequests.length).toBeGreaterThan(0);
-    expect(chatRequests[0]).toContain(":5501/api/v1/assistant/chat");
-    expect(chatRequests[0]).not.toContain(":5173");
+    const chatUrl = new URL(chatRequests[0]);
+    const pageOrigin = new URL(page.url());
+    expect(chatUrl.pathname).toBe("/api/v1/assistant/chat");
+    if (pageOrigin.port === "5173") {
+        // Dev (Vite): that origin serves no API, so the call must leave it.
+        // Read off the PAGE, not `process.env.E2E_BASE_URL` — a plain
+        // `npx playwright test` leaves that unset and falls back to the
+        // config's default, which is how the first version of this check
+        // passed against prod and failed against dev.
+        expect(chatUrl.port).toBe("5501");
+    } else {
+        // A served production bundle: same origin, proxied — the relative base
+        // is the point, and an absolute :5501 here would be the regression.
+        expect(chatUrl.origin).toBe(pageOrigin.origin);
+    }
 
     // Persistence: reload, reopen — the prior turn survives (localStorage-persisted store).
     await page.reload();

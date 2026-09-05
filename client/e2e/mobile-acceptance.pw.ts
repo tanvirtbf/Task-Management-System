@@ -644,3 +644,110 @@ test("A14 — no mobile copy asks for a gesture a phone does not have", async ({
     record("A14", vp(page), { impossibleCopy: total, byRoute: found });
     expect(total, "phrases telling a thumb to drag, hover, right-click or press a key").toBe(0);
 });
+
+/* ── A15 · the ONE screen customers see, on the phone they see it on ─────────
+   The public form is filled in by people outside the company, overwhelmingly on
+   a phone, usually once. Everything else in this app is used daily by staff who
+   learn its quirks; this screen gets one attempt.
+
+   Four things the mobile rebuild's P6 landed here, verified rather than trusted:
+   a numeric keypad for the phone field, BD phone validation that refuses a bad
+   number, a page that MOVES to the field it is complaining about, and an honest
+   note where an upload box used to imply photos could be attached. */
+test("A15 — the public form is usable on a phone, and honest about uploads", async ({ page }) => {
+    const ctx = page.request;
+    const auth = await (await ctx.post(`${API}/auth/login`, { data: { email: EMAIL, password: PASSWORD } })).json();
+    const h = { Authorization: `Bearer ${auth.access_token}` };
+    const lists = await (await ctx.get(`${API}/lists`, { headers: h })).json();
+    const listId = (Array.isArray(lists) ? lists : (lists.data ?? []))[0]?.id;
+    expect(listId, "a list exists to attach a form to").toBeTruthy();
+
+    const stamp = String(Date.now()).slice(-6);
+    const cfPhone = await (await ctx.post(`${API}/custom-fields`, {
+        headers: h,
+        data: { scope_type: "list", scope_id: listId, name: `PWM Phone ${stamp}`, type: "phone" },
+    })).json();
+    const cfFiles = await (await ctx.post(`${API}/custom-fields`, {
+        headers: h,
+        data: { scope_type: "list", scope_id: listId, name: `PWM Photo ${stamp}`, type: "files" },
+    })).json();
+    const form = await (await ctx.post(`${API}/forms`, {
+        headers: h,
+        data: { list_id: listId, title: `PWM Public ${stamp}` },
+    })).json();
+    await ctx.post(`${API}/forms/${form.id}/fields`, {
+        headers: h,
+        data: { field_kind: "task_attr", field_key: "name", label: "Your name", is_required: true },
+    });
+    await ctx.post(`${API}/forms/${form.id}/fields`, {
+        headers: h,
+        data: { field_kind: "custom_field", field_key: cfPhone.id, label: "Your phone", is_required: true },
+    });
+    await ctx.post(`${API}/forms/${form.id}/fields`, {
+        headers: h,
+        data: { field_kind: "custom_field", field_key: cfFiles.id, label: "A photo" },
+    });
+
+    try {
+        await page.goto(`/forms/${form.public_slug}`);
+        await page.waitForTimeout(1500);
+
+        // 1. The phone field raises a numeric keypad. A phone number typed on a
+        //    QWERTY keyboard is a small daily tax on every customer.
+        const phone = page.locator('input[type="tel"]').first();
+        await expect(phone).toBeVisible({ timeout: 10_000 });
+        expect(await phone.getAttribute("inputmode"), "phone field inputMode").toBe("numeric");
+
+        // 2. …and it is not under 16px, or iOS zooms the whole page on focus
+        //    (the A5 rule, restated here because this screen is the one that
+        //    matters most and is rendered by a different component).
+        const fs_ = await phone.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
+        expect(fs_, "phone field font-size (iOS zooms below 16px)").toBeGreaterThanOrEqual(16);
+
+        // 3. A bad BD number is refused, and the page MOVES to the complaint.
+        //    Without the scroll the form simply does nothing visible on a phone:
+        //    the error is above the fold you are looking at.
+        // The public form renders antd inputs without <label for>, so fill by
+        // position the way `forms.pw.ts` does: the name field is the only plain
+        // text input, and the phone field is the tel one.
+        await page.locator("input.ant-input").first().fill("Test Customer");
+        await phone.fill("12345");
+        const beforeY = await page.evaluate(() => window.scrollY);
+        await page.getByRole("button", { name: /submit|send/i }).first().click();
+        await page.waitForTimeout(1200);
+        const bodyText = (await page.locator("body").innerText()).toLowerCase();
+        expect(bodyText, "a bad BD number must be refused").toMatch(/phone|number|valid/);
+        const afterY = await page.evaluate(() => window.scrollY);
+
+        // What matters is not that the page MOVED — a short form needs no
+        // scrolling — but that the field being complained about is on screen.
+        // `scrollIntoView` is the mechanism; "the customer can see the
+        // problem" is the requirement.
+        const errorInView = await page.evaluate(() => {
+            const el =
+                // The page marks the offending field with data-field-key and
+                // scrolls THAT into view (PublicFormPage) — the focused input
+                // is the reliable anchor after it runs.
+                (document.activeElement?.closest("[data-field-key]") as HTMLElement | null) ??
+                document.querySelector<HTMLElement>("[data-field-key]");
+            if (!el) return null;
+            const r = el.getBoundingClientRect();
+            return r.top >= 0 && r.bottom <= window.innerHeight;
+        });
+        record("A15", vp(page), {
+            scrolled: beforeY !== afterY,
+            errorInView,
+        });
+        expect(errorInView, "the field being complained about must be on screen").not.toBe(false);
+
+        // 4. The upload box tells the truth. It used to look like a working
+        //    attach control; anonymous upload is a backend feature that does
+        //    not exist, so promising it loses the customer's photo AND their
+        //    trust in the reply.
+        expect(bodyText, "upload note must be honest").toMatch(/can.?t be attached|cannot be attached|describe it/);
+    } finally {
+        await ctx.delete(`${API}/forms/${form.id}`, { headers: h }).catch(() => undefined);
+        await ctx.delete(`${API}/custom-fields/${cfPhone.id}`, { headers: h }).catch(() => undefined);
+        await ctx.delete(`${API}/custom-fields/${cfFiles.id}`, { headers: h }).catch(() => undefined);
+    }
+});

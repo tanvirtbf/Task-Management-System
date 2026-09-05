@@ -152,6 +152,34 @@ body {
     border-radius: var(--radius-md);
 }
 
+/*
+ * P11 — antd's own controls were exempt from the rule above, and nobody could
+ * see it.
+ *
+ * The rule above is specificity (0,1,0). antd styles its focused input on the
+ * WRAPPER (`.ant-input-affix-wrapper-focused`, 0,1,0 but later in the cascade)
+ * using `box-shadow: 0 0 0 <controlOutlineWidth> <controlOutline>` — and this
+ * theme sets `boxShadow`, `boxShadowSecondary` and `boxShadowTertiary` but
+ * never `controlOutline`, so under `cssVar` it resolved to
+ * `rgba(0,0,0,0) 0 0 0 0`: a transparent shadow of zero size. Measured on the
+ * sign-in field, a FOCUSED input was pixel-identical to an unfocused one —
+ * same 1px #e5e7eb border, no ring, no outline. Keyboard-only sign-in worked
+ * and was invisible; you could type into a field you could not locate.
+ *
+ * Stating the app's own intent here is better than chasing antd's token
+ * derivation: it holds whatever the theme does next, and it reuses the same
+ * `--shadow-focus` every other focusable thing already uses, so the app keeps
+ * ONE focus ring rather than two that drift.
+ */
+.ant-input-affix-wrapper-focused,
+.ant-input:focus,
+.ant-input-number-focused,
+.ant-picker-focused,
+.ant-select-focused > .ant-select-selector {
+    box-shadow: var(--shadow-focus) !important;
+    border-color: var(--color-primary) !important;
+}
+
 /* ============================================================
    Selection
    ============================================================ */

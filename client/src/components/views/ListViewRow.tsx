@@ -348,7 +348,6 @@ export const ListViewRow = ({
                 <button
                     onClick={(e) => e.stopPropagation()}
                     className="row-actions"
-                    aria-label="Task actions"
                     style={{
                         background: "none",
                         border: 0,
@@ -362,6 +361,7 @@ export const ListViewRow = ({
                         opacity: 0,
                         transition: "opacity var(--transition-base)",
                     }}
+                    aria-label={`Actions for ${task.name}`}
                 >
                     <MoreHorizontal size={14} strokeWidth={1.75} />
                 </button>

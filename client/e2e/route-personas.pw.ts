@@ -142,6 +142,26 @@ for (const persona of PERSONAS) {
 
             const broken: string[] = [];
 
+            // Guard against the vacuous pass this spec is most exposed to: if a
+            // persona's sign-in quietly failed, every route below would render
+            // the LOGIN page — which has plenty of text and no console errors,
+            // so all 23 checks would go green having tested nothing.
+            // `waitForURL` returns on the URL change, which is before the lazy
+            // route chunk has painted — so the shell has to be given a moment
+            // or this guard measures an empty body and fails on every persona.
+            await page.waitForTimeout(2000);
+            const shell = await page.locator("body").innerText();
+            expect(
+                page.url(),
+                `${persona.name} did not get past /login`,
+            ).not.toContain("/login");
+            expect(
+                shell.length,
+                `${persona.name} signed in but the app shell is empty`,
+            ).toBeGreaterThan(50);
+
+            const bouncedToLogin: string[] = [];
+
             for (const route of ROUTES) {
                 await page.goto(route);
                 // The app is a SPA with lazy routes; give the chunk and the
@@ -158,13 +178,21 @@ for (const persona of PERSONAS) {
                     .count();
                 if (boundary > 0) broken.push(`${route}: ErrorBoundary rendered`);
 
-                // 2. Something is on the screen.
+                // 2. Still signed in. A route that bounces the persona to
+                //    /login is not "handled a 403 gracefully", it is a session
+                //    the app threw away — and it would make every later check
+                //    on this run meaningless.
+                if (page.url().includes("/login")) {
+                    bouncedToLogin.push(route);
+                }
+
+                // 3. Something is on the screen.
                 const text = (await page.locator("body").innerText()).trim();
                 if (text.length < 20) {
                     broken.push(`${route}: blank page (${text.length} chars)`);
                 }
 
-                // 3. No raw error object leaked into the UI.
+                // 4. No raw error object leaked into the UI.
                 for (const raw of RAW_ERROR_TEXT) {
                     if (text.includes(raw)) {
                         broken.push(`${route}: raw error text "${raw}"`);
@@ -172,6 +200,10 @@ for (const persona of PERSONAS) {
                 }
             }
 
+            expect(
+                bouncedToLogin,
+                `${persona.name} — routes that threw the session away:`,
+            ).toEqual([]);
             expect(
                 broken,
                 `${persona.name} — routes that failed:\n${broken.join("\n")}`,

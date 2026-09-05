@@ -152,7 +152,7 @@ Re-verified ✔ = probed again today, still true.
 | KI-20 | Hardcoded `dhakaToday()` at 11 sites (latent while single-workspace) | carried | **P12** |
 | KI-21 | 2 redundant indexes (comments, tcfv) | carried | **P13** |
 | KI-22 | `v_breached_sla` / `v_current_on_call` latent tz bug | carried | **P12** |
-| KI-23 | Desktop `KpiRow` has the same missing-KPI crash exposure its mobile sibling had (KpiStrip was fixed in mobile P8) | carried | **P10** |
+| KI-23 | ~~Desktop `KpiRow` carries the same missing-KPI crash exposure `KpiStrip` had.~~ **FIXED in P10, and it was bigger than this said.** `main.tsx` wraps the whole `RouterProvider` in the one ErrorBoundary, so the throw did not break Home — it replaced EVERY route in the application with the error screen until reload. Guard placed in `KpiCard` so both callers and the next one inherit it; 8 tests, proved red without it | closed by P10 | — |
 | KI-24 | Client-side filtering over the full fetched task list — linear cost growth | carried | **P13** measure |
 | KI-25 | `client/mobile-baseline.json` records measurement churn on every A-net run | ✔ | **P0** rule |
 | KI-26 | Ops: `/health/version` **`git_sha` FIXED in P8** — resolved from the checkout (loose ref, packed ref and detached HEAD all fixtured), and `DEPLOY_PROMPT` step 4a now compares it to `git rev-parse HEAD` from the box. Still open and P14's: nginx does not proxy `/health/version` (deliberate — it names the running build), Cloudflare Rocket Loader active on prod HTML, upgrades README says 023/024 "pending prod" (stale) | partly closed by P8 | **P14** |
@@ -2747,12 +2747,263 @@ that — `client/dist` stays frozen until P14.
    tabs writing the same task, sign-out with a dirty draft, session expiry mid-action.
 
 **Exit criteria**
-- [ ] Every route × 6 personas: no crash, no console error, correct empty states
-- [ ] KI-23 fixed with a test; Playwright `chromium` green (83+, plus the new specs)
-- [ ] The five API error shapes all render human text
-- [ ] Run performed against a production build, and that is stated in the record
+- [x] **23 routes × 6 personas = 138 combinations**, all clean against the PRODUCTION
+      bundle: no ErrorBoundary, no blank page, no unhandled rejection, no console error,
+      no raw error text, nobody bounced to /login. Two vacuity guards, both proven able
+      to fail
+- [x] **KI-23 fixed**, and it was bigger than filed — the throw took EVERY route down,
+      not Home. Eight tests, proved red without the guard and green with it
+- [x] Playwright `chromium` **99/99 desktop, 14/14 mobile-390, 14/14 mobile-360, 1/1 desktop-guard**
+- [x] The five API error shapes render sentences — **five** call sites showed axios's own
+      string and a sixth re-implemented the envelope reader; 12 contract tests plus a
+      source scan so the CLASS cannot come back
+- [x] **Run against a production build** (`E:/p10-dist`, served on :4180, bundle
+      `index-C9hey-sa.js`) — and it earned its keep: D10.6 exists only because of it
+- [x] `npm run test:all` green; baseline restored
 
-**Execution record P10:** *(empty)*
+**Execution record P10** — 2026-09-05, anchor `27b1390`.
+
+*Every screen a person actually opens, in a real browser, against the production bundle.*
+
+### D10.1 — KI-23: one absent number took the WHOLE APP down, not one page
+
+The ledger carried it as *"desktop `KpiRow` carries the same missing-KPI crash exposure that
+`KpiStrip` had on mobile"*. Measured, the exposure is real and the blast radius was larger than
+the entry says.
+
+`KpiRow` spreads six named fields straight out of the KPI payload into `KpiCard`, which read
+`kpi.label` without checking. A payload missing one — an older server, a partial response, a
+field renamed API-side — threw during render. And `main.tsx` wraps the **entire
+`RouterProvider`** in the one ErrorBoundary, so the throw did not break Home: it replaced
+**every route in the application** with the error screen until the person reloaded.
+
+The mobile `KpiStrip` was given `if (!kpi) return null` during the rebuild and left a note
+saying the desktop row had the same exposure. The guard now lives in **`KpiCard`** rather than at
+either call site, so both callers — and the next one — inherit it. `KpiCard` is the only shared
+consumer, checked rather than assumed.
+
+**Proved before and after.** Eight tests, one per field plus the all-absent case; with the guard
+removed all six per-field cases fail on the exact `kpi.label` throw, and with it they pass. A
+regression test that has never seen the bug is worth nothing.
+
+### D10.2 — five surfaces rendered axios's own string, and a sixth re-implemented the reader
+
+§P10 task 5 asked for the five API error shapes to produce readable text, and named the
+report-bug fix as having found three raw-axios strings with more expected. There were **five**,
+all the same line:
+
+```ts
+onError: (err) => message.error(
+    err instanceof Error ? err.message : "Failed to save profile",
+)
+```
+
+That reads like care and is the opposite. For an AxiosError — i.e. every failure this
+application actually produces — `err.message` is literally **"Request failed with status code
+422"**, so the ternary's fallback string is dead code and the person is shown a status code.
+
+The sites: **change password** and save profile (`ProfileSettings`), delete task type
+(`TaskTypesSettings`), and the two create modals (`CreateListModal`, `CreateTaskModal`). The
+password one is the worst of them — a rejected password answers 422 with the failing RULE in
+`details[]`, and the form said "Request failed with status code 422". Told no, and not told why,
+on the one screen where the reason is the entire point.
+
+A sixth, `RolesSettings.errorText`, was a hand-rolled copy of `getApiError` that read the
+envelope's `message` and **dropped `details[]`** — so its 422s said "One or more fields failed
+validation" and stopped, which is the exact failure `getApiErrorMessage` was written to fix
+("the invitation-accept page did exactly that"). A private copy drifts, and the first thing it
+drops is the useful half.
+
+All six now go through `getApiErrorMessage`. **12 tests** pin the contract per status (403, 404,
+409, 500 render the server's sentence; 422 renders the field reasons and not the envelope line;
+a long list caps at three plus a count; a non-Error does not become `[object Object]`).
+
+**And the class, not the instances:** `error-surfaces.test.ts` scans the source tree — a test
+naming five files goes stale the moment somebody writes a sixth. It fails on any new
+`instanceof Error ? err.message`, and on any new hand-rolled envelope read, with **two named
+exceptions** carrying their reasons: `http/client.ts` (it IS the implementation) and
+`stores/chat.ts` (the assistant stream is fetch-based — `http/assistant.ts` throws a
+hand-written Bangla sentence per status, so `err.message` there is the intended text). The
+allowlist is itself checked: an entry naming a file that no longer exists fails, so it cannot
+quietly absorb anything. Proved by reintroducing one offender and watching the scan name it.
+
+### D10.3 — every route, every persona
+
+`smoke.pw.ts` already walks the authenticated routes as the OWNER — the one persona for whom
+nothing is ever refused, and therefore the half of the product that cannot break in the
+interesting way. `route-personas.pw.ts` walks **23 routes × 6 personas** (owner, admin, head,
+member, guest, space-scoped).
+
+What it looks for is not a 403 — nine phases of server tests cover that — but what the CLIENT
+does with one: the app-level ErrorBoundary rendering (which, per D10.1, means every route is
+down), a blank page, an unhandled rejection, or a raw error object on screen. An EMPTY page is
+explicitly not a failure: for several of these personas an empty Reports or Engineering page is
+the correct answer.
+
+**138 route×persona combinations, all clean** against the production bundle: no ErrorBoundary,
+no blank page, no unhandled rejection, no console error, no raw error text, and nobody bounced
+back to /login.
+
+Two vacuity guards, because this spec is unusually exposed to passing while proving nothing: if
+a persona/s sign-in quietly failed, every route below would render the LOGIN page — which has
+plenty of text and no console errors, so all 23 checks would go green having tested nothing. So
+the run asserts it got past /login with a painted shell before it starts, and treats any route
+that bounces back to /login as a failure in its own right. The first version of the shell guard
+FAILED on all six personas because it measured before the lazy chunk had painted — which is how
+I know it can fail.
+
+### D10.4 — dragging a task onto a calendar day scheduled it for the day BEFORE
+
+Found by the existing `f31-deferred` spec, which had been failing. Dropped on the 15th, stored
+as the **14th** — on the dev server and the production bundle alike, so not a build artifact and
+not a flake.
+
+The cause is one missing prop. `CalendarView`'s `DndContext` never set `collisionDetection`, so
+dnd-kit fell back to `rectIntersection`, which picks the droppable overlapping the **dragged
+chip's rectangle** most — not the day under the pointer. A chip is far wider than it is tall and
+is dragged in from the unscheduled panel on the left, so aiming at a day and releasing could
+hand the task to its left-hand neighbour.
+
+The two sibling surfaces had both already chosen — `BoardView` `closestCorners`, `ListView`
+`closestCenter` — and the calendar was the one drag surface that never did. It was therefore the
+one putting work on the wrong day, silently, with a "Task rescheduled" toast confirming it.
+`pointerWithin` is what a calendar means: the day you are pointing at.
+
+### D10.5 — accessibility findings, and which ones were fixed
+
+The new `a11y.pw.ts` (P11's, run here because it exercises the desktop screens) found six
+CRITICAL violations across two screens and two hand-written checks failing. All are now fixed:
+
+- **`button-name` × 5 surfaces.** Icon-only overflow menus (`⋯`) announce nothing but "button".
+  `MobileTaskCard` already had the right pattern from the rebuild —
+  `aria-label={`Actions for ${task.name}`}` — so this is that convention applied to the desktop
+  siblings it never reached: inbox rows, member rows, list rows, the task drawer and the board
+  column header.
+- **`label` × 2 selects.** antd renders a combobox `<input>` with no accessible name unless one
+  is supplied; the members role filter and the per-member role picker both had none.
+- **The focus ring did not exist on antd inputs.** `index.css` defines
+  `:focus-visible { box-shadow: var(--shadow-focus) }`, but antd styles its focused field on the
+  WRAPPER using `box-shadow: 0 0 0 <controlOutlineWidth> <controlOutline>` — and this theme sets
+  `boxShadow`/`boxShadowSecondary`/`boxShadowTertiary` and never `controlOutline`. Under
+  `cssVar` it resolved to `rgba(0,0,0,0) 0 0 0 0`: transparent, zero-size. Measured on the
+  sign-in field, a **focused input was pixel-identical to an unfocused one** — same 1px #e5e7eb
+  border, no ring. Keyboard sign-in worked and was invisible. Fixed by stating the app's own
+  intent in CSS rather than chasing antd's token derivation, reusing the same `--shadow-focus`
+  so the app keeps one focus ring rather than two that drift.
+
+**Both of my own new checks were wrong first, and the corrections are the interesting part.**
+The focus-ring test measured `document.activeElement` — the inner `<input>` of an
+`.ant-input-affix-wrapper` — which legitimately has no border or shadow because the wrapper
+carries them. The finding survived the correction, but the first version would have been right
+by accident. The focus-TRAP test failed a working trap: rc-dialog implements it with sentinel
+elements, so tabbing past the last control lands on `<body>` for exactly one press before focus
+is pulled back. It now allows a single transient and fails on two in a row, which is what a
+broken trap actually looks like.
+
+**GATE — `color-contrast`, every screen.** `tokens.colors.textMuted` is `#94A3B8`, measured on
+the three backgrounds it sits on:
+
+| foreground | on #FFFFFF (page) | on #F4F4F6 (sidebar) | on #F3F4F6 (chip) |
+|---|---|---|---|
+| `#94A3B8` today | **2.56** | **2.33** | **2.33** |
+| `#64748B` slate-500 | 4.76 ✓ | 4.33 ✗ | 4.32 ✗ |
+| `#5B6779` | 5.74 ✓ | 5.22 ✓ | 5.21 ✓ |
+
+WCAG AA wants 4.5:1, so every screen fails on real UI text — the sidebar's section labels
+("Engineering", "Favorites"), empty-state lines ("Star a list to pin it here"), the
+keyboard-shortcut chips. It is one line to fix and **not** one line to decide: the token has
+**301 usages**, so it sets the visual character of the whole product, and the obvious one-step
+darkening to slate-500 still misses the sidebar. `#5B6779` clears all three.
+
+That is a product-appearance decision for someone who can look at the result, so it is named in
+the spec's `KNOWN_SERIOUS` allowlist with this measurement attached — the gate stays green and
+honest, a NEW serious violation still fails, and the change is one line whenever it is wanted.
+
+Left as **moderate** and not gated (reported on every run): `landmark-one-main`, `region`,
+`heading-order`, `page-has-heading-one`, `landmark-unique` — document-structure findings on
+login, home, spaces and settings.
+
+### D10.6 — the production bundle talks to a different API base, and one test had never noticed
+
+The rule that outranks convenience earned its keep. `assistant.pw.ts`'s KI-5 proof asserted:
+
+```ts
+expect(chatRequests[0]).toContain(":5501/api/v1/assistant/chat");
+expect(chatRequests[0]).not.toContain(":5173");
+```
+
+Against the dev server that passes. Against the SERVED PRODUCTION BUNDLE it fails — and the
+product is right, the test was wrong. `client/.env.production` sets
+`VITE_BACKEND_API_URL=/api/v1`, a RELATIVE base, deliberately: nginx serves the app at `/` and
+proxies `/api/v1/*`, so a relative base makes the bundle domain-independent. In dev there is no
+proxy, so `BASE_URL` derives `http://<host>:5501/api/v1` instead.
+
+Both bases are correct. The consequence is what matters: **KI-5's guard applied only to the dev
+server and silently did not cover the artifact that actually ships.** A regression that made the
+shipped bundle call its own static origin would have gone unseen by the one test written to
+catch exactly that.
+
+The assertion now states the invariant — the request path is `/api/v1/assistant/chat`, and the
+origin is `:5501` when the run is against Vite, or the page's own origin when it is against a
+served build, where an absolute `:5501` would itself be the regression.
+
+### The production-bundle rule
+
+§P10's rule that outranks convenience: test the BUILT bundle. The mobile rebuild found two
+crashes that existed only in production, and P8 found its own. It was followed literally: `npm run build -- --outDir E:/p10-dist`, served on :4180 by a static
+server that mirrors nginx (static files, SPA fallback, `/api/v1` proxied to :5501), with the
+whole chromium suite pointed at it through `E2E_BASE_URL`. Bundle `index-C9hey-sa.js`.
+
+It paid for itself twice. **D10.6 exists only because of it** — the KI-5 assertion passed on the
+dev server and failed on the built artifact, which is how it came out that the guard had never
+covered what ships. And the calendar defect (**D10.4**) was reproduced against BOTH before being
+called a product bug, which is what ruled out "build artifact" as the explanation and made the
+missing `collisionDetection` prop worth hunting for.
+
+Worth stating plainly for the next phase: the dev server and the shipped bundle differ in at
+least one way that changes behaviour — `.env.production` swaps the API base from an absolute
+`http://<host>:5501/api/v1` to a relative `/api/v1`. Any test that hard-codes one of those forms
+is testing one environment and quietly ignoring the other.
+
+### A bookkeeping correction, stated rather than tidied away
+
+P9, P10 and P11 were worked in one session at the user's request, and P9's sign-off used
+`git add -A`. That swept in-progress P10 and P11 code into **`27b1390`** — `KpiCard`,
+`KpiRow.test.tsx`, the error-surface fixes and their tests, `route-personas.pw.ts`,
+`a11y.pw.ts`, `FormBuilderPage.tsx`, `drag-alternatives.test.ts` and `mobile.css`.
+
+So the commits do **not** cleanly delimit the phases, and reading `27b1390` as "what P9 changed"
+would overstate it. Every phase's own contribution is stated explicitly in its record and in the
+commit message instead of being inferred from the diff, which is the honest repair; rewriting
+published history to make the boundaries pretty is not.
+
+The cause is fixed rather than just noted: `*.err` is now in both `.gitignore`s (two empty
+detached-run stderr files reached `27b1390` the same way), and the remaining phases stage
+deliberately.
+
+### What was NOT rewritten
+
+The four task views, the assign surfaces, comments/@mention, checklists, custom fields,
+attachments and delete-requests already have specs that provision their own fixtures
+(`tasks-views`, `assignee-picker`, `forms`, `team-access`, `dept-review`, `full`). They ran as
+part of this phase rather than being duplicated.
+
+### Closing state
+
+- **`npm run test:all` — 38 modules · 6,000 passed · 0 failed · ALL GREEN (no flakies)**
+- **Playwright chromium — 99/99 desktop, 14/14 mobile-390, 14/14 mobile-360, 1/1 desktop-guard**, against the served production bundle.
+- client vitest **137**, of which **P10 added 20** — KpiRow 8, the API error shapes 8,
+  the source scan 4. (The total was already 137 at the P9 gate: these three phases were
+  worked in one session, so P9's gate ran with P10 and P11 code present in the tree.
+  Each phase's own contribution is stated rather than inferred from the total.)
+- Static phase 4/4; eslint 0/0 and a real type-check on both packages. The client
+  type-check earned its keep twice more: a duplicate `aria-label` I added on a row that
+  already had one, and the wrong mock signature in P9's chat tests.
+- Dev DB at baseline **47 / 6 / 9 / 27 / 15**.
+- `client/dist` NOT rebuilt — P10 built to a scratch `--outDir` so the committed bundle
+  still matches what is deployed. P11 owns the rebuild, since it also touches the client.
+
+**Signed off:** ✅
 
 ---
 

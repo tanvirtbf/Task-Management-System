@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
     DndContext,
     PointerSensor,
+    pointerWithin,
     useSensor,
     useSensors,
     type DragEndEvent,
@@ -204,7 +205,27 @@ export const CalendarView = ({ listId }: CalendarViewProps) => {
                 weekStartsOn={ws?.settings.weekStartsOn ?? 0}
             />
 
-            <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+            {/*
+              * P10: `collisionDetection` was never set here, so dnd-kit fell
+              * back to `rectIntersection` — which picks the day cell that
+              * overlaps the DRAGGED CHIP's rectangle most, not the day under
+              * the pointer. A chip is wider than it is tall and is dragged in
+              * from the unscheduled panel on the left, so aiming at the 15th
+              * and releasing scheduled the task for the **14th**. Measured:
+              * dropped on day 15, stored as 14, on the dev server and the
+              * production bundle alike.
+              *
+              * `pointerWithin` is what a calendar means: the day you are
+              * pointing at. The two sibling surfaces had both already chosen —
+              * BoardView `closestCorners`, ListView `closestCenter` — and this
+              * was the one drag surface that never did, which is exactly why it
+              * was the one putting work on the wrong day.
+              */}
+            <DndContext
+                sensors={sensors}
+                collisionDetection={pointerWithin}
+                onDragEnd={handleDragEnd}
+            >
                 <div
                     style={{
                         flex: 1,

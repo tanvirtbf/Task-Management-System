@@ -183,6 +183,9 @@ const MembersSettings = () => {
                     style={{ flex: 1 }}
                 />
                 <Select
+                    // axe critical `label`: antd renders a combobox input
+                    // with no accessible name unless one is given here.
+                    aria-label="Filter members by role"
                     value={roleFilter}
                     onChange={setRoleFilter}
                     style={{ width: 180 }}
@@ -357,6 +360,7 @@ const MemberRow = ({
             {teamName ?? "—"}
         </span>
         <Select
+            aria-label={`Role for ${user.firstName} ${user.lastName}`}
             value={user.role}
             onChange={onRoleChange}
             disabled={user.role === "owner"}
@@ -440,6 +444,7 @@ const MemberRow = ({
             <Button
                 size="small"
                 type="text"
+                aria-label="Member actions"
                 icon={<MoreHorizontal size={14} strokeWidth={1.75} />}
             />
         </Dropdown>

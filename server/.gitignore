@@ -53,3 +53,7 @@ public/
 
 # Drizzle (keep migrations, ignore meta if you regenerate)
 # (Migrations folder kept under src/db/migrations — committed)
+
+# Detached-run stderr (Start-Process -RedirectStandardError). Empty on a clean
+# run, and never evidence — the .log beside it is. Two got committed in P9.
+*.err

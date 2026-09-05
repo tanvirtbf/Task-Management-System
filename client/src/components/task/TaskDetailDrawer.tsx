@@ -449,6 +449,7 @@ export const TaskDetailDrawer = ({
                                         "transparent")
                                 }
                                 title="More"
+                                aria-label="Task actions"
                             >
                                 <MoreHorizontal size={16} strokeWidth={1.75} />
                             </button>

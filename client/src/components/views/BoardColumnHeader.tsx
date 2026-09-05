@@ -163,6 +163,7 @@ export const BoardColumnHeader = ({
                     onMouseLeave={(e) =>
                         (e.currentTarget.style.background = "transparent")
                     }
+                    aria-label={`Actions for the ${name} column`}
                 >
                     <MoreHorizontal size={14} strokeWidth={1.75} />
                 </button>

@@ -33,3 +33,6 @@ dist-ssr
 # Playwright scratch output (P0 mobile net)
 test-results/
 playwright-report/
+
+# Detached-run stderr — see server/.gitignore.
+*.err

@@ -711,6 +711,9 @@ const NotificationRow = ({
                     <Button
                         size="small"
                         type="text"
+                        // axe critical `button-name`: an icon-only button
+                        // announces nothing but "button".
+                        aria-label="Notification actions"
                         icon={
                             <MoreHorizontal
                                 size={14}
