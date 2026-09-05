@@ -80,7 +80,7 @@ jest.setTimeout(60000);
  * second sweep — when a later phase adds routes; the completeness test reads
  * this list and will name anything left without a probe.
  */
-const PHASES_COVERED = ["P3", "P4", "P5", "P6", "P7"];
+const PHASES_COVERED = ["P3", "P4", "P5", "P6", "P7", "P8"];
 
 interface Foreign {
     workspaceId: string;

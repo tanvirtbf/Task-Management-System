@@ -8,6 +8,8 @@ import {
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type { Logger } from "winston";
 import { Config } from "../config";
+import { storageMode } from "../config/storage";
+import { AppError } from "../errors";
 
 /**
  * Cloudflare R2 object storage (S3-compatible) — the single client shared by the
@@ -19,6 +21,12 @@ import { Config } from "../config";
  * integration suite runs without a bucket. Tests that need a specific branch
  * (e.g. a missing object) `jest.spyOn(R2Service.prototype, "headObject")` — which
  * is why every method is a real prototype method, never an arrow field.
+ *
+ * KI-19: that fallback used to apply EVERYWHERE, and where it is not wanted it
+ * is a silent data-loss bug — `putObject` resolving without storing anything is
+ * indistinguishable, to every caller, from a successful upload. The mode now
+ * comes from `config/storage.ts`, and when fakes are not acceptable every method
+ * here refuses with `503 storage.unavailable` instead of pretending.
  */
 
 export interface PresignedUpload {
@@ -55,18 +63,15 @@ export class R2Service {
         const secretAccessKey = Config.CLOUDFLARE_R2_SECRET_KEY;
         this.bucket = Config.CLOUDFLARE_R2_BUCKET ?? "";
 
-        const configured = Boolean(
-            accountId && accessKeyId && secretAccessKey && this.bucket,
-        );
-        if (Config.NODE_ENV === "test" || !configured) {
+        if (storageMode() !== "live") {
             this.client = null;
-            // Gap-scan M6: in PRODUCTION a missing R2 config must be LOUD —
-            // the stub returns https://r2.fake/... URLs that "succeed" while
-            // every real upload is silently lost. Dev/test stubbing stays
-            // intentional (the QA recipe blanks the creds on purpose).
-            if (Config.IS_PROD && Config.NODE_ENV !== "test") {
-                this.logger.error("r2.transport.stub_in_prod", {
-                    reason: "CLOUDFLARE_R2_* env incomplete — uploads will return fake URLs and store NOTHING",
+            // Gap-scan M6 opened this; P8 (KI-19) closed it. The log line
+            // was the ONLY signal, and nobody reads a log to find out whether
+            // the file they just attached exists — so the refusal now happens
+            // at the call, and this stays as the operator-facing why.
+            if (storageMode() === "unavailable") {
+                this.logger.error("r2.transport.unavailable", {
+                    reason: "CLOUDFLARE_R2_* env incomplete where the no-network stub is not allowed — uploads and downloads will answer 503 storage.unavailable",
                 });
             } else {
                 this.logger.debug("r2.transport.stub", {
@@ -93,6 +98,26 @@ export class R2Service {
     }
 
     /**
+     * Refuse to answer at all when the deterministic stub is not acceptable
+     * (production without credentials). Public so a caller can fail BEFORE it
+     * writes a row it will have to clean up: `AttachmentsService` asks first,
+     * so a refused upload leaves nothing behind.
+     *
+     * 503 rather than 500: the request was fine, the server cannot serve it
+     * right now, and a load balancer or a retrying client should treat it that
+     * way. The code is stable so the client can say something useful.
+     */
+    assertUsable(): void {
+        if (storageMode() === "unavailable") {
+            throw new AppError(
+                503,
+                "storage.unavailable",
+                "File storage is not configured on this server, so files cannot be stored or retrieved",
+            );
+        }
+    }
+
+    /**
      * Build the canonical, workspace-scoped storage key for a new attachment.
      * Keyed by workspace so the janitor can sweep a tenant's objects, and never
      * derived from the client filename (only the safe extension is taken from the
@@ -108,6 +133,7 @@ export class R2Service {
         key: string,
         opts: { contentType: string; expiresIn: number },
     ): Promise<PresignedUpload> {
+        this.assertUsable();
         if (this.isStub) {
             return {
                 url: `https://r2.fake/put/${encodeURIComponent(key)}?sig=test`,
@@ -140,6 +166,7 @@ export class R2Service {
         body: Buffer,
         contentType: string,
     ): Promise<void> {
+        this.assertUsable();
         if (this.isStub) return;
         await this.client!.send(
             new PutObjectCommand({
@@ -156,6 +183,7 @@ export class R2Service {
         key: string,
         opts: { expiresIn: number },
     ): Promise<string> {
+        this.assertUsable();
         if (this.isStub) {
             return `https://r2.fake/get/${encodeURIComponent(key)}?sig=test`;
         }
@@ -167,6 +195,7 @@ export class R2Service {
 
     /** Whether the object exists (and its size/type), via a HEAD — for finalize. */
     async headObject(key: string): Promise<HeadResult> {
+        this.assertUsable();
         if (this.isStub) {
             // Default test transport assumes the upload landed; the "missing"
             // branch is exercised by spying this method.
@@ -192,6 +221,7 @@ export class R2Service {
 
     /** Hard-delete an object — used by the §30 r2-purge janitor, not the API. */
     async deleteObject(key: string): Promise<void> {
+        this.assertUsable();
         if (this.isStub) return;
         await this.client!.send(
             new DeleteObjectCommand({ Bucket: this.bucket, Key: key }),

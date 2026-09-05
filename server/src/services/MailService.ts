@@ -2,6 +2,7 @@ import nodemailer, { type Transporter } from "nodemailer";
 import type SMTPTransport from "nodemailer/lib/smtp-transport";
 import type { Logger } from "winston";
 import { Config } from "../config";
+import { mailMode } from "../config/mail";
 
 /**
  * Outbound email — password-reset + workspace-invitation links.
@@ -284,10 +285,25 @@ export class MailService {
     }): Promise<void> {
         if (!this.transporter) {
             // Log transport — no SMTP configured / test env. No network call.
-            this.logger.debug("mail.logged_not_sent", {
-                to: msg.to,
-                subject: msg.subject,
-            });
+            //
+            // P8 (the KI-19 family): in dev and test this is a normal no-op and
+            // stays at debug. In PRODUCTION it is a message a person was told
+            // had been sent and which no server ever saw — a password reset
+            // nobody receives, an invitation that never arrives — and debug is
+            // off there, so it left no trace at all. Same failure shape as the
+            // R2 stub: success reported, nothing done, nobody told.
+            if (mailMode() === "unavailable") {
+                this.logger.error("mail.not_sent", {
+                    to: msg.to,
+                    subject: msg.subject,
+                    reason: "SMTP is not configured on this server; the message was DROPPED",
+                });
+            } else {
+                this.logger.debug("mail.logged_not_sent", {
+                    to: msg.to,
+                    subject: msg.subject,
+                });
+            }
             return;
         }
         const info = await this.transporter.sendMail({

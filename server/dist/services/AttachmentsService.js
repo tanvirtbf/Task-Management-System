@@ -51,6 +51,9 @@ class AttachmentsService {
         if (!(0, attachmentPolicy_1.isMimeAllowed)(input.mimeType)) {
             throw new errors_1.AppError(415, "attachment.mime_not_allowed", `File type "${input.mimeType}" is not permitted`);
         }
+        // KI-19: last, so authorization and policy still decide first — but
+        // BEFORE the row, so a storage outage leaves no pending row behind.
+        this.r2.assertUsable();
         const id = (0, utils_1.fakeId)("att");
         const storageKey = this.r2.buildKey(input.workspaceId, id, (0, attachmentPolicy_1.extForMime)(input.mimeType));
         await this.attachments.createPending({
@@ -96,6 +99,8 @@ class AttachmentsService {
         if (!(0, attachmentPolicy_1.isMimeAllowed)(input.mimeType)) {
             throw new errors_1.AppError(415, "attachment.mime_not_allowed", `File type "${input.mimeType}" is not permitted`);
         }
+        // KI-19: see `signUpload` — after the guards, before the row.
+        this.r2.assertUsable();
         const id = (0, utils_1.fakeId)("att");
         const storageKey = this.r2.buildKey(input.workspaceId, id, (0, attachmentPolicy_1.extForMime)(input.mimeType));
         const size = BigInt(input.body.length);

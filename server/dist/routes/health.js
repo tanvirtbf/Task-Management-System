@@ -7,6 +7,9 @@ const express_1 = __importDefault(require("express"));
 const node_fs_1 = require("node:fs");
 const node_path_1 = __importDefault(require("node:path"));
 const client_1 = require("../db/client");
+const buildInfo_1 = require("../config/buildInfo");
+const mail_1 = require("../config/mail");
+const storage_1 = require("../config/storage");
 const metrics_1 = require("../observability/metrics");
 /**
  * §30 Health & diagnostics — unauthenticated probes for k8s / load balancers /
@@ -57,35 +60,75 @@ const pingDb = async (timeoutMs) => {
         return false;
     }
 };
+/**
+ * What object storage is doing, in the same vocabulary as the DB check.
+ *
+ *   ok            — real R2 credentials; uploads are stored.
+ *   stub          — the deterministic no-network transport. Correct in dev and
+ *                   test; it is what `storageMode()` refuses to allow anywhere
+ *                   it would mean silently discarding files (KI-19).
+ *   unconfigured  — no credentials where fakes are not acceptable. Uploads and
+ *                   downloads answer 503; everything else works.
+ */
+const storageCheck = () => {
+    const mode = (0, storage_1.storageMode)();
+    if (mode === "live")
+        return "ok";
+    return mode === "stub" ? "stub" : "unconfigured";
+};
+/**
+ * The same question for outbound email, which fails the same way: without SMTP
+ * credentials `MailService` drops every message and used to say so only at
+ * debug. `log_only` is the deliberate dev/test transport; `unconfigured` means
+ * messages are being DROPPED and each drop is now logged as an error.
+ */
+const mailCheck = () => {
+    const mode = (0, mail_1.mailMode)();
+    if (mode === "live")
+        return "ok";
+    return mode === "log_only" ? "log_only" : "unconfigured";
+};
 // ─── GET /health/ready ───────────────────────────────────────────────────────
 // Readiness — the process can serve traffic only if its dependencies are
 // reachable. Pings the DB within 500ms; Redis is not integrated yet (it would be
 // pinged here too once it is). 200 when ready, 503 otherwise.
+//
+// P8 (KI-19): storage and mail are REPORTED but do not decide readiness, on
+// purpose. A readiness probe answers "should traffic come here?", and a box
+// with no object storage still serves every task, list, comment and report —
+// everything except attachments. Failing readiness would pull it out of the
+// load balancer and turn a broken upload button into a total outage, which is a
+// worse incident than the one it would be signalling. The loud failure belongs
+// where a person meets it: the upload itself answers 503 storage.unavailable,
+// and a dropped email is logged as an error rather than at debug.
+//
+// The DB is different, and is the one thing that DOES decide: without it the
+// process can serve nothing at all.
 router.get("/health/ready", (_req, res, next) => {
     pingDb(500)
         .then((dbOk) => {
-        if (dbOk) {
-            res.status(200).json({
-                status: "ready",
-                checks: { database: "ok" },
-            });
-        }
-        else {
-            res.status(503).json({
-                status: "not_ready",
-                checks: { database: "down" },
-            });
-        }
+        const checks = {
+            database: dbOk ? "ok" : "down",
+            storage: storageCheck(),
+            mail: mailCheck(),
+        };
+        res.status(dbOk ? 200 : 503).json({
+            status: dbOk ? "ready" : "not_ready",
+            checks,
+        });
     })
         .catch(next);
 });
 // ─── GET /health/version ─────────────────────────────────────────────────────
-// Build SHA (set at build time via GIT_SHA) + package version + uptime. Nothing
-// sensitive is exposed.
+// Build SHA + package version + uptime. Nothing sensitive is exposed.
+//
+// KI-26: this answered "unknown" on every box, because `GIT_SHA` was the only
+// source and nothing in the deploy set it. `gitSha()` falls back to reading the
+// checkout, which is what a deploy of this product is.
 router.get("/health/version", (_req, res) => {
     res.status(200).json({
         version: VERSION,
-        git_sha: process.env.GIT_SHA ?? "unknown",
+        git_sha: (0, buildInfo_1.gitSha)(),
         uptime_seconds: Math.floor(process.uptime()),
         node: process.version,
     });

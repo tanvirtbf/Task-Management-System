@@ -6,6 +6,9 @@ import express, {
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { getPool } from "../db/client";
+import { gitSha } from "../config/buildInfo";
+import { mailMode } from "../config/mail";
+import { storageMode } from "../config/storage";
 import { renderProm } from "../observability/metrics";
 
 /**
@@ -64,38 +67,79 @@ const pingDb = async (timeoutMs: number): Promise<boolean> => {
     }
 };
 
+/**
+ * What object storage is doing, in the same vocabulary as the DB check.
+ *
+ *   ok            — real R2 credentials; uploads are stored.
+ *   stub          — the deterministic no-network transport. Correct in dev and
+ *                   test; it is what `storageMode()` refuses to allow anywhere
+ *                   it would mean silently discarding files (KI-19).
+ *   unconfigured  — no credentials where fakes are not acceptable. Uploads and
+ *                   downloads answer 503; everything else works.
+ */
+const storageCheck = (): "ok" | "stub" | "unconfigured" => {
+    const mode = storageMode();
+    if (mode === "live") return "ok";
+    return mode === "stub" ? "stub" : "unconfigured";
+};
+
+/**
+ * The same question for outbound email, which fails the same way: without SMTP
+ * credentials `MailService` drops every message and used to say so only at
+ * debug. `log_only` is the deliberate dev/test transport; `unconfigured` means
+ * messages are being DROPPED and each drop is now logged as an error.
+ */
+const mailCheck = (): "ok" | "log_only" | "unconfigured" => {
+    const mode = mailMode();
+    if (mode === "live") return "ok";
+    return mode === "log_only" ? "log_only" : "unconfigured";
+};
+
 // ─── GET /health/ready ───────────────────────────────────────────────────────
 // Readiness — the process can serve traffic only if its dependencies are
 // reachable. Pings the DB within 500ms; Redis is not integrated yet (it would be
 // pinged here too once it is). 200 when ready, 503 otherwise.
+//
+// P8 (KI-19): storage and mail are REPORTED but do not decide readiness, on
+// purpose. A readiness probe answers "should traffic come here?", and a box
+// with no object storage still serves every task, list, comment and report —
+// everything except attachments. Failing readiness would pull it out of the
+// load balancer and turn a broken upload button into a total outage, which is a
+// worse incident than the one it would be signalling. The loud failure belongs
+// where a person meets it: the upload itself answers 503 storage.unavailable,
+// and a dropped email is logged as an error rather than at debug.
+//
+// The DB is different, and is the one thing that DOES decide: without it the
+// process can serve nothing at all.
 router.get(
     "/health/ready",
     (_req: Request, res: Response, next: NextFunction) => {
         pingDb(500)
             .then((dbOk) => {
-                if (dbOk) {
-                    res.status(200).json({
-                        status: "ready",
-                        checks: { database: "ok" },
-                    });
-                } else {
-                    res.status(503).json({
-                        status: "not_ready",
-                        checks: { database: "down" },
-                    });
-                }
+                const checks = {
+                    database: dbOk ? "ok" : "down",
+                    storage: storageCheck(),
+                    mail: mailCheck(),
+                };
+                res.status(dbOk ? 200 : 503).json({
+                    status: dbOk ? "ready" : "not_ready",
+                    checks,
+                });
             })
             .catch(next);
     },
 );
 
 // ─── GET /health/version ─────────────────────────────────────────────────────
-// Build SHA (set at build time via GIT_SHA) + package version + uptime. Nothing
-// sensitive is exposed.
+// Build SHA + package version + uptime. Nothing sensitive is exposed.
+//
+// KI-26: this answered "unknown" on every box, because `GIT_SHA` was the only
+// source and nothing in the deploy set it. `gitSha()` falls back to reading the
+// checkout, which is what a deploy of this product is.
 router.get("/health/version", (_req: Request, res: Response) => {
     res.status(200).json({
         version: VERSION,
-        git_sha: process.env.GIT_SHA ?? "unknown",
+        git_sha: gitSha(),
         uptime_seconds: Math.floor(process.uptime()),
         node: process.version,
     });

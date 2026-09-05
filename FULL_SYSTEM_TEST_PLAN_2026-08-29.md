@@ -148,14 +148,14 @@ Re-verified ✔ = probed again today, still true.
 | KI-16 | ~~CORS reflects any private-LAN origin.~~ **FIXED in P7.** With `credentials:true` that let any page on the office LAN act as the signed-in user against PRODUCTION. Now dev-only, decided per request, moved to `src/config/cors.ts`. There were **no CORS tests at all** — the code's claim that "P2 verified all 10 origin cases" was one curl run; 22 now | closed by P7 | — |
 | KI-17 | ~~No `If-Match` anywhere — task PATCH is last-write-wins.~~ **WRONG.** `GET` sets an ETag, `PATCH` honours `If-Match`, a stale one is refused `409 task.conflict` with the other writer's text intact — all measured in P7. The real gap is that it is **opt-in** and the web client defers it (R4, stated in `api.ts`). A client decision, not a server gap | corrected by P7 | **GATE** (client) |
 | KI-18 | ~~`task.view` scope `own` never narrows reads.~~ **True but for the wrong reason.** Row visibility comes from `space.view`; `task.view`'s scope only decides whether `taskOwnEscape()` contributes, and those predicates are OR-ed in — so `own` WIDENS, and is inert until `space.view` is narrowed. The catalog's prose is honest; the scope-selector metaphor misleads. Measuring it found a real defect: `openTeamSeries` omitted the own-escape, so a viewer who could open 3 tasks saw a tile saying 1 (KI-14's shape) — fixed | corrected by P7 | **GATE** (naming) |
-| KI-19 | R2 unconfigured in prod = silent upload loss; `/health/ready` checks DB only | carried | **P8** + P14 ops |
+| KI-19 | ~~R2 unconfigured in prod = silent upload loss; `/health/ready` checks DB only.~~ **FIXED in P8.** Worse than filed: the loss happens on `POST /tasks/:id/attachments`, the ONLY path the shipped client uses, and that route had **no tests at all** — the isolation sweep's cross-tenant probe was what made the reach mapper count it covered. The stub is now a decision (`config/storage.ts`); every R2 call answers `503 storage.unavailable` rather than faking one; the refusal sits after the authz guards and before the row. `/health/ready` reports `storage` (and `mail`) but deliberately does not fail on them — reasoned in the route | closed by P8 | — |
 | KI-20 | Hardcoded `dhakaToday()` at 11 sites (latent while single-workspace) | carried | **P12** |
 | KI-21 | 2 redundant indexes (comments, tcfv) | carried | **P13** |
 | KI-22 | `v_breached_sla` / `v_current_on_call` latent tz bug | carried | **P12** |
 | KI-23 | Desktop `KpiRow` has the same missing-KPI crash exposure its mobile sibling had (KpiStrip was fixed in mobile P8) | carried | **P10** |
 | KI-24 | Client-side filtering over the full fetched task list — linear cost growth | carried | **P13** measure |
 | KI-25 | `client/mobile-baseline.json` records measurement churn on every A-net run | ✔ | **P0** rule |
-| KI-26 | Ops: `/health/version` not proxied by nginx + `git_sha` unfed ("unknown"); Cloudflare Rocket Loader active on prod HTML; upgrades README says 023/024 "pending prod" (stale) | carried | **P14** |
+| KI-26 | Ops: `/health/version` **`git_sha` FIXED in P8** — resolved from the checkout (loose ref, packed ref and detached HEAD all fixtured), and `DEPLOY_PROMPT` step 4a now compares it to `git rev-parse HEAD` from the box. Still open and P14's: nginx does not proxy `/health/version` (deliberate — it names the running build), Cloudflare Rocket Loader active on prod HTML, upgrades README says 023/024 "pending prod" (stale) | partly closed by P8 | **P14** |
 | KI-27 | On-call rota lapsed 2026-08-14 (prod routing falls back to Engineering head by design); prod `Bug` type + `Bug Triage` list existence unconfirmed | carried | **P14** ops checks |
 | KI-28 | **Opened by P2.** One `/auth/refresh` returned 500 under full-module load, once; not reproduced in 346 concurrent requests, 5 isolated runs or 3 further full runs. Cause discarded by the silenced test logger (now fixable with `TEST_LOG_ERRORS=1`) | open | **P13** load · any phase meeting an unexplained 5xx |
 | KI-29 | **Opened by P2.** 30 of 32 test setups still reset with `TRUNCATE` (509 ms per 9 tables vs 1.9 ms for `DELETE`, and it takes an exclusive metadata lock). Plausibly the majority of the gate's 127 min; auth already converted | open | **P13** |
@@ -2279,12 +2279,183 @@ push (3 — `public-key`, subscribe, unsubscribe).
    `"unknown"` today (KI-26). Feed it here, verify in P14 against the box.
 
 **Exit criteria**
-- [ ] 7/7 endpoints ticked; attachments edge sheet complete
-- [ ] KI-19 resolved: an upload can no longer fail silently, or the honest failure is proven
-- [ ] Push round-trip demonstrated on safe accounts only; SW update path verified
-- [ ] `/health/version` reports a real `git_sha`
+- [x] **7 / 7** endpoints — all already reached; the phase was depth, and the first
+      thing depth found was that the shipped upload path was reached by a test asking
+      a different question and had no tests of its own
+- [x] Attachments edge sheet complete against the path the product actually uses
+      (`POST /tasks/:id/attachments`), which had **none**: MIME, the size ceiling at
+      both ends, zero/one byte, duplicate + hostile + unicode filenames counted in
+      characters, traversal, and the key never derived from anything the client said
+- [x] **KI-19 resolved** — the stub is now a decision (`config/storage.ts`) and every
+      R2 call refuses with `503 storage.unavailable` rather than faking a result;
+      refusal cannot outrank a 404 and leaves no phantom row. The same bug was found
+      one file over in `MailService` and made visible there too
+- [x] Push delivery demonstrated on generated keys with `sendNotification` mocked for
+      the whole file — fan-out, the 410/404 prune, the 500 non-prune, never-throws —
+      and the `NODE_ENV=test` VAPID withholding asserted rather than worked around.
+      **No real account, no real device, no network**
+- [x] `sw.js` install/activate/fetch/push/click driven through a real harness (19
+      tests), including the offline fallback and the `/api/*` never-cached rule
+- [x] **`/health/version` reports a real `git_sha`** (KI-26), resolved from the
+      checkout; `DEPLOY_PROMPT` step 4a now compares it to `git rev-parse HEAD`
+- [x] `npm run test:all` green; baseline restored
 
-**Execution record P8:** *(empty)*
+**Execution record P8** — 2026-09-04, anchor `9a5a6bc`.
+
+### Endpoints — 7 / 7
+
+All seven were already reached before the phase began (`npm run reach -- P8`: *7 endpoints · 7
+called by tests · 0 NEVER called*). So P8, like P4, P6 and P7, was depth. And the first thing
+depth found was that **reached is not tested** — see D8.1.
+
+### D8.1 — KI-19: the upload path the product actually uses had no tests, and lost files silently
+
+The ledger entry was *"R2 unconfigured in prod = silent upload loss"*. Both halves turned out to
+be worse than written.
+
+**Where the loss happens.** `R2Service` falls back to a deterministic no-network stub when the
+`CLOUDFLARE_R2_*` credentials are absent. Under that stub `putObject` is a **no-op that
+resolves**. `AttachmentsService.uploadDirect` then marks the row `complete`, the API answers
+**201 with a plausible `https://r2.fake/...` URL**, and the file appears on the task. Nothing was
+stored, nothing failed, and the only signal was one `logger.error` at process start — which
+nobody reads to find out whether the file they just attached exists.
+
+**And that is the one path the product uses.** `client/src/http/api.ts` uploads through
+`POST /tasks/:id/attachments` and never touches `/uploads/sign` at all. The presign pair had 38
+tests. The proxied route had **none**: the only test that so much as named it was the
+tenant-isolation sweep's cross-workspace probe — which is exactly why the reach mapper counted
+it as covered. A route can be reached by a test that is asking a completely different question.
+
+**The fix.** The stub stops being a fallback and becomes a decision, in `src/config/storage.ts`
+next to `cors.ts` — same reasoning, same shape, and answerable without booting a router.
+`storageMode()` returns `live` / `stub` / `unavailable`, and in `unavailable` every R2 method
+refuses with **`503 storage.unavailable`** instead of faking a result. `AttachmentsService` asks
+`assertUsable()` **after** the authorization and policy guards but **before** it writes the row,
+so a refusal cannot outrank a 404 and cannot leave a phantom pending row behind.
+
+`STORAGE_ALLOW_STUB=0` asks the production question without setting `NODE_ENV=prod` — the trap
+§A rule 4 documents, and the same escape hatch `CORS_ALLOW_LAN` gave KI-16.
+
+**Tests: 108 → 152.** A full edge sheet against the shipped path (§P8 task 2): the storage key
+is built from the id and the declared MIME and never from the filename, so `../../../../etc/passwd`
+is stored as a *name* and the key stays inside the workspace prefix; two files with the same name
+are two keys; a Bangla filename round-trips and the 255 limit is counted in **characters**;
+exactly 255 accepted, 256 refused; a malformed percent-escape falls back rather than 500s; an
+encoded CRLF stays data and does not become a header; zero bytes is `400 attachment.empty`, one
+byte is a real file, 25 MB + 1 is 413 **measured on the real bytes**; `application/json` on the
+byte route is 400 rather than a 500; and the KI-19 refusal proved on all five paths with the
+control 201 alongside it, so the test measures the mode and not something else.
+
+### D8.2 — the same bug, one file over: outbound email
+
+R2 was not the only null-safe transport that reports success while doing nothing.
+`MailService.send()` returns after a **DEBUG** line when SMTP is unconfigured — and debug is off
+in production. So a password reset or a workspace invitation can be accepted, answered, and
+never sent, leaving **no trace above debug anywhere**. It is KI-19's shape exactly, on the
+messages a locked-out colleague and a new hire depend on.
+
+Not fixed by changing control flow — whether an invitation should fail loudly is a product
+decision, not a test-phase one, and it is sent to the gate below. Fixed by making the drop
+**visible**: `src/config/mail.ts` (`mailMode()`), a dropped message in production now logs
+`mail.not_sent` at **error** with the recipient and subject, and `/health/ready` reports the
+transport. The constructor still refuses a real transport under `NODE_ENV=test`
+**unconditionally** — deliberately not routed through `mailMode()`, so no environment variable a
+test sets can ever hand the suite a live mailer.
+
+### D8.3 — `/health/ready` now reports storage and mail, and deliberately does not fail on them
+
+`checks` becomes `{ database, storage, mail }`. Readiness still turns on the database alone, and
+the reasoning is written into the route rather than left implicit: a readiness probe answers
+*"should traffic come here?"*, and a box with no object storage still serves every task, list,
+comment and report. Failing readiness would pull it out of the load balancer and turn a broken
+upload button into a total outage — a worse incident than the one it would be signalling. The
+loud failure belongs where a person meets it, and now is there.
+
+### D8.4 — KI-26: `/health/version` never knew which build it was
+
+It answered `git_sha: "unknown"` on every box, because `GIT_SHA` was its only source and nothing
+in the deploy set it. A version endpoint that cannot name the version is furniture — during the
+2026-09-03 deploy the only way to tell whether pm2 had picked up the new code was to compare
+bundle filenames by eye.
+
+`src/config/buildInfo.ts` reads the checkout, which is what a deploy of this product *is*
+(`git pull` + `pm2 restart`, `dist` tracked). No subprocess: three small files answer it, and all
+three shapes `.git/HEAD` takes in the wild get a fixture — a loose ref, a **packed** ref (what
+`git gc` leaves on a long-lived box), and a detached HEAD — plus the corrupt cases, which return
+`null` rather than a partial answer. `DEPLOY_PROMPT` gains **step 4a**: compare
+`git rev-parse HEAD` with `/health/version`, from the box, before trusting any later check.
+
+### D8.5 — the metrics route label collapsed every `/:id` route into one series, on errors
+
+Found by a P8 test rather than by reading. `/metrics` is unauthenticated, so what lands in a
+label is a privacy boundary as well as a cardinality one; the test asked whether a task id in the
+URL can end up in a label. It cannot — but the label came back as bare **`route="/:id"`**.
+
+`req.baseUrl` is restored when a router hands the request back up the stack, which is what
+happens on **every error path**. So a 200 on `/api/v1/tasks/:id` was labelled correctly and the
+401 on the very same route was labelled `/:id` — together with lists, spaces, comments and
+attachments. Every `/:id` route in the API counted as a single series, on exactly the requests a
+person opens this endpoint to understand. Fixed by rebuilding the mount from the URL that
+actually arrived when `baseUrl` has been cleared, and pinned by a test that two routers' `/:id`
+routes stay apart.
+
+### Web push, end to end — the delivery half nobody had asked about
+
+`push.test.ts` covered the subscription rows. Nothing covered what happens when a message is
+actually sent, so **notifications 108 → 120**: the fan-out reaches every device of every
+recipient once; the payload is exactly the `{title, body, url, tag}` contract the service worker
+reads, with `TTL: 3600`; a **410 or 404 prunes the row inline** and a 500 does not, because a
+transient failure is not a revocation; one dead device does not stop the live one beside it; and
+nothing throws — not a rejection without a `statusCode`, not the device lookup itself failing.
+
+Two safety guards, both load-bearing: `webpush.sendNotification` is mocked in a top-level
+`beforeEach` so no test can reach the network by accident, and the rule that `pushSvc()`
+withholds the VAPID keys under `NODE_ENV=test` is **asserted** rather than worked around — it is
+the thing standing between a test run and real phones.
+
+### The service worker, exercised instead of read — client 87 → 106
+
+`public/sw.js` is the one file in the client nothing checks: eslint matches only `**/*.{ts,tsx}`,
+it is copied verbatim out of `public/` rather than bundled, and its globals exist nowhere else.
+It also decides whether a person sees yesterday's tasks and whether the offline screen is
+telling the truth. It now has a harness — a fake service-worker scope, the real file evaluated
+inside it, its handlers driven by hand — asserting the reasoning in its own header: `/api/*` is
+never intercepted, `/sw.js` never serves itself from cache, cross-origin and non-GET are left
+alone, hashed assets are cache-first, navigations are network-first with the cache as a pure
+offline fallback, and **offline with nothing cached returns a network error rather than a blank
+lie**. Plus install (one bad icon must not block it), activate, the push payload contract, and
+notification clicks reusing an open window.
+
+### Decisions written down rather than silently taken
+
+- **MIME is declared, never sniffed.** The extension follows the declaration, not the bytes.
+  That is safe *only* because the allow-list contains no type a browser will execute — no SVG,
+  no HTML, no JS — so a lie about the type can downgrade how a file is served but never escalate
+  it. Both stored-XSS shapes are pinned as 415. **If a dangerous type is ever allow-listed,
+  magic-byte sniffing stops being optional.**
+- **Reads refuse too.** In `unavailable` mode the attachment list and download answer 503 rather
+  than hand out URLs that cannot work. In such a deployment there is nothing to list anyway,
+  because uploads are refused; a dead link would be the same lie in a quieter register.
+- **The isolation sweep covers P8** (`PHASES_COVERED` +`P8`, still 150 probes): health and push
+  have no `:id` families, and the completeness check confirms it rather than assuming it.
+- **GATE:** should `sendInvitation` / `sendPasswordResetEmail` **fail loudly** when mail is
+  unavailable, instead of logging an error and returning? Today an admin is told the invitation
+  was sent. Argument against is the forgot-password endpoint's deliberate refusal to be an
+  email-existence oracle. Product decision, not a test-phase one.
+
+### Closing state
+
+- **`npm run test:all` — 38 modules · 5,950 passed · 0 failed (2 FLAKY-PASS, both suspend/resume timeouts)**
+- `health` **14 → 37** · `attachments` **108 → 152** · `notifications` **108 → 120** ·
+  `client (vitest)` **87 → 106** · `isolation` 150 (P8 added to `PHASES_COVERED`; health
+  and push have no `:id` families, and the completeness check confirms it).
+- Static phase 4/4; eslint 0/0 and a real type-check on both packages.
+- Dev DB at baseline **47 / 6 / 9 / 27 / 15** — re-counted, not assumed.
+- `server/dist` **rebuilt** so the tracked artifact matches the source. Production is
+  still on `7e661c8` and does NOT yet contain P7 or P8 — deploying is a separate,
+  operator-run step.
+
+**Signed off:** ✅
 
 ---
 

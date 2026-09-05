@@ -142,6 +142,9 @@ export class AttachmentsService {
                 `File type "${input.mimeType}" is not permitted`,
             );
         }
+        // KI-19: last, so authorization and policy still decide first — but
+        // BEFORE the row, so a storage outage leaves no pending row behind.
+        this.r2.assertUsable();
 
         const id = fakeId("att");
         const storageKey = this.r2.buildKey(
@@ -221,6 +224,9 @@ export class AttachmentsService {
                 `File type "${input.mimeType}" is not permitted`,
             );
         }
+
+        // KI-19: see `signUpload` — after the guards, before the row.
+        this.r2.assertUsable();
 
         const id = fakeId("att");
         const storageKey = this.r2.buildKey(

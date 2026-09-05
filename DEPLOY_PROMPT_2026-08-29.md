@@ -170,6 +170,26 @@ curl -s http://127.0.0.1:5501/health          # {"status":"ok",...}
 curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:5501/health/ready   # 200
 ```
 
+### Step 4a — is the running process the commit you just pulled?
+
+```bash
+cd /var/www/bbtasks
+git rev-parse HEAD
+curl -s http://127.0.0.1:5501/health/version
+# the "git_sha" in the reply must EQUAL the sha above
+```
+
+> New in P8 (KI-26). `/health/version` used to answer `git_sha: "unknown"` on every
+> box — `GIT_SHA` was its only source and nothing in the deploy ever set it — so the
+> only way to tell whether pm2 had actually picked up the new code was to compare
+> bundle filenames by eye. It now falls back to reading `.git`, which is what this
+> deploy IS. A mismatch means `pm2 restart` did not take, and every check after this
+> point would be testing the OLD build.
+>
+> `/health/version` is deliberately **not** proxied by nginx (it names the running
+> build), so this is a from-the-box check. That is the point: it is for the person
+> doing the deploy.
+
 ### Step 4b — the canary that actually reads a task
 
 > **This replaces the old check, which was broken.** The previous prompt said to
