@@ -3031,12 +3031,203 @@ is the phase that keeps it true.*
    modals, visible focus rings, form labels, and colour contrast on the status/priority chips.
 
 **Exit criteria**
-- [ ] `mobile-390` + `mobile-360` + `desktop-guard` green; A1–A14 all meaningful
-- [ ] First-load budget re-measured and within bound; PWA install verified on a real device
-- [ ] No DnD-only action without a touch alternative
-- [ ] Accessibility findings either fixed or written to GATE with the screen named
+- [x] `mobile-390` **14/14** · `mobile-360` **14/14** · `desktop-guard` **1/1**, all
+      against the SERVED PRODUCTION BUNDLE. `NOT_YET` is empty, so every criterion is a
+      real pass rather than an expected failure — and **A15 is new**: the public form,
+      checked on the phone customers actually fill it in on
+- [x] **First-load budget re-measured: 471.8 KB gz** against the 500 ceiling — the same
+      figure P8 landed. It is a TEST now rather than a number in a document, and it was
+      proved able to fail by dropping the ceiling to 400. ⚠️ Its first version summed
+      DECOMPRESSED bytes (1,527 KB) against a `BUDGET_KB * 4` fudge — passing while
+      measuring the wrong quantity, which is worse than no test
+- [x] PWA **5/5** — manifest installable, every promised icon resolves, the service
+      worker reaches `active`, and the offline banner appears, tells the truth about
+      what will not save, and clears on reconnect
+- [x] **No DnD-only action** — one was found: the form builder's palette added a field by
+      drag ONLY, so a phone could not build a form at all and no keyboard could reach it,
+      while `mobile.css` claimed every drag had a non-drag path. Fixed, and the claim is
+      now enforced structurally rather than asserted in a comment
+- [x] Accessibility **10/10**; the six CRITICAL violations it found are fixed (P10 D10.5),
+      and `color-contrast` is written to **GATE** with every screen named and the exact
+      measurement and one-line change recorded
+- [x] `npm run test:all` green; baseline restored
 
-**Execution record P11:** *(empty)*
+**Execution record P11** — 2026-09-06, anchor `68fb132`.
+
+*~70% of this workspace works from a phone; the rebuild is complete and this phase keeps it true.*
+
+### D11.1 — the one drag-only action, and it was the form builder
+
+§P11 task 3 asks to "verify the alternative path exists for every DnD-only action". `mobile.css`
+D5 states the decision and the claim it rests on:
+
+> dnd-kit fires PointerSensor only and the cards never set `touch-action`, so a drag either
+> loses the gesture to the browser or steals a tap. […] **Every drag action already has a
+> non-drag path:** tap opens the task, status changes through the status control, scheduling
+> through the due-date field.
+
+True of the board, the calendar and the status list — the status settings even have explicit
+up/down arrows. **False of the form builder.** Its palette adds a field by drag ONLY: the
+palette item is a `<div>` carrying dnd-kit's listeners, with no `onClick`, no `role`, no tab
+stop and no Enter handler. So on a phone the browser claims the touch as a scroll, the drag
+never starts, and **a form cannot be built at all** — while the palette goes on looking
+interactive. The same `<div>` was unreachable by keyboard for everyone, on any device.
+
+There is no mobile guard on the route either, so nothing tells the person why nothing happens.
+
+Fixed by extracting `addField(fieldKey)` out of `handleDragEnd` and giving the palette items
+`role="button"`, a tab stop, `onClick` and Enter/Space. Drag, tap and keyboard now land in the
+same function, appending to the end exactly as the drop always did, so the three cannot drift
+apart. The D5 comment has been corrected to say that P11 checked its claim, found the exception
+and closed it.
+
+**And the class:** `drag-alternatives.test.ts` asserts structurally that any file making
+something draggable also responds to a tap. A list of "the four current drag surfaces" is
+exactly the kind of list this project has watched rot twice (§A's hand-written reset lists), so
+the rule is enforced against the source rather than against an inventory.
+
+### D11.2 — the A1–A14 ratchet
+
+`NOT_YET` is **empty** — every criterion is expected to PASS, so there is no `test.fail()`
+left to confirm and the tightening §P11 task 1 asks about has already happened. What the phase
+owed instead was proof they still hold, at both viewports, against the artifact that ships:
+**14/14 at mobile-390 and 14/14 at mobile-360**, run against the served production bundle
+rather than the dev server.
+
+The fourteenth is new. **A15 — the public form, on the phone it is actually filled in on.**
+That screen is the one people OUTSIDE the company use, overwhelmingly on a phone, usually
+once; everything else here is used daily by staff who learn its quirks. The mobile rebuild
+landed four things on it, and until now all four were verified by reading:
+
+- the phone field raises a numeric keypad (`type="tel"` + `inputMode="numeric"`) — a phone
+  number typed on a QWERTY keyboard is a small daily tax on every customer;
+- it is not under 16px, or iOS zooms the whole page on focus (A5 restated here, because this
+  screen is rendered by a different component and matters most);
+- a bad BD number is refused, and **the field being complained about is on screen** — the
+  requirement is that the customer can SEE the problem, so the check is visibility, not that
+  the page happened to scroll (on a short form it does not need to);
+- the upload box tells the truth. Anonymous upload is a backend feature that does not exist,
+  and a box that implies otherwise loses the customer's photo AND their trust in the reply.
+
+⚠️ The first draft used `getByLabel(/your name/i)` and timed out: this form renders antd inputs
+without `<label for>`. It fills by position, the way `forms.pw.ts` already did. And the
+error-visibility check first anchored on `.ant-form-item-has-error`, which this page does not
+use — it marks the field with `data-field-key` — so the check returned `null` and passed while
+proving nothing. Both corrected before the result was believed.
+
+### D11.3 — accessibility
+
+The existing pass (`f31-deferred.pw.ts`) runs axe on three screens and gates on `critical` only.
+`a11y.pw.ts` widens it to the **six screens people live in** and adds the three things a rule
+engine cannot see:
+
+- **keyboard-only sign-in** — the one screen where a keyboard failure locks somebody out of the
+  product entirely: Tab to the email field, type, Tab, type, Enter, and be signed in;
+- **the focus ring** — a CSS reset that drops `outline` makes keyboard use possible and
+  untrackable. Accepts an outline, an antd box-shadow or a border, because all three are
+  deliberate and visible;
+- **the focus trap** — Tab 25 times inside an open modal and never leave it, then Escape closes
+  it. A trap you cannot escape is worse than no trap.
+
+`serious` violations are reported with their ids on every run and gated against a **named**
+allowlist that starts empty, so a NEW serious finding fails even while known ones are being
+worked through. A count nobody can see is a count nobody fixes.
+
+**10/10**, and the six `critical` violations it found on its first run are gone — all fixed
+during P10 (see that record's D10.5), because they sat on desktop screens. What remains is
+reported on every run rather than hidden:
+
+| screen | serious | moderate |
+|---|---|---|
+| login | color-contrast | landmark-one-main, region |
+| home | color-contrast | heading-order |
+| inbox | color-contrast | — |
+| search | color-contrast | — |
+| spaces | color-contrast | page-has-heading-one |
+| settings-members | color-contrast | landmark-main-is-top-level, landmark-no-duplicate-main, landmark-unique |
+
+`color-contrast` is the GATE item below. The `moderate` findings are document-structure
+(landmark and heading order) and are recorded, not gated — they affect how a screen reader
+summarises a page rather than whether it can be used.
+
+**GATE — colour contrast, every screen.** `tokens.colors.textMuted` is `#94A3B8`, measured on
+the three backgrounds it actually sits on:
+
+| foreground | on `#FFFFFF` page | on `#F4F4F6` sidebar | on `#F3F4F6` chip |
+|---|---|---|---|
+| `#94A3B8` today | **2.56** | **2.33** | **2.33** |
+| `#64748B` slate-500 | 4.76 ✓ | 4.33 ✗ | 4.32 ✗ |
+| `#5B6779` | 5.74 ✓ | 5.22 ✓ | 5.21 ✓ |
+
+AA wants 4.5:1, so every screen fails on real UI text — the sidebar's section labels
+("Engineering", "Favorites"), empty-state lines ("Star a list to pin it here"), the
+keyboard-shortcut chips. One line to fix and **not** one line to decide: the token has **301
+usages**, so it sets the visual character of the whole product, and the obvious one-step
+darkening to slate-500 still misses the sidebar. Named in `KNOWN_SERIOUS` with this measurement
+attached, so the gate stays green and honest while a NEW serious finding still fails.
+
+### D11.4 — PWA and the first-load budget
+
+**5/5.**
+
+**The first-load budget is a test now, not a number in a document.** The plan set 470 KB gz with
+a fail past 500; measured on the shipped bundle, **471.8 KB gz** — the same figure P8 landed,
+which is the point: nothing regressed, and now nothing can regress quietly either.
+
+⚠️ The first version of that test was dishonest by accident and is worth recording.
+`response.body()` hands back DECOMPRESSED bytes, so summing it reported **1,527 KB** for a shell
+that is 471.8 KB gz. Rather than notice, I had written the ceiling as `BUDGET_KB * 4` — a
+fudge factor that made the assertion pass while measuring the wrong quantity, which is worse
+than no test. It now gzips the bodies itself, so the measurement matches the metric the plan set
+and does not depend on whether this particular static server compresses. **Proved able to fail**
+by dropping the ceiling to 400 and watching it go red.
+
+The other four: the manifest carries the four things Chrome requires before it offers Install
+(name, `start_url`, an app-like `display`, and 192/512/maskable icons); every icon the manifest
+promises actually resolves (a manifest naming a missing file makes Chrome decline installation
+silently, saying nothing about why); and the service worker registers and reaches `active`.
+
+**The offline banner, which the rebuild caught lying once.** It appears when the network goes,
+its copy says what does NOT work — "changes won't save", because the worker caches the SHELL and
+not the data, and "you're offline" alone invites the reader to assume their work is queued — and
+it clears when the network returns, so it does not become furniture people learn to ignore.
+
+### Why P11's commit is docs-only
+
+Every line of P11's code was already committed before this record was written — the form-builder
+fix, `drag-alternatives.test.ts` and the `mobile.css` correction went in with `27b1390` (P9), and
+`pwa-budget.pw.ts` plus A15 went in with `68fb132` (P10).
+
+That is the same cause the P10 record describes: the three phases were worked in one session at
+the user's request, and each sign-off staged the whole tree. So P11's commit carries the plan and
+the memory and nothing else, and reading the commits as phase boundaries would misattribute the
+work in both directions. Each record states what its own phase did; the diffs do not.
+
+### What was NOT rewritten
+
+The A1–A14 net, the desktop guard and the public-form spec already exist and already run at
+both viewports; P11 ran them rather than restating them. `NOT_YET` is empty — every criterion is
+expected to PASS now, so there is no `test.fail()` left to confirm, and the tightening §P11 task
+1 asks about has already happened.
+
+### Closing state
+
+- **`npm run test:all` — 38 modules · 6,000 passed · 0 failed · ALL GREEN (no flakies)**
+- **Playwright** — mobile-390 14/14 · mobile-360 14/14 · desktop-guard 1/1 · PWA 5/5 ·
+  a11y 10/10 · desktop 99/99, every one against the served production bundle.
+- client vitest **137**, of which P11 added 3 (`drag-alternatives`). P11's other work is
+  Playwright, which is opt-in and not part of `test:all`.
+- Static phase 4/4; eslint 0/0 and a real type-check on both packages.
+- Dev DB at baseline **47 / 6 / 9 / 27 / 15**, verified after the browser runs — the specs
+  provision and remove their own fixtures.
+- ⚠️ **`client/dist` is NOT rebuilt and prod is still `7e661c8`.** P10 and P11 both changed
+  client source (KpiCard, the error surfaces, CalendarView, the aria-labels, the focus ring,
+  FormBuilderPage, index.css, mobile.css), and all of it was verified against a scratch
+  build at `E:/p10-dist` rather than the committed bundle. **Deploying any of it means
+  rebuilding `client/dist` first** — that is P14's, or a deliberate deploy, and it is the
+  single most important thing to carry out of these three phases.
+
+**Signed off:** ✅
 
 ---
 
