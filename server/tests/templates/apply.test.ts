@@ -20,12 +20,7 @@ import {
     templates,
 } from "../../src/db/schema";
 import { Config } from "../../src/config";
-import {
-    TEMPLATES,
-    seedTemplate,
-    signAccess,
-    validStructure,
-} from "./helpers";
+import { TEMPLATES, seedTemplate, signAccess, validStructure } from "./helpers";
 import type { TemplateStructure } from "../../src/types/templates";
 
 /**
@@ -179,6 +174,74 @@ describe("POST /api/v1/templates/:id/apply", () => {
                 .from(templates)
                 .where(eq(templates.id, tpl.id));
             expect(tplRow.usageCount).toBe(4); // 3 → 4
+        });
+
+        it("sets the checklist rollup on the new task (P12)", async () => {
+            // The rollup is a denormalised cache maintained by hand inside
+            // every write transaction. This is the SECOND path that creates
+            // checklist items — `ChecklistsService` is the first — and it
+            // raw-inserts them, so it has to do the same bookkeeping. A task
+            // spawned from a 12-step template that reports "0/0" is wrong on
+            // the card, wrong in the list row, wrong on the board and wrong to
+            // the assistant, and stays wrong until somebody happens to tick an
+            // item (which absolute-recomputes and quietly repairs it).
+            const { ws, actor, client, list, taskType } = await applySetup();
+            const tpl = await seedTemplate({
+                workspaceId: ws.id,
+                createdBy: actor.id,
+                structure: validStructure({ taskTypeId: taskType.id }),
+            });
+
+            const res = await client
+                .post(applyUrl(tpl.id))
+                .send({ list_id: list.id });
+            const body = res.body as ApplyBody;
+
+            const db = getDb();
+            const [ck] = await db
+                .select()
+                .from(checklists)
+                .where(eq(checklists.taskId, body.id));
+            const ckItems = await db
+                .select()
+                .from(checklistItems)
+                .where(eq(checklistItems.checklistId, ck.id));
+
+            const [row] = await db
+                .select({
+                    total: tasks.checklistItemsTotal,
+                    done: tasks.checklistItemsDone,
+                })
+                .from(tasks)
+                .where(eq(tasks.id, body.id));
+
+            // Compared to the rows actually inserted rather than a hardcoded
+            // 2, so the assertion cannot drift away from the fixture.
+            expect(ckItems.length).toBeGreaterThan(0); // vacuity guard
+            expect(row).toEqual({ total: ckItems.length, done: 0 });
+        });
+
+        it("the rollup rides the task READ the UI actually uses (P12)", async () => {
+            // The counter only matters because a client reads it. This is the
+            // surface the "3/7" chip comes from.
+            const { ws, actor, client, list, taskType } = await applySetup();
+            const tpl = await seedTemplate({
+                workspaceId: ws.id,
+                createdBy: actor.id,
+                structure: validStructure({ taskTypeId: taskType.id }),
+            });
+
+            const res = await client
+                .post(applyUrl(tpl.id))
+                .send({ list_id: list.id });
+            const body = res.body as ApplyBody;
+
+            const read = await client.get(`/api/v1/tasks/${body.id}`);
+            expect(read.status).toBe(200);
+            expect({
+                total: read.body.checklist_items_total,
+                done: read.body.checklist_items_done,
+            }).toEqual({ total: 2, done: 0 });
         });
 
         it("logs a created_from_template activity row", async () => {

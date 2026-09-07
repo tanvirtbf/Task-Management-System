@@ -1,6 +1,10 @@
 import type { Logger } from "winston";
 import type OpenAI from "openai";
-import { buildMessages, type ChatTurn } from "../assistant/buildMessages";
+import {
+    buildMessages,
+    type ChatTurn,
+    type WorkspaceDay,
+} from "../assistant/buildMessages";
 import { AppError } from "../errors";
 
 /**
@@ -55,13 +59,14 @@ export class AssistantService {
     async ask(
         history: ChatTurn[],
         message: string,
-        opts: { tools?: ToolBridge; callerBlock?: string } = {},
+        opts: { tools?: ToolBridge; callerBlock?: string; today?: WorkspaceDay } = {},
     ): Promise<string> {
         const startedAt = Date.now();
         const messages = buildMessages(
             history,
             message,
             opts.callerBlock,
+            opts.today,
         ) as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
         const maxRounds = opts.tools ? MAX_TOOL_ROUNDS : 1;
 
@@ -186,12 +191,14 @@ export class AssistantService {
             signal: AbortSignal;
             tools?: ToolBridge;
             callerBlock?: string;
+            today?: WorkspaceDay;
         },
     ): Promise<void> {
         const messages = buildMessages(
             history,
             message,
             opts.callerBlock,
+            opts.today,
         ) as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
 
         const maxRounds = opts.tools ? MAX_TOOL_ROUNDS : 1;

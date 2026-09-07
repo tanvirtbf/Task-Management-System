@@ -215,3 +215,86 @@ describe("schema parity — Drizzle vs the database that was actually built", ()
         });
     });
 });
+
+/**
+ * §P12 task 6 — the VIEWS, which P1's parity suite did not reach.
+ *
+ * P1 pinned the nine triggers for a stated reason: they are "the part of this
+ * schema that no TypeScript type would ever notice going missing". The five
+ * views are the same kind of thing and were left out — they exist only in
+ * `database/schema.sql` and in migrations, no ORM model refers to them, and two
+ * of them (`v_breached_sla`, `v_current_on_call`) carry clock logic that F3
+ * already had to re-derive once after the live database and `schema.sql`
+ * drifted to two DIFFERENT wrong answers.
+ *
+ * So: same shape as the trigger check, against the same canonical file.
+ */
+describe("schema parity — views", () => {
+    const canonical = (): string =>
+        fs.readFileSync(
+            path.resolve(__dirname, "../../../database/schema.sql"),
+            "utf8",
+        );
+
+    const declaredViews = (): Set<string> =>
+        new Set(
+            [
+                ...canonical().matchAll(
+                    /CREATE\s+(?:OR\s+REPLACE\s+)?VIEW\s+`?(\w+)`?/gi,
+                ),
+            ].map((m) => m[1]),
+        );
+
+    const appliedViews = async (): Promise<Set<string>> => {
+        const conn = await getPool().getConnection();
+        try {
+            const [rows] = await conn.query(
+                `SELECT TABLE_NAME FROM information_schema.VIEWS
+                  WHERE TABLE_SCHEMA = DATABASE()`,
+            );
+            return new Set(
+                (rows as { TABLE_NAME: string }[]).map((r) => r.TABLE_NAME),
+            );
+        } finally {
+            conn.release();
+        }
+    };
+
+    it("finds views declared in the canonical schema (no vacuous pass)", () => {
+        expect(declaredViews().size).toBeGreaterThanOrEqual(5);
+    });
+
+    it("applies every view the canonical schema declares, and no others", async () => {
+        const declared = declaredViews();
+        const applied = await appliedViews();
+        expect({
+            declaredButNotApplied: [...declared]
+                .filter((v) => !applied.has(v))
+                .sort(),
+            appliedButNotDeclared: [...applied]
+                .filter((v) => !declared.has(v))
+                .sort(),
+        }).toEqual({ declaredButNotApplied: [], appliedButNotDeclared: [] });
+    });
+
+    it("every applied view is actually SELECTable", async () => {
+        // A view can exist and be broken: MySQL keeps the definition after an
+        // underlying column is renamed and only fails when something reads it.
+        // `information_schema.VIEWS` still lists it, so a name-only check calls
+        // a dead view healthy.
+        const conn = await getPool().getConnection();
+        const broken: string[] = [];
+        try {
+            for (const v of await appliedViews()) {
+                try {
+                    await conn.query(`SELECT * FROM \`${v}\` LIMIT 0`);
+                } catch (e) {
+                    broken.push(`${v}: ${(e as Error).message.slice(0, 80)}`);
+                }
+            }
+        } finally {
+            conn.release();
+        }
+        expect({ unreadableViews: broken }).toEqual({ unreadableViews: [] });
+    });
+});

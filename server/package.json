@@ -26,6 +26,7 @@
         "db:setup:fresh": "tsx src/db/setup.ts --drop",
         "db:seed": "tsx src/db/seed.ts",
         "db:seed:demo": "tsx src/db/seed-demo.ts",
+        "db:restore-drill": "node scripts/restore-drill.cjs",
         "job": "cross-env NODE_ENV=dev tsx src/bin/run-job.ts"
     },
     "author": "",

@@ -5,6 +5,7 @@ import { TasksRepo } from "../../src/repositories/TasksRepo";
 import { ReviewsRepo } from "../../src/repositories/ReviewsRepo";
 import { TaskActivityRepo } from "../../src/repositories/TaskActivityRepo";
 import { NotificationsRepo } from "../../src/repositories/NotificationsRepo";
+import { WorkspaceRepo } from "../../src/repositories/WorkspaceRepo";
 import { UsersRepo } from "../../src/repositories/UsersRepo";
 import {
     ReviewsService,
@@ -34,6 +35,8 @@ const service = () => {
         new TaskActivityRepo(db),
         new NotificationsRepo(db),
         new UsersRepo(db),
+        // KI-20: the service resolves "today" on the workspace's own clock.
+        new WorkspaceRepo(db),
         logger,
     );
 };

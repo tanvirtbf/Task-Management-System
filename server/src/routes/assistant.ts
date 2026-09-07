@@ -155,6 +155,9 @@ if (!openai) {
         users: usersRepo,
         spaces: new SpacesRepo(db),
         userRoles: new UserRolesRepo(db),
+        // KI-20: the prompt's date line is the WORKSPACE's day, not the
+        // company's — see `workspaceDay` in `assistant/callerContext.ts`.
+        workspaces: new WorkspaceRepo(db),
     };
     const controller = new AssistantController(
         assistantService,

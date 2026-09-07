@@ -93,6 +93,8 @@ const reviewsService = new ReviewsService(
     activityRepo,
     notificationsRepo,
     usersRepo,
+    // KI-20 — see the matching note in routes/spaces.ts.
+    new WorkspaceRepo(db),
     logger,
 );
 const reviewsController = new ReviewsController(reviewsService, logger);

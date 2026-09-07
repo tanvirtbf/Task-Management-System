@@ -4,6 +4,9 @@ import type { PermissionKey } from "../rbac/catalog";
 import type { SpacesRepo } from "../repositories/SpacesRepo";
 import type { UsersRepo } from "../repositories/UsersRepo";
 import type { UserRolesRepo } from "../repositories/UserRolesRepo";
+import type { WorkspaceRepo } from "../repositories/WorkspaceRepo";
+import { todayInZone } from "../utils/dhakaTime";
+import type { WorkspaceDay } from "./buildMessages";
 
 /**
  * THE CALLER BLOCK — who the assistant is talking to.
@@ -42,6 +45,13 @@ export interface CallerContextDeps {
     users: UsersRepo;
     spaces: SpacesRepo;
     userRoles: UserRolesRepo;
+    /**
+     * KI-20: the workspace's own `timezone`, so the prompt's date line is the
+     * caller's day rather than the company's. Read here because this is already
+     * the per-request context block — it costs one more small select on a path
+     * that was doing three.
+     */
+    workspaces: WorkspaceRepo;
 }
 
 /**
@@ -112,6 +122,30 @@ const roleWord = (isOwner: boolean, legacyRole: string): string => {
     if (isOwner) return "Owner";
     if (!legacyRole) return "Member";
     return legacyRole.charAt(0).toUpperCase() + legacyRole.slice(1);
+};
+
+/**
+ * KI-20 — the caller's calendar day, for the prompt's date line.
+ *
+ * Separate from the caller block because it must survive that block failing:
+ * `buildCallerBlock` returns "" on any error and the bot answers as before,
+ * which is right for a description of the person and wrong for the date — a bot
+ * that loses its date line starts resolving "kal" against nothing.
+ *
+ * Falls back to the company calendar, which is what every deployment of this
+ * product is today, rather than throwing.
+ */
+export const workspaceDay = async (
+    deps: CallerContextDeps,
+    workspaceId: string,
+): Promise<WorkspaceDay> => {
+    try {
+        const ws = await deps.workspaces.findById(workspaceId);
+        const zone = ws?.timezone || "Asia/Dhaka";
+        return { date: todayInZone(zone), zone };
+    } catch {
+        return { date: todayInZone("Asia/Dhaka"), zone: "Asia/Dhaka" };
+    }
 };
 
 export const buildCallerBlock = async (

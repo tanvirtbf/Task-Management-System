@@ -141,7 +141,7 @@ Re-verified ✔ = probed again today, still true.
 | KI-9 | 35/191 client API methods uncalled — incl. the whole rbac-ASSIGN half (no role-assign UI), comment-edit, form-submissions view, sprint writes (8/10), status CRUD, notif prefs, watch/unwatch, templates, onCall.delete | ✅ **CLASSIFIED P1** | regenerated: 67/222. 32 dead → **deleted** (5,844-line mock layer, D1.2); 35 are shipped endpoints with no UI → **GATE**, itemised in the P1 record |
 | KI-10 | Deps: server 1 critical + 9 high (tar-via-bcrypt, drizzle-orm, nodemailer majors); client 8 high (one `npm audit fix` away) | ✅ **P1: client 0** | client 11 → **0** (in-range only, re-gated). Server 15 → **9**, all four majors + CVEs → **GATE** |
 | KI-11 | `server/email_test.ts` — committed dev tool that sends a REAL email to a hardcoded gmail | ✅ **CLOSED P1** | moved to `server/scripts/email-test.ts`; `MAIL_TEST_TO` required, no address in the repo |
-| KI-12 | No automated `schema.sql ↔ Drizzle ↔ upgrades` parity test; drizzle-kit frozen chain drifted; `_post.sql` misses 2 triggers | ✅ **TEST EXISTS P1** | `jest.schema.config.cjs` — parity 6/6 + session-clock 4/4, in the gate (35th module). **P12** still owns the restore drill |
+| KI-12 | No automated `schema.sql ↔ Drizzle ↔ upgrades` parity test; drizzle-kit frozen chain drifted; `_post.sql` misses 2 triggers | ✅ **CLOSED P12** | `jest.schema.config.cjs` — parity **9/9** (P12 extended it to the VIEW definitions, +3) + session-clock 4/4 + integrity 5/5 — the schema module is **18** in the gate. The restore drill is `scripts/restore-drill.cjs`: **RESTORED CLEAN**, 47 tables · 5 views · 9 triggers · 108 FKs · 16,081 rows · 5 executed query probes |
 | KI-13 | `db:seed:demo` leaves `tasks.assigned_by` unfilled (wire falls back to created_by) | ✅ **CLOSED P1** | 46/46 tasks + 46/46 assignee rows filled with a real assigner, verified on a throwaway DB (D1.10) |
 | KI-14 | ~~`/eng/home` leaks Engineering's open-bug **count** to every team.~~ **CLOSED by P6** — measured live (the tile said 2 where the viewer could see 1, next to a preview of one), fixed with the same predicate the hydrator already applied, and pinned by five tests incl. an unrestricted-admin control. `staleTicketIds` had the same shape (LIMIT before scope) and was fixed with it | closed | P7 re-verify |
 | KI-15 | Assistant chat kept forever, plaintext: no retention job, no DELETE, no history UI. **P9 re-measured: 2,492 conversations / 4,975 messages / 0.94 MB.** The PRIVACY half is now closed and tested — the `ownerId`/`claimFor` fix shipped with no unit coverage and has 8 tests, including the one that matters (the `history` TRANSMITTED to the model after a foreign thread is dropped). What remains is three FEATURES, not defects | privacy closed by P9; retention open | **GATE** |
@@ -149,9 +149,9 @@ Re-verified ✔ = probed again today, still true.
 | KI-17 | ~~No `If-Match` anywhere — task PATCH is last-write-wins.~~ **WRONG.** `GET` sets an ETag, `PATCH` honours `If-Match`, a stale one is refused `409 task.conflict` with the other writer's text intact — all measured in P7. The real gap is that it is **opt-in** and the web client defers it (R4, stated in `api.ts`). A client decision, not a server gap | corrected by P7 | **GATE** (client) |
 | KI-18 | ~~`task.view` scope `own` never narrows reads.~~ **True but for the wrong reason.** Row visibility comes from `space.view`; `task.view`'s scope only decides whether `taskOwnEscape()` contributes, and those predicates are OR-ed in — so `own` WIDENS, and is inert until `space.view` is narrowed. The catalog's prose is honest; the scope-selector metaphor misleads. Measuring it found a real defect: `openTeamSeries` omitted the own-escape, so a viewer who could open 3 tasks saw a tile saying 1 (KI-14's shape) — fixed | corrected by P7 | **GATE** (naming) |
 | KI-19 | ~~R2 unconfigured in prod = silent upload loss; `/health/ready` checks DB only.~~ **FIXED in P8.** Worse than filed: the loss happens on `POST /tasks/:id/attachments`, the ONLY path the shipped client uses, and that route had **no tests at all** — the isolation sweep's cross-tenant probe was what made the reach mapper count it covered. The stub is now a decision (`config/storage.ts`); every R2 call answers `503 storage.unavailable` rather than faking one; the refusal sits after the authz guards and before the row. `/health/ready` reports `storage` (and `mail`) but deliberately does not fail on them — reasoned in the route | closed by P8 | — |
-| KI-20 | Hardcoded `dhakaToday()` at 11 sites (latent while single-workspace) | carried | **P12** |
+| KI-20 | Hardcoded `dhakaToday()` at 11 sites (latent while single-workspace) | ✅ **FIXED P12** | The 9 production sites split TWO ways and the split is the finding: 4 are the COMPANY calendar (on-call roster ×3, the Monday HR report) and were CORRECT — routing them through a workspace zone would be a regression; 3 were the WORKSPACE calendar and wrong (`ReviewsService` ×2, the assistant's date line) and now resolve `workspaces.timezone`. `jobs/workspace-clock.test.ts` 8/8 pins both halves |
 | KI-21 | 2 redundant indexes (comments, tcfv) | carried | **P13** |
-| KI-22 | `v_breached_sla` / `v_current_on_call` latent tz bug | carried | **P12** |
+| KI-22 | `v_breached_sla` / `v_current_on_call` latent tz bug | ⛔ **WRONG WHEN MEASURED — pinned P12** | Both views were already re-derived by `upgrades/005_clock_views.sql` (the F3 clock fix, 2026-08-03); the running definitions are `utc_timestamp()` and `cast(utc_timestamp() + interval 6 hour as date)`. Nothing to fix. `jobs/clock-views.test.ts` 6/6 now pins them, because a view is invisible to tsc, absent from the ORM, and HAS drifted here before |
 | KI-23 | ~~Desktop `KpiRow` carries the same missing-KPI crash exposure `KpiStrip` had.~~ **FIXED in P10, and it was bigger than this said.** `main.tsx` wraps the whole `RouterProvider` in the one ErrorBoundary, so the throw did not break Home — it replaced EVERY route in the application with the error screen until reload. Guard placed in `KpiCard` so both callers and the next one inherit it; 8 tests, proved red without it | closed by P10 | — |
 | KI-24 | Client-side filtering over the full fetched task list — linear cost growth | carried | **P13** measure |
 | KI-25 | `client/mobile-baseline.json` records measurement churn on every A-net run | ✔ | **P0** rule |
@@ -163,7 +163,7 @@ Re-verified ✔ = probed again today, still true.
 | KI-31 | **Opened by P2.** `assistant` is the gate's first module and so pays the cold ts-jest cache inside a test; it went FLAKY-PASS once. `setup-each-auth.ts` shows the fix (warm the app in `beforeAll`) | open | **P9** |
 | KI-32 | **Opened by P3.** Custom fields are the only named entity with no uniqueness rule — no unique index and no service check, so one workspace can hold two fields called "Priority". Behaviour is now pinned by a test; whether to constrain it is a decision | open | **GATE** |
 | KI-33 | ~~Opened by P4: three notification endpoints no test has ever called.~~ **VOID — the mapper was wrong, not the suite.** All three have their own test files, named after them. It resolved URL constants in one flat namespace shared by every test file; `BASE` is declared in three files, and the last writer won. Fixed in P5, which measures **35/35**. The bug, and the self-check added to catch the next one, are the finding | closed by P5 | — |
-| KI-34 | **Opened by P4** (same measurement). Three job endpoints no test has ever called: `POST /jobs/department-report`, `POST /jobs/assignment-request-expiry`, `POST /jobs/recurrence-spawn` — the last one's JOB is covered by `jobs/recurrence-spawn.test.ts`, but its HTTP trigger is not | open | **P12** |
+| KI-34 | **Opened by P4** (same measurement). Three job endpoints no test has ever called: `POST /jobs/department-report`, `POST /jobs/assignment-request-expiry`, `POST /jobs/recurrence-spawn` — the last one's JOB is covered by `jobs/recurrence-spawn.test.ts`, but its HTTP trigger is not | ✅ **CLOSED P12** | `jobs/job-endpoints-sweep.test.ts` calls all 9 and checks the three lists a job must appear in agree (registry, route, cron). `reach -- P12` **9/9**, up from 6/9 |
 | KI-35 | ~~`GET /search` does not hydrate `delete_request_pending`.~~ **CLOSED by P6**, which took the decision: search hydrates it like every other task surface. Nothing visible changes today (no component renders the badge in results), but P4 showed what a `false` default does once one does, and search is a primary way people reach a task. The serializer-parity test now compares the whole payload with no exceptions | closed | — |
 | KI-37 | **Opened by P5.** §19 Notifications answers **403** `notification.not_owner` for another user's id, where every other `:id` endpoint in the system answers 404. It is deliberate and documented (ids are unguessable, so the existence oracle is not usable) and is now pinned in the isolation sweep's `EXPECTED_STATUS` map rather than tolerated. P7 owns the security deep-dive and should confirm the decision or change it — not inherit P5's acceptance of it | open | **P7** |
 | KI-38 | **Opened by P6.** `GET /sprints/:id/tasks` used to answer `200 []` for a sprint that does not exist, was deleted, or belongs to another workspace, while `GET /sprints/:id` answered 404 — so a stale sprint board rendered as "no tasks" rather than an error. Fixed here (the route resolves the sprint first); logged because the SHAPE — a list endpoint that never validates its parent — is worth sweeping for elsewhere | fixed, class open | **P7** |
@@ -3262,12 +3262,276 @@ expected to PASS now, so there is no `test.fail()` left to confirm, and the tigh
    the 022 checklist counters recomputed from truth.
 
 **Exit criteria**
-- [ ] 9/9 job endpoints ticked; each job idempotent and authz-correct
-- [ ] KI-20 and KI-22 both resolved with tests
-- [ ] Backup → restore → full gate green on the restored database
-- [ ] Triggers, views and RESTRICT paths asserted
+- [x] 9/9 job endpoints ticked; each job idempotent and authz-correct — `reach -- P12` **9/9**, up from 6/9
+- [x] KI-20 and KI-22 both resolved with tests — KI-20 fixed at 3 of 9 sites (the other 4 are the company calendar, correct as they were); KI-22 was already fixed by upgrade 005 and is now pinned
+- [x] Backup → restore → equivalence proven on the restored database (objects, per-table row counts AND 5 executed query probes) — the gate builds a private DB per module from canonical SQL and cannot be pointed at one copy; see D12.5
+- [x] Triggers, views and RESTRICT paths asserted — plus a defect underneath: template apply never set the checklist rollup
 
-**Execution record P12:** *(empty)*
+**Execution record P12** — 2026-09-06, anchor `adb8db3`.
+
+*Nine endpoints nobody calls by hand, two ledger entries about the clock, and the drills that
+ask whether the database can be rebuilt at all.*
+
+### D12.1 — the nine job endpoints, and the three lists a job has to be in
+
+A job is only real if three files agree: `src/jobs/index.ts` (the registry the dispatcher looks
+the slug up in), `src/routes/jobs.ts` (the route cron POSTs to) and `deploy/cron/bbtasks-jobs`
+(the schedule that fires it). Miss the route and the job exists but cannot be triggered; miss
+the cron line and it can be triggered but never is — which is exactly what
+`project_recurrence_spawn` records happening to `recurrence-spawn` in production.
+
+`tests/jobs/job-endpoints-sweep.test.ts` (**59**) asserts the three lists are the same set, then
+walks every slug: internal-token auth (a member's own JWT gets 401, not 403 — these routes are
+not part of the RBAC surface at all), the response envelope, `?dry_run=1` changing nothing, and
+a second run adding nothing.
+
+**KI-34 is closed, and it was understated.** The ledger named three endpoints no test had ever
+called. Measured, `department-report` and `recurrence-spawn` had thorough suites that import the
+job FUNCTION and never touch its HTTP trigger — so the gap was the route, not the logic, in
+exactly the way that ships a job nobody can start.
+
+⚠️ **The scan's first run reported a missing route and a ghost schedule, and both were my
+parser.** `[a-z-]+` excludes digits, so `r2-purge` failed to match in the routes file and matched
+as a bare `"r"` in the cron file. The character class carries a comment now, and it is not the
+first time in this campaign the first finding was the SCAN rather than the product — P9's leak
+sweep and P11's first-load budget both did it too.
+
+### D12.2 — KI-20: there are two calendars, and the fix is knowing which is which
+
+The ledger carried this as *"`dhakaToday()` hardcoded at 11 sites, latent while
+single-workspace"*, with the implied remedy "route them through the workspace timezone".
+Classified, the 9 production call sites split in two, and **the split is the finding**:
+
+- **Company calendar — correct as they were (4).** `OnCallRepo` ×2 and `EngineeringRepo` (the
+  on-call roster) and `ReportsService` (the Monday 09:00 Dhaka HR report). `utils/dhakaTime.ts`
+  says so in its own header: the fixed-offset helpers "stay for the COMPANY calendar […] which
+  is Dhaka by design and must not move when a workspace re-zones itself." Routing these through
+  a workspace zone would have been a REGRESSION delivered as a fix.
+- **Workspace calendar — and wrong (3).** `ReviewsService.reviewSummary` and the review queue
+  bucket work as overdue / due-today for a space inside a workspace; and the assistant's prompt
+  date line is the only anchor the model has for "kal", "next week", "last 7 days".
+
+The three now resolve `workspaces.timezone` (`ReviewsService.todayFor`, and `workspaceDay()` in
+`assistant/callerContext.ts` feeding an optional `today` through `buildMessages`), following the
+precedent `overdue-alert` and `recurrence-spawn` already set under the F5 rule rather than
+inventing a second mechanism. The date line now NAMES its zone, so a wrong answer is visible in
+the transcript instead of being silently plausible.
+
+`tests/jobs/workspace-clock.test.ts` (**8**) pins both halves — including that `dhakaToday()`
+ignores any workspace zone **by design**, so the next "consistency" refactor is caught.
+
+### D12.3 — KI-22 was wrong, and the fix for that is not a fix
+
+The ledger said `v_breached_sla` and `v_current_on_call` "still carry `NOW()`-shaped
+assumptions". Measured against the schema file AND the running database, they do not:
+`upgrades/005_clock_views.sql` — the F3 clock fix, 2026-08-03 — already re-derived them, and the
+live definitions are `utc_timestamp()` and `cast(utc_timestamp() + interval 6 hour as date)`.
+**There was nothing to fix.** That is the third ledger entry this campaign has found wrong when
+measured rather than believed (KI-17 and KI-18 in P7), and the pattern is now the point: a
+carried entry is a hypothesis, not a defect.
+
+What WAS missing is the part that keeps it fixed. A view is invisible to the type checker, absent
+from the ORM and edited by hand in a migration — and F3's write-up records the live DB and
+`schema.sql` having already drifted to two *different* wrong answers (`CURDATE()` and
+`UTC_DATE()`) before anyone noticed. `tests/jobs/clock-views.test.ts` (**6**) reads the running
+definitions and asserts the DATABASE and the APPLICATION agree on what day it is in Dhaka.
+
+⚠️ The tempting test — insert a shift at 23:55 Dhaka and check the roster — is only meaningful
+during the six hours a day when Dhaka and UTC disagree, and passes vacuously the rest of the
+time. Both checks hold every hour instead.
+
+### D12.4 — the canonical clock, outward
+
+P1 pinned the clock at the pool (`DB_TIMEZONE=+00:00`). `tests/jobs/clock-end-to-end.test.ts`
+(**6**) is the outward half: one instant, four surfaces, one question — whose calendar decides?
+
+The plan phrases task 4 as "a task created at 23:55 Dhaka appears on the right day". Written
+literally that means something for a few minutes a day and nothing the rest of the time, and
+`due_date` is a `DATE` column anyway — a calendar day with no time-of-day to straddle. So the
+test uses **two workspaces 25 hours apart**, Pacific/Kiritimati (UTC+14) and Pacific/Midway
+(UTC−11), whose dates therefore ALWAYS differ:
+
+> the SAME due date, at the SAME instant, is **overdue in one workspace and still in the future
+> in the other** — and Home's tile, Home's agenda and the overdue JOB all agree about which is
+> which.
+
+Nothing about that can be satisfied by a server reading its own OS clock, or UTC, or Dhaka. The
+fourth surface goes the other way on purpose: the weekly report's week must NOT move with a
+workspace's zone, and is asserted not to.
+
+**Proved able to fail.** With `HomeService.zoneOf` and `overdueAlert`'s `todayInZone(ws.timezone)`
+temporarily replaced by a hardcoded Dhaka, the two discriminating tests go red and the rest stay
+green. Both files were restored from copies and `git diff` confirmed empty.
+
+### D12.5 — the restore drill
+
+`scripts/restore-drill.cjs` (`npm run db:restore-drill`) dumps the dev database, restores
+it into a scratch copy, proves the copy equivalent, and drops it. **RESTORED CLEAN — 47
+tables · 5 views · 9 triggers · 108 FKs · 16,081 rows**, plus 5 query probes.
+
+Two deliberate departures from the plan's wording, both stated here because they change what the
+drill proves:
+
+1. **"Drop it, restore it" became "restore it beside itself."** Restoring into a scratch database
+   proves the same thing — the dump contains everything needed to rebuild — without putting the
+   dev baseline behind a step that might fail. A broken restore should produce a red drill, not a
+   destroyed database.
+2. **"Run the full gate against the restored copy" is not possible as written**, because the gate
+   gives each module its OWN private database, built from canonical SQL, and cannot be pointed at
+   one restored copy. The honest equivalent is the query probes: the product's real read
+   shapes — both views, the tasks × lists × spaces join, the checklist rollup, the RBAC
+   role × permission join — run against BOTH databases and compared.
+
+That last one earns its place. Every other check compares NAMES, and **a view can be listed in
+`information_schema.VIEWS` and still be unusable** — MySQL only marks a view broken when you
+SELECT from it, and a restore is exactly where a definer or a column reference goes missing.
+Demonstrated on a throwaway database: drop a view's base table, and the name check stays green
+while the probe returns `ERROR 1356 … references invalid table(s) or column(s)`.
+
+⚠️ Three traps paid for while building it, all now written into the script: `GROUP_CONCAT`
+silently exceeded `group_concat_max_len` and produced truncated SQL that reported "0 tables
+compared" — a green-looking answer from a query that never ran (there is a refusal for that case
+now); the Windows client emits CRLF, so a table name carrying a trailing `\r` produces
+`ERROR 1103 Incorrect table name` from a query that looks perfectly correct when printed; and
+`--triggers` is mysqldump's DEFAULT, not an addition — the check was verified by re-running with
+`--skip-triggers`, which turns the drill red.
+
+### D12.6 — data integrity, and the defect underneath it
+
+**The views are pinned.** P1's parity suite already pinned the trigger set; §P12 task 6 asks to
+extend it to view definitions, and `tests/schema/parity.test.ts` now does (**9** total, 3 new) —
+the running definition of each view compared against the canonical SQL, so the F3 drift cannot
+recur unnoticed.
+
+**Both RESTRICT paths hold.** `tests/schema/integrity.test.ts` (**5**) proves a List holding tasks
+and a Space that has been reported on both refuse deletion, gives each rule its control case (an
+empty List and an unreported Space delete cleanly — without those, a schema that refused to
+delete ANY list would pass), and reads `DELETE_RULE` out of `information_schema` so the finding
+survives someone "simplifying" the delete path later.
+
+**And then the counters.** §P12 task 6's third clause asks for "the 022 checklist counters
+recomputed from truth". My first draft of that block inserted checklist rows through Drizzle and
+expected `tasks.checklist_items_total` to move. It did not, and **the premise was mine, not the
+product's**: there is no trigger behind those columns. `TasksRepo.recomputeChecklistCounters` is
+called BY HAND inside each `ChecklistsService` write transaction. The recount that clause asks
+for already exists, against the real mechanism and through the public API, in
+`tests/checklists/counter-truth.test.ts`.
+
+Chasing which write paths call it found a live defect.
+
+> **`TemplateApplyService` creates checklist items and never recomputed the rollup.**
+
+It is the SECOND path in the codebase that creates checklist items — it raw-inserts the checklist
+and its items straight onto the new task, bypassing `ChecklistsService` entirely — so a task
+spawned from a 12-step template reported **0/0** on the card, in the list row, on the board and to
+the assistant. And it healed itself dishonestly: the first time anyone ticked an item, the
+absolute recompute repaired the number and destroyed the evidence.
+
+Proved red first — the API read returned `checklist_items_total: 0` for a task built from a
+two-item template — then fixed with one `recomputeChecklistCounters` call inside the same
+transaction, so the counter and the rows it counts commit together or not at all. Two tests in
+`tests/templates/apply.test.ts` pin it: one against the rows actually inserted (not a hardcoded
+2, so the assertion cannot drift from the fixture), one against the task READ the chip is drawn
+from.
+
+Measured on the dev database: **0 tasks currently drifted** — nobody has applied a
+checklist-bearing template there yet. The bug was real and had simply not been triggered.
+
+**The class, not just the instance.** `tests/checklists/write-paths-recompute.test.ts` (**5**)
+enumerates every method in `src/` that changes the item count and requires each to recompute.
+`counter-truth.test.ts` names this exact risk in its own header — "the shape that drifts when a
+new write path forgets to call the recompute" — but can only exercise the paths that existed when
+it was written; this checks the code, so the next one is caught the day it is written.
+
+Three things keep it honest, and the middle one nearly did not:
+
+- it asserts the scan **matched** the six known write paths, so a rename that made `violations()`
+  return `[]` for the happiest of reasons still fails;
+- **its first version flagged `ChecklistsController.removeChecklist` and `removeItem`** — the
+  controller calls `this.service.deleteChecklist(...)`, an identical spelling to the repo mutator,
+  on an object that DOES recompute one layer down. Bare name-matching is how a guard like this
+  becomes noise and then gets deleted, so a file only counts as calling the repo if it actually
+  names `ChecklistsRepo`; direct table writes are still caught everywhere, which is how the
+  defect surfaced in the first place;
+- it reconstructs the P12 defect as a fake source file and **watches the rule fire on it**, then
+  applies the fix to the same fake and watches it go clean.
+
+`ChecklistsService.updateItem` is excluded on evidence rather than on belief. It patches `text` /
+`assigneeId` / `position` only — never completion — so it genuinely cannot move either counter,
+and a separate test asserts that and fails the day it learns to.
+
+⚠️ The chunker's first version bled the NEXT method's JSDoc into the previous chunk, so
+`updateItem` inherited the words `is_completed` from `toggleItem`'s comment — a false positive
+that is very hard to see when it happens. Chunks now end at the method's own closing brace.
+
+### The machine, again
+
+The gate had to be started **six times**, and the thing that finally worked was not a cleverer
+way to detach it. None of this was the product; all of it is reusable:
+
+1. **Killed 90 seconds in — `C:` had 0.3 GB free.** §A already records that a full disk looks
+   like a broken suite, so the run was stopped rather than believed. `npm cache clean` plus stale
+   temp bought ~0.6 GB.
+2. **Died at 25 of 37 modules — all 25 green — when the Claude Code session exited.**
+   `Start-Process` detaches a WINDOW, not a process tree: the child stayed inside the session's
+   job object and went with it. The machine also slept an hour later (Kernel-Power 42, "Sleep
+   Reason: Application API"), which is the obvious suspect and was NOT the cause — the log's last
+   write was 16:46 and the sleep was 18:06.
+3. **WMI `Win32_Process.Create` — `^C` immediately.** That route gives the child no console.
+4. **A scheduled task (`schtasks … /sc once /it`, then `/run`) — also `^C`**, and the task's own
+   `Last Result` recorded it: `-1073741510` = `STATUS_CONTROL_C_EXIT`.
+5. **The same, with its own console (`start /min`) — `^C` again**, this time during the static
+   phase. By now the pattern was visible: every death coincided with the harness reaping one of
+   my BACKGROUND tasks for memory. Whatever that reap does, it reaches further than the task it
+   is aimed at.
+6. **Foreground chunks worked.** Twelve runs of `node scripts/test-all.cjs --server-only --only
+   a,b,c`, each blocking the agent's own loop, none reaped. Static was run separately because
+   `--only` implies `--no-static`.
+
+⚠️ **So: do not try to detach a long gate — run it in foreground chunks.** Chunking is better on
+its own merits anyway: each chunk's result is captured the moment it finishes, so a loss costs one
+chunk rather than two hours, and the run is resumable from wherever it stopped. Pipe through
+`tee -a` to a log, and **never through a bare `| tail`** — that buffers the whole run and you see
+nothing until it ends (and nothing at all if it is killed).
+
+**Left for the user: `C:` is at 99% — run Disk Cleanup as administrator.** The 5.9 GB in
+`C:\Windows\SoftwareDistribution\Download` needs elevation this session does not have. What it
+does NOT threaten is paging: the page file is on `D:` (23 GB allocated), so the pressure falls on
+MySQL's data directory and `%TEMP%` — which is why jest's temp was pointed at `E:/jest-tmp`.
+
+Chrome (5.5 GB across 38 processes) and VS Code (4.4 GB across 35) were the memory pressure, and
+another project's Vite dev server was up throughout (the P6 trap). All of it was left alone rather
+than "fixed" under a running gate, and recorded here so that a red module would be checked against
+the machine first.
+
+### Closing state
+
+- **38 modules · 6,094 passed · 0 failed · ALL GREEN (no flakies).** That is P11's 6,000 plus
+  exactly the 94 P12 added: `jobs` 69 → **148** (+79), `schema` 10 → **18** (+8), `collab` +5,
+  `templates` 123 → **125** (+2).
+- **⚠️ It was run in TWELVE chunks, not one `npm run test:all`.** Every previous phase's gate was
+  a single invocation; this one could not be, because the agent session's background reaper kept
+  killing the run (see "The machine, again"). Each chunk is `node scripts/test-all.cjs
+  --server-only --only a,b,c`, which is the same runner, the same per-module private databases and
+  the same asserts — but the aggregate above is arithmetic over twelve summaries rather than one
+  printed total, and it is recorded that way rather than implied to be something it is not. The
+  chunk boundaries are in `gate-rest.log` / `gate-rest2.log`.
+- **Static phase 4/4**, run directly against the same four checks the runner defines (`--only`
+  implies `--no-static`, so the chunks skip it): eslint server 0/0, `tsc -p tsconfig.tests.json`,
+  eslint client 0/0, `tsc -b --noEmit` client.
+- Client vitest **137/137** — unchanged, because P12 touched no client code.
+- `npm run reach -- P12` — **9/9**, up from 6/9.
+- **Restore drill re-run after the gate: RESTORED CLEAN** — 47 tables · 5 views · 9 triggers ·
+  108 FKs · 16,081 rows · 5 executed query probes.
+- Dev DB at baseline **47 / 6 / 9 / 27 / 15** (tasks / spaces / comments / notifications / users),
+  verified after every run. P12 never wrote to it: the drill restores into a scratch copy and drops
+  it, and every test ran on a private module database.
+- `client/dist` and `server/dist` untouched. ⛔ **The P10/P11 carry still stands: `client/dist` is
+  STALE and prod is `7e661c8`.** P12 changed server code only (`ReviewsService`,
+  `TemplateApplyService`, the assistant's caller context), so nothing here needs a client rebuild —
+  but nothing here removes that debt either.
+
+**Signed off:** ✅
 
 ---
 

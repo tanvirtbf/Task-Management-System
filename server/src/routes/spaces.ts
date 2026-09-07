@@ -14,6 +14,7 @@ import { TasksRepo } from "../repositories/TasksRepo";
 import { ReviewsRepo } from "../repositories/ReviewsRepo";
 import { TaskActivityRepo } from "../repositories/TaskActivityRepo";
 import { NotificationsRepo } from "../repositories/NotificationsRepo";
+import { WorkspaceRepo } from "../repositories/WorkspaceRepo";
 import { ReviewsService } from "../services/ReviewsService";
 import { ReviewsController } from "../controllers/ReviewsController";
 import {
@@ -76,6 +77,9 @@ const reviewsService = new ReviewsService(
     taskActivityRepo,
     notificationsRepo,
     usersRepo,
+    // KI-20: the review queues resolve "today" on the WORKSPACE's clock now,
+    // not the company's — see `ReviewsService.todayFor`.
+    new WorkspaceRepo(db),
     logger,
 );
 const reviewsController = new ReviewsController(reviewsService, logger);

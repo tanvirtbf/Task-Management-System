@@ -19,10 +19,11 @@ import {
     type WireReviewSummary,
 } from "../serializers/reviewSerializer";
 import { toWireUser } from "../serializers/userSerializer";
-import { dhakaToday } from "../utils/dhakaTime";
+import { todayInZone } from "../utils/dhakaTime";
 import type { TaskActivityRepo } from "../repositories/TaskActivityRepo";
 import type { NotificationsRepo } from "../repositories/NotificationsRepo";
 import type { UserListRow, UsersRepo } from "../repositories/UsersRepo";
+import type { WorkspaceRepo } from "../repositories/WorkspaceRepo";
 import { Roles, type Role } from "../constants";
 
 /**
@@ -120,8 +121,29 @@ export class ReviewsService {
         private activity: TaskActivityRepo,
         private notifications: NotificationsRepo,
         private users: UsersRepo,
+        private workspaces: WorkspaceRepo,
         private logger: Logger,
     ) {}
+
+    /**
+     * Today, on the WORKSPACE's calendar — not the company's.
+     *
+     * KI-20: both read paths below bucket work as overdue / due-today, and both
+     * used `dhakaToday()`. That helper is right for the COMPANY calendar — the
+     * on-call roster and the Monday HR report are Dhaka by design, and
+     * `dhakaTime.ts` says so explicitly — and wrong here, because a review queue
+     * belongs to a workspace and a workspace carries its own `timezone`.
+     *
+     * Latent only while there is one workspace, which is exactly what made it
+     * worth fixing rather than noting: the day a second workspace exists in
+     * another zone, its head sees tasks bucketed against Dhaka's midnight and
+     * nothing anywhere says so. The `overdue-alert` and `recurrence-spawn` jobs
+     * already resolve "today" this way — same F5 rule, same helper.
+     */
+    private async todayFor(workspaceId: string): Promise<string> {
+        const ws = await this.workspaces.findById(workspaceId);
+        return todayInZone(ws?.timezone ?? "Asia/Dhaka");
+    }
 
     /**
      * Resolve a space and authorize a review-domain action on it. Check order
@@ -401,7 +423,7 @@ export class ReviewsService {
      */
     async reviewSummary(input: SpaceGuardInput): Promise<WireReviewSummary> {
         const space = await this.requireHeadOrAdmin(input);
-        const today = dhakaToday();
+        const today = await this.todayFor(input.workspaceId);
 
         const [memberRows, totals]: [MemberSummaryRow[], SummaryTotals] =
             await Promise.all([
@@ -483,7 +505,7 @@ export class ReviewsService {
     }> {
         const space = await this.requireHeadOrAdmin(input);
         const limit = clampQueueLimit(input.limit);
-        const today = dhakaToday();
+        const today = await this.todayFor(input.workspaceId);
         const afterInternalId = input.cursor
             ? decodeQueueCursor(input.cursor)
             : undefined;
