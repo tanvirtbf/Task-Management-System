@@ -1,7 +1,6 @@
 process.env.NODE_ENV = "test";
 
-import { connectTestDb, disconnectTestDb } from "./db";
-import { getPool } from "../../src/db/client";
+import { connectTestDb, disconnectTestDb, resetTables } from "./db";
 
 /**
  * Per-file setup for the §4 Users suite. Mirrors the isolated-suite pattern
@@ -47,14 +46,9 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-    const conn = await getPool().getConnection();
-    try {
-        await conn.query("SET FOREIGN_KEY_CHECKS = 0");
-        for (const table of TABLES) {
-            await conn.query(`TRUNCATE TABLE \`${table}\``);
-        }
-        await conn.query("SET FOREIGN_KEY_CHECKS = 1");
-    } finally {
-        conn.release();
-    }
+    // KI-29 (§P13): DELETE, plus TRUNCATE only where an AFTER DELETE
+    // trigger makes it necessary, and an AUTO_INCREMENT reset where the
+    // counter moved. Same observable state, far less DDL — see
+    // `resetTables` in ./db for the measurement.
+    await resetTables(TABLES);
 });

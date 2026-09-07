@@ -1,8 +1,7 @@
 process.env.NODE_ENV = "test";
 
 import { Config } from "../../src/config";
-import { connectTestDb, disconnectTestDb } from "./db";
-import { getPool } from "../../src/db/client";
+import { connectTestDb, disconnectTestDb, resetTables } from "./db";
 
 /** THROWAWAY per-file setup pinned to the private `tms_tagsreview_test` DB. */
 Config.DB_NAME = "tms_tagsreview_test";
@@ -21,16 +20,11 @@ const TABLES = [
 ] as const;
 
 const reset = async (): Promise<void> => {
-    const conn = await getPool().getConnection();
-    try {
-        await conn.query("SET FOREIGN_KEY_CHECKS = 0");
-        for (const t of TABLES) {
-            await conn.query(`TRUNCATE TABLE \`${t}\``);
-        }
-        await conn.query("SET FOREIGN_KEY_CHECKS = 1");
-    } finally {
-        conn.release();
-    }
+    // KI-29 (§P13): DELETE, plus TRUNCATE only where an AFTER DELETE
+    // trigger makes it necessary, and an AUTO_INCREMENT reset where the
+    // counter moved. Same observable state, far less DDL — see
+    // `resetTables` in ./db for the measurement.
+    await resetTables(TABLES);
 };
 
 jest.setTimeout(30000);

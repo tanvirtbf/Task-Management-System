@@ -1,5 +1,6 @@
 import { Calendar, AlertCircle } from "lucide-react";
 import { tokens } from "../../theme";
+import { parseWireDate } from "../../lib/date-utils";
 
 interface DueDateBadgeProps {
     dueDate: string | null;
@@ -53,7 +54,11 @@ export const DueDateBadge = ({
         );
     }
 
-    const date = new Date(dueDate);
+    // `dueDate` is a wire calendar day ("2026-03-20"). `new Date()` would
+    // read it as UTC midnight, so every local comparison below — overdue,
+    // today, "Tomorrow" — was a day early west of UTC, and a task due TODAY
+    // rendered as the red overdue chip (P13).
+    const date = parseWireDate(dueDate);
     const now = new Date();
     const isOverdue = date < now && date.toDateString() !== now.toDateString();
     const isToday = date.toDateString() === now.toDateString();

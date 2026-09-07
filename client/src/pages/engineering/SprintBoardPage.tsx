@@ -14,6 +14,7 @@ import { StoryPointsBadge } from "../../components/task/StoryPointsBadge";
 import { Avatar } from "../../components/ui/Avatar";
 import { DynamicIcon } from "../../components/shared/DynamicIcon";
 import { tokens } from "../../theme";
+import { parseWireDate } from "../../lib/date-utils";
 
 const SprintBoardPage = () => {
     const [searchParams, setSearchParams] = useSearchParams();
@@ -154,8 +155,8 @@ const SprintBoardPage = () => {
                             }}
                         >
                             <CalendarRange size={13} strokeWidth={1.75} />
-                            {new Date(sprint.startDate).toLocaleDateString()} —{" "}
-                            {new Date(sprint.endDate).toLocaleDateString()}
+                            {parseWireDate(sprint.startDate).toLocaleDateString()} —{" "}
+                            {parseWireDate(sprint.endDate).toLocaleDateString()}
                         </span>
                         <span
                             style={{

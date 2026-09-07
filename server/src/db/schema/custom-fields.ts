@@ -132,7 +132,8 @@ export const taskCustomFieldValues = mysqlTable(
         })
             .onDelete("set null")
             .onUpdate("cascade"),
-        fieldIdx: index("idx_tcfv_field").on(t.customFieldId),
+        // (custom_field_id) alone was `idx_tcfv_field` until P13 (KI-21)
+        // found it a strict prefix of this one (upgrades/026).
         optionIdx: index("idx_tcfv_option").on(
             t.customFieldId,
             t.optionIdGenerated,

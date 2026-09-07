@@ -62,14 +62,21 @@ export const BoardView = ({ listId }: BoardViewProps) => {
     const userMap = useUserMap();
     const update = useUpdateTask(listId);
 
+    const statusById = useMemo(
+        () => new Map(statuses.map((s) => [s.id, s])),
+        [statuses],
+    );
+
     // Filter tasks: search + me-mode + closed + the shared filter set
     const filtered = useMemo(() => {
         let result = tasks;
         if (!showClosedTasks) {
-            result = result.filter((t) => {
-                const s = statuses.find((x) => x.id === t.statusId);
-                return s?.statusGroup !== "closed";
-            });
+            // Map, not `statuses.find` inside the predicate: that was O(tasks ×
+            // statuses) and this memo re-runs on every keystroke in the search
+            // box. `MobileTaskView` already did it this way (P13/KI-24).
+            result = result.filter(
+                (t) => statusById.get(t.statusId)?.statusGroup !== "closed",
+            );
         }
         if (meMode && user) {
             result = result.filter((t) => t.assignees.includes(user.id));
@@ -84,7 +91,7 @@ export const BoardView = ({ listId }: BoardViewProps) => {
             );
         }
         return result;
-    }, [tasks, statuses, showClosedTasks, meMode, search, user, filters]);
+    }, [tasks, statusById, showClosedTasks, meMode, search, user, filters]);
 
     const sensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),

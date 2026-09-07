@@ -82,7 +82,10 @@ export const applyTaskFilters = (
             // Same local-calendar-day reading the Calendar view uses, so a
             // task shown on the 20th is matched by a range that covers the
             // 20th — never off by a timezone.
-            const day = dayKey(new Date(t.dueDate));
+            // The wire value IS the calendar day — see `dayKey`. Passing the
+            // string straight through is both correct west of UTC and one
+            // less Date allocation per task per pass (KI-24).
+            const day = dayKey(t.dueDate);
             if (f.dueFrom && day < f.dueFrom) return false;
             if (f.dueTo && day > f.dueTo) return false;
         }

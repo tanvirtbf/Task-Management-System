@@ -77,14 +77,21 @@ export const ListView = ({ listId }: ListViewProps) => {
     const archive = useArchiveTask(listId);
     const del = useDeleteTask(listId);
 
+    const statusById = useMemo(
+        () => new Map(statuses.map((s) => [s.id, s])),
+        [statuses],
+    );
+
     // Apply filters: search, me-mode, closed, priorities, assignees + sort
     const filteredTasks = useMemo(() => {
         let result = tasks;
         if (!showClosedTasks) {
-            result = result.filter((t) => {
-                const s = statuses.find((x) => x.id === t.statusId);
-                return s?.statusGroup !== "closed";
-            });
+            // Map, not `statuses.find` inside the predicate: that was O(tasks ×
+            // statuses) and this memo re-runs on every keystroke in the search
+            // box. `MobileTaskView` already did it this way (P13/KI-24).
+            result = result.filter(
+                (t) => statusById.get(t.statusId)?.statusGroup !== "closed",
+            );
         }
         if (meMode && user) {
             result = result.filter((t) => t.assignees.includes(user.id));
@@ -121,7 +128,7 @@ export const ListView = ({ listId }: ListViewProps) => {
         return result;
     }, [
         tasks,
-        statuses,
+        statusById,
         showClosedTasks,
         meMode,
         search,

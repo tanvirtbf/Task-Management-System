@@ -766,10 +766,11 @@ CREATE TABLE comments (
         REFERENCES comments(id) ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT fk_comments_author FOREIGN KEY (author_id)
         REFERENCES users(id) ON DELETE RESTRICT ON UPDATE CASCADE,
-    INDEX idx_comments_task_time (task_id, created_at),
     INDEX idx_comments_parent    (parent_comment_id),
     -- F30 (ISS-088): listByTask orders by (created_at, internal_id) - the
-    -- tie-break is what forced the filesort off idx_comments_task_time.
+    -- tie-break is what forced the filesort off the old (task_id, created_at)
+    -- index. P13 (KI-21) then DROPPED that one: this is a strict superset of
+    -- it, so MySQL answered both lookups from here anyway. See upgrades/026.
     INDEX idx_comments_task_created_internal (task_id, created_at, internal_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
 
@@ -953,11 +954,14 @@ CREATE TABLE task_custom_field_values (
         REFERENCES custom_fields(id) ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT fk_tcfv_updated_by FOREIGN KEY (updated_by)
         REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,
-    INDEX idx_tcfv_field (custom_field_id),
     -- Generated column for fast dropdown filtering ("Source = Facebook")
     -- Indexable expression — uses MySQL 8 JSON shortcut for ->> ()
     option_id_generated VARCHAR(64) GENERATED ALWAYS AS
         (JSON_UNQUOTE(JSON_EXTRACT(value, '$.option_id'))) VIRTUAL,
+    -- (custom_field_id) alone was its own index until P13 (KI-21) found it a
+    -- strict prefix of this one. InnoDB backs the fk_tcfv_field foreign key
+    -- with this index's leftmost column, so the FK stayed legal. See
+    -- upgrades/026.
     INDEX idx_tcfv_option (custom_field_id, option_id_generated)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC;
 

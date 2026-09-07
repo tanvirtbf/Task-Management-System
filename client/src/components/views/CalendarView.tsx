@@ -95,7 +95,7 @@ export const CalendarView = ({ listId }: CalendarViewProps) => {
                 unscheduled.push(t);
                 continue;
             }
-            const key = dayKey(new Date(t.dueDate));
+            const key = dayKey(t.dueDate);
             const arr = byDay.get(key) ?? [];
             arr.push(t);
             byDay.set(key, arr);

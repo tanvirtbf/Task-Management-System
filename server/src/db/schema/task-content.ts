@@ -55,11 +55,12 @@ export const comments = mysqlTable(
         })
             .onDelete("cascade")
             .onUpdate("cascade"),
-        taskTimeIdx: index("idx_comments_task_time").on(t.taskId, t.createdAt),
         parentIdx: index("idx_comments_parent").on(t.parentCommentId),
         // F30 (ISS-088): `listByTask` orders by (created_at, internal_id) —
-        // the tie-break column is what pushed MySQL off `idx_comments_task_time`
-        // into a filesort. This index carries the FULL order.
+        // the tie-break column is what pushed MySQL off the old
+        // (task_id, created_at) index into a filesort. This carries the FULL
+        // order — and P13 (KI-21) dropped that narrower index as a strict
+        // prefix of this one (upgrades/026).
         taskCreatedInternalIdx: index("idx_comments_task_created_internal").on(
             t.taskId,
             t.createdAt,

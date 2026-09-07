@@ -150,15 +150,15 @@ Re-verified ✔ = probed again today, still true.
 | KI-18 | ~~`task.view` scope `own` never narrows reads.~~ **True but for the wrong reason.** Row visibility comes from `space.view`; `task.view`'s scope only decides whether `taskOwnEscape()` contributes, and those predicates are OR-ed in — so `own` WIDENS, and is inert until `space.view` is narrowed. The catalog's prose is honest; the scope-selector metaphor misleads. Measuring it found a real defect: `openTeamSeries` omitted the own-escape, so a viewer who could open 3 tasks saw a tile saying 1 (KI-14's shape) — fixed | corrected by P7 | **GATE** (naming) |
 | KI-19 | ~~R2 unconfigured in prod = silent upload loss; `/health/ready` checks DB only.~~ **FIXED in P8.** Worse than filed: the loss happens on `POST /tasks/:id/attachments`, the ONLY path the shipped client uses, and that route had **no tests at all** — the isolation sweep's cross-tenant probe was what made the reach mapper count it covered. The stub is now a decision (`config/storage.ts`); every R2 call answers `503 storage.unavailable` rather than faking one; the refusal sits after the authz guards and before the row. `/health/ready` reports `storage` (and `mail`) but deliberately does not fail on them — reasoned in the route | closed by P8 | — |
 | KI-20 | Hardcoded `dhakaToday()` at 11 sites (latent while single-workspace) | ✅ **FIXED P12** | The 9 production sites split TWO ways and the split is the finding: 4 are the COMPANY calendar (on-call roster ×3, the Monday HR report) and were CORRECT — routing them through a workspace zone would be a regression; 3 were the WORKSPACE calendar and wrong (`ReviewsService` ×2, the assistant's date line) and now resolve `workspaces.timezone`. `jobs/workspace-clock.test.ts` 8/8 pins both halves |
-| KI-21 | 2 redundant indexes (comments, tcfv) | carried | **P13** |
+| KI-21 | 2 redundant indexes (comments, tcfv) | ✅ **FIXED P13** | Proven redundant by EXPLAIN either side of the drop at 5,047 tasks — identical access path, `key_len` and row estimate, the wider index simply named instead. Dropped in `upgrades/026` (gated on the SUPERSEDING index still existing, because `fk_tcfv_field` needs one). Removed from `schema.sql` + Drizzle, and **index parity is now a test** — including a general "no non-unique index is a strict prefix of another" rule |
 | KI-22 | `v_breached_sla` / `v_current_on_call` latent tz bug | ⛔ **WRONG WHEN MEASURED — pinned P12** | Both views were already re-derived by `upgrades/005_clock_views.sql` (the F3 clock fix, 2026-08-03); the running definitions are `utc_timestamp()` and `cast(utc_timestamp() + interval 6 hour as date)`. Nothing to fix. `jobs/clock-views.test.ts` 6/6 now pins them, because a view is invisible to tsc, absent from the ORM, and HAS drifted here before |
 | KI-23 | ~~Desktop `KpiRow` carries the same missing-KPI crash exposure `KpiStrip` had.~~ **FIXED in P10, and it was bigger than this said.** `main.tsx` wraps the whole `RouterProvider` in the one ErrorBoundary, so the throw did not break Home — it replaced EVERY route in the application with the error screen until reload. Guard placed in `KpiCard` so both callers and the next one inherit it; 8 tests, proved red without it | closed by P10 | — |
-| KI-24 | Client-side filtering over the full fetched task list — linear cost growth | carried | **P13** measure |
+| KI-24 | Client-side filtering over the full fetched task list — linear cost growth | ✅ **MEASURED + FIXED P13** | Growth IS linear (~0.039 µs/task, flat across 500/2k/5k), so the fear is answered no. The date filter was 8× the others **because it was also WRONG** — a wire date round-tripped through `new Date()` read a day early west of UTC, on 4 sites including `DueDateBadge`. Fixed in `dayKey`; 5,000-task date filter **1.688 ms → 0.203 ms**. Also `statuses.find()` inside the closed-task predicate in ListView/BoardView → Map (1.9×) |
 | KI-25 | `client/mobile-baseline.json` records measurement churn on every A-net run | ✔ | **P0** rule |
 | KI-26 | Ops: `/health/version` **`git_sha` FIXED in P8** — resolved from the checkout (loose ref, packed ref and detached HEAD all fixtured), and `DEPLOY_PROMPT` step 4a now compares it to `git rev-parse HEAD` from the box. Still open and P14's: nginx does not proxy `/health/version` (deliberate — it names the running build), Cloudflare Rocket Loader active on prod HTML, upgrades README says 023/024 "pending prod" (stale) | partly closed by P8 | **P14** |
 | KI-27 | On-call rota lapsed 2026-08-14 (prod routing falls back to Engineering head by design); prod `Bug` type + `Bug Triage` list existence unconfirmed | carried | **P14** ops checks |
-| KI-28 | **Opened by P2.** One `/auth/refresh` returned 500 under full-module load, once; not reproduced in 346 concurrent requests, 5 isolated runs or 3 further full runs. Cause discarded by the silenced test logger (now fixable with `TEST_LOG_ERRORS=1`) | open | **P13** load · any phase meeting an unexplained 5xx |
-| KI-29 | **Opened by P2.** 30 of 32 test setups still reset with `TRUNCATE` (509 ms per 9 tables vs 1.9 ms for `DELETE`, and it takes an exclusive metadata lock). Plausibly the majority of the gate's 127 min; auth already converted | open | **P13** |
+| KI-28 | **Opened by P2.** One `/auth/refresh` returned 500 under full-module load, once; not reproduced in 346 concurrent requests, 5 isolated runs or 3 further full runs | ⛔ **NOT REPRODUCED — P13** | `scripts/refresh-race.cjs`: 236 attempts in three shapes (sequential rotation, 25 callers on ONE cookie ×8 rounds, replay of a spent cookie) — **0 server errors**. An unexplained one-off with no known trigger, not an open defect with a repro. The run DID sharpen GATE item D2.8: 176 of 200 concurrent same-cookie refreshes succeed, while sequential reuse is correctly refused 25/25 |
+| KI-29 | **Opened by P2.** 30 of 32 test setups still reset with `TRUNCATE` (509 ms per 9 tables vs 1.9 ms for `DELETE`, and it takes an exclusive metadata lock). Plausibly the majority of the gate's 127 min; auth already converted | ✅ **FIXED P13** | All 10 remaining files now call one shared `resetTables`. Measured on collab's real 23-table list: TRUNCATE **1,295 ms** → **114 ms** per test. ⚠️ A naive DELETE is NOT equivalent and broke 64 tests: TRUNCATE does not fire triggers (DELETE ran `trg_comments_after_delete` into an UNSIGNED underflow) and does not leave AUTO_INCREMENT advanced. Both handled; `tasks` 21.3 → **4.5 min** |
 | KI-30 | **Opened by P2.** `client/public/sw.js` is shipped code no lint rule touches — `eslint.config.js` matches only `**/*.{ts,tsx}` | open | **P11** |
 | KI-31 | **Opened by P2.** `assistant` is the gate's first module and so pays the cold ts-jest cache inside a test; it went FLAKY-PASS once. `setup-each-auth.ts` shows the fix (warm the app in `beforeAll`) | open | **P9** |
 | KI-32 | **Opened by P3.** Custom fields are the only named entity with no uniqueness rule — no unique index and no service check, so one workspace can hold two fields called "Priority". Behaviour is now pinned by a test; whether to constrain it is a decision | open | **GATE** |
@@ -203,6 +203,22 @@ These are FEATURES, not defects. Phases may add to this list but never build fro
 - **A short "do not keep me signed in" session (D2.10).** The inert checkbox is removed;
   the capability was never built. Needs a chooseable session TTL, cookie `maxAge`, and a
   decision on the duration.
+
+**Added by P13 (performance & scale):**
+
+- **Comment-body search is a linear scan (D13.2).** `comments.body LIKE '%…%'` has a leading
+  wildcard and cannot use an index by construction. Measured at 12,410 comments: **68 ms
+  average, 17,477 rows examined per call** — the slowest statement in the system. Not a table
+  scan (the plan drives from `tasks` by workspace), but the cost is proportional to the comment
+  count. Fixing it means a FULLTEXT index and `MATCH … AGAINST`, which changes matching from
+  substring to word-boundary — a product decision, not a tuning one.
+- **`GET /tasks/my-work` returns 526 KB at 5,000 tasks (D13.2).** Not slow (47 ms) and not
+  wrong, but it is the payload that bends first at 10× volume. Capping or paginating it changes
+  a contract the client depends on.
+- **D2.8 sharpened, not closed (D13.7).** 25 callers presenting ONE refresh cookie at once: 176
+  of 200 succeed, each minting a session; sequential reuse is refused 25/25 with the mass-revoke
+  firing. Closing the window costs either signing out users whose TABS race (the client is
+  single-flight within a tab, not across them) or an idempotent grace period.
 
 **Added by P3 (org structure):**
 
@@ -3556,12 +3572,269 @@ the machine first.
    GATE — there is still no pipeline running the P0 gate on push.
 
 **Exit criteria**
-- [ ] Scale measurements recorded at 500 / 2,000 / 5,000 tasks
-- [ ] No full table scan on a hot path; KI-21 dropped; N+1s named
-- [ ] eslint still 0/0; bundle within budget
-- [ ] Anything not fixed carries a number, not an adjective
+- [x] Scale measurements recorded at 500 / 2,000 / 5,000 tasks — client filter benched at all three (`scripts/filter-bench.mjs`); server measured against a 5,047-task / 12,410-comment fixture (`scripts/scale-seed.cjs`)
+- [x] No full table scan on a hot path (every plan `ref`/`eq_ref`; the 7 "no index used" digests are all tables of ≤323 rows that HAVE the index); KI-21 dropped in `upgrades/026` and guarded by 4 new parity tests; **no N+1 found** on 11 paths — 400 comments hydrate in 3 statements
+- [x] eslint still **0/0** on both packages; first load **471.5 KB gz** against P11's 500 KB budget
+- [x] Anything not fixed carries a number — comment-body search 68 ms / 17,477 rows examined; `/tasks/my-work` 526 KB; refresh-rotation race 176 of 200. All three on the GATE ledger
 
-**Execution record P13:** *(empty)*
+**Execution record P13** — 2026-09-07, anchor `8dfb9c7`.
+
+*The system is correct by P12. This phase asked whether it stays correct at size — and the
+answer arrived with a timezone bug attached.*
+
+Two tools were built first, because none of the six tasks can be answered against a database
+holding 47 tasks and 9 comments: `scripts/scale-seed.cjs` clones the dev database (real users,
+real RBAC, all 25 upgrades, the 9 triggers) and bulk-adds tasks on top, and
+`scripts/scale-probe.cjs` drives the hot endpoints and then asks
+`performance_schema.events_statements_summary_by_digest` what the DATABASE actually ran. The
+fixture used below is **5,047 tasks · 12,410 comments · 6,240 assignees**.
+
+### D13.1 — KI-24, and the defect underneath it
+
+The plan asks for the cost of client-side filtering at 500 / 2,000 / 5,000, and to fix it or
+gate it *with the number attached*. `scripts/filter-bench.mjs` compiles the REAL
+`taskFilters.ts` with the esbuild the client already ships and times it (median of 60 passes,
+deterministic fixture):
+
+| tasks | none | status | assignee | **date** | all |
+|---|---|---|---|---|---|
+| 500 | 0.000 | 0.022 | 0.037 | **0.167** | 0.036 |
+| 2,000 | 0.000 | 0.036 | 0.044 | **0.650** | 0.076 |
+| 5,000 | 0.000 | 0.091 | 0.115 | **1.688** | 0.195 |
+
+The growth **is** linear — per-task cost is flat at ~0.039 µs — so KI-24's fear of worse-than-
+linear is answered no. But the date column is 8× the others, and the reason it is expensive is
+the reason it was also WRONG.
+
+> **A task due `2026-03-20` filtered, bucketed and rendered as `2026-03-19` for every viewer
+> west of UTC.**
+
+`due_date` crosses the wire as a plain calendar day — `toWireDate` builds it from UTC components
+*precisely so* it carries no timezone, and its own comment warns "in, say, New York it would
+have rendered the previous day". Four client sites then fed that string back through
+`new Date()`, which parses it as UTC **midnight**, and read the LOCAL calendar day off the
+result. Dhaka is UTC+6, so the round-trip landed on the same day and the bug hid behind the
+office clock. Proven under four zones before any fix:
+
+```
+TZ=Asia/Dhaka        2026-03-20 → 2026-03-20      TZ=America/New_York  2026-03-20 → 2026-03-19
+TZ=UTC               2026-03-20 → 2026-03-20      TZ=Pacific/Midway    2026-03-20 → 2026-03-19
+```
+
+It is the same class P10 fixed on the calendar's DROP handler — this is the READ side, and it
+had four sites: the shared filter, the calendar's day bucketing, the space browser's overdue
+highlight, and **`DueDateBadge`**, which is the most visible of them. That badge decides
+overdue / today / "Tomorrow" on every row, card and board tile: west of UTC a task due TODAY
+compared as yesterday and rendered as the red OVERDUE chip.
+
+Fixed in `dayKey` itself — a `YYYY-MM-DD` string is already a calendar day and is returned
+unchanged, while a real instant still resolves to the local day, because `dayKey(new Date())`
+must keep meaning "today here". A new `parseWireDate` composes the two for the display sites.
+15 tests pin it under four timezones, using `vi.stubEnv("TZ", …)` rather than a direct
+`process.env` write (the client tsconfig has no Node types, so the direct form passes vitest
+and fails `tsc -b`, which is a gate check). **Proved able to fail** by removing the
+short-circuit: 5 of the 15 go red.
+
+And the fix is also the optimisation, because the per-task `Date` allocation is gone:
+
+| tasks | date filter before | after | |
+|---|---|---|---|
+| 500 | 0.167 ms | 0.052 ms | 3.2× |
+| 2,000 | 0.650 ms | 0.083 ms | 7.8× |
+| 5,000 | **1.688 ms** | **0.203 ms** | **8.3×** |
+
+**The pass ABOVE the filter mattered more than the filter.** `ListView` and `BoardView` dropped
+closed tasks with `statuses.find(...)` INSIDE the predicate — O(tasks × statuses) — and that
+memo re-runs on every keystroke in the search box. `MobileTaskView` already used a Map; the
+mobile rebuild had fixed it there and left the two desktop views behind. Measured at 18
+statuses: 0.179 ms → 0.092 ms at 5,000 tasks (1.9×, and it degrades linearly with more
+statuses). Both views now build the same memoised `statusById`.
+
+### D13.2 — what the hot endpoints cost, and what they do NOT do
+
+At 5,047 tasks, against the real API with real RBAC scoping:
+
+| endpoint | median | payload |
+|---|---|---|
+| `GET /lists/:id/tasks` | 20.1 ms | 69 KB |
+| `GET /home/kpis` | 26.9 ms | 417 B |
+| `GET /eng/home` | 27.4 ms | 50 KB |
+| `GET /tasks/my-work` | 47.0 ms | 526 KB |
+| `GET /search?q=` | **85.9 ms** | 32 KB |
+
+**No full table scan on any hot path** — the exit criterion. Every plan is `ref` or `eq_ref`;
+`type=ALL` appears nowhere.
+
+The digest flagged **7 statements that ran without an index**, which looks alarming and is not:
+each is a lookup on `task_tags`, `task_watchers`, `task_delete_requests`,
+`task_custom_field_values`, `workspace_activity`, `lists` or `users` — tables holding 0 to 323
+rows here — and every one of them HAS an index whose leftmost column is the filtered one. At
+that size an index dive costs more than reading the table, so the scan is the optimiser being
+right. Checked table by table rather than trusted.
+
+The genuinely expensive statement is search's comment scan: **68 ms average, 17,477 rows
+examined per call**, because `comments.body LIKE '%…%'` has a leading wildcard and cannot use an
+index by construction. It is not a table scan — the plan drives from `tasks` by workspace and
+walks each task's comments — but the cost is proportional to the comment count, so it is on the
+GATE ledger with that number rather than quietly accepted.
+
+### D13.3 — KI-21, proven rather than assumed
+
+Two indexes whose column list is a strict PREFIX of another on the same table:
+
+```
+comments                  idx_comments_task_time (task_id, created_at)
+                        ⊂ idx_comments_task_created_internal (task_id, created_at, internal_id)
+task_custom_field_values  idx_tcfv_field (custom_field_id)
+                        ⊂ idx_tcfv_option (custom_field_id, option_id_generated)
+```
+
+Both were in the original schema; `013_perf_indexes` added the wider comment index to kill a
+filesort and did not remove the one it superseded. That is how the pair came to exist.
+
+Proof is an EXPLAIN either side of the drop, at 5,047 tasks — not the prefix rule alone:
+
+```
+task_custom_field_values   key=idx_tcfv_field → key=idx_tcfv_option
+                           type=ref, key_len=258, rows=1 — IDENTICAL either side
+comments                   plan byte-identical; the optimiser already preferred the wider index
+```
+
+`upgrades/026_drop_redundant_indexes.sql` drops both, gated on `information_schema` so a re-run
+is a no-op (verified: second run exits 0 and changes nothing). ⚠️ Each drop is additionally
+gated on the SUPERSEDING index still existing — `fk_tcfv_field` is a foreign key on
+`custom_field_id`, and InnoDB requires an index on it; the drop is legal only because
+`idx_tcfv_option` carries that column leftmost, and if a future migration removed the wider
+index this script must not then strip the narrow one too. Both FKs verified intact afterwards.
+
+**And the drift is now guarded.** The parity suite pinned tables, columns, triggers and views —
+not indexes — so nothing in this repo would have noticed if I had edited two of the three places
+an index is declared (`database/schema.sql`, the Drizzle table, the migration). Four new tests:
+every index Drizzle declares exists in the database, KI-21's two are gone, the wider two are
+present with the right columns, and — the general rule — **no non-unique index is a strict
+prefix of another on its table**. That last one passing is also independent confirmation that
+these were the only two. Proved able to fail by reintroducing one: 2 tests go red.
+
+### D13.4 — the N+1 sweep found none, and can prove it
+
+Reading repositories for `await` inside a `for` misses the ones hidden behind a service and
+flags ones that are batched two layers down. `scripts/nplus1-probe.cjs` asks the database
+instead: reset the digest table, issue exactly ONE request, count what ran.
+
+```
+  endpoint                     stmts  worst  rows
+  GET /tasks/:id/comments          3      1   400
+  GET /lists/:id/tasks             9      1    50
+  GET /notifications               2      1    50
+  GET /eng/home                   19      3     1
+```
+
+**400 comments hydrated in 3 statements** is the shape that settles it. No digest ran more than
+4× in a single request on any of the 11 paths probed. The `--assert` mode exits 1 on a finding
+and 0 when clean — checked both ways, and checked WITHOUT a pipe, because `$?` after `| tail` is
+tail's exit code (the trap the assistant gate paid for).
+
+### D13.5 — bundle: within budget, and the carried claim was stale
+
+**471.5 KB gz** first load (`index` 367.2 + `react` 89.7 + `icons` 9.8 + CSS 4.8) against P11's
+500 KB budget — the same figure P11 measured, so P13's client changes cost nothing. Built to a
+scratch directory; `client/dist` stays untouched per §A rule 8.
+
+The plan asks to check "the eager `TaskRedirect` import that put real first load at 670 KB gz in
+the 08-25 scan". It is `lazy()` at `router.tsx:21` and has been since the mobile rebuild. 21 of
+23 page imports are lazy; the two that are not — `LoginPage` and `HomePage` — are the first
+screens anyone sees, so eager is correct there. **The 670 KB figure no longer describes this
+bundle.**
+
+### D13.6 — KI-29: the gate's own runtime, which was the biggest number in the phase
+
+30 setup files reset with `TRUNCATE`. TRUNCATE is DDL — InnoDB drops and recreates each
+tablespace file and takes an exclusive metadata lock while it does. Measured on the collab
+module's real 23-table list:
+
+```
+  TRUNCATE ×23                        1,295 ms      per TEST
+  DELETE ×23                              8 ms      158× — and WRONG, twice over
+  DELETE + AUTO_INCREMENT reset         114 ms      11×, same observable state
+```
+
+The naive conversion is not equivalent, and both reasons were found by converting a module and
+watching it go red rather than by reasoning:
+
+1. **TRUNCATE does not fire triggers; DELETE does.** Emptying `comments` row by row runs
+   `trg_comments_after_delete`, which decrements `tasks.comments_count` — an UNSIGNED column —
+   and 64 collab tests died on `BIGINT UNSIGNED value is out of range`. Tables carrying an
+   AFTER DELETE trigger are therefore still TRUNCATEd, and the set is read from
+   `information_schema` (today: `comments`, `form_submissions`) so a new trigger cannot
+   silently reintroduce the bug.
+2. **DELETE does not reset AUTO_INCREMENT.** `internal_id` is the keyset-pagination cursor, and
+   `setup-each-forms.ts` states in its own header that it truncates precisely to reset it. The
+   counter is put back to 1 wherever it moved — one catalogue read, then an ALTER only for the
+   tables that actually advanced.
+
+All 10 remaining files now call one shared `resetTables` helper in `tests/test-utils/db.ts`,
+which is also where the measurement and both traps are written down. Every converted module was
+run individually before the next was touched — `forms` first among them, since it is the one
+that depends on the counter reset. **2,066 tests across the 11 affected modules, all green.**
+
+Wall-clock, same machine, same modules:
+
+```
+  tasks (423)          P12: 21.3 min with taskdeps   P13: 4.5 min alone
+  sprints (164)        P12: 5.5 min with sse         P13: 2.2 min alone
+```
+
+### D13.7 — KI-28 did not reproduce, and the load told us something else
+
+`scripts/refresh-race.cjs` ran **236 refresh attempts in three shapes — 0 server errors.** P2's
+single unexplained 500 does not reproduce under contention either; after 346 concurrent requests
+(P2), 5 isolated runs, 3 full runs and now this, the honest position is that it stays an
+unexplained one-off with no known trigger, not an open defect with a repro.
+
+What the run did measure is the shape P2 could not: **25 callers presenting the SAME refresh
+cookie at once, 8 rounds — 176 of 200 succeeded**, each minting a session. Sequential reuse is
+refused correctly (a replayed spent cookie: 25 of 25 → 401, with the mass-revoke firing). So
+reuse detection is a read-then-write race, and the window is real. That is already GATE item
+**D2.8** from P2 ("measured: 10 → 10 active sessions"); P13 sharpens the number and leaves the
+decision there, because closing the window means either a compare-and-swap that logs out users
+whose TABS race — the client is single-flight within a tab but not across them — or an
+idempotent grace period. That is a session-security UX decision, not a performance fix.
+
+### What P13 did NOT do
+
+`GET /tasks/my-work` returns **526 KB** at this size and is the largest payload measured. It is
+not slow (47 ms) and it is not a defect, but it is the one number here that will bend first at
+10× volume; it is named for P14's attention rather than changed in a phase that was not asked to
+touch its contract.
+
+### Closing state
+
+- **38 modules · 6,113 passed · 0 failed · ALL GREEN (no flakies).** P12's 6,094 plus exactly
+  the 19 P13 added: `schema` 18 → **22** (the index-parity tests), client 137 → **152**
+  (`taskFilters.test.ts`).
+- **The gate itself got 2.3× faster — that is KI-29's real deliverable.** Final-state total
+  **54.7 min** across 8 chunks, against the **127.1 min** the plan records for P11's single run.
+  The biggest single movement was `listsread`, which resets the WHOLE database per test and so
+  paid the most: its chunk went **18.9 → 4.7 min** once `resetTestDb` was routed through the
+  same helper.
+- ⚠️ Run in **8 chunks**, not one `npm run test:all`, for the reason P12 wrote up — the agent
+  session's background reaper kills a long detached run. The total above is arithmetic over
+  eight summaries. Static was run separately (`--only` implies `--no-static`): **eslint 0/0 on
+  both packages**, `tsc -p tsconfig.tests.json`, `tsc -b --noEmit`.
+- Every module touched by KI-29 was run individually BEFORE the gate as well, one at a time,
+  starting with `forms` — the module that depends on the AUTO_INCREMENT reset. 2,066 tests.
+- Dev DB at baseline **47 / 6 / 9 / 27 / 15**, with `upgrades/026` applied (idempotent: a second
+  run exits 0 and changes nothing) and both foreign keys verified intact. The 5,047-task scale
+  fixture was dropped; nothing P13 built survives in the database.
+- `client/dist` and `server/dist` untouched — the bundle was measured from a scratch build.
+  ⛔ **The P10/P11 carry still stands and P13 ADDS to it**: `client/dist` is stale, prod is
+  `7e661c8`, and P13 changed eight client files including `DueDateBadge`, which every task
+  surface renders. **The timezone fix does not reach anyone until `client/dist` is rebuilt.**
+- Two throwaway probe databases from earlier phases are still on the server —
+  `p8_dup_probe` (0.0 MB) and `tt_race_probe3` (0.1 MB). Left alone rather than dropped by a
+  phase that did not create them; noted because `C:` is at 99%.
+
+**Signed off:** ✅
 
 ---
 

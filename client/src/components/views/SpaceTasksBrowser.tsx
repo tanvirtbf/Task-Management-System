@@ -299,7 +299,7 @@ export const SpaceTasksBrowser = ({ lists }: SpaceTasksBrowserProps) => {
                         const overdue =
                             !!task.dueDate &&
                             !task.completedAt &&
-                            dayKey(new Date(task.dueDate)) < today;
+                            dayKey(task.dueDate) < today;
                         return (
                             <button
                                 key={task.id}

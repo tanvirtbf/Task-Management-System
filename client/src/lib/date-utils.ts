@@ -113,10 +113,27 @@ export const formatRangeLabel = (start: Date, end: Date): string => {
     });
 };
 
+/** A wire date: `"2026-05-26"`, optionally with a time the server appended. */
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}(?:[T ]|$)/;
+
 /**
  * Day key like "2026-05-26" used as object key / DnD id.
+ *
+ * ⚠️ A `YYYY-MM-DD` string is returned as-is, and that short-circuit is a
+ * correctness fix, not an optimisation (P13). `due_date` and `start_date`
+ * cross the wire as plain calendar days — `toWireDate` on the server builds
+ * them from UTC components *precisely so* they carry no timezone. Feeding one
+ * to `new Date()` parses it as UTC midnight, and reading the local calendar day
+ * back off that lands on the PREVIOUS day for every viewer west of UTC. The
+ * office is at UTC+6, so the round-trip happened to be harmless here and the
+ * bug hid; in New York a task due the 20th filtered, bucketed and highlighted
+ * as if it were due the 19th.
+ *
+ * A real instant still resolves to the LOCAL calendar day, which is what
+ * `dayKey(new Date())` means and must keep meaning.
  */
 export const dayKey = (d: Date | string): string => {
+    if (typeof d === "string" && DATE_ONLY.test(d)) return d.slice(0, 10);
     const x = startOfDay(d);
     return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
 };
@@ -125,3 +142,16 @@ export const parseDayKey = (key: string): Date => {
     const [y, m, day] = key.split("-").map(Number);
     return new Date(y, m - 1, day);
 };
+
+/**
+ * A value from the API as a Date sitting on the right LOCAL calendar day.
+ *
+ * Use this instead of `new Date(value)` wherever a date is COMPARED to today
+ * or FORMATTED for a human. `new Date("2026-03-20")` is UTC midnight, so every
+ * local reading of it — `toDateString()`, `getDate()`, `toLocaleDateString()` —
+ * is a day early west of UTC (P13). Composing through `dayKey` means a plain
+ * wire date keeps its calendar day and a real timestamp resolves to the local
+ * one, which is the correct answer in both cases.
+ */
+export const parseWireDate = (value: Date | string): Date =>
+    parseDayKey(dayKey(value));

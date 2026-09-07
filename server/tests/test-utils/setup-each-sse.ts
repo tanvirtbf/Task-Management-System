@@ -1,7 +1,6 @@
 process.env.NODE_ENV = "test";
 
-import { connectTestDb, disconnectTestDb } from "./db";
-import { getPool } from "../../src/db/client";
+import { connectTestDb, disconnectTestDb, resetTables } from "./db";
 
 /**
  * Per-file setup for the §27 SSE suite. TRUNCATEs only the tables these tests
@@ -30,14 +29,9 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-    const conn = await getPool().getConnection();
-    try {
-        await conn.query("SET FOREIGN_KEY_CHECKS = 0");
-        for (const table of TABLES) {
-            await conn.query(`TRUNCATE TABLE \`${table}\``);
-        }
-        await conn.query("SET FOREIGN_KEY_CHECKS = 1");
-    } finally {
-        conn.release();
-    }
+    // KI-29 (§P13): DELETE + an AUTO_INCREMENT reset where the counter moved,
+    // instead of TRUNCATE. Same observable state, 11× cheaper — see
+    // `resetTables` in ./db for the measurement and why the counter still
+    // has to be reset.
+    await resetTables(TABLES);
 });

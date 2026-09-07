@@ -1,8 +1,7 @@
 process.env.NODE_ENV = "test";
 
 import { Config } from "../../src/config";
-import { connectTestDb, disconnectTestDb } from "./db";
-import { getPool } from "../../src/db/client";
+import { connectTestDb, disconnectTestDb, resetTables } from "./db";
 
 // Must match the private database provisioned in global-setup-tags.ts. Set at
 // module load — this file runs before its own beforeAll hook, so `initDb()`
@@ -42,16 +41,11 @@ const TABLES = [
 ] as const;
 
 const resetTagsTables = async (): Promise<void> => {
-    const conn = await getPool().getConnection();
-    try {
-        await conn.query("SET FOREIGN_KEY_CHECKS = 0");
-        for (const table of TABLES) {
-            await conn.query(`TRUNCATE TABLE \`${table}\``);
-        }
-        await conn.query("SET FOREIGN_KEY_CHECKS = 1");
-    } finally {
-        conn.release();
-    }
+    // KI-29 (§P13): DELETE, plus TRUNCATE only where an AFTER DELETE
+    // trigger makes it necessary, and an AUTO_INCREMENT reset where the
+    // counter moved. Same observable state, far less DDL — see
+    // `resetTables` in ./db for the measurement.
+    await resetTables(TABLES);
 };
 
 // The tags suite sets no per-file timeout, so the default 5s applies — too tight

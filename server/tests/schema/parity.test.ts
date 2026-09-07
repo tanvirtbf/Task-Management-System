@@ -298,3 +298,134 @@ describe("schema parity — views", () => {
         expect({ unreadableViews: broken }).toEqual({ unreadableViews: [] });
     });
 });
+
+/**
+ * §P13 / KI-21 — indexes, the fourth thing that can drift.
+ *
+ * The suite above pins tables, columns, triggers and views. It does NOT pin
+ * indexes, and P13 discovered that the hard way: dropping two redundant indexes
+ * meant editing `database/schema.sql`, the Drizzle table definitions and a
+ * migration, and NOTHING in this repo would have noticed if one of the three
+ * had been missed. An index that exists in the ORM's head but not in the
+ * database is invisible until a query is slow in production.
+ *
+ * Drizzle is deliberately allowed to declare FEWER indexes than the database
+ * has: `database/schema.sql` also creates the ones InnoDB needs to back foreign
+ * keys (`fk_*`), and those are the database's business, not the ORM's. What is
+ * NOT allowed is Drizzle naming an index the database does not have.
+ */
+describe("schema parity — indexes", () => {
+    /** Every index Drizzle declares, by name. */
+    const drizzleIndexes = (): Set<string> => {
+        const out = new Set<string>();
+        for (const value of Object.values(schema)) {
+            if (!value || typeof value !== "object") continue;
+            let cfg;
+            try {
+                cfg = getTableConfig(value as MySqlTable);
+            } catch {
+                continue; // not a table (relations, enums, …)
+            }
+            for (const idx of cfg.indexes) out.add(idx.config.name);
+        }
+        return out;
+    };
+
+    const liveIndexes = async (): Promise<Map<string, string[]>> => {
+        const conn = await getPool().getConnection();
+        try {
+            const [rows] = await conn.query(
+                `SELECT TABLE_NAME, INDEX_NAME, NON_UNIQUE,
+                        GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX) AS cols
+                   FROM information_schema.STATISTICS
+                  WHERE TABLE_SCHEMA = DATABASE()
+                  GROUP BY TABLE_NAME, INDEX_NAME, NON_UNIQUE`,
+            );
+            const out = new Map<string, string[]>();
+            for (const r of rows as {
+                TABLE_NAME: string;
+                INDEX_NAME: string;
+                NON_UNIQUE: number;
+                cols: string;
+            }[]) {
+                out.set(`${r.TABLE_NAME}.${r.INDEX_NAME}`, [
+                    r.cols,
+                    String(r.NON_UNIQUE),
+                ]);
+            }
+            return out;
+        } finally {
+            conn.release();
+        }
+    };
+
+    it("finds indexes on both sides (guards against a vacuous pass)", async () => {
+        expect(drizzleIndexes().size).toBeGreaterThan(20);
+        expect((await liveIndexes()).size).toBeGreaterThan(100);
+    });
+
+    it("every index Drizzle declares EXISTS in the database", async () => {
+        const live = await liveIndexes();
+        const liveNames = new Set(
+            [...live.keys()].map((k) => k.split(".").slice(1).join(".")),
+        );
+        const declaredButAbsent = [...drizzleIndexes()]
+            .filter((n) => !liveNames.has(n))
+            .sort();
+        expect({ declaredButAbsent }).toEqual({ declaredButAbsent: [] });
+    });
+
+    it("KI-21's two redundant indexes are gone and stay gone", async () => {
+        // The specific regression. Both were strict prefixes of a wider index
+        // on the same table; `upgrades/026` dropped them after P13 proved,
+        // against a 5,047-task fixture, that EXPLAIN kept the same access path.
+        const live = await liveIndexes();
+        expect({
+            comments: live.has("comments.idx_comments_task_time"),
+            tcfv: live.has("task_custom_field_values.idx_tcfv_field"),
+        }).toEqual({ comments: false, tcfv: false });
+
+        // …and the wider indexes that replaced them are present, because
+        // "both gone" would also be satisfied by a table with no index at all.
+        expect({
+            comments: live.get("comments.idx_comments_task_created_internal")?.[0],
+            tcfv: live.get("task_custom_field_values.idx_tcfv_option")?.[0],
+        }).toEqual({
+            comments: "task_id,created_at,internal_id",
+            tcfv: "custom_field_id,option_id_generated",
+        });
+    });
+
+    it("no non-unique index is a strict PREFIX of another on the same table", async () => {
+        // The general rule, so the next one is caught when it is added rather
+        // than by a scan months later. Unique indexes are exempt: a UNIQUE
+        // prefix enforces a constraint the wider index does not.
+        const live = await liveIndexes();
+        const byTable = new Map<string, { name: string; cols: string }[]>();
+        for (const [key, [cols, nonUnique]] of live) {
+            if (nonUnique !== "1") continue;
+            const [table, ...rest] = key.split(".");
+            if (!byTable.has(table)) byTable.set(table, []);
+            byTable.get(table)!.push({ name: rest.join("."), cols });
+        }
+
+        const redundant: string[] = [];
+        for (const [table, idxs] of byTable) {
+            for (const a of idxs) {
+                for (const b of idxs) {
+                    if (a.name === b.name) continue;
+                    // `a` is redundant when b's column list starts with a's.
+                    if (
+                        b.cols.length > a.cols.length &&
+                        b.cols.startsWith(`${a.cols},`)
+                    ) {
+                        redundant.push(`${table}.${a.name} ⊂ ${table}.${b.name}`);
+                    }
+                }
+            }
+        }
+        expect({ redundantIndexPairs: redundant.sort() }).toEqual({
+            redundantIndexPairs: [],
+        });
+    });
+});
