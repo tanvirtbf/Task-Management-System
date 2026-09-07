@@ -3577,7 +3577,7 @@ the machine first.
 - [x] eslint still **0/0** on both packages; first load **471.5 KB gz** against P11's 500 KB budget
 - [x] Anything not fixed carries a number — comment-body search 68 ms / 17,477 rows examined; `/tasks/my-work` 526 KB; refresh-rotation race 176 of 200. All three on the GATE ledger
 
-**Execution record P13** — 2026-09-07, anchor `8dfb9c7`.
+**Execution record P13** — 2026-09-07, anchor `8dfb9c7`, signed off at `d8023b9`.
 
 *The system is correct by P12. This phase asked whether it stays correct at size — and the
 answer arrived with a timezone bug attached.*
