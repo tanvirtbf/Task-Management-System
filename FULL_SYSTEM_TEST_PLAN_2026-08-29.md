@@ -3267,7 +3267,7 @@ expected to PASS now, so there is no `test.fail()` left to confirm, and the tigh
 - [x] Backup → restore → equivalence proven on the restored database (objects, per-table row counts AND 5 executed query probes) — the gate builds a private DB per module from canonical SQL and cannot be pointed at one copy; see D12.5
 - [x] Triggers, views and RESTRICT paths asserted — plus a defect underneath: template apply never set the checklist rollup
 
-**Execution record P12** — 2026-09-06, anchor `adb8db3`.
+**Execution record P12** — 2026-09-06/07, anchor `adb8db3`, signed off at `e1a6221`.
 
 *Nine endpoints nobody calls by hand, two ledger entries about the clock, and the drills that
 ask whether the database can be rebuilt at all.*
