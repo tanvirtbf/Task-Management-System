@@ -123,11 +123,19 @@ target and a deadline. They are different things — SLA is a response commitmen
 when the work is due — and the UI must not show two similar-looking countdowns without saying
 which is which. Phase 5 owns this.
 
-### B5 — Open question for the user (needed before Phase 3)
+### B5 — ✅ DECIDED 2026-09-08: the time picker is ALWAYS VISIBLE
 
-**Should the time picker be always visible, or opt-in?** Most tasks will not want an hour. A
-required time field on every task is a tax on the common case. Proposal: the date picker gains an
-"add time" affordance, and once a time is set it shows inline. **Decide before Phase 3.**
+The user chose the always-on control over an opt-in "add time" affordance. So every date field
+carries an hour/minute box beside it, whether or not the task needs one.
+
+Two consequences Phase 3 owns, because the plan should say what a decision costs:
+
+- **Horizontal space.** The inline date editor sits in a table row and on a mobile card. A
+  permanent second control has to fit there without pushing the assignee or status off the
+  row — P11's mobile metric guard is the check that catches it if it does not.
+- **Empty ≠ midnight.** An always-visible box invites the reading "it is showing blank, so the
+  time is 00:00". It is not: blank means end of day (**B1**). The control must say so —
+  a placeholder reading `end of day` rather than `--:--`.
 
 ---
 
@@ -148,6 +156,48 @@ Each phase ends green on `npm run test:all` and is committed separately. One pha
    (`scripts/scale-seed.cjs` from P13) — so Phase 1 can prove it did not regress a query plan.
 
 **Exit:** the characterisation tests pass on today's code, and each is proven able to fail.
+
+**✅ P0 DONE — 2026-09-08.**
+
+*Nothing was built. Today's behaviour is now written down in a form that can fail.*
+
+**1. The B1 invariant is pinned** — `client/src/components/ui/DueDateBadge.test.tsx`, 6 tests.
+The load-bearing one: **a task due today reads "Today" at 00:05 AND at 23:59**, never overdue.
+That is the assertion a null `due_time` read as midnight would break, and it is asserted at both
+ends of the day precisely because the midnight reading only shows up at one of them. The rest
+record the current vocabulary — Yesterday/Tomorrow/weekday/`May 2`/em-dash — and the colour each
+state uses, so Phase 4 replacing this badge is a deliberate swap rather than a silent one.
+
+Repeated at four timezones (Dhaka / UTC / New York / Midway). **Proved able to fail:** reverting
+P13's `parseWireDate` back to `new Date(dueDate)` turns both timezone tests red, and only those
+two — which is also a clean re-demonstration that the P13 fix is what is holding them up.
+
+**2. The `timeAgo` duplication is pinned** — `client/src/lib/time-rendering.test.ts`, 4 tests.
+
+⚠️ **The plan was wrong here and is corrected.** §A said the three copies were "byte-identical".
+They are not: `RecentActivityCard` assigns `const d = …` where the other two inline the same
+expression. A string comparison read that as a drift. But text was never what Phase 6 depends
+on — so the test now **compiles and runs all three** against a row of inputs spanning the
+just-now, minute, hour and day boundaries, and asserts they agree on every one. That is the
+actual precondition for replacing three functions with one.
+
+**3. Query-plan baseline recorded**, against a 5,047-task / 12,410-comment fixture built with
+P13's `scripts/scale-seed.cjs` (`EXPLAIN` on the dev database's 47 tasks proves nothing):
+
+```
+overdue scan          type=ref  key=uq_tasks_custom_id      rows=2373  Using where
+list read + order by  type=ref  key=idx_tasks_list_active   rows=270   Using index; Using filesort
+due-today bucket      type=ref  key=idx_tasks_overdue_scan  rows=1     Using index condition
+```
+
+Two things worth carrying forward. The overdue scan does **not** use `idx_tasks_overdue_scan` —
+it takes the workspace prefix of the unique `custom_id` index and filters 2,373 rows. And the
+list read is already paying a **filesort** to order by `due_date`. Neither is a defect today,
+but Phase 1 adds a column to exactly these queries, so both numbers are the ones to re-measure.
+
+**Gate:** client **162 tests / 16 files, all green** (was 152 — P0 added 10). eslint 0/0,
+`tsc -b` clean. No source file changed, so the server suite is untouched by construction.
+
 
 ### P1 — Storage and the wire
 
@@ -217,9 +267,11 @@ metric guard covers this).
 1. Delete the three copied `timeAgo` functions; one shared helper in `lib/date-utils.ts`.
 2. Render **"24 Aug, 10.24 PM"** in `TaskActivitySection`, `CommentsSection`,
    `RecentActivityCard`, and the inbox.
-3. Decide whether very recent entries keep "just now" — an absolute timestamp for something
-   that happened 20 seconds ago reads oddly. Proposal: absolute always, with the relative form
-   in the tooltip.
+3. ✅ **DECIDED 2026-09-08: hybrid.** Under an hour stays relative (`just now`, `12m ago`);
+   an hour or older becomes absolute (`24 Aug, 10.24 PM`). The user chose this over
+   absolute-always, and it is the better reading: a timestamp on something 20 seconds old is
+   noise, while "13d ago" on something a fortnight old is the thing that loses information.
+   The cutover hour is a constant, tested at both sides of the boundary.
 4. These are TIMESTAMPs (real instants), so they render in the **viewer's** local zone — unlike
    the deadline, which is the workspace's. That difference is deliberate and must be commented
    where it appears, or someone will "fix" it later.
