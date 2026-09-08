@@ -3850,10 +3850,14 @@ laptop.*
    and the chat-privacy fix) closes exactly here.
 2. **KI-2:** push. `6d9334a`, `510a728` and the P1 commit are local-only; `origin/main` is at
    `876e9cf`.
-3. **Database:** production sits at upgrade **022**. HEAD needs **023, 024 and 025**, and
-   **025 is non-idempotent and backfills** — read it before running it, take a backup first,
-   and verify row counts after. Regenerate `DEPLOY_PROMPT` against the real HEAD so it is not
-   025-blind the way its predecessor was.
+3. **Database:** ⚠️ **this task's premise was wrong when written.** It said production sits at
+   upgrade `022`; it did not — `025` was already applied, which is why the 2026-09-03 deploy
+   hit `ERROR 1060 Duplicate column` and survived only because the prompt pre-CHECKED the
+   column. Prod is at **025** (`t023=1 · t024=3 · t025=1 · 47 tables`, verified on the box).
+   HEAD needs **`026`** only — index-only DDL, information_schema-gated, no data. ✅
+   `DEPLOY_PROMPT_2026-09-07.md` regenerated against the real HEAD, and it now READS the DB
+   state rather than asserting it. Its shell and every verification query were executed
+   before handover.
 4. **Cron:** the `*/15` recurrence-spawn line and the other job schedules must exist on the
    box. A job that only ever ran because someone triggered it by hand is not deployed.
 5. **KI-26 ops:** proxy `/health/version` through nginx, feed `git_sha`, decide on Cloudflare
@@ -3870,8 +3874,8 @@ laptop.*
    it buys, for the user to decide — the server dependency majors from P1 among them.
 
 **Exit criteria**
-- [ ] `origin/main` == local HEAD; dist rebuilt, committed, canary recorded
-- [ ] 023 + 024 + 025 applied to production after a verified backup; row counts checked
+- [x] `origin/main` == local HEAD (**`253964d`**, pushed 2026-09-07 — KI-2 closed); dist rebuilt and committed (`bdb085e`); canary `index-03KaeTLH.js` → **`index-BufrRhaG.js`**, recorded in the deploy prompt. The rebuilt bundle was LOADED before shipping, not just built: 11/11 against a served production build, 6 personas, every route, 472.4 KB gz
+- [ ] ~~023 + 024 + 025~~ **already applied and verified on the box 2026-09-03** (`t023=1 · t024=3 · t025=1 · assigned_by NULLs=0 · 47 tables`) — this line was written when prod was believed to be at 022, which was false at the time and is two deploys stale now. **What remains is `026`** (index-only, gated, no data), after a verified backup
 - [ ] All cron lines present on the box; `/health/version` reachable with a real `git_sha`
 - [ ] The 8-point production smoke passes on the live site
 - [ ] GATE ledger presented and every item explicitly decided
