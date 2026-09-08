@@ -45,10 +45,29 @@
 | `020_edit_rights.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 (first) | ✅ 2026-08-16 (Phase C flip) |
 | `021_assignment_approval.sql` | ✅ 2026-08-11 | ✅ 2026-08-11 (first, re-apply proven) | ✅ 2026-08-11 (Phase A) |
 | `022_checklist_counters.sql` | ✅ 2026-08-12 | ✅ 2026-08-12 (first, re-apply proven) | ✅ 2026-08-12 |
-| `023_task_delete_approval.sql` | ✅ 2026-08-16 | ⏳ | ⏳ ships with the delete-approval build |
-| `024_recurrence_spawn.sql` | ✅ 2026-08-16 | ⏳ | ⏳ ships with the recurrence build (+ cron line) |
-| `025_assigned_by.sql` | ✅ 2026-08-22 | ⏳ | ⏳ ships with the Assigned By build (ASSIGNED_BY_PLAN P8) |
+| `023_task_delete_approval.sql` | ✅ 2026-08-16 | ⏳ | ✅ 2026-09-03 (verified on the box: `t023=1`) |
+| `024_recurrence_spawn.sql` | ✅ 2026-08-16 | ⏳ | ✅ 2026-09-03 (verified: `t024=3` columns) |
+| `025_assigned_by.sql` | ✅ 2026-08-22 | ⏳ | ✅ 2026-09-03 ⚠️ the column ALREADY existed — see below |
+| `026_drop_redundant_indexes.sql` | ✅ 2026-09-07 | ⏳ | ⏳ ships with the P13 build |
 
+> **⚠️ 2026-09-07 (test plan P14): the three rows above were stale bookkeeping for a
+> month.** `023`, `024` and `025` were all applied on 2026-09-03 and verified on the box
+> (`t023=1 · t024=3 · t025=1 · assigned_by NULLs=0 · fk_tasks_assigned_by=1 · 47 tables`),
+> but this table still said `⏳`. Worse, the deploy prompt of the day ASSERTED "the DB is
+> at 022" — and `025` turned out to be already applied, so it failed with
+> `ERROR 1060 Duplicate column`. No harm, because the prompt pre-CHECKED the column before
+> running it. **The rule this table exists to serve: read the live schema, never trust a
+> row in a file — including this one.**
+>
+> `026` drops two indexes whose column list is a strict PREFIX of a wider index on the
+> same table (`idx_comments_task_time`, `idx_tcfv_field`). Test plan P13 proved them
+> redundant by comparing EXPLAIN either side of the drop against a 5,047-task fixture:
+> same access path, same `key_len`, same row estimate, the wider index simply named
+> instead. Index-only DDL, no rows change, information_schema-gated so a re-run is a
+> no-op. ⚠️ Each drop is ALSO gated on the superseding index still existing —
+> `fk_tcfv_field` is a foreign key on `custom_field_id` and InnoDB requires an index on
+> it; the drop is only legal because `idx_tcfv_option` carries that column leftmost.
+>
 > **prod = `tasks.beautybooth.com.bd`.** Phase A of `LIVE_ROLLOUT_TEAM_ACCESS.md`
 > landed 001–018 + 021 on 2026-08-11 and `022` on 2026-08-12; every one of them was
 > re-verified against the live schema on 2026-08-12 (46 tables / 5 views / 9 triggers,
