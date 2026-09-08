@@ -245,6 +245,38 @@ const computeSlaDueAt = (
 const toClockOnly = (value: string | null | undefined): string | null =>
     value ? `${value.slice(0, 5)}:00` : null;
 
+/**
+ * Does the start fall after the due moment, now that each date can carry a time?
+ *
+ * Two properties, and the first draft of this got BOTH wrong — the tests in
+ * `tests/tasks/deadline-time.test.ts` are what caught it:
+ *
+ *  1. **It compares only when BOTH dates exist.** A task with a start date and
+ *     no due date is unbounded, not misordered. The original date-only guard
+ *     said `startDate && dueDate &&` for exactly that reason, and dropping it
+ *     turned "set a start date" into a 422.
+ *  2. **The missing-time defaults are ASYMMETRIC.** A start with no time begins
+ *     at `00:00`; a due with no time runs to `23:59`. Defaulting both to
+ *     midnight refuses `start 5 Sep 17:00, due 5 Sep` — a task that starts in
+ *     the afternoon and is due that same day, which is an entirely ordinary
+ *     thing to want. It is plan §B1's end-of-day rule, applied here.
+ *
+ * Both values are canonical (`YYYY-MM-DD`, `HH:MM`), so a lexical compare is
+ * exact — no Date objects, and therefore no timezone to get wrong.
+ */
+const startsAfterDue = (
+    startDate: string | null | undefined,
+    startTime: string | null | undefined,
+    dueDate: string | null | undefined,
+    dueTime: string | null | undefined,
+): boolean => {
+    if (!startDate || !dueDate) return false;
+    return (
+        `${startDate}T${startTime ?? "00:00"}` >
+        `${dueDate}T${dueTime ?? "23:59"}`
+    );
+};
+
 const toDateOnly = (value: string | null | undefined): Date | null => {
     if (value === null || value === undefined) return null;
     const [y, m, d] = value.split("-").map(Number);
@@ -293,6 +325,9 @@ export interface BulkPatch {
     priority?: number;
     dueDate?: string | null;
     startDate?: string | null;
+    /** `HH:MM` (24h) or null. Null is NOT midnight — see `deadlineOrder`. */
+    dueTime?: string | null;
+    startTime?: string | null;
     sprintId?: string | null;
     /** Whether `archived_at` was in the body (distinguishes null-clear from absent). */
     archivedAtProvided?: boolean;
@@ -340,6 +375,9 @@ export interface CreateTaskInput {
     customId?: string | null;
     startDate?: string | null;
     dueDate?: string | null;
+    /** `HH:MM` (24h) or null. Null is NOT midnight — see `deadlineOrder`. */
+    startTime?: string | null;
+    dueTime?: string | null;
     recurrencePattern?: RecurrencePattern;
     recurrenceDays?: string[] | null;
     /** upgrades/024 — `HH:MM` on the workspace's clock; NULL reads as 09:00. */
@@ -440,6 +478,9 @@ export interface TaskScalarPatch {
     customId?: string | null;
     startDate?: string | null;
     dueDate?: string | null;
+    /** `HH:MM` (24h) or null. Null is NOT midnight — see `deadlineOrder`. */
+    startTime?: string | null;
+    dueTime?: string | null;
     recurrencePattern?: RecurrencePattern;
     recurrenceDays?: string[] | null;
     /** upgrades/024 — `HH:MM` on the workspace's clock; NULL reads as 09:00. */
@@ -768,11 +809,23 @@ export class TaskWriteService {
         //     public form submit path skips that validator entirely; the
         //     `ck_tasks_dates` CHECK would otherwise surface as a raw 500. Both
         //     values are canonical YYYY-MM-DD here, so a lexical compare is safe.
-        if (input.startDate && input.dueDate && input.startDate > input.dueDate) {
+        if (
+            startsAfterDue(
+                input.startDate,
+                input.startTime,
+                input.dueDate,
+                input.dueTime,
+            )
+        ) {
             throw AppError.unprocessable(
                 "task.invalid_date_range",
-                "start_date must not be after due_date",
-                [{ field: "start_date", issue: "must be on or before due_date" }],
+                "start must not be after due",
+                [
+                    {
+                        field: "start_date",
+                        issue: "must be on or before due_date, and if the dates are the same, at or before due_time",
+                    },
+                ],
             );
         }
 
@@ -842,6 +895,8 @@ export class TaskWriteService {
                         isMilestone: input.isMilestone ?? false,
                         startDate: toDateOnly(input.startDate),
                         dueDate: toDateOnly(input.dueDate),
+                        startTime: toClockOnly(input.startTime),
+                        dueTime: toClockOnly(input.dueTime),
                         completedAt,
                         slaDueAt,
                         recurrencePattern: input.recurrencePattern ?? "none",
@@ -1213,6 +1268,16 @@ export class TaskWriteService {
             // due_date; clearing it here makes the NEW date alert again.
             dbPatch.overdueNotifiedAt = null;
         }
+        if (p.dueTime !== undefined) {
+            dbPatch.dueTime = toClockOnly(p.dueTime);
+            // Moving the TIME moves the deadline just as surely as moving the
+            // date, so it re-arms the alert for the same reason (upgrades/027).
+            // Without this, pulling a deadline from 5 PM to 10 AM would never
+            // alert, because the claim for that date was already spent.
+            dbPatch.overdueNotifiedAt = null;
+        }
+        if (p.startTime !== undefined)
+            dbPatch.startTime = toClockOnly(p.startTime);
         if (p.recurrencePattern !== undefined)
             dbPatch.recurrencePattern = p.recurrencePattern;
         if (p.recurrenceDays !== undefined)
@@ -1972,8 +2037,14 @@ export class TaskWriteService {
             // Same re-arm rule as the single-PATCH path (upgrades/014).
             dbPatch.overdueNotifiedAt = null;
         }
+        if (p.dueTime !== undefined) {
+            dbPatch.dueTime = toClockOnly(p.dueTime);
+            dbPatch.overdueNotifiedAt = null; // upgrades/027, as above
+        }
         if (p.startDate !== undefined)
             dbPatch.startDate = toDateOnly(p.startDate);
+        if (p.startTime !== undefined)
+            dbPatch.startTime = toClockOnly(p.startTime);
         if (p.sprintId !== undefined) dbPatch.sprintId = p.sprintId;
         if (p.archivedAtProvided) {
             dbPatch.archivedAt = p.archivedAt ? new Date(p.archivedAt) : null;

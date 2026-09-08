@@ -96,6 +96,18 @@ export const tasks = mysqlTable(
 
         startDate: date("start_date"),
         dueDate: date("due_date"),
+        /**
+         * upgrades/027 — the optional time of day on each date.
+         *
+         * ⛔ NULL is not midnight. `dueTime` NULL means the END of that day,
+         * `startTime` NULL means the start of it. That asymmetry is the whole
+         * point: today's rule is `due_date < today`, so a task due today is
+         * never overdue during today, and end-of-day is the only reading that
+         * keeps it true when a time column exists. Never compare these raw —
+         * resolve them against `workspaces.timezone` first.
+         */
+        startTime: time("start_time"),
+        dueTime: time("due_time"),
         completedAt: timestamp("completed_at"),
         // Overdue-alert claim (upgrades/014): set by the overdue-alert job in
         // the same tx as its `overdue` notification fanout (exactly once per

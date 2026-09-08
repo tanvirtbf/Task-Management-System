@@ -165,6 +165,17 @@ export interface Task {
     isMilestone: boolean;
     startDate: string | null;
     dueDate: string | null;
+    /**
+     * upgrades/027 — the optional time of day on each date, `HH:MM` (24h).
+     *
+     * ⛔ null is NOT midnight. A null `dueTime` means the END of that day and a
+     * null `startTime` means the start of it, which is what keeps a task due
+     * today from being overdue during today. Never compare these against the
+     * browser clock directly — they are wall-clock readings on the WORKSPACE
+     * timezone, not instants.
+     */
+    startTime: string | null;
+    dueTime: string | null;
     timeEstimateSeconds: number | null;
     timeTrackedSeconds: number;
     assignees: string[]; // user ids

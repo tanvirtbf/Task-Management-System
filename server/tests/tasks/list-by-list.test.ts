@@ -49,7 +49,7 @@ jest.setTimeout(60_000);
 
 const PATH = (listId: string) => `/api/v1/lists/${listId}/tasks`;
 
-// ─── the 48 wire fields (API_DESIGN.md §10 + Appendix A) ──────────────────────
+// ─── the 50 wire fields (API_DESIGN.md §10 + Appendix A) ──────────────────────
 const TASK_KEYS = [
     "id",
     "custom_id",
@@ -66,6 +66,8 @@ const TASK_KEYS = [
     "is_milestone",
     "start_date",
     "due_date",
+    "start_time",
+    "due_time",
     "completed_at",
     "review_status",
     "reviewed_at",
@@ -336,7 +338,7 @@ describe("GET /api/v1/lists/:listId/tasks", () => {
             });
         });
 
-        it("shapes each row as exactly the 48 wire fields", async () => {
+        it("shapes each row as exactly the 50 wire fields", async () => {
             const { client, ctx } = await setup();
             await insertTask(ctx);
 

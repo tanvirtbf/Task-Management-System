@@ -467,6 +467,13 @@ CREATE TABLE tasks (
 
     start_date           DATE         NULL,
     due_date             DATE         NULL,
+    -- upgrades/027 — the optional time of day on each, so work can carry an
+    -- hourly deadline. ⛔ NULL is NOT midnight: `due_time` NULL means the END
+    -- of that day and `start_time` NULL means the start of it, which is the
+    -- only reading under which a task due today is not overdue during today.
+    -- Resolved on the WORKSPACE's clock, in one place in application code.
+    start_time           TIME         NULL,
+    due_time             TIME         NULL,
     completed_at         TIMESTAMP    NULL,
     -- Overdue-alert claim (upgrades/014): set by the overdue-alert job in the
     -- same tx as its `overdue` notification fanout, so each due_date alerts

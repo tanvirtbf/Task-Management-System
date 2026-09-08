@@ -31,6 +31,8 @@ const NULLABLE_TASK_PATCH_FIELDS = [
     "description",
     "start_date",
     "due_date",
+    "start_time",
+    "due_time",
     "recurrence_days",
     "recurrence_time",
     "recurrence_ends_at",
@@ -84,6 +86,8 @@ export class TaskWriteController {
                 customId: b.custom_id,
                 startDate: b.start_date,
                 dueDate: b.due_date,
+                startTime: b.start_time,
+                dueTime: b.due_time,
                 recurrencePattern:
                     b.recurrence_pattern as never,
                 recurrenceDays: b.recurrence_days,
@@ -204,6 +208,8 @@ export class TaskWriteController {
                     customId: b.custom_id,
                     startDate: b.start_date,
                     dueDate: b.due_date,
+                    startTime: b.start_time,
+                    dueTime: b.due_time,
                     recurrencePattern:
                         b.recurrence_pattern as never,
                     recurrenceDays: b.recurrence_days,

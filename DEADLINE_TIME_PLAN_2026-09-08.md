@@ -211,6 +211,71 @@ but Phase 1 adds a column to exactly these queries, so both numbers are the ones
 **Exit:** round-trip test — create with a time, read it back identical, at four timezones. Every
 existing task still serialises exactly as before (`due_time: null`).
 
+**✅ P1 DONE — 2026-09-08.**
+
+`upgrades/027` adds `tasks.start_time` and `tasks.due_time` as nullable `TIME` columns —
+appended at the end of the table so InnoDB can add them instantly, information_schema-gated,
+**no backfill**. Applied to dev, verified idempotent (a second run exits 0 and changes nothing)
+and verified inert: `SELECT COUNT(*) FROM tasks WHERE due_time IS NOT NULL OR start_time IS NOT
+NULL` returns **0**. Schema parity **22/22** — `schema.sql`, the Drizzle table and the live
+database all agree, including P13's index-parity rule.
+
+The wire carries `start_time` / `due_time` as `"HH:MM"` or `null`, following the shape
+`recurrence_time` set in upgrades/024. Validation is `HH:MM` 24-hour in all **three** schemas
+that accept these fields — create, update and the bulk patch (the first attempt patched two and
+the refusal-on-wrong-match-count is what caught the third). The client `Task` type gained the
+two fields; no mapper work, because the HTTP layer camelises both directions already.
+
+### ⛔ The guard the time column quietly broke — and what my first fix got wrong
+
+`start_date <= due_date` was enforced by a lexical compare and by `ck_tasks_dates`. Neither can
+see a time, so **`start 5 Sep 17:00, due 5 Sep 09:00` sailed through both** — the dates are
+equal. The guard now compares `(date, time)` pairs.
+
+Writing it, I got it wrong twice in one function, and the tests caught both:
+
+1. **I dropped the `startDate && dueDate &&` precondition.** With it gone, a task carrying only
+   a start date compared `"2026-09-05T00:00" > ""` — true — and setting a start date with no
+   due date became a 422.
+2. **I wrote a comment saying the defaults were "deliberately ASYMMETRIC" and then defaulted
+   both to `00:00`.** So `start 5 Sep 17:00, due 5 Sep` — an afternoon start on a same-day
+   deadline, an entirely ordinary thing to want — was refused. The test asserting exactly that
+   is what went red.
+
+Both are fixed in `startsAfterDue`, which now compares only when both dates exist and defaults a
+missing start time to `00:00` and a missing due time to `23:59` — plan §B1's end-of-day rule,
+applied to ordering. The comment now describes the code.
+
+### The overdue claim re-arms on a TIME change too
+
+`overdue_notified_at` is the once-per-deadline claim from upgrades/014, and changing the *date*
+has always cleared it. Moving only the *time* moves the deadline just as truly — without this,
+pulling a deadline from 5 PM to 10 AM would never alert, because the claim for that date was
+already spent. Cleared on `dueTime` in both the single PATCH and the bulk path, with a test that
+stamps the claim and watches it go back to null.
+
+### Tests
+
+`tests/tasks/deadline-time.test.ts` — **10**, covering the round trip (wire *and* the stored
+`HH:MM:SS`), `null` staying `null` rather than becoming midnight, `00:00` and `23:59` remaining
+distinct from `null`, five malformed inputs refused at 422 (including `"5:00 PM"`, which is what
+an AM/PM picker would send if P3 forgets to convert), the ordering cases above, the re-arm, and
+the same `HH:MM` served under four process timezones.
+
+That last one is deliberate: a `TIME` is a wall-clock reading with no zone of its own, so it must
+not move with the server's. P13 found a *date* reading a day early west of UTC; this is the same
+trap one column over, pinned before anything starts comparing these values.
+
+**Gate:** schema **22/22** · tasks **433/433** · tasks10 **433/433** (both were 431/433 until the wire-contract lists were updated — see below) · assistant 289 · forms 92 · home 33 · jobs 148 · listsread 156 · templates 125. eslint 0/0 and `tsc --noEmit` clean on both packages. Client `tsc -b` clean.
+
+⚠️ **A contract test caught the change, exactly as it should have.** `list-by-list` and `get-by-id` each pin the task payload as *"exactly the 48 wire fields"*. Adding two made it 50, and both went red. That is the test working — the fix was to add `start_time`/`due_time` to the pinned lists and rename the count, not to loosen the assertion.
+
+**Not done here, on purpose:** nothing *compares* a deadline yet. The resolver that turns
+`(date, time, workspace timezone)` into an instant is P2, and until it exists the overdue job,
+Home's tiles and the badge all behave exactly as they did — which is why this phase is safe to
+ship on its own.
+
+
 ### P2 — ONE deadline resolver, server-side
 
 *The load-bearing phase. Everything after it reads this one function.*

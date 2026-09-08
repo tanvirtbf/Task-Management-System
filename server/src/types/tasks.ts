@@ -101,6 +101,10 @@ export interface CreateTaskBody {
     custom_id?: string | null;
     start_date?: string | null;
     due_date?: string | null;
+    /** upgrades/027 — `HH:MM` (24h). Null is NOT midnight: end-of-day for
+     *  due, start-of-day for start. Resolved on the workspace clock. */
+    start_time?: string | null;
+    due_time?: string | null;
     recurrence_pattern?: string;
     recurrence_days?: string[] | null;
     /** upgrades/024 — `HH:MM` (24h) on the workspace's clock. */
@@ -145,6 +149,10 @@ export interface UpdateTaskBody {
     custom_id?: string | null;
     start_date?: string | null;
     due_date?: string | null;
+    /** upgrades/027 — `HH:MM` (24h). Null is NOT midnight: end-of-day for
+     *  due, start-of-day for start. Resolved on the workspace clock. */
+    start_time?: string | null;
+    due_time?: string | null;
     recurrence_pattern?: string;
     recurrence_days?: string[] | null;
     /** upgrades/024 — `HH:MM` (24h) on the workspace's clock. */

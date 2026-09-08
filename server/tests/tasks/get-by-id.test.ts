@@ -49,6 +49,8 @@ const TASK_KEYS = [
     "is_milestone",
     "start_date",
     "due_date",
+    "start_time",
+    "due_time",
     "completed_at",
     "review_status",
     "reviewed_at",
@@ -170,7 +172,7 @@ describe("GET /api/v1/tasks/:id", () => {
             expect(res.body.custom_id).toBe("ORD-1042");
         });
 
-        it("shapes the body as exactly the 48 wire fields", async () => {
+        it("shapes the body as exactly the 50 wire fields", async () => {
             const { client, task } = await seed();
 
             const res = await client.get(PATH(task.id));
