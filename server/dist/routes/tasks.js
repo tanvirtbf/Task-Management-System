@@ -51,7 +51,9 @@ const tagsRepo = new TagsRepo_1.TagsRepo(db);
 // Dept Review V1 (A-4) — review write path.
 const spacesRepo = new SpacesRepo_1.SpacesRepo(db);
 const reviewsRepo = new ReviewsRepo_1.ReviewsRepo(db);
-const reviewsService = new ReviewsService_1.ReviewsService(db, spacesRepo, tasksRepo, reviewsRepo, activityRepo, notificationsRepo, usersRepo, logger_1.default);
+const reviewsService = new ReviewsService_1.ReviewsService(db, spacesRepo, tasksRepo, reviewsRepo, activityRepo, notificationsRepo, usersRepo, 
+// KI-20 — see the matching note in routes/spaces.ts.
+new WorkspaceRepo_1.WorkspaceRepo(db), logger_1.default);
 const reviewsController = new ReviewsController_1.ReviewsController(reviewsService, logger_1.default);
 const membershipService = new TaskMembershipService_1.TaskMembershipService(db, tasksRepo, membershipRepo, usersRepo, activityRepo, notificationsRepo, tagsRepo);
 const membershipController = new TaskMembershipController_1.TaskMembershipController(membershipService, logger_1.default);

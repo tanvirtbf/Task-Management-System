@@ -1,8 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.buildCallerBlock = exports.CALLER_BLOCK_MAX = void 0;
+exports.buildCallerBlock = exports.workspaceDay = exports.CALLER_BLOCK_MAX = void 0;
 const can_1 = require("../rbac/can");
 const context_1 = require("../rbac/context");
+const dhakaTime_1 = require("../utils/dhakaTime");
 /**
  * Hard ceiling (D2). The block ships on every request; it must stay small.
  *
@@ -64,6 +65,28 @@ const roleWord = (isOwner, legacyRole) => {
         return "Member";
     return legacyRole.charAt(0).toUpperCase() + legacyRole.slice(1);
 };
+/**
+ * KI-20 — the caller's calendar day, for the prompt's date line.
+ *
+ * Separate from the caller block because it must survive that block failing:
+ * `buildCallerBlock` returns "" on any error and the bot answers as before,
+ * which is right for a description of the person and wrong for the date — a bot
+ * that loses its date line starts resolving "kal" against nothing.
+ *
+ * Falls back to the company calendar, which is what every deployment of this
+ * product is today, rather than throwing.
+ */
+const workspaceDay = async (deps, workspaceId) => {
+    try {
+        const ws = await deps.workspaces.findById(workspaceId);
+        const zone = ws?.timezone || "Asia/Dhaka";
+        return { date: (0, dhakaTime_1.todayInZone)(zone), zone };
+    }
+    catch {
+        return { date: (0, dhakaTime_1.todayInZone)("Asia/Dhaka"), zone: "Asia/Dhaka" };
+    }
+};
+exports.workspaceDay = workspaceDay;
 const buildCallerBlock = async (deps, ctx) => {
     try {
         const actor = await (0, context_1.currentActor)();

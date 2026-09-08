@@ -15,6 +15,7 @@ const TasksRepo_1 = require("../repositories/TasksRepo");
 const ReviewsRepo_1 = require("../repositories/ReviewsRepo");
 const TaskActivityRepo_1 = require("../repositories/TaskActivityRepo");
 const NotificationsRepo_1 = require("../repositories/NotificationsRepo");
+const WorkspaceRepo_1 = require("../repositories/WorkspaceRepo");
 const ReviewsService_1 = require("../services/ReviewsService");
 const ReviewsController_1 = require("../controllers/ReviewsController");
 const reviews_1 = require("../validators/reviews");
@@ -40,7 +41,10 @@ const tasksRepo = new TasksRepo_1.TasksRepo(db);
 const reviewsRepo = new ReviewsRepo_1.ReviewsRepo(db);
 const taskActivityRepo = new TaskActivityRepo_1.TaskActivityRepo(db);
 const notificationsRepo = new NotificationsRepo_1.NotificationsRepo(db);
-const reviewsService = new ReviewsService_1.ReviewsService(db, spacesRepo, tasksRepo, reviewsRepo, taskActivityRepo, notificationsRepo, usersRepo, logger_1.default);
+const reviewsService = new ReviewsService_1.ReviewsService(db, spacesRepo, tasksRepo, reviewsRepo, taskActivityRepo, notificationsRepo, usersRepo, 
+// KI-20: the review queues resolve "today" on the WORKSPACE's clock now,
+// not the company's — see `ReviewsService.todayFor`.
+new WorkspaceRepo_1.WorkspaceRepo(db), logger_1.default);
 const reviewsController = new ReviewsController_1.ReviewsController(reviewsService, logger_1.default);
 // ─── GET /api/v1/spaces ────────────────────────────────────────────────────
 // Authenticated — any role may list the workspace's spaces (only create /

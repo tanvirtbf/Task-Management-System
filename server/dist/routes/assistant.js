@@ -94,6 +94,9 @@ else {
         users: usersRepo,
         spaces: new SpacesRepo_1.SpacesRepo(db),
         userRoles: new UserRolesRepo_1.UserRolesRepo(db),
+        // KI-20: the prompt's date line is the WORKSPACE's day, not the
+        // company's — see `workspaceDay` in `assistant/callerContext.ts`.
+        workspaces: new WorkspaceRepo_1.WorkspaceRepo(db),
     };
     const controller = new AssistantController_1.AssistantController(assistantService, chatRepo, toolServices, callerDeps, logger_1.default);
     // The assistant is a permission now, not a given (RBAC §34). All four

@@ -46,8 +46,9 @@ class ReviewsService {
     activity;
     notifications;
     users;
+    workspaces;
     logger;
-    constructor(db, spaces, tasks, reviews, activity, notifications, users, logger) {
+    constructor(db, spaces, tasks, reviews, activity, notifications, users, workspaces, logger) {
         this.db = db;
         this.spaces = spaces;
         this.tasks = tasks;
@@ -55,7 +56,27 @@ class ReviewsService {
         this.activity = activity;
         this.notifications = notifications;
         this.users = users;
+        this.workspaces = workspaces;
         this.logger = logger;
+    }
+    /**
+     * Today, on the WORKSPACE's calendar — not the company's.
+     *
+     * KI-20: both read paths below bucket work as overdue / due-today, and both
+     * used `dhakaToday()`. That helper is right for the COMPANY calendar — the
+     * on-call roster and the Monday HR report are Dhaka by design, and
+     * `dhakaTime.ts` says so explicitly — and wrong here, because a review queue
+     * belongs to a workspace and a workspace carries its own `timezone`.
+     *
+     * Latent only while there is one workspace, which is exactly what made it
+     * worth fixing rather than noting: the day a second workspace exists in
+     * another zone, its head sees tasks bucketed against Dhaka's midnight and
+     * nothing anywhere says so. The `overdue-alert` and `recurrence-spawn` jobs
+     * already resolve "today" this way — same F5 rule, same helper.
+     */
+    async todayFor(workspaceId) {
+        const ws = await this.workspaces.findById(workspaceId);
+        return (0, dhakaTime_1.todayInZone)(ws?.timezone ?? "Asia/Dhaka");
     }
     /**
      * Resolve a space and authorize a review-domain action on it. Check order
@@ -254,7 +275,7 @@ class ReviewsService {
      */
     async reviewSummary(input) {
         const space = await this.requireHeadOrAdmin(input);
-        const today = (0, dhakaTime_1.dhakaToday)();
+        const today = await this.todayFor(input.workspaceId);
         const [memberRows, totals] = await Promise.all([
             this.reviews.memberSummary(space.id, today),
             this.reviews.summaryTotals(space.id, today),
@@ -312,7 +333,7 @@ class ReviewsService {
     async reviewQueue(input) {
         const space = await this.requireHeadOrAdmin(input);
         const limit = clampQueueLimit(input.limit);
-        const today = (0, dhakaTime_1.dhakaToday)();
+        const today = await this.todayFor(input.workspaceId);
         const afterInternalId = input.cursor
             ? decodeQueueCursor(input.cursor)
             : undefined;

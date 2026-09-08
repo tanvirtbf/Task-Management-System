@@ -41,11 +41,12 @@ exports.comments = (0, mysql_core_1.mysqlTable)("comments", {
     })
         .onDelete("cascade")
         .onUpdate("cascade"),
-    taskTimeIdx: (0, mysql_core_1.index)("idx_comments_task_time").on(t.taskId, t.createdAt),
     parentIdx: (0, mysql_core_1.index)("idx_comments_parent").on(t.parentCommentId),
     // F30 (ISS-088): `listByTask` orders by (created_at, internal_id) —
-    // the tie-break column is what pushed MySQL off `idx_comments_task_time`
-    // into a filesort. This index carries the FULL order.
+    // the tie-break column is what pushed MySQL off the old
+    // (task_id, created_at) index into a filesort. This carries the FULL
+    // order — and P13 (KI-21) dropped that narrower index as a strict
+    // prefix of this one (upgrades/026).
     taskCreatedInternalIdx: (0, mysql_core_1.index)("idx_comments_task_created_internal").on(t.taskId, t.createdAt, t.internalId),
 }));
 // ─── checklists ───────────────────────────────────────────────────────────────

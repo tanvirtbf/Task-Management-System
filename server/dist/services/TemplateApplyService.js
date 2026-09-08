@@ -160,6 +160,16 @@ class TemplateApplyService {
                         position: 0,
                     });
                     await tx.insert(schema_1.checklistItems).values(itemRows);
+                    // P12: the checklist rollup on the task. Items were just
+                    // raw-inserted, bypassing `ChecklistsService` — which is
+                    // where every other create/delete/toggle does this — so
+                    // without it a task spawned from a 12-step template
+                    // reports "0/0" on the card, in the list row, on the board
+                    // and to the assistant, until somebody happens to tick an
+                    // item and the absolute recompute quietly repairs it.
+                    // Same transaction: the counter and the rows it counts
+                    // commit together or not at all.
+                    await this.tasks.recomputeChecklistCounters(taskId, tx);
                     await this.templates.incrementUsage(input.templateId, tx);
                     // Team-access P3 (plan G13): the template's checklist was
                     // raw-inserted with NO trace — the audit log claimed the

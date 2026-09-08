@@ -80,12 +80,16 @@ class AssistantController {
             // The executor is built per REQUEST: it carries the double-create
             // guard (a duplicated create_task call in one message returns the
             // first result instead of writing twice).
-            const callerBlock = await (0, callerContext_1.buildCallerBlock)(this.callerDeps, {
-                userId,
-                workspaceId,
-            });
+            // KI-20: both read together — the block describes WHO is asking,
+            // the day says WHEN they are asking it, and every relative date the
+            // model resolves depends on the second.
+            const [callerBlock, today] = await Promise.all([
+                (0, callerContext_1.buildCallerBlock)(this.callerDeps, { userId, workspaceId }),
+                (0, callerContext_1.workspaceDay)(this.callerDeps, workspaceId),
+            ]);
             const raw = await this.assistantService.ask(history ?? [], message, {
                 callerBlock,
+                today,
                 tools: {
                     definitions: tools_1.ASSISTANT_TOOL_DEFS,
                     execute: (0, tools_1.makeAssistantToolExecutor)(toolCtx, this.toolServices),
@@ -143,14 +147,18 @@ class AssistantController {
         /** Release whatever the link buffer is still holding. */
         const drain = () => emit(links.flush());
         try {
-            const callerBlock = await (0, callerContext_1.buildCallerBlock)(this.callerDeps, {
-                userId,
-                workspaceId,
-            });
+            // KI-20: both read together — the block describes WHO is asking,
+            // the day says WHEN they are asking it, and every relative date the
+            // model resolves depends on the second.
+            const [callerBlock, today] = await Promise.all([
+                (0, callerContext_1.buildCallerBlock)(this.callerDeps, { userId, workspaceId }),
+                (0, callerContext_1.workspaceDay)(this.callerDeps, workspaceId),
+            ]);
             await this.assistantService.streamReply(history ?? [], message, {
                 onDelta: sendDelta,
                 signal: ac.signal,
                 callerBlock,
+                today,
                 tools: {
                     definitions: tools_1.ASSISTANT_TOOL_DEFS,
                     execute: (0, tools_1.makeAssistantToolExecutor)(toolCtx, this.toolServices),

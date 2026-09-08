@@ -17,8 +17,21 @@ const STATIC_CONTENT = `${systemPrompt_1.SYSTEM_PROMPT}\n\n# KNOWLEDGE BASE\n${k
  * request (D9). Empty string when it could not be built; the prompt then
  * reads exactly as it did before.
  */
-const systemContent = (callerBlock) => {
-    const date = `Today is ${(0, dhakaTime_1.dhakaToday)()} (Asia/Dhaka).`;
+/**
+ * KI-20: the date line is the model's ONLY anchor for relative dates — "kal",
+ * "next week", "last 7 days" are all resolved against it, and `get_my_agenda`
+ * is documented as expecting the model to work the day out from "today's date
+ * at the top of the prompt". So it has to be the WORKSPACE's day, not the
+ * company's.
+ *
+ * It used `dhakaToday()` and said "(Asia/Dhaka)" — honest about its frame of
+ * reference, and still the wrong day for a workspace in another zone, which
+ * would have the bot confidently answering yesterday's question. The zone name
+ * travels with the date so the label can never drift from the value.
+ */
+const systemContent = (callerBlock, today) => {
+    const day = today ?? { date: (0, dhakaTime_1.dhakaToday)(), zone: "Asia/Dhaka" };
+    const date = `Today is ${day.date} (${day.zone}).`;
     const who = callerBlock ? `\n${callerBlock}` : "";
     return `${date}${who}\n\n${STATIC_CONTENT}`;
 };
@@ -31,10 +44,10 @@ exports.MAX_HISTORY_TURNS = 12;
  * Build the message array for an OpenAI chat completion:
  *   [ system(prompt + knowledge base), ...recent history, user(message) ]
  */
-const buildMessages = (history, userMessage, callerBlock) => {
+const buildMessages = (history, userMessage, callerBlock, today) => {
     const recent = history.slice(-exports.MAX_HISTORY_TURNS);
     return [
-        { role: "system", content: systemContent(callerBlock) },
+        { role: "system", content: systemContent(callerBlock, today) },
         ...recent.map((t) => ({ role: t.role, content: t.content })),
         { role: "user", content: userMessage },
     ];

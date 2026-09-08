@@ -93,6 +93,7 @@ exports.taskCustomFieldValues = (0, mysql_core_1.mysqlTable)("task_custom_field_
     })
         .onDelete("set null")
         .onUpdate("cascade"),
-    fieldIdx: (0, mysql_core_1.index)("idx_tcfv_field").on(t.customFieldId),
+    // (custom_field_id) alone was `idx_tcfv_field` until P13 (KI-21)
+    // found it a strict prefix of this one (upgrades/026).
     optionIdx: (0, mysql_core_1.index)("idx_tcfv_option").on(t.customFieldId, t.optionIdGenerated),
 }));
