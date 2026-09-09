@@ -3,6 +3,7 @@ import { Button, DatePicker, Input, Modal, Tooltip } from "antd";
 import dayjs, { type Dayjs } from "dayjs";
 import { CalendarClock, CornerDownRight, UserCheck } from "lucide-react";
 import { useAuthStore } from "../../stores/auth";
+import { formatActivityTime } from "../../lib/date-utils";
 import {
     useAssignmentRequestActions,
     useCanDecideRequest,
@@ -33,15 +34,6 @@ const STATUS_META: Record<
 
 const nameOf = (u: User | null): string =>
     u ? `${u.firstName} ${u.lastName}`.trim() : "(removed)";
-
-const agoOf = (iso: string): string => {
-    const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-    if (m < 1) return "just now";
-    if (m < 60) return `${m}m ago`;
-    const h = Math.floor(m / 60);
-    if (h < 24) return `${h}h ago`;
-    return `${Math.floor(h / 24)}d ago`;
-};
 
 const expiresIn = (iso: string): string => {
     const ms = new Date(iso).getTime() - Date.now();
@@ -162,7 +154,7 @@ export const AssignmentRequestCard = ({
                         }}
                     >
                         requested by {nameOf(r.requestedBy)} ·{" "}
-                        {agoOf(r.createdAt)}
+                        {formatActivityTime(r.createdAt)}
                         {isPending ? ` · ${expiresIn(r.expiresAt)}` : ""}
                     </span>
                 </div>

@@ -9,6 +9,7 @@ import {
     Flag,
 } from "lucide-react";
 import { reviewsApi } from "../../http/api";
+import { formatActivityTime } from "../../lib/date-utils";
 import { getApiErrorMessage } from "../../http/client";
 import {
     useListMap,
@@ -34,18 +35,6 @@ import type { ReviewVerdict, Task } from "../../types";
  * Mutations follow the NO-CACHE-WRITE pattern (§5 rule 7) — invalidate
  * task + history + the space's queue/summary on settle.
  */
-
-const relTime = (iso: string): string => {
-    const diff = Date.now() - new Date(iso).getTime();
-    const m = Math.floor(diff / 60000);
-    if (m < 1) return "just now";
-    if (m < 60) return `${m}m ago`;
-    const h = Math.floor(m / 60);
-    if (h < 24) return `${h}h ago`;
-    const d = Math.floor(h / 24);
-    if (d < 7) return `${d}d ago`;
-    return new Date(iso).toLocaleDateString();
-};
 
 interface ReviewSectionProps {
     task: Task;
@@ -192,7 +181,7 @@ export const ReviewSection = ({ task, listId }: ReviewSectionProps) => {
                                 ? `by ${reviewer.firstName} ${reviewer.lastName}`
                                 : ""}
                             {task.reviewedAt
-                                ? ` · ${relTime(task.reviewedAt)}`
+                                ? ` · ${formatActivityTime(task.reviewedAt)}`
                                 : ""}
                         </span>
                     </div>
@@ -357,7 +346,7 @@ export const ReviewSection = ({ task, listId }: ReviewSectionProps) => {
                                                         ? `${r.reviewer.firstName} ${r.reviewer.lastName}`
                                                         : "Someone"}{" "}
                                                     ·{" "}
-                                                    {relTime(r.createdAt)}
+                                                    {formatActivityTime(r.createdAt)}
                                                 </span>
                                                 {r.note && (
                                                     <div

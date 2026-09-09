@@ -30,6 +30,7 @@ import {
     HelpCircle,
 } from "lucide-react";
 import { notificationsApi } from "../../http/api";
+import { formatActivityTime } from "../../lib/date-utils";
 import { useAuthStore } from "../../stores/auth";
 import { useUserMap } from "../../hooks/useReferenceData";
 import { useMyAssignmentRequests } from "../../hooks/useAssignmentRequests";
@@ -82,18 +83,6 @@ const typeMetaOf = (type: string): TypeMeta =>
     };
 
 type FilterKey = "all" | "unread" | "mentions" | "assigned" | "requests";
-
-const formatTime = (iso: string): string => {
-    const diff = Date.now() - new Date(iso).getTime();
-    const m = Math.floor(diff / 60000);
-    if (m < 1) return "just now";
-    if (m < 60) return `${m}m ago`;
-    const h = Math.floor(m / 60);
-    if (h < 24) return `${h}h ago`;
-    const d = Math.floor(h / 24);
-    if (d < 7) return `${d}d ago`;
-    return new Date(iso).toLocaleDateString();
-};
 
 const groupByDay = (notifications: Notification[]) => {
     const groups: Record<string, Notification[]> = {};
@@ -623,7 +612,7 @@ const NotificationRow = ({
                         fontFamily: tokens.typography.fontFamilyMono,
                     }}
                 >
-                    {formatTime(n.createdAt)}
+                    {formatActivityTime(n.createdAt)}
                     {n.snoozedUntil && (
                         <span
                             style={{

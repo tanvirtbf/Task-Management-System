@@ -741,6 +741,84 @@ call, and it is now owed by both P3 and P5.
 **Exit:** no `timeAgo` definition remains outside the shared helper (grep-enforced), and the
 format is pinned at four timezones.
 
+**✅ P6 DONE — 2026-09-09.**
+
+The activity log says **"24 Aug, 10.24 PM"**. There is one function that decides that, in
+`lib/date-utils.ts`, and a guard that fails the build if a second appears.
+
+### ⛔ There were EIGHT copies, not three
+
+P0 recorded three, and it found three because it searched for the **name** `timeAgo`. Doing the
+consolidation with a scan for the **behaviour** turned up five more, under four other names:
+
+| name | files |
+| --- | --- |
+| `timeAgo` | `TaskActivitySection`, `CommentsSection`, `RecentActivityCard` |
+| `formatTime` | `InboxPage` |
+| `agoOf` | `AssignmentRequestCard` |
+| `relTime` | `ReviewSection`, `DeptQueue`, `DeptSummary` |
+
+**And they did not agree.** Four stopped at `13d ago` and counted upward forever; four fell through
+to `toLocaleDateString()` after seven days. So the same instant already rendered two different ways
+depending on which screen you were on — a shipped inconsistency nobody had reported, found only
+because the consolidation was verified rather than assumed.
+
+That is why the guard in `time-rendering.test.ts` now matches on what the code **does** — the
+`"just now"` and `"…m ago"` shapes together — rather than on a name. Proved by adding a ninth copy
+called `whenWasThat` to `DeptQueue`: the guard names the file and goes red. A name-based scan would
+have let it through, exactly as it let five through at P0.
+
+### The format
+
+Decision §P6.3, hybrid: under an hour stays relative (`just now`, `12m ago`); an hour or older
+becomes `24 Aug, 10.24 PM`. The cutover is an exported constant and both sides of it are pinned —
+one second short of an hour reads `59m ago`, exactly an hour reads the date.
+
+Two details that are judgement calls, not accidents:
+
+- **The dot in `10.24 PM` is the user's own notation**, not a typo for a colon.
+- **The year appears only when it differs from now** (`24 Aug 2026, 10.24 PM`). Without it a comment
+  from two Augusts ago is indistinguishable from last week's.
+
+Midnight and noon are tested, because both land on hour 0 under `% 12` and one of them reads 12 —
+the same trap `formatTimeOfDay` carries a comment about.
+
+### ⛔ These render in the VIEWER's zone — the deadline does not
+
+Deliberate, and the opposite of `DeadlineBadge`. A deadline is a wall-clock promise: "5 PM" means
+five in the office that set it, for everyone. An activity timestamp is a real instant that already
+happened, and the only useful question about it is when it happened relative to the person reading.
+The reason is written in the helper, and a test asserts the function reads `getHours()` and never
+`getUTCHours()` — so anyone "fixing the inconsistency" has to delete an assertion and read why first.
+
+### Two things left alone, on purpose
+
+`AssistantWidget` has its own `formatTime`, and it stays: it stamps a clock on each chat bubble in
+an open conversation, which is not a "how long ago" question at all. The inbox's `groupByDay`
+(Today / Yesterday / This week / Earlier) also stays — it groups, it does not format, and it now
+complements an absolute timestamp rather than repeating a relative one.
+
+⚠️ **A visible behaviour change beyond the four surfaces the plan named.** `ReviewSection`,
+`DeptQueue` and `DeptSummary` used to show a bare `toLocaleDateString()` after a week; they now show
+the date **and the time**, an hour after the event. That is more information, consistently rendered,
+and it is a change to screens the plan did not list — worth knowing before someone reports it as
+unexpected.
+
+### The test file flipped, as P0 said it would
+
+P0's closing note read: *"AT P6: flipped to assert there is exactly ONE, in `lib/date-utils.ts`."*
+It now does, plus a vacuity guard that the helper really contains the rule (without it, deleting the
+helper would satisfy "no copies anywhere") and a check that all eight former call sites import it.
+
+**Gate:** client **242 tests / 23 files**, up from 232 after P5. eslint 0/0 and `tsc -b` clean.
+**No server file changed.**
+
+Two client-test lessons repeated from P5 and worth stating once more, since both cost a red run
+here: vite's glob keys a same-directory file as `./name.ts`, not `../dir/name.ts`; and the client
+tsconfig has no node types, so a test cannot reach `process.env.TZ`. The zone test is therefore
+zone-agnostic — it asserts the output matches the same instant's local components whatever zone the
+machine is in, which is a real assertion rather than one that only looked thorough.
+
 ### P7 — The semantics sweep
 
 *Everything that reads a due date and has not been touched yet.*

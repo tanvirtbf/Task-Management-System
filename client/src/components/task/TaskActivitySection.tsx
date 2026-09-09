@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "antd";
 import { Activity } from "lucide-react";
 import { taskActivityApi } from "../../http/api";
+import { formatActivityTime } from "../../lib/date-utils";
 import {
     useStatusMap,
     useTaskTypeMap,
@@ -10,16 +11,6 @@ import {
 import { Avatar } from "../ui/Avatar";
 import { tokens } from "../../theme";
 import { PRIORITY_LABELS, type Priority, type User } from "../../types";
-
-const timeAgo = (iso: string): string => {
-    const diff = Date.now() - new Date(iso).getTime();
-    const m = Math.floor(diff / (1000 * 60));
-    if (m < 1) return "just now";
-    if (m < 60) return `${m}m ago`;
-    const h = Math.floor(m / 60);
-    if (h < 24) return `${h}h ago`;
-    return `${Math.floor(h / 24)}d ago`;
-};
 
 // F21 (ISS-061): this switch was written against the MOCK API's vocabulary and
 // never updated when the real backend landed — 11 of 13 real action codes fell
@@ -444,7 +435,7 @@ export const TaskActivitySection = ({
                                             marginTop: 1,
                                         }}
                                     >
-                                        {timeAgo(entry.createdAt)}
+                                        {formatActivityTime(entry.createdAt)}
                                     </div>
                                 </div>
                             </div>

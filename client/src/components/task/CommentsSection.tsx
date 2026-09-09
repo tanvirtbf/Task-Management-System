@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Skeleton, Button } from "antd";
 import { MessageSquare, Send, Trash2, CornerDownRight } from "lucide-react";
 import { commentsApi } from "../../http/api";
+import { formatActivityTime } from "../../lib/date-utils";
 import { useAuthStore } from "../../stores/auth";
 import { useUserMap } from "../../hooks/useReferenceData";
 import { Avatar } from "../ui/Avatar";
@@ -10,16 +11,6 @@ import { EmptyState } from "../ui/EmptyState";
 import { MentionRenderer } from "./MentionRenderer";
 import { MentionTextArea } from "./MentionTextArea";
 import { tokens } from "../../theme";
-
-const timeAgo = (iso: string) => {
-    const diff = Date.now() - new Date(iso).getTime();
-    const m = Math.floor(diff / (1000 * 60));
-    if (m < 1) return "just now";
-    if (m < 60) return `${m}m ago`;
-    const h = Math.floor(m / 60);
-    if (h < 24) return `${h}h ago`;
-    return `${Math.floor(h / 24)}d ago`;
-};
 
 export const CommentsSection = ({ taskId }: { taskId: string }) => {
     const user = useAuthStore((s) => s.user);
@@ -111,7 +102,7 @@ export const CommentsSection = ({ taskId }: { taskId: string }) => {
                                 color: tokens.colors.textMuted,
                             }}
                         >
-                            {timeAgo(c.createdAt)}
+                            {formatActivityTime(c.createdAt)}
                         </span>
                         {/* ISS-063 (F5): edits must be visible — this is the
                             accountability surface. `editedAt` was on the wire

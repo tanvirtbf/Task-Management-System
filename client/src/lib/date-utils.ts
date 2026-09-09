@@ -180,3 +180,87 @@ export const formatTimeOfDay = (
     const hour = h % 12 === 0 ? 12 : h % 12;
     return `${hour}:${String(m).padStart(2, "0")} ${suffix}`;
 };
+
+// ─── Activity timestamps (DEADLINE_TIME_PLAN P6) ────────────────────────────
+
+/**
+ * Where relative stops and absolute starts.
+ *
+ * Decision §P6.3: under an hour stays relative, an hour or older becomes a
+ * real date. A timestamp on something twenty seconds old is noise; "13d ago"
+ * on something a fortnight old is the reading that loses the information the
+ * user actually wanted. Exported so the tests can assert BOTH sides of the
+ * boundary without restating the number.
+ */
+export const RELATIVE_CUTOVER_MS = 60 * 60 * 1000;
+
+const MONTHS = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+] as const;
+
+/**
+ * When something happened: `"just now"`, `"12m ago"`, or `"24 Aug, 10.24 PM"`.
+ *
+ * THE formatter for every activity, comment and notification time in the app.
+ * It replaced FOUR copies -- three named `timeAgo` and a fourth called
+ * `formatTime` in the inbox that nobody had noticed, because it was found by
+ * searching for the name rather than the behaviour. `time-rendering.test.ts`
+ * now searches for the behaviour, so a fifth cannot appear quietly.
+ *
+ * ── ⛔ the LOCAL zone, and why that is not an inconsistency ─────────────────
+ * This renders in the VIEWER's timezone, while a deadline renders in the
+ * WORKSPACE's. That looks like a bug and is the point. A deadline is a
+ * wall-clock promise -- "5 PM" means five in the office that set it, for
+ * everyone. An activity timestamp is a real instant that already happened, and
+ * the only useful question about it is when it happened relative to the person
+ * reading. Do not "fix" one to match the other.
+ *
+ * The dot in `10.24 PM` is the user's own notation, not a typo for a colon.
+ * The year appears only when the instant falls in a different calendar year
+ * from `now` -- without that, a comment from two Augusts ago is indistinguish-
+ * able from last week's.
+ *
+ * `now` is injectable so a test can pin the clock; callers pass nothing.
+ */
+export const formatActivityTime = (
+    iso: string | Date | null | undefined,
+    now: number = Date.now(),
+): string => {
+    if (!iso) return "";
+    const at = iso instanceof Date ? iso : new Date(iso);
+    const ms = at.getTime();
+    if (Number.isNaN(ms)) return "";
+
+    const elapsed = now - ms;
+    if (elapsed < RELATIVE_CUTOVER_MS) {
+        // A future instant (clock skew between the browser and the API) reads
+        // as "just now" rather than a negative age.
+        const minutes = Math.floor(Math.max(0, elapsed) / 60_000);
+        return minutes < 1 ? "just now" : `${minutes}m ago`;
+    }
+
+    const h24 = at.getHours();
+    const suffix = h24 < 12 ? "AM" : "PM";
+    // Same midnight/noon trap as `formatTimeOfDay`: both land on 0 under `% 12`
+    // and one of them reads 12.
+    const hour = h24 % 12 === 0 ? 12 : h24 % 12;
+    const minute = String(at.getMinutes()).padStart(2, "0");
+    const day = at.getDate();
+    const month = MONTHS[at.getMonth()];
+    const year =
+        at.getFullYear() === new Date(now).getFullYear()
+            ? ""
+            : ` ${at.getFullYear()}`;
+    return `${day} ${month}${year}, ${hour}.${minute} ${suffix}`;
+};

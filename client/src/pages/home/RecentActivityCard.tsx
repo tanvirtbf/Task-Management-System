@@ -2,20 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "antd";
 import { Activity } from "lucide-react";
 import { activityApi } from "../../http/api";
+import { formatActivityTime } from "../../lib/date-utils";
 import { Avatar } from "../../components/ui/Avatar";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { tokens } from "../../theme";
-
-const timeAgo = (iso: string): string => {
-    const diff = Date.now() - new Date(iso).getTime();
-    const m = Math.floor(diff / (1000 * 60));
-    if (m < 1) return "just now";
-    if (m < 60) return `${m}m ago`;
-    const h = Math.floor(m / 60);
-    if (h < 24) return `${h}h ago`;
-    const d = Math.floor(h / 24);
-    return `${d}d ago`;
-};
 
 const actionVerb = (action: string): string => {
     switch (action) {
@@ -169,7 +159,7 @@ export const RecentActivityCard = () => {
                                                 marginTop: 1,
                                             }}
                                         >
-                                            {timeAgo(entry.createdAt)}
+                                            {formatActivityTime(entry.createdAt)}
                                             {entry.context?.listName &&
                                                 ` · in ${entry.context.listName}`}
                                         </div>
