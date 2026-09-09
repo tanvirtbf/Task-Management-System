@@ -993,13 +993,20 @@ export class TasksRepo {
         now: WorkspaceNow,
         limit: number,
     ): Promise<
-        Array<{ id: string; name: string; dueDate: Date | null }>
+        Array<{
+            id: string;
+            name: string;
+            dueDate: Date | null;
+            /** upgrades/027 — so the alert can name the hour, not just the day. */
+            dueTime: string | null;
+        }>
     > {
         return this.db
             .select({
                 id: tasks.id,
                 name: tasks.name,
                 dueDate: tasks.dueDate,
+                dueTime: tasks.dueTime,
             })
             .from(tasks)
             .where(
@@ -1256,6 +1263,7 @@ export class TasksRepo {
             name: string;
             priority: number;
             dueDate: Date | string | null;
+            dueTime: string | null;
             completedAt: Date | null;
             reviewStatus: string | null;
             checklistTotal: number;
@@ -1308,6 +1316,7 @@ export class TasksRepo {
                 name: tasks.name,
                 priority: tasks.priority,
                 dueDate: tasks.dueDate,
+                dueTime: tasks.dueTime,
                 completedAt: tasks.completedAt,
                 reviewStatus: tasks.reviewStatus,
                 checklistTotal: tasks.checklistItemsTotal,
@@ -1359,6 +1368,7 @@ export class TasksRepo {
             name: string;
             createdBy: string;
             dueDate: Date | string | null;
+            dueTime: string | null;
         }[];
         assigneeCounts: { userId: string; count: number }[];
         overdueNowCount: number;
@@ -1366,6 +1376,7 @@ export class TasksRepo {
             id: string;
             name: string;
             dueDate: Date | string | null;
+            dueTime: string | null;
         }[];
         completedCount: number;
     }> {
@@ -1397,6 +1408,7 @@ export class TasksRepo {
                 name: tasks.name,
                 createdBy: tasks.createdBy,
                 dueDate: tasks.dueDate,
+                dueTime: tasks.dueTime,
             })
             .from(tasks)
             .innerJoin(lists, eq(lists.id, tasks.primaryListId))
@@ -1429,7 +1441,12 @@ export class TasksRepo {
             .innerJoin(statuses, eq(statuses.id, tasks.statusId))
             .where(overdueWhere);
         const overdueSample = await this.db
-            .select({ id: tasks.id, name: tasks.name, dueDate: tasks.dueDate })
+            .select({
+                id: tasks.id,
+                name: tasks.name,
+                dueDate: tasks.dueDate,
+                dueTime: tasks.dueTime,
+            })
             .from(tasks)
             .innerJoin(lists, eq(lists.id, tasks.primaryListId))
             .innerJoin(statuses, eq(statuses.id, tasks.statusId))

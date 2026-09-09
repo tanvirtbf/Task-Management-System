@@ -94,7 +94,7 @@ describe("§29c Web Push delivery", () => {
             await svcWithKeys().taskOverdue({
                 taskId: "t-1",
                 taskName: "Ship the September catalogue",
-                dueYmd: "2026-09-01",
+                dueLabel: "2026-09-01",
                 recipientIds: [a.id, b.id],
             });
 
@@ -108,7 +108,7 @@ describe("§29c Web Push delivery", () => {
             await svcWithKeys().taskOverdue({
                 taskId: "t-42",
                 taskName: "Restock serums",
-                dueYmd: "2026-08-30",
+                dueLabel: "2026-08-30",
                 recipientIds: [u.id],
             });
 
@@ -133,7 +133,7 @@ describe("§29c Web Push delivery", () => {
             await svcWithKeys().taskOverdue({
                 taskId: "t-2",
                 taskName: "Nothing to deliver to",
-                dueYmd: "2026-09-01",
+                dueLabel: "2026-09-01",
                 recipientIds: [u.id],
             });
             expect(send).not.toHaveBeenCalled();
@@ -143,7 +143,7 @@ describe("§29c Web Push delivery", () => {
             await svcWithKeys().taskOverdue({
                 taskId: "t-3",
                 taskName: "Nobody",
-                dueYmd: "2026-09-01",
+                dueLabel: "2026-09-01",
                 recipientIds: [],
             });
             expect(send).not.toHaveBeenCalled();
@@ -159,7 +159,7 @@ describe("§29c Web Push delivery", () => {
             await svcWithKeys().taskOverdue({
                 taskId: "t-4",
                 taskName: "Gone",
-                dueYmd: "2026-09-01",
+                dueLabel: "2026-09-01",
                 recipientIds: [u.id],
             });
 
@@ -174,7 +174,7 @@ describe("§29c Web Push delivery", () => {
             await svcWithKeys().taskOverdue({
                 taskId: "t-5",
                 taskName: "Missing",
-                dueYmd: "2026-09-01",
+                dueLabel: "2026-09-01",
                 recipientIds: [u.id],
             });
 
@@ -189,7 +189,7 @@ describe("§29c Web Push delivery", () => {
             await svcWithKeys().taskOverdue({
                 taskId: "t-6",
                 taskName: "Try again later",
-                dueYmd: "2026-09-01",
+                dueLabel: "2026-09-01",
                 recipientIds: [u.id],
             });
 
@@ -210,7 +210,7 @@ describe("§29c Web Push delivery", () => {
             await svcWithKeys().taskOverdue({
                 taskId: "t-7",
                 taskName: "Mixed fleet",
-                dueYmd: "2026-09-01",
+                dueLabel: "2026-09-01",
                 recipientIds: [u.id],
             });
 
@@ -230,7 +230,7 @@ describe("§29c Web Push delivery", () => {
                 svcWithKeys().taskOverdue({
                     taskId: "t-8",
                     taskName: "Network died",
-                    dueYmd: "2026-09-01",
+                    dueLabel: "2026-09-01",
                     recipientIds: [u.id],
                 }),
             ).resolves.toBeUndefined();
@@ -257,7 +257,7 @@ describe("§29c Web Push delivery", () => {
                 svc.taskOverdue({
                     taskId: "t-9",
                     taskName: "Repo exploded",
-                    dueYmd: "2026-09-01",
+                    dueLabel: "2026-09-01",
                     recipientIds: ["u-whatever"],
                 }),
             ).resolves.toBeUndefined();
@@ -280,7 +280,7 @@ describe("§29c Web Push delivery", () => {
             await off.taskOverdue({
                 taskId: "t-10",
                 taskName: "Disabled",
-                dueYmd: "2026-09-01",
+                dueLabel: "2026-09-01",
                 recipientIds: [u.id],
             });
             expect(send).not.toHaveBeenCalled();

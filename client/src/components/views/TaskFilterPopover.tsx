@@ -58,7 +58,11 @@ export const TaskFilterPopover = ({
         filters.dueTo ? dayjs(filters.dueTo, DATE_FMT) : null,
     ];
 
-    const setRange = (from: string | null, to: string | null) =>
+    const setRange = (
+        from: string | null,
+        to: string | null,
+        latePreset = false,
+    ) =>
         onChange({
             ...filters,
             dueFrom: from,
@@ -67,11 +71,18 @@ export const TaskFilterPopover = ({
             // stale checkbox can't silently change the next date filter.
             includeUndated:
                 from === null && to === null ? false : filters.includeUndated,
+            // Off unless the caller says otherwise, so picking a date range
+            // by hand never leaves a stale lateness judgement behind.
+            deadlinePassed: latePreset,
         });
 
     const activePresetKey = DUE_DATE_PRESETS.find((p) => {
         const [f, t] = p.range(weekStartsOn);
-        return f === filters.dueFrom && t === filters.dueTo;
+        return (
+            f === filters.dueFrom &&
+            t === filters.dueTo &&
+            (p.deadlinePassed ?? false) === filters.deadlinePassed
+        );
     })?.key;
 
     const assigneeOptions = [
@@ -213,7 +224,7 @@ export const TaskFilterPopover = ({
                                         return;
                                     }
                                     const [f, t] = p.range(weekStartsOn);
-                                    setRange(f, t);
+                                    setRange(f, t, p.deadlinePassed ?? false);
                                 }}
                                 style={{
                                     border: `1px solid ${
@@ -270,6 +281,7 @@ export const TaskFilterPopover = ({
                             dueFrom: null,
                             dueTo: null,
                             includeUndated: false,
+                            deadlinePassed: false,
                         });
                         onClearExtras?.();
                     }}

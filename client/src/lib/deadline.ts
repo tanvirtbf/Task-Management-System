@@ -28,6 +28,8 @@
  * deadline as the person who set it; what changes is only how far away it is.
  */
 
+import { dayKey, parseDayKey } from "./date-utils";
+
 /** Bangladesh is a permanent UTC+6 with no DST — the fallback, as server-side. */
 const DHAKA_OFFSET_MS = 6 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -208,3 +210,86 @@ export const describeDeadline = (input: {
 
 /** Exported for the tests that check this client agrees with the server. */
 export const DEADLINE_INTERNALS = { DAY_MS, SOON_MS };
+
+// ─── P7: the two other things that read a deadline ──────────────────────────
+
+/**
+ * A comparable key for sorting by deadline.
+ *
+ * Sorting on `due_date` alone puts a task due today at 09:00 and one due today
+ * at 17:00 in whatever order the array happened to hold them. The key appends
+ * the time, and a MISSING time sorts to the end of its own day -- §B1 again:
+ * "due Friday" runs to the end of Friday, so it comes after "Friday 5 PM".
+ *
+ * A plain string, deliberately: both halves are already zero-padded and
+ * canonical, so a lexical compare is exact and costs no Date allocation per
+ * task per pass (the P13 lesson about `dayKey`).
+ */
+export const deadlineSortKey = (
+    dueDate: string | null | undefined,
+    dueTime: string | null | undefined,
+): string =>
+    dueDate ? `${dueDate.slice(0, 10)}T${(dueTime ?? "23:59").slice(0, 5)}` : "";
+
+export type DeadlineBucketKey =
+    | "overdue"
+    | "today"
+    | "tomorrow"
+    | "week"
+    | "later"
+    | "none";
+
+export interface DeadlineBucket {
+    key: DeadlineBucketKey;
+    label: string;
+    order: number;
+}
+
+const BUCKETS: Record<DeadlineBucketKey, DeadlineBucket> = {
+    overdue: { key: "overdue", label: "Overdue", order: 0 },
+    today: { key: "today", label: "Today", order: 1 },
+    tomorrow: { key: "tomorrow", label: "Tomorrow", order: 2 },
+    week: { key: "week", label: "Next 7 days", order: 3 },
+    later: { key: "later", label: "Later", order: 4 },
+    none: { key: "none", label: "No date", order: 5 },
+};
+
+/**
+ * Which group a task belongs to on the mobile task view.
+ *
+ * Two rules, and they are different on purpose:
+ *
+ *   **Overdue** is the DEADLINE rule, in the workspace's zone -- so the group
+ *   header and the red badge on the card can never disagree about the same
+ *   task. Before P7 this compared calendar days only, so a task due today at
+ *   09:00 sat under "Today" at 10:00 while wearing a "1h late" badge.
+ *
+ *   **Today / Tomorrow / Next 7 days** are CALENDAR positions, read the way
+ *   `DueDateBadge` reads them -- the wire day against the viewer's today. A
+ *   task the badge calls "Tomorrow" must not be filed under "Next 7 days".
+ *
+ * ⚠️ The date goes through `parseWireDate`, not `new Date`. This was a FIFTH
+ * site of the P13 defect: `new Date("2026-03-20")` is UTC midnight, so every
+ * viewer west of UTC bucketed a task a day early -- a task due today landed
+ * under Overdue. P13 fixed four sites and this one was not among them.
+ */
+export const deadlineBucket = (
+    dueDate: string | null | undefined,
+    dueTime: string | null | undefined,
+    timeZone: string,
+    now: number,
+): DeadlineBucket => {
+    if (!dueDate) return BUCKETS.none;
+
+    const at = deadlineInstant(dueDate, dueTime, timeZone);
+    if (at !== null && at.getTime() <= now) return BUCKETS.overdue;
+
+    const day = parseDayKey(dayKey(dueDate));
+    const today = new Date(now);
+    today.setHours(0, 0, 0, 0);
+    const diff = Math.round((day.getTime() - today.getTime()) / DAY_MS);
+    if (diff <= 0) return BUCKETS.today;
+    if (diff === 1) return BUCKETS.tomorrow;
+    if (diff <= 7) return BUCKETS.week;
+    return BUCKETS.later;
+};

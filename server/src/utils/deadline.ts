@@ -130,3 +130,27 @@ export const sqlDueTodayNotYetLate = (now: WorkspaceNow): SQL =>
  * a later "consistency" refactor deletes.
  */
 export const companyNow = (): WorkspaceNow => workspaceNow("Asia/Dhaka");
+
+/**
+ * How a deadline reads to a person: `"2026-09-05"` or
+ * `"2026-09-05 5:00 PM"`.
+ *
+ * For the overdue e-mail and push (P7.3). Before this they said "passed
+ * its due date (2026-09-05)", which at 10am on the 5th, about a task due
+ * at 09:00, reads as though the whole day had gone by.
+ *
+ * No time is appended when there is none — a task due Friday is due
+ * through the END of Friday (§B1), and "Friday 12:00 AM" would be a
+ * different and wrong claim.
+ */
+export const deadlineLabel = (
+    dueDate: string,
+    dueTime: string | null | undefined,
+): string => {
+    if (!dueTime) return dueDate;
+    const [h, m] = dueTime.slice(0, 5).split(":").map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return dueDate;
+    const hour = h % 12 === 0 ? 12 : h % 12;
+    const suffix = h < 12 ? "AM" : "PM";
+    return `${dueDate} ${hour}:${String(m).padStart(2, "0")} ${suffix}`;
+};

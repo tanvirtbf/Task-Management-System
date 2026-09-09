@@ -9,6 +9,7 @@ import {
     type DragEndEvent,
 } from "@dnd-kit/core";
 import { tasksApi } from "../../http/api";
+import { useNow } from "../../lib/now-tick";
 import { useAuthStore } from "../../stores/auth";
 import { useUpdateTask, useCreateTask } from "../../hooks/useTaskMutations";
 import { useStatusMap, useWorkspace } from "../../hooks/useReferenceData";
@@ -60,6 +61,7 @@ export const CalendarView = ({ listId }: CalendarViewProps) => {
     });
 
     const { data: ws } = useWorkspace();
+    const now = useNow();
     const statusMap = useStatusMap(listId);
 
     // Filter tasks
@@ -74,7 +76,14 @@ export const CalendarView = ({ listId }: CalendarViewProps) => {
         if (meMode && user) {
             result = result.filter((t) => t.assignees.includes(user.id));
         }
-        result = applyTaskFilters(result, filters);
+        result = applyTaskFilters(result, filters, {
+            // A deadline is a wall clock in the WORKSPACE's zone, not the
+            // viewer's (P2/P4). `now` comes from the shared tick so the
+            // Overdue filter moves with the badge on the row rather than
+            // freezing at whenever this memo last ran.
+            timeZone: ws?.settings.timezone ?? "Asia/Dhaka",
+            now,
+        });
         if (search.trim()) {
             const q = search.toLowerCase();
             result = result.filter(
@@ -84,7 +93,20 @@ export const CalendarView = ({ listId }: CalendarViewProps) => {
             );
         }
         return result;
-    }, [tasks, showClosedTasks, meMode, search, user, statusMap, filters]);
+    }, [
+        tasks,
+        showClosedTasks,
+        meMode,
+        search,
+        user,
+        statusMap,
+        filters,
+        // The deadline rule reads both: the workspace zone decides what
+        // "5 PM" means, and the shared tick is what makes an Overdue filter
+        // on an open page keep up with the badges beside it.
+        now,
+        ws?.settings.timezone,
+    ]);
 
     // Group filteredTasks by day
     const { tasksByDay, unscheduledTasks } = useMemo(() => {

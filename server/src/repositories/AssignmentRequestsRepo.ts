@@ -44,6 +44,8 @@ export interface RequestTaskSnapshot {
     spaceId: string;
     spaceName: string;
     dueDate: Date | null;
+    /** upgrades/027 — the wall clock on that day, or null for end-of-day. */
+    dueTime: string | null;
     priority: number;
     archivedAt: Date | null;
 }
@@ -424,6 +426,7 @@ export class AssignmentRequestsRepo {
                 spaceId: spaces.id,
                 spaceName: spaces.name,
                 dueDate: tasks.dueDate,
+                dueTime: tasks.dueTime,
                 priority: tasks.priority,
                 archivedAt: tasks.archivedAt,
             })

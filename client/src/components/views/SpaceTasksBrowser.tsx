@@ -4,15 +4,17 @@ import { useSearchParams } from "react-router-dom";
 import { Button, Input } from "antd";
 import { ClipboardList, Eye, EyeOff, Search, UserCheck } from "lucide-react";
 import { statusesApi, tasksApi } from "../../http/api";
+import { useNow } from "../../lib/now-tick";
 import { useUserMap, useWorkspace } from "../../hooks/useReferenceData";
 import { useAuthStore } from "../../stores/auth";
 import { AssigneeStack } from "../ui/AssigneeStack";
 import { EmptyState } from "../ui/EmptyState";
 import { TaskDetailDrawer } from "../task/TaskDetailDrawer";
-import { dayKey, formatShortDate } from "../../lib/date-utils";
+import { formatShortDate } from "../../lib/date-utils";
 import { tokens } from "../../theme";
 import type { List, Status, Task } from "../../types";
 import { TaskFilterPopover } from "./TaskFilterPopover";
+import { deadlineInstant, deadlineSortKey } from "../../lib/deadline";
 import {
     EMPTY_TASK_FILTERS,
     applyTaskFilters,
@@ -42,6 +44,7 @@ export const SpaceTasksBrowser = ({ lists }: SpaceTasksBrowserProps) => {
     const user = useAuthStore((s) => s.user);
     const userMap = useUserMap();
     const { data: ws } = useWorkspace();
+    const now = useNow();
     const [searchParams, setSearchParams] = useSearchParams();
     const openTaskId = searchParams.get("task");
 
@@ -125,7 +128,14 @@ export const SpaceTasksBrowser = ({ lists }: SpaceTasksBrowserProps) => {
                 (key) => idsByNameKey.get(key)?.ids ?? [],
             ),
         };
-        result = applyTaskFilters(result, resolved);
+        result = applyTaskFilters(result, resolved, {
+            // A deadline is a wall clock in the WORKSPACE's zone, not the
+            // viewer's (P2/P4). `now` comes from the shared tick so the
+            // Overdue filter moves with the badge on the row rather than
+            // freezing at whenever this memo last ran.
+            timeZone: ws?.settings.timezone ?? "Asia/Dhaka",
+            now,
+        });
         if (search.trim()) {
             const q = search.toLowerCase();
             result = result.filter(
@@ -138,7 +148,11 @@ export const SpaceTasksBrowser = ({ lists }: SpaceTasksBrowserProps) => {
         // date-range filter naturally wants.
         return [...result].sort((a, b) => {
             if (a.dueDate && b.dueDate) {
-                const cmp = a.dueDate.localeCompare(b.dueDate);
+                // Same rule as ListView: the time is part of the deadline.
+                const cmp = deadlineSortKey(
+                    a.dueDate,
+                    a.dueTime,
+                ).localeCompare(deadlineSortKey(b.dueDate, b.dueTime));
                 if (cmp !== 0) return cmp;
             } else if (a.dueDate) return -1;
             else if (b.dueDate) return 1;
@@ -153,6 +167,11 @@ export const SpaceTasksBrowser = ({ lists }: SpaceTasksBrowserProps) => {
         filters,
         idsByNameKey,
         search,
+        // The deadline rule reads both: the workspace zone decides what
+        // "5 PM" means, and the shared tick is what makes an Overdue filter
+        // on an open page keep up with the badges beside it.
+        now,
+        ws?.settings.timezone,
     ]);
 
     const openTask = (task: Task) => {
@@ -168,7 +187,7 @@ export const SpaceTasksBrowser = ({ lists }: SpaceTasksBrowserProps) => {
         ? allTasks.find((t) => t.id === openTaskId)
         : undefined;
 
-    const today = dayKey(new Date());
+    const timeZone = ws?.settings.timezone ?? "Asia/Dhaka";
 
     return (
         <div
@@ -296,10 +315,18 @@ export const SpaceTasksBrowser = ({ lists }: SpaceTasksBrowserProps) => {
                         const assignees = task.assignees
                             .map((id) => userMap.get(id))
                             .filter((u): u is NonNullable<typeof u> => !!u);
+                        // ONE lateness rule (P2/P4): a date-only compare
+                        // here left a task due today at 09:00 un-highlighted
+                        // at 10:00 while its own badge said "1h late".
+                        const dueAt = deadlineInstant(
+                            task.dueDate,
+                            task.dueTime,
+                            timeZone,
+                        );
                         const overdue =
-                            !!task.dueDate &&
                             !task.completedAt &&
-                            dayKey(task.dueDate) < today;
+                            dueAt !== null &&
+                            dueAt.getTime() <= now;
                         return (
                             <button
                                 key={task.id}

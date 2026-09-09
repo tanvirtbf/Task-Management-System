@@ -58,6 +58,8 @@ export interface MyTaskRow {
     customId: string | null;
     name: string;
     dueDate: Date | string | null;
+    /** upgrades/027 — the wall clock on that day, or null for end-of-day. */
+    dueTime: string | null;
     priority: number;
     reviewStatus: "approved" | "flagged" | null;
     checklistTotal: number;
@@ -273,6 +275,7 @@ export class HomeRepo {
             customId: tasks.customId,
             name: tasks.name,
             dueDate: tasks.dueDate,
+            dueTime: tasks.dueTime,
             priority: tasks.priority,
             reviewStatus: tasks.reviewStatus,
             checklistTotal: tasks.checklistItemsTotal,

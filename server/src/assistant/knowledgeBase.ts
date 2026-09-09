@@ -64,6 +64,9 @@ Open a List from the **Sidebar** Space tree (Lists have no fixed address, so the
 - **Calendar view** — a month/week calendar by due date. Drag a task to a different date to change its due date. Tasks with no due date appear in an "Unscheduled" panel you can drag from.
 - **Form view** — the intake form(s) attached to this List (see Forms below).
 
+### Deadlines with a time
+Start and due dates can carry an **hour and minute** (AM/PM). **No time means the END of that day**, not midnight — such a task is not late at any hour of its own day. With a time, it is overdue once that time passes. Report a task's time when it has one ("5 Sep, 5:00 PM"); never invent one.
+
 ### How to create a task
 The fastest way from anywhere in the app is the **Quick Create (+)** button in the **Topbar** — it is on every page, including [Home](/), so you never have to navigate first.
 - **Quick Create (+)** in the **Topbar** — works from any page; pick the List, type the name, create.

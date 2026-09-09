@@ -128,11 +128,15 @@ describe("POST /api/v1/jobs/overdue-alert", () => {
             const payload = mailSpy.mock.calls[0][1] as {
                 taskName: string;
                 taskUrl: string;
-                dueYmd: string;
+                // P7.3: no longer a wire date. A deadline with a time reads
+                // "2026-09-05 5:00 PM", so the alert cannot imply the whole
+                // day has gone by when only the hour has. This fixture sets
+                // no time, so it stays a bare date.
+                dueLabel: string;
             };
             expect(payload.taskName).toBe("Ship the campaign page");
             expect(payload.taskUrl).toContain(`/t/${t.id}`);
-            expect(payload.dueYmd).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+            expect(payload.dueLabel).toMatch(/^\d{4}-\d{2}-\d{2}$/);
         });
 
         it("delivers exactly once — a second run flips nothing", async () => {

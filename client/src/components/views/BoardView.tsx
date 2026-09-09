@@ -12,6 +12,7 @@ import {
 } from "@dnd-kit/core";
 import { LayoutGrid } from "lucide-react";
 import { tasksApi } from "../../http/api";
+import { useNow } from "../../lib/now-tick";
 import {
     useStatuses,
     useUserMap,
@@ -59,6 +60,7 @@ export const BoardView = ({ listId }: BoardViewProps) => {
 
     const { data: statuses = [] } = useStatuses(listId);
     const { data: ws } = useWorkspace();
+    const now = useNow();
     const userMap = useUserMap();
     const update = useUpdateTask(listId);
 
@@ -81,7 +83,14 @@ export const BoardView = ({ listId }: BoardViewProps) => {
         if (meMode && user) {
             result = result.filter((t) => t.assignees.includes(user.id));
         }
-        result = applyTaskFilters(result, filters);
+        result = applyTaskFilters(result, filters, {
+            // A deadline is a wall clock in the WORKSPACE's zone, not the
+            // viewer's (P2/P4). `now` comes from the shared tick so the
+            // Overdue filter moves with the badge on the row rather than
+            // freezing at whenever this memo last ran.
+            timeZone: ws?.settings.timezone ?? "Asia/Dhaka",
+            now,
+        });
         if (search.trim()) {
             const q = search.toLowerCase();
             result = result.filter(
@@ -91,7 +100,20 @@ export const BoardView = ({ listId }: BoardViewProps) => {
             );
         }
         return result;
-    }, [tasks, statusById, showClosedTasks, meMode, search, user, filters]);
+    }, [
+        tasks,
+        statusById,
+        showClosedTasks,
+        meMode,
+        search,
+        user,
+        filters,
+        // The deadline rule reads both: the workspace zone decides what
+        // "5 PM" means, and the shared tick is what makes an Overdue filter
+        // on an open page keep up with the badges beside it.
+        now,
+        ws?.settings.timezone,
+    ]);
 
     const sensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),

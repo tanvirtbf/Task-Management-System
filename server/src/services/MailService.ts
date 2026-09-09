@@ -217,7 +217,7 @@ export class MailService {
      */
     async sendTaskOverdueEmail(
         to: string,
-        p: { taskName: string; taskUrl: string; dueYmd: string },
+        p: { taskName: string; taskUrl: string; dueLabel: string },
     ): Promise<void> {
         this.logger.debug("mail.task_overdue.sending", {
             to,
@@ -228,7 +228,7 @@ export class MailService {
             subject: `Overdue: ${subjectName(p.taskName)}`,
             html: taskOverdueHtml(p),
             text:
-                `Your task "${p.taskName}" passed its due date (${p.dueYmd}) and is still open.\n` +
+                `Your task "${p.taskName}" passed its deadline (${p.dueLabel}) and is still open.\n` +
                 `আপনার কাজের নির্ধারিত সময় পার হয়ে গেছে — দয়া করে যত দ্রুত সম্ভব কাজটি শেষ করুন।\n\n${p.taskUrl}`,
         });
     }
@@ -447,12 +447,13 @@ const mentionHtml = (p: {
 const taskOverdueHtml = (p: {
     taskName: string;
     taskUrl: string;
-    dueYmd: string;
+    /** The date, plus its time when the deadline has one (P7.3). */
+    dueLabel: string;
 }): string =>
     shell(
         "Your task is overdue",
-        `Your task <strong>"${escapeHtml(p.taskName)}"</strong> passed its due date ` +
-            `(<strong>${escapeHtml(p.dueYmd)}</strong>) and is still open.<br><br>` +
+        `Your task <strong>"${escapeHtml(p.taskName)}"</strong> passed its deadline ` +
+            `(<strong>${escapeHtml(p.dueLabel)}</strong>) and is still open.<br><br>` +
             "আপনার কাজের নির্ধারিত সময় পার হয়ে গেছে — দয়া করে যত দ্রুত সম্ভব কাজটি শেষ করুন।",
         { url: p.taskUrl, label: "Open task" },
     );

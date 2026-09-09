@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+    DUE_DATE_PRESETS,
     EMPTY_TASK_FILTERS,
     UNASSIGNED,
     applyTaskFilters,
@@ -63,12 +64,27 @@ const filters = (over: Partial<TaskFilterState> = {}): TaskFilterState => ({
 
 const ids = (ts: Task[]) => ts.map((t) => t.id);
 
+/**
+ * The pre-P7 two-argument form, for the cases that predate the clock.
+ *
+ * `applyTaskFilters` gained a REQUIRED third argument at P7 precisely so the
+ * compiler would list every caller (the P2 lesson). Every assertion below is a
+ * pure date-window case, where the clock is never consulted — so a fixed one is
+ * honest here, and the cases that DO depend on it call the real function
+ * directly with their own.
+ */
+const applyFilters = (ts: Task[], f: TaskFilterState) =>
+    applyTaskFilters(ts, f, {
+        timeZone: "Asia/Dhaka",
+        now: Date.parse("2026-03-20T04:00:00.000Z"),
+    });
+
 describe("applyTaskFilters — due-date window", () => {
     it("keeps a task due on the exact day the window names", () => {
         const t = task({ id: "due20", dueDate: "2026-03-20" });
         expect(
             ids(
-                applyTaskFilters([t], filters({ dueFrom: "2026-03-20", dueTo: "2026-03-20" })),
+                applyFilters([t], filters({ dueFrom: "2026-03-20", dueTo: "2026-03-20" })),
             ),
         ).toEqual(["due20"]);
     });
@@ -81,7 +97,7 @@ describe("applyTaskFilters — due-date window", () => {
 
         expect(
             ids(
-                applyTaskFilters([t], filters({ dueFrom: "2026-03-20", dueTo: "2026-03-20" })),
+                applyFilters([t], filters({ dueFrom: "2026-03-20", dueTo: "2026-03-20" })),
             ),
         ).toEqual(["due20"]);
 
@@ -90,7 +106,7 @@ describe("applyTaskFilters — due-date window", () => {
         // merely shifted the bug.
         expect(
             ids(
-                applyTaskFilters([t], filters({ dueFrom: "2026-03-19", dueTo: "2026-03-19" })),
+                applyFilters([t], filters({ dueFrom: "2026-03-19", dueTo: "2026-03-19" })),
             ),
         ).toEqual([]);
     });
@@ -105,7 +121,7 @@ describe("applyTaskFilters — due-date window", () => {
             "Pacific/Midway",
         ]) {
             inZone(tz);
-            expect({ tz, kept: ids(applyTaskFilters([t], window)) }).toEqual({
+            expect({ tz, kept: ids(applyFilters([t], window)) }).toEqual({
                 tz,
                 kept: ["due20"],
             });
@@ -119,11 +135,11 @@ describe("applyTaskFilters — due-date window", () => {
             task({ id: "b", dueDate: "2026-03-20" }),
             task({ id: "c", dueDate: "2026-03-21" }),
         ];
-        expect(ids(applyTaskFilters(ts, filters({ dueFrom: "2026-03-20" })))).toEqual([
+        expect(ids(applyFilters(ts, filters({ dueFrom: "2026-03-20" })))).toEqual([
             "b",
             "c",
         ]);
-        expect(ids(applyTaskFilters(ts, filters({ dueTo: "2026-03-20" })))).toEqual([
+        expect(ids(applyFilters(ts, filters({ dueTo: "2026-03-20" })))).toEqual([
             "a",
             "b",
         ]);
@@ -132,10 +148,147 @@ describe("applyTaskFilters — due-date window", () => {
     it("drops undated tasks unless includeUndated says otherwise", () => {
         const ts = [task({ id: "dated", dueDate: "2026-03-20" }), task({ id: "undated" })];
         const window = { dueFrom: "2026-03-01", dueTo: "2026-03-31" };
-        expect(ids(applyTaskFilters(ts, filters(window)))).toEqual(["dated"]);
+        expect(ids(applyFilters(ts, filters(window)))).toEqual(["dated"]);
         expect(
-            ids(applyTaskFilters(ts, filters({ ...window, includeUndated: true }))),
+            ids(applyFilters(ts, filters({ ...window, includeUndated: true }))),
         ).toEqual(["dated", "undated"]);
+    });
+});
+
+describe("P7 — the Overdue preset must agree with the deadline badge", () => {
+    /**
+     * The semantics sweep's headline case.
+     *
+     * P1 gave a deadline a time, P2 taught the server to judge it and P4 put a
+     * countdown on every card. The client's filter model never changed: it is a
+     * `[dueFrom, dueTo]` window over calendar DAYS, and "Overdue" is expressed
+     * as `[null, yesterday]`.
+     *
+     * So a task due TODAY at 09:00, read at 10:00, wears a red "5h late" badge
+     * and is in the server's overdue bucket — and does NOT appear when you
+     * filter for Overdue. One screen, two answers.
+     */
+    /** 2026-03-20, 10:00 — an hour after a 09:00 deadline. */
+    const NOW = new Date(2026, 2, 20, 10, 0).getTime();
+
+    /**
+     * The Overdue preset AS THE POPOVER APPLIES IT — range and flag together.
+     *
+     * Building the state from the range alone is what the first draft of these
+     * tests did, and it asserted a gap that the fix had already closed: the
+     * range still says `[null, yesterday]` (the popover matches on it to show
+     * which chip is active), and `deadlinePassed` is what actually decides.
+     */
+    const overduePreset = (): TaskFilterState => {
+        const preset = DUE_DATE_PRESETS.find((p) => p.key === "overdue")!;
+        const [dueFrom, dueTo] = preset.range(6);
+        return filters({
+            dueFrom,
+            dueTo,
+            deadlinePassed: preset.deadlinePassed ?? false,
+        });
+    };
+
+    it("still catches a task whose DAY has passed", () => {
+        // The pre-027 behaviour, which must not regress.
+        vi.useFakeTimers();
+        vi.setSystemTime(NOW);
+        try {
+            const t = task({ id: "yesterday", dueDate: "2026-03-19" });
+            expect(
+                ids(
+                    applyTaskFilters([t], overduePreset(), {
+                        timeZone: "Asia/Dhaka",
+                        now: NOW,
+                    }),
+                ),
+            ).toEqual(["yesterday"]);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("⛔ catches a task due TODAY whose time has passed", () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(NOW);
+        try {
+            const late = task({
+                id: "late-today",
+                dueDate: "2026-03-20",
+                dueTime: "09:00",
+            });
+            expect(
+                ids(
+                    applyTaskFilters([late], overduePreset(), {
+                        timeZone: "Asia/Dhaka",
+                        now: NOW,
+                    }),
+                ),
+            ).toEqual(["late-today"]);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("but NOT one due later today", () => {
+        // The other half: an afternoon deadline is not overdue at 10am, and a
+        // fix that swept in every task due today would be worse than the bug.
+        vi.useFakeTimers();
+        vi.setSystemTime(NOW);
+        try {
+            const later = task({
+                id: "later-today",
+                dueDate: "2026-03-20",
+                dueTime: "17:00",
+            });
+            expect(
+                ids(
+                    applyTaskFilters([later], overduePreset(), {
+                        timeZone: "Asia/Dhaka",
+                        now: NOW,
+                    }),
+                ),
+            ).toEqual([]);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("and NOT a time-less task due today — end of day, not midnight (§B1)", () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(NOW);
+        try {
+            const timeless = task({ id: "timeless", dueDate: "2026-03-20" });
+            expect(
+                ids(
+                    applyTaskFilters([timeless], overduePreset(), {
+                        timeZone: "Asia/Dhaka",
+                        now: NOW,
+                    }),
+                ),
+            ).toEqual([]);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("a NON-overdue window is untouched by any of this", () => {
+        // "This week" must keep meaning a calendar week. Only the overdue
+        // preset carries a lateness judgement.
+        const t = task({
+            id: "friday",
+            dueDate: "2026-03-20",
+            dueTime: "09:00",
+        });
+        expect(
+            ids(
+                applyTaskFilters(
+                    [t],
+                    filters({ dueFrom: "2026-03-16", dueTo: "2026-03-22" }),
+                    { timeZone: "Asia/Dhaka", now: NOW },
+                ),
+            ),
+        ).toEqual(["friday"]);
     });
 });
 
@@ -166,7 +319,7 @@ describe("applyTaskFilters — the other predicates", () => {
         // The early return is load-bearing: every view re-runs this pass, and a
         // fresh array on every call would defeat the memo below it.
         const ts = [task()];
-        expect(applyTaskFilters(ts, filters())).toBe(ts);
+        expect(applyFilters(ts, filters())).toBe(ts);
     });
 
     it("keeps tasks whose status is selected", () => {
@@ -174,7 +327,7 @@ describe("applyTaskFilters — the other predicates", () => {
             task({ id: "a", statusId: "open" }),
             task({ id: "b", statusId: "done" }),
         ];
-        expect(ids(applyTaskFilters(ts, filters({ statusIds: ["open"] })))).toEqual(["a"]);
+        expect(ids(applyFilters(ts, filters({ statusIds: ["open"] })))).toEqual(["a"]);
     });
 
     it("matches if ANY assignee is selected, and handles the unassigned sentinel", () => {
@@ -184,15 +337,15 @@ describe("applyTaskFilters — the other predicates", () => {
             task({ id: "theirs", assignees: ["u9"] }),
             task({ id: "nobody", assignees: [] }),
         ];
-        expect(ids(applyTaskFilters(ts, filters({ assigneeIds: ["u1"] })))).toEqual([
+        expect(ids(applyFilters(ts, filters({ assigneeIds: ["u1"] })))).toEqual([
             "mine",
             "shared",
         ]);
         expect(
-            ids(applyTaskFilters(ts, filters({ assigneeIds: [UNASSIGNED] }))),
+            ids(applyFilters(ts, filters({ assigneeIds: [UNASSIGNED] }))),
         ).toEqual(["nobody"]);
         expect(
-            ids(applyTaskFilters(ts, filters({ assigneeIds: ["u1", UNASSIGNED] }))),
+            ids(applyFilters(ts, filters({ assigneeIds: ["u1", UNASSIGNED] }))),
         ).toEqual(["mine", "shared", "nobody"]);
     });
 
@@ -201,7 +354,7 @@ describe("applyTaskFilters — the other predicates", () => {
             task({ id: "urgent", priority: 1 }),
             task({ id: "low", priority: 4 }),
         ];
-        expect(ids(applyTaskFilters(ts, filters({ priorities: [1] })))).toEqual([
+        expect(ids(applyFilters(ts, filters({ priorities: [1] })))).toEqual([
             "urgent",
         ]);
     });
@@ -215,7 +368,7 @@ describe("applyTaskFilters — the other predicates", () => {
         ];
         expect(
             ids(
-                applyTaskFilters(
+                applyFilters(
                     ts,
                     filters({
                         statusIds: ["open"],

@@ -8,7 +8,7 @@ import { MailService } from "../services/MailService";
 import { pushSvc } from "../services/PushService";
 import { taskUrlOf } from "../services/TaskEmailService";
 import type { JobContext, JobOutcome } from "./types";
-import { workspaceNow } from "../utils/deadline";
+import { deadlineLabel, workspaceNow } from "../utils/deadline";
 
 /**
  * §28 overdue-alert (every 10 min): the moment a task's `due_date` has passed
@@ -97,7 +97,7 @@ export const overdueAlert = async ({
             to: string;
             taskName: string;
             taskId: string;
-            dueYmd: string;
+            dueLabel: string;
         }> = [];
 
         for (const task of due) {
@@ -128,13 +128,18 @@ export const overdueAlert = async ({
             });
             notified += 1;
 
-            const dueYmd = task.dueDate ? ymdOf(task.dueDate) : now.today;
+            // The date AND its time, so the alert cannot imply the whole
+            // day has gone by when only the hour has (P7.3).
+            const dueLabel = deadlineLabel(
+                task.dueDate ? ymdOf(task.dueDate) : now.today,
+                task.dueTime,
+            );
             for (const u of recipients) {
                 outbox.push({
                     to: u.email,
                     taskName: task.name,
                     taskId: task.id,
-                    dueYmd,
+                    dueLabel,
                 });
             }
             // Web Push to the same recipients' devices (§29c). A no-op when
@@ -143,7 +148,7 @@ export const overdueAlert = async ({
             await pushSvc().taskOverdue({
                 taskId: task.id,
                 taskName: task.name,
-                dueYmd,
+                dueLabel,
                 recipientIds: recipients.map((u) => u.id),
             });
         }
@@ -153,7 +158,7 @@ export const overdueAlert = async ({
                 await mail.sendTaskOverdueEmail(m.to, {
                     taskName: m.taskName,
                     taskUrl: taskUrlOf(m.taskId),
-                    dueYmd: m.dueYmd,
+                    dueLabel: m.dueLabel,
                 });
                 emailsSent += 1;
             } catch (err) {

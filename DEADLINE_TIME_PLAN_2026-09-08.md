@@ -833,6 +833,133 @@ machine is in, which is a real assertion rather than one that only looked thorou
 **Exit:** the full gate green, plus the P13 probes — `nplus1-probe`, and `scale-probe` showing
 no new full scan on a hot path from the changed queries.
 
+**✅ P7 DONE — 2026-09-09.**
+
+Everything that reads a due date and had not been touched by P1–P6. Four sub-sweeps, and three of
+them found something real.
+
+### ⛔ The Overdue FILTER disagreed with the Overdue BADGE
+
+The headline defect. P1 gave a deadline a time, P2 taught the server to judge it, P4 put a
+countdown on every card — and the client's filter model never changed. It is a `[dueFrom, dueTo]`
+window over calendar DAYS, and "Overdue" was expressed as `[null, yesterday]`.
+
+So a task due **today at 09:00**, read at 10:00, wore a red "1h late" badge, sat in the server's
+overdue bucket, and **did not appear when you filtered for Overdue**. One screen, two answers.
+
+The fix is a `deadlinePassed` flag on the filter state rather than a cleverer range, because
+lateness is simply not expressible as a window over days once a deadline carries a time — the same
+reason `server/src/utils/deadline.ts` exists. When the flag is on it REPLACES the range, so there
+is one answer and not two intersected; the range is still produced so the popover can show which
+chip is active.
+
+`applyTaskFilters` gained a **required** third argument carrying the workspace clock. Required, not
+optional: an optional one would have let all four call sites keep compiling while defaulting
+somebody else's timezone, and that failure is silent and hours wide. Changing the signature made
+`tsc` list them. (The same lesson P2 recorded, applied on purpose this time.)
+
+### ⛔ A FIFTH site of P13's day-early defect, still live
+
+`MobileTaskView`'s group bucketer did two things wrong at once. It compared calendar days, so a task
+due today at 09:00 sat under **"Today"** at 10:00 while its own card said "1h late". And it read the
+wire date with `new Date("2026-03-20")` — UTC midnight — so **every viewer west of UTC bucketed a
+day early** and a task due today landed under Overdue.
+
+P13 fixed four sites of exactly that defect: the shared filter, the calendar's day bucketing, the
+space browser's overdue highlight, and `DueDateBadge`. This bucketer was not among them. Both halves
+are fixed in `lib/deadline.ts` now, with the rest of the deadline rule, and mutation-tested by
+putting `new Date` back — two tests go red.
+
+The two rules inside it are different **on purpose**: "Overdue" is the workspace's lateness rule, so
+the group header matches the red badge; "Today"/"Tomorrow"/"Next 7 days" are calendar positions read
+the way `DueDateBadge` reads them, so a task the badge calls Tomorrow is not filed under Next 7
+days. Writing the test for this cost a wrong first draft — it asserted the workspace answer for a
+calendar group and read the right behaviour as a failure.
+
+### Sorting ignored the time
+
+`ListView` and `SpaceTasksBrowser` both sorted on `dueDate.localeCompare(dueDate)`, so two tasks due
+the same day at 09:00 and 17:00 came out in whatever order the array held them. `deadlineSortKey`
+appends the time, and a **missing** time sorts to the END of its day — §B1 again: "due Friday" runs
+to the end of Friday, so it comes after "Friday 5 PM".
+
+### ⚠️ eslint caught a better answer than the one I wrote
+
+The first version passed `Date.now()` into the filter, and `react-hooks/purity` refused it. The rule
+was right about more than purity: with `Date.now()` the Overdue filter froze at whenever the memo
+last ran, so a page left open kept showing a task as on-time beside a badge saying "1h late". All
+five surfaces now read the shared tick from P4 — one interval for the page, and the filter moves
+with the badges. `exhaustive-deps` then caught the other half: without `now` in the dependency
+array the memo would not have re-run anyway.
+
+### P7.2 — the assistant reports the time. Decided yes.
+
+The whole feature is hourly deadlines; a bot answering *"kokhon due?"* with a bare date, about a
+task due that afternoon at 5, sounds certain and is missing the half that matters. Six tool outputs
+carry `dueTime` now, which meant widening five row shapes that never selected the column —
+half-doing it (the detail tool says "5 PM", the list tool says a bare date, about the same task)
+would have been worse than not doing it.
+
+Free against the tool-definition budget, which covers the input schemas that ride every request. The
+**system-message** budget is a different matter: the knowledge-base block went 514 over, and the
+established discipline there is to compress rather than move the budget with a paper trail. Two
+rounds of tightening took it from 1,050 chars to **321** — the semantics (what a missing time means)
+and the reporting rule, without the countdown wording a user can simply see. **100/100 KB tests
+green, budget untouched.**
+
+### P7.3 — the overdue alert named the wrong thing
+
+*"Your task passed its due date (2026-09-05)"* is actively misleading at 10am on the 5th about a
+task due at 09:00: the reader takes it to mean the whole day has gone by. The e-mail (text and
+HTML) and the push notification now carry `deadlineLabel` — the date, plus its time when there is
+one, and the date **alone** when there is not, because "2026-09-05 12:00 AM" would be a different
+and wrong claim.
+
+Renamed from `dueYmd` deliberately, so nobody reads a human string as a wire date. The
+assignment-request `dueYmd` is untouched: that one really is a date and gets PATCHed back.
+
+### P7.4 — recurrence and `due_time` cannot fight
+
+Asked and answered against the code: the spawn job creates a **clean dated task and carries nothing
+over**, so a template's `due_time` is never copied onto an occurrence. `recurrence_time` is when the
+job FIRES; `due_time` is when the work is due. upgrades/027 could have broken that silently by
+teaching `create` to copy more — it did not, and there is now a test that says so, plus one proving
+the two columns move independently under PATCH.
+
+### One more found while writing this up
+
+`SpaceTasksBrowser`'s row highlight computed lateness itself, date-only, so a task due today at
+09:00 was left unhighlighted at 10:00 beside a badge saying "1h late". Routed through the same
+resolver. That makes **four** date-only lateness judgements P7 found and closed, in four different
+files, all introduced before a deadline could carry a time and none of them wrong until it could.
+
+### Gate
+
+**37 modules · 0 failed** — the full server suite, because the sweep touched `TasksRepo`,
+`HomeRepo`, `AssignmentRequestsRepo`, `MailService`, `PushService`, the overdue job and the
+assistant. `tasks` and `tasks10` are 470 each (463 + the 7 new sweep tests). Client **257 tests / 23
+files**, up from 242 after P6. eslint 0/0 and `tsc` clean on both packages, KB budget tests 100/100.
+
+⚠️ **Two flaky-passes, both the machine and not the code.** `customfields` and `workspaceActivity`
+each timed out at 30s on a first attempt and passed on retry, both while `C:` was under ~1.3 GB.
+Freeing space and re-running gave a clean first attempt for both. This is the failure mode the test
+plan already records as "a full disk looks like a broken suite" — worth re-reading before blaming a
+suite for a timeout.
+
+### ⚠️ The scale probes were NOT run, and here is what stands in their place
+
+The plan's exit asks for `nplus1-probe` and `scale-probe` (risk **R8**, a query-plan regression).
+Both need a 5,000-task database and a server running against it, and MySQL's data directory is on
+`C:`, which has **0.93 GB free**. Seeding that there risks filling the disk mid-run, which produces
+a *misleading* result rather than no result — the same trap that caused the two flakes above.
+
+What was done instead is a complete structural check of the thing the probes would measure: **every
+repository change in this phase is either a TYPE annotation or a `dueTime: tasks.dueTime` line added
+to an existing `.select({...})`.** No `where`, no `and(...)`, no join, no per-row loop — verified by
+reading the whole repository diff, not asserted. A column added to the projection of an
+already-joined table cannot introduce a full scan or an N+1, so R8 is not reachable from what P7
+changed. The probes remain worth running once there is disk for them, and that is the user's call.
+
 ### P8 — Ship
 
 1. Rebuild both dists, verify by LOADING the bundle (P14's rule), regenerate the deploy prompt.

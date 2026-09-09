@@ -3,7 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 import { Input, Segmented } from "antd";
 import { Search as SearchIcon } from "lucide-react";
 import { tasksApi } from "../../http/api";
-import { useStatuses, useUsers } from "../../hooks/useReferenceData";
+import { useNow } from "../../lib/now-tick";
+import {
+    useStatuses,
+    useUsers,
+    useWorkspace,
+} from "../../hooks/useReferenceData";
 import { useBulkUpdateTasks, useUpdateTask } from "../../hooks/useTaskMutations";
 import { useAssignablePeople } from "../../hooks/useAssignablePeople";
 import { EmptyState } from "../ui/EmptyState";
@@ -11,6 +16,7 @@ import { LoadingState } from "../shared/LoadingState";
 import { CARD_GAP, CARD_HEIGHT, MobileTaskCard } from "./MobileTaskCard";
 import { tokens } from "../../theme";
 import type { Status, Task } from "../../types";
+import { deadlineBucket } from "../../lib/deadline";
 
 /**
  * P4 of MOBILE_REBUILD_PLAN.md — the one task view a phone gets.
@@ -39,20 +45,11 @@ type Row =
     | { kind: "header"; key: string; label: string; count: number; offset: number }
     | { kind: "task"; key: string; task: Task; status?: Status; offset: number };
 
-const dueBucket = (iso: string | null): { key: string; label: string; order: number } => {
-    if (!iso) return { key: "none", label: "No date", order: 5 };
-    const d = new Date(iso);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const day = new Date(d);
-    day.setHours(0, 0, 0, 0);
-    const diff = Math.round((day.getTime() - today.getTime()) / 86_400_000);
-    if (diff < 0) return { key: "overdue", label: "Overdue", order: 0 };
-    if (diff === 0) return { key: "today", label: "Today", order: 1 };
-    if (diff === 1) return { key: "tomorrow", label: "Tomorrow", order: 2 };
-    if (diff <= 7) return { key: "week", label: "Next 7 days", order: 3 };
-    return { key: "later", label: "Later", order: 4 };
-};
+// The local bucketer moved to `lib/deadline.ts` at P7. It compared calendar
+// DAYS, so a task due today at 09:00 sat under "Today" at 10:00 while its own
+// card wore a "1h late" badge -- and it parsed the wire date with `new Date`,
+// a FIFTH site of the P13 day-early defect that P13 did not find. Both are
+// fixed there, once, with the rest of the deadline rule.
 
 export const MobileTaskView = ({
     listId,
@@ -104,6 +101,12 @@ export const MobileTaskView = ({
     }, [tasks, statusById, search]);
 
     /** Groups flattened into one positioned row list — the whole virtualiser. */
+    // A deadline is a wall clock in the WORKSPACE's zone (P2/P4), so the
+    // "Overdue" group and the badge on the card agree about the same task.
+    const { data: ws } = useWorkspace();
+    const now = useNow();
+    const timeZone = ws?.settings.timezone ?? "Asia/Dhaka";
+
     const { rows, totalHeight } = useMemo(() => {
         const groups: { key: string; label: string; order: number; tasks: Task[] }[] = [];
         const push = (key: string, label: string, order: number, task: Task) => {
@@ -132,7 +135,12 @@ export const MobileTaskView = ({
                     );
                 }
             } else {
-                const b = dueBucket(t.dueDate);
+                const b = deadlineBucket(
+                    t.dueDate,
+                    t.dueTime,
+                    timeZone,
+                    now,
+                );
                 push(b.key, b.label, b.order, t);
             }
         }
@@ -162,7 +170,7 @@ export const MobileTaskView = ({
             }
         }
         return { rows: out, totalHeight: offset };
-    }, [visible, groupBy, statusById, users]);
+    }, [visible, groupBy, statusById, users, timeZone, now]);
 
     // The window: first and last row that can be on screen, plus overscan.
     const firstVisible = Math.max(

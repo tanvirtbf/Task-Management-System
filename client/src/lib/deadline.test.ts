@@ -1,5 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { deadlineInstant, describeDeadline } from "./deadline";
+import { describe, expect, it, vi } from "vitest";
+import {
+    deadlineBucket,
+    deadlineInstant,
+    deadlineSortKey,
+    describeDeadline,
+} from "./deadline";
 
 /**
  * P4 of DEADLINE_TIME_PLAN_2026-09-08 — the countdown's maths.
@@ -284,5 +289,128 @@ describe("what the badge says", () => {
             "17h left",
             "17h left",
         ]);
+    });
+});
+
+describe("P7 — sorting by deadline includes the time", () => {
+    it("orders two tasks due the same day by their times", () => {
+        // Before P7 both sorts compared `dueDate` alone, so 09:00 and 17:00 on
+        // the same day landed in whatever order the array happened to hold.
+        const keys = [
+            deadlineSortKey("2026-03-20", "17:00"),
+            deadlineSortKey("2026-03-20", "09:00"),
+        ].sort();
+        expect(keys[0]).toBe(deadlineSortKey("2026-03-20", "09:00"));
+    });
+
+    it("a MISSING time sorts to the end of its own day (§B1)", () => {
+        // "Due Friday" runs to the end of Friday, so it comes AFTER "Friday
+        // 5 PM" — and before anything on Saturday.
+        const sorted = [
+            deadlineSortKey("2026-03-21", "09:00"),
+            deadlineSortKey("2026-03-20", null),
+            deadlineSortKey("2026-03-20", "17:00"),
+        ].sort();
+        expect(sorted).toEqual([
+            deadlineSortKey("2026-03-20", "17:00"),
+            deadlineSortKey("2026-03-20", null),
+            deadlineSortKey("2026-03-21", "09:00"),
+        ]);
+    });
+
+    it("tolerates the stored HH:MM:SS and a wire date with a suffix", () => {
+        expect(deadlineSortKey("2026-03-20", "17:00:00")).toBe(
+            deadlineSortKey("2026-03-20", "17:00"),
+        );
+    });
+
+    it("no due date sorts as empty, which the callers place last themselves", () => {
+        expect(deadlineSortKey(null, "17:00")).toBe("");
+    });
+});
+
+describe("P7 — the mobile groups agree with the badge", () => {
+    const TZ = "Asia/Dhaka";
+    /** 2026-03-20, 10:00 Dhaka. */
+    const NOW = Date.parse("2026-03-20T04:00:00.000Z");
+    const key = (d: string | null, t: string | null = null) =>
+        deadlineBucket(d, t, TZ, NOW).key;
+
+    it("⛔ a task due TODAY whose time has passed is Overdue, not Today", () => {
+        // The defect P7 found: the group header said Today while the card's own
+        // badge said "1h late".
+        expect(key("2026-03-20", "09:00")).toBe("overdue");
+    });
+
+    it("but one due later today is still Today", () => {
+        expect(key("2026-03-20", "17:00")).toBe("today");
+    });
+
+    it("and a time-less task due today is Today all day (§B1)", () => {
+        expect(key("2026-03-20")).toBe("today");
+    });
+
+    it("keeps the calendar groups it always had", () => {
+        expect([
+            key("2026-03-19"),
+            key("2026-03-21"),
+            key("2026-03-25"),
+            key("2026-04-30"),
+            key(null),
+        ]).toEqual(["overdue", "tomorrow", "week", "later", "none"]);
+    });
+
+    it("⛔ reads the WIRE date, not `new Date` — the 5th P13 site", () => {
+        // The defect: `new Date("2026-03-20")` is UTC MIDNIGHT, so reading its
+        // local calendar day west of UTC lands on the day BEFORE — and a task
+        // due today bucketed as Overdue. P13 fixed four sites; this bucketer
+        // was not among them, and `parseWireDate` is what closes it.
+        //
+        // The case that separates the two implementations is the viewer's own
+        // TOMORROW. Reading the wire date as UTC midnight lands it on the
+        // viewer's today west of UTC, so the old code filed a task due
+        // tomorrow under "Today".
+        //
+        // Not the viewer's *today*: at this instant the workspace (Dhaka) has
+        // already turned over, so a Midway viewer's today is genuinely late on
+        // the workspace clock and "overdue" is the correct answer there. The
+        // first draft of this test used that date and read the right answer as
+        // a failure.
+        //
+        // `2026-03-20T04:00Z` is midnight in New York and still the 19th in
+        // Midway, so each zone gets the date ITS calendar calls tomorrow. UTC
+        // is included precisely because it is the one zone the old code got
+        // right — if it ever starts failing, the fix has overshot.
+        for (const [tz, viewerTomorrow] of [
+            ["UTC", "2026-03-21"],
+            ["America/New_York", "2026-03-21"],
+            ["Pacific/Midway", "2026-03-20"],
+        ]) {
+            vi.stubEnv("TZ", tz);
+            try {
+                expect({ tz, key: key(viewerTomorrow) }).toEqual({
+                    tz,
+                    key: "tomorrow",
+                });
+            } finally {
+                vi.unstubAllEnvs();
+            }
+        }
+    });
+
+    it("the calendar groups follow the VIEWER's calendar, like the badge", () => {
+        // Deliberate, and it is why the case above is written per-zone rather
+        // than with one shared expectation. "Overdue" is the WORKSPACE's
+        // lateness rule, so the group header matches the red badge; but
+        // "Today"/"Tomorrow" are calendar positions and must match the words
+        // `DueDateBadge` prints on the same card, which reads the viewer's own
+        // calendar. A far-western viewer therefore sees a Dhaka "tomorrow" as
+        // two days out, exactly as the badge already told them.
+        vi.stubEnv("TZ", "Pacific/Midway");
+        try {
+            expect(key("2026-03-21", "09:00")).toBe("week");
+        } finally {
+            vi.unstubAllEnvs();
+        }
     });
 });

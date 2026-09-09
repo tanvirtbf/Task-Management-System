@@ -12,6 +12,7 @@ import {
 } from "@dnd-kit/core";
 import { ListChecks } from "lucide-react";
 import { tasksApi } from "../../http/api";
+import { useNow } from "../../lib/now-tick";
 import { useStatuses, useWorkspace } from "../../hooks/useReferenceData";
 import { useAuthStore } from "../../stores/auth";
 import { useMultiSelect } from "../../hooks/useMultiSelect";
@@ -26,6 +27,7 @@ import {
     type GroupBy,
     type SortKey,
 } from "./ListViewToolbar";
+import { deadlineSortKey } from "../../lib/deadline";
 import {
     EMPTY_TASK_FILTERS,
     applyTaskFilters,
@@ -73,6 +75,7 @@ export const ListView = ({ listId }: ListViewProps) => {
 
     const { data: statuses = [] } = useStatuses(listId);
     const { data: ws } = useWorkspace();
+    const now = useNow();
     const update = useUpdateTask(listId);
     const archive = useArchiveTask(listId);
     const del = useDeleteTask(listId);
@@ -96,7 +99,14 @@ export const ListView = ({ listId }: ListViewProps) => {
         if (meMode && user) {
             result = result.filter((t) => t.assignees.includes(user.id));
         }
-        result = applyTaskFilters(result, filters);
+        result = applyTaskFilters(result, filters, {
+            // A deadline is a wall clock in the WORKSPACE's zone, not the
+            // viewer's (P2/P4). `now` comes from the shared tick so the
+            // Overdue filter moves with the badge on the row rather than
+            // freezing at whenever this memo last ran.
+            timeZone: ws?.settings.timezone ?? "Asia/Dhaka",
+            now,
+        });
         if (search.trim()) {
             const q = search.toLowerCase();
             result = result.filter(
@@ -117,7 +127,15 @@ export const ListView = ({ listId }: ListViewProps) => {
                     if (!a.dueDate && !b.dueDate) cmp = 0;
                     else if (!a.dueDate) cmp = 1;
                     else if (!b.dueDate) cmp = -1;
-                    else cmp = a.dueDate.localeCompare(b.dueDate);
+                    // Not `dueDate` alone: two tasks due the same day at
+                    // 09:00 and 17:00 would otherwise sort in whatever
+                    // order the array held them. A missing time sorts to
+                    // the END of its day (§B1).
+                    else
+                        cmp = deadlineSortKey(
+                            a.dueDate,
+                            a.dueTime,
+                        ).localeCompare(deadlineSortKey(b.dueDate, b.dueTime));
                 } else if (sortBy === "created_at")
                     cmp = a.createdAt.localeCompare(b.createdAt);
                 else if (sortBy === "updated_at")
@@ -136,6 +154,11 @@ export const ListView = ({ listId }: ListViewProps) => {
         filters,
         sortBy,
         sortDir,
+        // The deadline rule reads both: the workspace zone decides what
+        // "5 PM" means, and the shared tick is what makes an Overdue filter
+        // on an open page keep up with the badges beside it.
+        now,
+        ws?.settings.timezone,
     ]);
 
     // Group tasks
