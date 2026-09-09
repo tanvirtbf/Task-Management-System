@@ -4,6 +4,7 @@ import type { TasksRepo } from "../repositories/TasksRepo";
 import type { UsersRepo } from "../repositories/UsersRepo";
 import { toWireUser, type WireUser } from "../serializers/userSerializer";
 import { addDaysYmd, weekBoundsUtc } from "../utils/dhakaTime";
+import { type WorkspaceNow } from "../utils/deadline";
 
 /**
  * Dept Review V1 — P18: the weekly report payload computer.
@@ -89,8 +90,12 @@ export interface ComputeWeekInput {
     workspaceId: string;
     /** Dhaka Monday (`YYYY-MM-DD`) — the caller validates Monday-ness. */
     weekStart: string;
-    /** Point-in-time "today" (Dhaka `YYYY-MM-DD`), injected for determinism. */
-    today: string;
+    /**
+     * Point-in-time "now" on the COMPANY calendar, injected for determinism.
+     * Dhaka by design (P12): the Monday 09:00 HR report is a company event and
+     * must not move when a workspace re-zones itself.
+     */
+    now: WorkspaceNow;
     /** Totals copied from the PREVIOUS week's stored row; null when absent. */
     prevTotals: { completed: number; overdue_now: number } | null;
 }
@@ -130,8 +135,8 @@ export class ReportStatsService {
 
         const [pointInTime, totalsNow, completionsBy, completionsTot, actions] =
             await Promise.all([
-                this.reviews.memberSummary(input.spaceId, input.today),
-                this.reviews.summaryTotals(input.spaceId, input.today),
+                this.reviews.memberSummary(input.spaceId, input.now),
+                this.reviews.summaryTotals(input.spaceId, input.now),
                 this.reviews.completionsByAssignee(
                     input.spaceId,
                     fromUtc,

@@ -7,8 +7,8 @@ import { WorkspaceRepo } from "../repositories/WorkspaceRepo";
 import { MailService } from "../services/MailService";
 import { pushSvc } from "../services/PushService";
 import { taskUrlOf } from "../services/TaskEmailService";
-import { todayInZone } from "../utils/dhakaTime";
 import type { JobContext, JobOutcome } from "./types";
+import { workspaceNow } from "../utils/deadline";
 
 /**
  * §28 overdue-alert (every 10 min): the moment a task's `due_date` has passed
@@ -68,10 +68,12 @@ export const overdueAlert = async ({
     let truncated = 0;
 
     for (const ws of await workspaces.listAll()) {
-        const today = todayInZone(ws.timezone);
+        // The workspace's own date AND clock — a deadline can now carry a
+        // time, so the date alone no longer decides it.
+        const now = workspaceNow(ws.timezone);
         const due = await tasksRepo.findOverdueUnnotified(
             ws.id,
-            today,
+            now,
             OVERDUE_BATCH_LIMIT,
         );
         processed += due.length;
@@ -126,7 +128,7 @@ export const overdueAlert = async ({
             });
             notified += 1;
 
-            const dueYmd = task.dueDate ? ymdOf(task.dueDate) : today;
+            const dueYmd = task.dueDate ? ymdOf(task.dueDate) : now.today;
             for (const u of recipients) {
                 outbox.push({
                     to: u.email,

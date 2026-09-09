@@ -20,7 +20,7 @@ import {
     scopePredicate,
     type VisibilityScope,
 } from "../../src/rbac/scope";
-import { dhakaToday } from "../../src/utils/dhakaTime";
+import { companyNow } from "../../src/utils/deadline";
 import { makeTask } from "../test-utils/factories";
 import {
     makeRbacList,
@@ -332,7 +332,7 @@ describe("L1 — department numbers must not follow the reader's reach", () => {
         // GROUND TRUTH — the number the dept-review feature reports today.
         const summary = await new ReviewsRepo(getDb()).summaryTotals(
             marketing,
-            dhakaToday(),
+            companyNow(),
         );
         expect(summary.open).toBe(3);
 

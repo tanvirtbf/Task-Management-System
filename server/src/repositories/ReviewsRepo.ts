@@ -27,6 +27,7 @@ import {
 } from "../db/schema";
 import { fakeId } from "../utils";
 import type { DbExecutor } from "./types";
+import { sqlDeadlinePassed, sqlDueTodayNotYetLate, type WorkspaceNow } from "../utils/deadline";
 
 /** The done-side status groups as an array for `inArray` (D-4 authority). */
 const DONE_ARR = [...DONE_STATUS_GROUPS] as Array<
@@ -182,7 +183,7 @@ export class ReviewsRepo {
     // traversal joins `lists` (this is the codebase's first space-scoped task
     // query — by design, see plan §2.3 invariant).
 
-    private bucketPredicate(bucket: QueueBucket, today: string): SQL {
+    private bucketPredicate(bucket: QueueBucket, now: WorkspaceNow): SQL {
         switch (bucket) {
             case "needs_review":
                 return and(
@@ -195,12 +196,12 @@ export class ReviewsRepo {
                 // NULL due_date compares NULL → excluded by SQL semantics.
                 return and(
                     notInArray(statuses.statusGroup, DONE_ARR),
-                    sql`${tasks.dueDate} < ${today}`,
+                    sqlDeadlinePassed(now),
                 ) as SQL;
             case "due_today":
                 return and(
                     notInArray(statuses.statusGroup, DONE_ARR),
-                    sql`${tasks.dueDate} = ${today}`,
+                    sqlDueTodayNotYetLate(now),
                 ) as SQL;
         }
     }
@@ -218,14 +219,14 @@ export class ReviewsRepo {
     async queuePage(params: {
         spaceId: string;
         bucket: QueueBucket;
-        today: string;
+        now: WorkspaceNow;
         memberId?: string;
         afterInternalId?: bigint;
         limit: number;
     }): Promise<TaskRow[]> {
         const conds: SQL[] = [
             isNull(tasks.archivedAt),
-            this.bucketPredicate(params.bucket, params.today),
+            this.bucketPredicate(params.bucket, params.now),
         ];
         if (params.memberId) conds.push(this.memberExists(params.memberId));
         if (params.afterInternalId !== undefined) {
@@ -253,12 +254,12 @@ export class ReviewsRepo {
     async queueCount(params: {
         spaceId: string;
         bucket: QueueBucket;
-        today: string;
+        now: WorkspaceNow;
         memberId?: string;
     }): Promise<number> {
         const conds: SQL[] = [
             isNull(tasks.archivedAt),
-            this.bucketPredicate(params.bucket, params.today),
+            this.bucketPredicate(params.bucket, params.now),
         ];
         if (params.memberId) conds.push(this.memberExists(params.memberId));
         const [row] = await this.db
@@ -285,7 +286,7 @@ export class ReviewsRepo {
      */
     async memberSummary(
         spaceId: string,
-        today: string,
+        now: WorkspaceNow,
     ): Promise<MemberSummaryRow[]> {
         const done = inArray(statuses.statusGroup, DONE_ARR);
         const notDone = notInArray(statuses.statusGroup, DONE_ARR);
@@ -296,11 +297,11 @@ export class ReviewsRepo {
                     Number,
                 ),
                 dueToday:
-                    sql<number>`COALESCE(SUM(CASE WHEN ${notDone} AND ${tasks.dueDate} = ${today} THEN 1 ELSE 0 END), 0)`.mapWith(
+                    sql<number>`COALESCE(SUM(CASE WHEN ${notDone} AND ${sqlDueTodayNotYetLate(now)} THEN 1 ELSE 0 END), 0)`.mapWith(
                         Number,
                     ),
                 overdue:
-                    sql<number>`COALESCE(SUM(CASE WHEN ${notDone} AND ${tasks.dueDate} < ${today} THEN 1 ELSE 0 END), 0)`.mapWith(
+                    sql<number>`COALESCE(SUM(CASE WHEN ${notDone} AND ${sqlDeadlinePassed(now)} THEN 1 ELSE 0 END), 0)`.mapWith(
                         Number,
                     ),
                 doneUnreviewed:
@@ -331,7 +332,7 @@ export class ReviewsRepo {
     /** Task-level (deduped) totals — independent of the per-assignee rows. */
     async summaryTotals(
         spaceId: string,
-        today: string,
+        now: WorkspaceNow,
     ): Promise<SummaryTotals> {
         const done = inArray(statuses.statusGroup, DONE_ARR);
         const notDone = notInArray(statuses.statusGroup, DONE_ARR);
@@ -341,11 +342,11 @@ export class ReviewsRepo {
                     Number,
                 ),
                 dueToday:
-                    sql<number>`COALESCE(SUM(CASE WHEN ${notDone} AND ${tasks.dueDate} = ${today} THEN 1 ELSE 0 END), 0)`.mapWith(
+                    sql<number>`COALESCE(SUM(CASE WHEN ${notDone} AND ${sqlDueTodayNotYetLate(now)} THEN 1 ELSE 0 END), 0)`.mapWith(
                         Number,
                     ),
                 overdue:
-                    sql<number>`COALESCE(SUM(CASE WHEN ${notDone} AND ${tasks.dueDate} < ${today} THEN 1 ELSE 0 END), 0)`.mapWith(
+                    sql<number>`COALESCE(SUM(CASE WHEN ${notDone} AND ${sqlDeadlinePassed(now)} THEN 1 ELSE 0 END), 0)`.mapWith(
                         Number,
                     ),
                 doneUnreviewed:

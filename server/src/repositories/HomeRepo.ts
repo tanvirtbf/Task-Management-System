@@ -17,6 +17,7 @@ import { listScopeFilter } from "../rbac/context";
 import { taskOwnEscape } from "../rbac/ownEscape";
 import { lists, spaces, statuses, taskAssignees, tasks } from "../db/schema";
 import type { Task as TaskRow } from "../db/schema";
+import { sqlDeadlinePassed, sqlDueTodayNotYetLate, type WorkspaceNow } from "../utils/deadline";
 
 /**
  * §25 Home data access. Owns the workspace-scoped aggregate queries behind the
@@ -87,11 +88,15 @@ export class HomeRepo {
             .groupBy(DAY);
     }
 
-    /** dueToday: my open tasks due exactly on `today` (a `YYYY-MM-DD`). */
+    /**
+     * dueToday: my open tasks due on the workspace's today whose time (if
+     * any) has not yet arrived. Kept DISJOINT from `overdueSeries` — a task
+     * due at 09:00 belongs to exactly one tile at 10:00, not both.
+     */
     async dueTodaySeries(
         workspaceId: string,
         userId: string,
-        today: string,
+        now: WorkspaceNow,
     ): Promise<DayCount[]> {
         return this.db
             .select({ day: DAY, cnt: count() })
@@ -104,17 +109,17 @@ export class HomeRepo {
                     eq(taskAssignees.userId, userId),
                     isNull(tasks.archivedAt),
                     notInArray(statuses.statusGroup, CLOSED_GROUPS),
-                    sql`${tasks.dueDate} = ${today}`,
+                    sqlDueTodayNotYetLate(now),
                 ),
             )
             .groupBy(DAY);
     }
 
-    /** overdue: my open tasks whose due date is before `today`. */
+    /** overdue: my open tasks whose deadline has passed (upgrades/027). */
     async overdueSeries(
         workspaceId: string,
         userId: string,
-        today: string,
+        now: WorkspaceNow,
     ): Promise<DayCount[]> {
         return this.db
             .select({ day: DAY, cnt: count() })
@@ -127,7 +132,7 @@ export class HomeRepo {
                     eq(taskAssignees.userId, userId),
                     isNull(tasks.archivedAt),
                     notInArray(statuses.statusGroup, CLOSED_GROUPS),
-                    sql`${tasks.dueDate} < ${today}`,
+                    sqlDeadlinePassed(now),
                 ),
             )
             .groupBy(DAY);
@@ -257,11 +262,11 @@ export class HomeRepo {
         workspaceId: string;
         userId: string;
         bucket: MyTaskBucket;
-        /** `YYYY-MM-DD` in the WORKSPACE's timezone (the canonical clock). */
-        today: string;
+        /** The workspace date AND clock (upgrades/027 — deadlines carry a time). */
+        now: WorkspaceNow;
         limit: number;
     }): Promise<MyTaskRow[]> {
-        const { workspaceId, userId, bucket, today, limit } = input;
+        const { workspaceId, userId, bucket, now, limit } = input;
 
         const projection = {
             id: tasks.id,
@@ -310,13 +315,16 @@ export class HomeRepo {
         const open = notInArray(statuses.statusGroup, CLOSED_GROUPS);
         const where =
             bucket === "overdue"
-                ? and(mine, open, sql`${tasks.dueDate} < ${today}`)
+                ? and(mine, open, sqlDeadlinePassed(now))
                 : bucket === "due_soon"
                   ? and(
                         mine,
                         open,
-                        sql`${tasks.dueDate} >= ${today}`,
-                        sql`${tasks.dueDate} <= DATE_ADD(${today}, INTERVAL 7 DAY)`,
+                        // Date window, plus NOT-already-late so the two
+                        // buckets stay disjoint (upgrades/027).
+                        sql`${tasks.dueDate} >= ${now.today}`,
+                        sql`${tasks.dueDate} <= DATE_ADD(${now.today}, INTERVAL 7 DAY)`,
+                        sql`NOT ${sqlDeadlinePassed(now)}`,
                     )
                   : bucket === "done_recent"
                     ? and(mine, inArray(statuses.statusGroup, CLOSED_GROUPS))

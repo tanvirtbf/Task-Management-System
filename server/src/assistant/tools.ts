@@ -1091,7 +1091,7 @@ async function personTasksTool(
     if (resolved.failure) return resolved.failure;
     const person = resolved.person;
 
-    const todayYmd = await services.home.todayFor(ctx.workspaceId);
+    const now = await services.home.nowFor(ctx.workspaceId);
     // Rolling window ending now — "last 30 days" the way people mean it. The
     // small forward slack keeps a completion from this very second inside.
     const untilExclusive = new Date(Date.now() + 60 * 1000);
@@ -1103,7 +1103,7 @@ async function personTasksTool(
         targetUserId: person.id,
         workspaceId: ctx.workspaceId,
         bucket,
-        todayYmd,
+        now,
         ...(bucket === "completed" ? { since, untilExclusive } : {}),
         limit: PERSON_TASKS_CAP + 1,
     });
@@ -1217,14 +1217,14 @@ async function teamStatsTool(
     const since = new Date(
         untilExclusive.getTime() - windowDays * 24 * 60 * 60 * 1000,
     );
-    const todayYmd = await services.home.todayFor(ctx.workspaceId);
+    const now = await services.home.nowFor(ctx.workspaceId);
 
     const stats = await services.tasks.teamWindowStats({
         spaceId: team.id,
         workspaceId: ctx.workspaceId,
         since,
         untilExclusive,
-        todayYmd,
+        now,
     });
 
     // People are shown as NAMES, resolved workspace-scoped — never emails.

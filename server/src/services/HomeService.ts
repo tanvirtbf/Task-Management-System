@@ -11,6 +11,7 @@ import type { WorkspaceRepo } from "../repositories/WorkspaceRepo";
 import { toWireTask, type WireTask } from "../serializers/taskSerializer";
 import { todayInZone, zoneDateOf } from "../utils/dhakaTime";
 import type { HomeKpi, HomeKpiSet } from "../types/home";
+import { workspaceNow, type WorkspaceNow } from "../utils/deadline";
 
 /**
  * §25 Home business logic. Computes the 6 KPI tiles (camelCase `HomeKpiSet`) and
@@ -75,7 +76,9 @@ export class HomeService {
         for (let i = SPARKLINE_DAYS - 1; i >= 0; i--) {
             days.push(zoneDateOf(new Date(now.getTime() - i * DAY_MS), zone));
         }
-        const today = days[days.length - 1];
+        // The tiles judge a DEADLINE, which now carries an optional time, so
+        // they need the workspace clock as well as its date (upgrades/027).
+        const wsNow = workspaceNow(zone);
 
         const [
             myRows,
@@ -86,8 +89,8 @@ export class HomeService {
             slaRows,
         ] = await Promise.all([
             this.homeRepo.myOpenSeries(workspaceId, userId),
-            this.homeRepo.dueTodaySeries(workspaceId, userId, today),
-            this.homeRepo.overdueSeries(workspaceId, userId, today),
+            this.homeRepo.dueTodaySeries(workspaceId, userId, wsNow),
+            this.homeRepo.overdueSeries(workspaceId, userId, wsNow),
             this.homeRepo.awaitingReviewSeries(workspaceId, userId),
             this.homeRepo.openTeamSeries(workspaceId),
             this.homeRepo.slaBreachesSeries(workspaceId, now),
@@ -137,6 +140,14 @@ export class HomeService {
         return todayInZone(await this.zoneOf(workspaceId));
     }
 
+    /**
+     * The same clock as the pair the deadline rule needs. upgrades/027 gave a
+     * deadline an optional time, so "overdue" is no longer a date comparison.
+     */
+    async nowFor(workspaceId: string): Promise<WorkspaceNow> {
+        return workspaceNow(await this.zoneOf(workspaceId));
+    }
+
     async myTasks(input: {
         workspaceId: string;
         userId: string;
@@ -145,7 +156,7 @@ export class HomeService {
     }): Promise<MyTaskRow[]> {
         return this.homeRepo.myTasksByBucket({
             ...input,
-            today: todayInZone(await this.zoneOf(input.workspaceId)),
+            now: await this.nowFor(input.workspaceId),
         });
     }
 

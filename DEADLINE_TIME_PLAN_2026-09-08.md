@@ -291,6 +291,123 @@ ship on its own.
 **Exit:** the overdue job's behaviour is unchanged for every time-less task (the whole existing
 dataset), and correct for a timed one.
 
+**✅ P2 DONE — 2026-09-09.**
+
+There is now exactly one deadline rule and it lives in **`server/src/utils/deadline.ts`**.
+**22 call sites across 8 files** read it; nothing decides overdue for itself any more.
+
+### ⚠️ I did NOT build what step 1 above describes, and the difference matters
+
+The plan said `deadlineInstant(dueDate, dueTime, tz) → Date | null`, in `utils/dhakaTime.ts`.
+A `Date` is the obvious shape and it is the wrong one. MySQL cannot compare a JS `Date` against
+`due_date` + `due_time` without constructing one **per row**, which throws away the index on
+`due_date` — and the overdue-alert job scans the whole task table on a `*/10` cron. P13 measured
+that path deliberately; handing it a full scan would undo that.
+
+What exists instead resolves the zone **once, in Node**, into two plain strings:
+
+```ts
+interface WorkspaceNow { today: string; /* YYYY-MM-DD */ clock: string; /* HH:MM */ }
+```
+
+and then compares calendar-day to calendar-day and clock to clock. `due_date` stays sargable,
+and the database does no timezone arithmetic at all. It also went in a **new file** rather than
+into `dhakaTime.ts`: that module holds the zone *primitives* (`todayInZone`, `clockInZone`), and
+the deadline *rule* is a different thing that deserves a place where it can be found.
+
+### The rule is written TWICE, on purpose, with a proof that both agree
+
+The judgement is made in two irreconcilable places: repositories decide it inside a `WHERE` over
+thousands of rows, services and jobs decide it for one task already in memory. So there is a JS
+predicate *and* a SQL fragment — in the same file, and
+`tests/tasks/deadline-resolver.test.ts` runs both across **4 dates × 6 times = 24 real rows** and
+fails the moment they disagree. Two implementations in one file with a proof they match is
+honest; two in two files is the bug this module exists to prevent.
+
+### The property the whole migration rests on
+
+For a task with **no** `due_time` — which is every task that exists today — the new rule must
+return exactly what `due_date < today` returned. If that were ever false, shipping 027 would
+silently re-judge the entire production dataset. It is asserted **against the old expression
+itself**, not against my opinion of it, in both forms:
+
+- a time-less task due today is not late at `00:01`, `09:00`, `14:30`, `23:58` or `23:59`;
+- the SQL reproduces `legacyOverdue(date)` for every time-less row.
+
+A timed task is late **from its minute onward and not before** (`16:59` no, `17:00` yes,
+`17:01` yes), and a time on a past day is late whatever the clock says.
+
+### `due_soon` and `overdue` were about to start double-counting
+
+Before 027 the Home buckets were disjoint by construction (`< today` vs `>= today`). Add a time
+and they stop being: a task due **today at 09:00** is overdue at 10:00 **and** still inside the
+seven-day window. It would have appeared in both tiles, and the second one anybody noticed would
+have been called a caching bug. `due_soon` now also carries `NOT sqlDeadlinePassed(now)` in both
+`HomeRepo.myTasksByBucket` and its twin in `TasksRepo` (the assistant's), which HomeRepo's own
+comment already said must never disagree with it. For a time-less task this changes nothing —
+such a task is never late on its own day — which is why the existing tests stayed green.
+
+### How the call sites were found — by the compiler, not by grep
+
+Every signature changed from `today: string` to `now: WorkspaceNow` rather than gaining an
+optional second argument. A bare `string` would have let every existing caller keep compiling
+while quietly meaning something new. Changing the *type* made `tsc` list them, including **17 in
+test files** I would not have thought to look at — `tests/assistant/insights-repo.test.ts` (15),
+`tests/dept-review/report-stats.test.ts` and `tests/rbac/principals.test.ts`. None of their
+assertions changed, and that is the point: no fixture in any of them sets a due time, so the
+reduction to the old rule holds.
+
+### The guard that keeps it one rule
+
+`tests/tasks/deadline-single-rule.test.ts` (5) scans every `.ts` under `src/` for the two shapes
+that ARE a deadline judgement — `${tasks.dueDate} <` (strict) and `${tasks.dueDate} = ${…today}`
+— and fails on any outside the resolver. It deliberately does **not** match `>=` / `<=` date
+*windows*: the seven-day look-ahead, an agenda for a requested day, and the caller's
+`dueAfter`/`dueBefore` filter are ranges over a calendar, not verdicts about lateness, and they
+stay date-only. **Seven such windows remain and all seven are correct.**
+
+Like P13's `write-paths-recompute`, it was **proved able to fire, against the real tree** — the
+old ``sql`${tasks.dueDate} < ${today}` `` line was reinstated in `ReviewsRepo.ts` and the guard
+reported `repositories/ReviewsRepo.ts:1 overdue` before the file was restored. It also asserts
+the resolver is actually *used* by all three repositories and the job, since deleting every call
+site would otherwise satisfy it.
+
+### ⛔ A correction: the `CAST` is deliberate but NOT load-bearing
+
+The SQL compares `due_time <= CAST(? AS TIME)`. I wrote a comment claiming the cast was what
+kept `'17:00:00' <= '17:00'` from being false, then mutation-tested it: **removing the cast
+failed nothing.** `due_time` is a `TIME` column, so MySQL coerces the string operand rather than
+degrading the column to text. The comment now says what is true — the cast is an explicit
+statement that this is a time comparison, and insurance for the day the left side stops being a
+bare column (a `COALESCE(due_time, '…')` *would* make it a string compare, where the longer
+string wins on the shared prefix). The JS side has no such protection, so `hhmm()` trims both
+operands there, with a test for the stored-`HH:MM:SS` versus wire-`HH:MM` case.
+
+### What was routed
+
+`TasksRepo` (`findOverdueUnnotified`, `personTasksVisible`, `teamWindowStats`, the my-work
+buckets), `HomeRepo` (`dueTodaySeries`, `overdueSeries`, `myTasksByBucket`), `ReviewsRepo`
+(`bucketPredicate`, `memberSummary`, `summaryTotals`, `queuePage`, `queueCount`),
+`jobs/overdueAlert.ts`, `HomeService`, `ReviewsService`, `ReportStatsService`, `ReportsService`
+and `assistant/tools.ts`.
+
+The company-versus-workspace split P12 established is preserved and now named: reviews and the
+assistant resolve `workspaces.timezone`; the Monday 09:00 HR report and the on-call roster call
+`companyNow()`, which is Asia/Dhaka deliberately and says so at the call site — an unexplained
+literal zone is exactly what a later "consistency" refactor deletes.
+
+**Gate:** tasks **450/450** · tasks10 **450/450** (both 433 before P2: +12 resolver, +5 guard) ·
+home 33 · assistant 289 · deptreview 122 · jobs 148 · rbac 367 — **7 modules, 1,859 passed, 0
+failed.** `tsc --noEmit` clean on `src` and on `tsconfig.tests.json`; eslint 0/0 across `src` and
+`tests`.
+
+**Not done here, on purpose:** nothing *displays* any of this yet. `DueDateBadge` still renders
+exactly what P0 pinned, no countdown exists, and no picker can set a time — P3 and P4. The
+server now judges a timed deadline correctly and a time-less one identically to before, which is
+what makes this phase safe to ship alone.
+
+
+
 ### P3 — The pickers (input)
 
 1. `TimePicker format="h:mm A"` beside the date in: `CreateTaskModal`, `InlineDateEdit`,

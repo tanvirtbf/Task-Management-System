@@ -18,7 +18,6 @@ import type {
 } from "./ReportStatsService";
 import {
     addDaysYmd,
-    dhakaToday,
     dhakaWeekOf,
     isDhakaMonday,
     previousWeekStart,
@@ -30,6 +29,7 @@ import {
     type WireDepartmentReportListItem,
 } from "../serializers/reportSerializer";
 import { Roles, type Role } from "../constants";
+import { companyNow } from "../utils/deadline";
 
 /**
  * Dept Review V1 — reports read-side (P19; P20 adds generation, P21 the
@@ -147,7 +147,7 @@ export class ReportsService {
             spaceId: input.space.id,
             workspaceId: input.space.workspaceId,
             weekStart: input.weekStart,
-            today: dhakaToday(),
+            now: companyNow(),
             prevTotals,
         });
 

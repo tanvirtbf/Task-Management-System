@@ -6,6 +6,7 @@ import { ReviewsRepo } from "../../src/repositories/ReviewsRepo";
 import { TasksRepo } from "../../src/repositories/TasksRepo";
 import { UsersRepo } from "../../src/repositories/UsersRepo";
 import { ReportStatsService } from "../../src/services/ReportStatsService";
+import type { WorkspaceNow } from "../../src/utils/deadline";
 import {
     addDaysYmd,
     dhakaWeekOf,
@@ -34,6 +35,14 @@ import {
 
 const WEEK = "2026-07-13"; // a Dhaka Monday
 const TODAY = "2026-07-22";
+/**
+ * upgrades/027: the report's point-in-time is now a date AND a clock, since
+ * a deadline can carry a time. Midday deliberately, not midnight -- no
+ * fixture in this file sets a due time (so the clock is never consulted and
+ * every number below is unchanged), but a fixture that later does gets both
+ * an already-passed and a not-yet side of the same day to work with.
+ */
+const NOW: WorkspaceNow = { today: TODAY, clock: "12:00" };
 
 const service = () => {
     const db = getDb();
@@ -54,7 +63,7 @@ const compute = (
         spaceId,
         workspaceId,
         weekStart: WEEK,
-        today: TODAY,
+        now: NOW,
         prevTotals,
     });
 

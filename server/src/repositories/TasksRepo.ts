@@ -35,6 +35,7 @@ import type { ListTasksFilters } from "../types/tasks";
 import { listScopeFilter } from "../rbac/context";
 import { taskOwnEscape } from "../rbac/ownEscape";
 import type { DbExecutor } from "./types";
+import { sqlDeadlinePassed, type WorkspaceNow } from "../utils/deadline";
 
 /**
  * Data access for the `tasks` table. Services compose business logic over the
@@ -989,7 +990,7 @@ export class TasksRepo {
      */
     async findOverdueUnnotified(
         workspaceId: string,
-        todayYmd: string,
+        now: WorkspaceNow,
         limit: number,
     ): Promise<
         Array<{ id: string; name: string; dueDate: Date | null }>
@@ -1005,7 +1006,9 @@ export class TasksRepo {
                 and(
                     eq(tasks.workspaceId, workspaceId),
                     isNotNull(tasks.dueDate),
-                    sql`${tasks.dueDate} < ${todayYmd}`,
+                    // upgrades/027: the deadline is the date AND its optional
+                    // time. One rule, in src/utils/deadline.ts.
+                    sqlDeadlinePassed(now),
                     isNull(tasks.completedAt),
                     isNull(tasks.archivedAt),
                     isNull(tasks.overdueNotifiedAt),
@@ -1242,7 +1245,8 @@ export class TasksRepo {
         targetUserId: string;
         workspaceId: string;
         bucket: "open" | "overdue" | "due_soon" | "completed";
-        todayYmd: string;
+        /** The workspace date AND clock — a deadline can carry a time. */
+        now: WorkspaceNow;
         since?: Date;
         untilExclusive?: Date;
         limit: number;
@@ -1274,13 +1278,16 @@ export class TasksRepo {
         const open = notInArray(statuses.statusGroup, ["done", "closed"]);
         const where =
             input.bucket === "overdue"
-                ? and(base, open, sql`${tasks.dueDate} < ${input.todayYmd}`)
+                ? and(base, open, sqlDeadlinePassed(input.now))
                 : input.bucket === "due_soon"
                   ? and(
                         base,
                         open,
-                        sql`${tasks.dueDate} >= ${input.todayYmd}`,
-                        sql`${tasks.dueDate} <= DATE_ADD(${input.todayYmd}, INTERVAL 7 DAY)`,
+                        // Same shape as HomeRepo.myTasksByBucket, which this
+                        // must never disagree with (upgrades/027).
+                        sql`${tasks.dueDate} >= ${input.now.today}`,
+                        sql`${tasks.dueDate} <= DATE_ADD(${input.now.today}, INTERVAL 7 DAY)`,
+                        sql`NOT ${sqlDeadlinePassed(input.now)}`,
                     )
                   : input.bucket === "completed"
                     ? and(
@@ -1344,7 +1351,7 @@ export class TasksRepo {
         workspaceId: string;
         since: Date;
         untilExclusive: Date;
-        todayYmd: string;
+        now: WorkspaceNow;
     }): Promise<{
         createdCount: number;
         createdSample: {
@@ -1413,7 +1420,7 @@ export class TasksRepo {
         const overdueWhere = and(
             inSpace,
             notInArray(statuses.statusGroup, ["done", "closed"]),
-            sql`${tasks.dueDate} < ${input.todayYmd}`,
+            sqlDeadlinePassed(input.now),
         );
         const [overdueCountRow] = await this.db
             .select({ cnt: count() })

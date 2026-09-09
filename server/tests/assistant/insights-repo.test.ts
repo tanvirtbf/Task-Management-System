@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../../src/db/client";
 import { taskAssignees, tasks } from "../../src/db/schema";
 import { TasksRepo } from "../../src/repositories/TasksRepo";
+import type { WorkspaceNow } from "../../src/utils/deadline";
 import { runWithPrincipal } from "../../src/rbac/context";
 import { getPolicy, resetPolicy } from "../../src/rbac/policy";
 import { makeStatus, makeTask, makeUser } from "../test-utils/factories";
@@ -35,6 +36,21 @@ const now = new Date(Math.floor(Date.now() / 1000) * 1000);
 const ymd = (d: Date): string => d.toISOString().slice(0, 10);
 const daysFromNow = (n: number): Date => new Date(now.getTime() + n * DAY);
 const todayYmd = ymd(now);
+/**
+ * upgrades/027 gave a deadline an optional time, so these repos take the
+ * workspace's date AND its clock now, not a bare date. This world is UTC (the
+ * test DB session runs at +00:00), so the clock comes from the same instant
+ * todayYmd does.
+ *
+ * Every assertion below is unchanged on purpose. No fixture here sets a due
+ * time, and with no time the new rule reduces exactly to the old date-only
+ * one -- which is the property tests/tasks/deadline-resolver.test.ts exists
+ * to hold. If these ever start needing edits, that reduction has broken.
+ */
+const nowUtc: WorkspaceNow = {
+    today: todayYmd,
+    clock: now.toISOString().slice(11, 16),
+};
 
 // ─── one seeded world, shared by every test ─────────────────────────────────
 let repo: TasksRepo;
@@ -204,7 +220,7 @@ describe("personTasksVisible — the asker's eyes, never more", () => {
                 targetUserId: target.id,
                 workspaceId: wsId,
                 bucket: "open",
-                todayYmd,
+                now: nowUtc,
                 limit: 50,
             }),
         );
@@ -222,7 +238,7 @@ describe("personTasksVisible — the asker's eyes, never more", () => {
                 targetUserId: target.id,
                 workspaceId: wsId,
                 bucket: "open",
-                todayYmd,
+                now: nowUtc,
                 limit: 50,
             }),
         );
@@ -238,7 +254,7 @@ describe("personTasksVisible — the asker's eyes, never more", () => {
                 targetUserId: target.id,
                 workspaceId: wsId,
                 bucket: "overdue",
-                todayYmd,
+                now: nowUtc,
                 limit: 50,
             }),
         );
@@ -251,7 +267,7 @@ describe("personTasksVisible — the asker's eyes, never more", () => {
                 targetUserId: target.id,
                 workspaceId: wsId,
                 bucket: "due_soon",
-                todayYmd,
+                now: nowUtc,
                 limit: 50,
             }),
         );
@@ -264,7 +280,7 @@ describe("personTasksVisible — the asker's eyes, never more", () => {
                 targetUserId: target.id,
                 workspaceId: wsId,
                 bucket: "completed",
-                todayYmd,
+                now: nowUtc,
                 since: daysFromNow(-7),
                 untilExclusive: daysFromNow(1),
                 limit: 50,
@@ -277,7 +293,7 @@ describe("personTasksVisible — the asker's eyes, never more", () => {
                 targetUserId: target.id,
                 workspaceId: wsId,
                 bucket: "completed",
-                todayYmd,
+                now: nowUtc,
                 limit: 50,
             }),
         );
@@ -292,7 +308,7 @@ describe("personTasksVisible — the asker's eyes, never more", () => {
                 targetUserId: target.id,
                 workspaceId: wsId,
                 bucket: "open",
-                todayYmd,
+                now: nowUtc,
                 limit: 50,
             }),
         );
@@ -305,7 +321,7 @@ describe("personTasksVisible — the asker's eyes, never more", () => {
                 targetUserId: target.id,
                 workspaceId: wsId,
                 bucket: "open",
-                todayYmd,
+                now: nowUtc,
                 limit: 50,
             }),
         );
@@ -318,7 +334,7 @@ describe("personTasksVisible — the asker's eyes, never more", () => {
                 targetUserId: target.id,
                 workspaceId: wsId,
                 bucket: "overdue",
-                todayYmd,
+                now: nowUtc,
                 limit: 50,
             }),
         );
@@ -331,7 +347,7 @@ describe("personTasksVisible — the asker's eyes, never more", () => {
                 targetUserId: target.id,
                 workspaceId: wsId,
                 bucket: "open",
-                todayYmd,
+                now: nowUtc,
                 limit: 2,
             }),
         );
@@ -348,7 +364,7 @@ describe("teamWindowStats — counted only across what the asker can see", () =>
                 spaceId: spaceA,
                 workspaceId: wsId,
                 ...window,
-                todayYmd,
+                now: nowUtc,
             }),
         );
         // Created in-window & not archived: dueSoon, overdue, doneRecent,
@@ -378,7 +394,7 @@ describe("teamWindowStats — counted only across what the asker can see", () =>
                 workspaceId: wsId,
                 since: daysFromNow(-7),
                 untilExclusive: daysFromNow(1),
-                todayYmd,
+                now: nowUtc,
             }),
         );
         expect(s7.completedCount).toBe(1);
@@ -390,7 +406,7 @@ describe("teamWindowStats — counted only across what the asker can see", () =>
                 spaceId: spaceA,
                 workspaceId: wsId,
                 ...window,
-                todayYmd,
+                now: nowUtc,
             }),
         );
         expect(s.createdCount).toBe(5);
@@ -403,7 +419,7 @@ describe("teamWindowStats — counted only across what the asker can see", () =>
                 spaceId: spaceA,
                 workspaceId: wsId,
                 ...window,
-                todayYmd,
+                now: nowUtc,
             }),
         );
         expect(s.createdCount).toBe(0);
@@ -420,7 +436,7 @@ describe("teamWindowStats — counted only across what the asker can see", () =>
                 workspaceId: wsId,
                 since: daysFromNow(-3),
                 untilExclusive: daysFromNow(-2),
-                todayYmd,
+                now: nowUtc,
             }),
         );
         expect(s.createdCount).toBe(0);

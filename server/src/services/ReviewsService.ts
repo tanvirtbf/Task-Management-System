@@ -25,6 +25,7 @@ import type { NotificationsRepo } from "../repositories/NotificationsRepo";
 import type { UserListRow, UsersRepo } from "../repositories/UsersRepo";
 import type { WorkspaceRepo } from "../repositories/WorkspaceRepo";
 import { Roles, type Role } from "../constants";
+import { workspaceNow, type WorkspaceNow } from "../utils/deadline";
 
 /**
  * Dept Review V1 — review-domain business logic (DEPARTMENT_REVIEW_PLAN.md).
@@ -143,6 +144,16 @@ export class ReviewsService {
     private async todayFor(workspaceId: string): Promise<string> {
         const ws = await this.workspaces.findById(workspaceId);
         return todayInZone(ws?.timezone ?? "Asia/Dhaka");
+    }
+
+    /**
+     * The same clock, as the pair the deadline rule compares against — the
+     * queue buckets judge a DEADLINE, and upgrades/027 gave one an optional
+     * time, so the date alone no longer decides "overdue" or "due today".
+     */
+    private async nowFor(workspaceId: string): Promise<WorkspaceNow> {
+        const ws = await this.workspaces.findById(workspaceId);
+        return workspaceNow(ws?.timezone ?? "Asia/Dhaka");
     }
 
     /**
@@ -423,12 +434,12 @@ export class ReviewsService {
      */
     async reviewSummary(input: SpaceGuardInput): Promise<WireReviewSummary> {
         const space = await this.requireHeadOrAdmin(input);
-        const today = await this.todayFor(input.workspaceId);
+        const now = await this.nowFor(input.workspaceId);
 
         const [memberRows, totals]: [MemberSummaryRow[], SummaryTotals] =
             await Promise.all([
-                this.reviews.memberSummary(space.id, today),
-                this.reviews.summaryTotals(space.id, today),
+                this.reviews.memberSummary(space.id, now),
+                this.reviews.summaryTotals(space.id, now),
             ]);
 
         const memberIds = memberRows.flatMap((r) =>
@@ -505,7 +516,7 @@ export class ReviewsService {
     }> {
         const space = await this.requireHeadOrAdmin(input);
         const limit = clampQueueLimit(input.limit);
-        const today = await this.todayFor(input.workspaceId);
+        const now = await this.nowFor(input.workspaceId);
         const afterInternalId = input.cursor
             ? decodeQueueCursor(input.cursor)
             : undefined;
@@ -514,7 +525,7 @@ export class ReviewsService {
             this.reviews.queuePage({
                 spaceId: space.id,
                 bucket: input.bucket,
-                today,
+                now,
                 memberId: input.memberId,
                 afterInternalId,
                 limit: limit + 1,
@@ -522,7 +533,7 @@ export class ReviewsService {
             this.reviews.queueCount({
                 spaceId: space.id,
                 bucket: input.bucket,
-                today,
+                now,
                 memberId: input.memberId,
             }),
         ]);
