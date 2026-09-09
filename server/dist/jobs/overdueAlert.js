@@ -13,7 +13,7 @@ const WorkspaceRepo_1 = require("../repositories/WorkspaceRepo");
 const MailService_1 = require("../services/MailService");
 const PushService_1 = require("../services/PushService");
 const TaskEmailService_1 = require("../services/TaskEmailService");
-const dhakaTime_1 = require("../utils/dhakaTime");
+const deadline_1 = require("../utils/deadline");
 /**
  * §28 overdue-alert (every 10 min): the moment a task's `due_date` has passed
  * on its workspace's OWN calendar, tell every assignee — an in-app `overdue`
@@ -63,8 +63,10 @@ const overdueAlert = async ({ dryRun, }) => {
     let emailErrors = 0;
     let truncated = 0;
     for (const ws of await workspaces.listAll()) {
-        const today = (0, dhakaTime_1.todayInZone)(ws.timezone);
-        const due = await tasksRepo.findOverdueUnnotified(ws.id, today, OVERDUE_BATCH_LIMIT);
+        // The workspace's own date AND clock — a deadline can now carry a
+        // time, so the date alone no longer decides it.
+        const now = (0, deadline_1.workspaceNow)(ws.timezone);
+        const due = await tasksRepo.findOverdueUnnotified(ws.id, now, OVERDUE_BATCH_LIMIT);
         processed += due.length;
         if (due.length === OVERDUE_BATCH_LIMIT)
             truncated += 1;
@@ -99,13 +101,15 @@ const overdueAlert = async ({ dryRun, }) => {
                 await tasksRepo.markOverdueNotified([task.id], tx);
             });
             notified += 1;
-            const dueYmd = task.dueDate ? ymdOf(task.dueDate) : today;
+            // The date AND its time, so the alert cannot imply the whole
+            // day has gone by when only the hour has (P7.3).
+            const dueLabel = (0, deadline_1.deadlineLabel)(task.dueDate ? ymdOf(task.dueDate) : now.today, task.dueTime);
             for (const u of recipients) {
                 outbox.push({
                     to: u.email,
                     taskName: task.name,
                     taskId: task.id,
-                    dueYmd,
+                    dueLabel,
                 });
             }
             // Web Push to the same recipients' devices (§29c). A no-op when
@@ -114,7 +118,7 @@ const overdueAlert = async ({ dryRun, }) => {
             await (0, PushService_1.pushSvc)().taskOverdue({
                 taskId: task.id,
                 taskName: task.name,
-                dueYmd,
+                dueLabel,
                 recipientIds: recipients.map((u) => u.id),
             });
         }
@@ -123,7 +127,7 @@ const overdueAlert = async ({ dryRun, }) => {
                 await mail.sendTaskOverdueEmail(m.to, {
                     taskName: m.taskName,
                     taskUrl: (0, TaskEmailService_1.taskUrlOf)(m.taskId),
-                    dueYmd: m.dueYmd,
+                    dueLabel: m.dueLabel,
                 });
                 emailsSent += 1;
             }

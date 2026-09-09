@@ -224,6 +224,7 @@ class AssignmentRequestsRepo {
             spaceId: schema_1.spaces.id,
             spaceName: schema_1.spaces.name,
             dueDate: schema_1.tasks.dueDate,
+            dueTime: schema_1.tasks.dueTime,
             priority: schema_1.tasks.priority,
             archivedAt: schema_1.tasks.archivedAt,
         })

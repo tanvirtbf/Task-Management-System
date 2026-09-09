@@ -187,7 +187,7 @@ class MailService {
             to,
             subject: `Overdue: ${subjectName(p.taskName)}`,
             html: taskOverdueHtml(p),
-            text: `Your task "${p.taskName}" passed its due date (${p.dueYmd}) and is still open.\n` +
+            text: `Your task "${p.taskName}" passed its deadline (${p.dueLabel}) and is still open.\n` +
                 `আপনার কাজের নির্ধারিত সময় পার হয়ে গেছে — দয়া করে যত দ্রুত সম্ভব কাজটি শেষ করুন।\n\n${p.taskUrl}`,
         });
     }
@@ -338,8 +338,8 @@ const mentionHtml = (p) => shell("You were mentioned", `<strong>${escapeHtml(p.a
     `<strong>"${escapeHtml(p.taskName)}"</strong>:<br><br>` +
     `<em>"${escapeHtml(p.excerpt)}"</em><br><br>` +
     "আপনাকে একটি কমেন্টে mention করা হয়েছে — দেখে নিন।", { url: p.taskUrl, label: "Open task" });
-const taskOverdueHtml = (p) => shell("Your task is overdue", `Your task <strong>"${escapeHtml(p.taskName)}"</strong> passed its due date ` +
-    `(<strong>${escapeHtml(p.dueYmd)}</strong>) and is still open.<br><br>` +
+const taskOverdueHtml = (p) => shell("Your task is overdue", `Your task <strong>"${escapeHtml(p.taskName)}"</strong> passed its deadline ` +
+    `(<strong>${escapeHtml(p.dueLabel)}</strong>) and is still open.<br><br>` +
     "আপনার কাজের নির্ধারিত সময় পার হয়ে গেছে — দয়া করে যত দ্রুত সম্ভব কাজটি শেষ করুন।", { url: p.taskUrl, label: "Open task" });
 // ─── Assignment-approval mails (team-access P9) ──────────────────────────────
 // One template family; the KIND picks subject/heading/copy/CTA. Actor names,

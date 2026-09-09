@@ -48,7 +48,8 @@
 | `023_task_delete_approval.sql` | ✅ 2026-08-16 | ⏳ | ✅ 2026-09-03 (verified on the box: `t023=1`) |
 | `024_recurrence_spawn.sql` | ✅ 2026-08-16 | ⏳ | ✅ 2026-09-03 (verified: `t024=3` columns) |
 | `025_assigned_by.sql` | ✅ 2026-08-22 | ⏳ | ✅ 2026-09-03 ⚠️ the column ALREADY existed — see below |
-| `026_drop_redundant_indexes.sql` | ✅ 2026-09-07 | ⏳ | ⏳ ships with the P13 build |
+| `026_drop_redundant_indexes.sql` | ✅ 2026-09-07 | ⏳ | ✅ 2026-09-07 (test-plan P14 deploy) |
+| `027_task_deadline_time.sql` | ✅ 2026-09-08 | ⏳ | ⏳ ships with the DEADLINE_TIME_PLAN P8 build |
 
 > **⚠️ 2026-09-07 (test plan P14): the three rows above were stale bookkeeping for a
 > month.** `023`, `024` and `025` were all applied on 2026-09-03 and verified on the box

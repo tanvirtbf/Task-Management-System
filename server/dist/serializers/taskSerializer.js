@@ -24,6 +24,13 @@ const toWireDate = (value) => {
     const day = String(value.getUTCDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
 };
+/**
+ * A stored TIME (`HH:MM:SS`) as the wire's `HH:MM`.
+ *
+ * Defensive about the driver: mysql2 returns TIME as a string, but a caller
+ * that has already trimmed it must not be trimmed twice into nonsense.
+ */
+const toWireClock = (value) => value ? value.slice(0, 5) : null;
 /** Format a nullable TIMESTAMP to ISO-8601 UTC (`…Z`). */
 const toWireTimestamp = (value) => value ? value.toISOString() : null;
 const toWireTask = (t, h) => ({
@@ -42,6 +49,11 @@ const toWireTask = (t, h) => ({
     is_milestone: t.isMilestone,
     start_date: toWireDate(t.startDate),
     due_date: toWireDate(t.dueDate),
+    // MySQL hands a TIME back as `HH:MM:SS`; the wire carries `HH:MM`, the
+    // same shape `recurrence_time` established. Seconds are neither set by
+    // any caller nor meaningful for a deadline.
+    start_time: toWireClock(t.startTime),
+    due_time: toWireClock(t.dueTime),
     completed_at: toWireTimestamp(t.completedAt),
     review_status: t.reviewStatus,
     reviewed_at: toWireTimestamp(t.reviewedAt),

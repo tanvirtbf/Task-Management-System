@@ -102,6 +102,30 @@ exports.bulkTasksValidator = (0, express_validator_1.checkSchema)({
         },
         toInt: true,
     },
+    // upgrades/027 — optional time of day beside the matching date. `HH:MM`
+    // (24h) on the wire; the UI picks it with an AM/PM control. Absent or
+    // null does NOT mean midnight — end-of-day for due, start-of-day for
+    // start. That rule lives in the resolver, not in validation.
+    "patch.start_time": {
+        in: ["body"],
+        optional: optNullable,
+        matches: {
+            options: [/^([01]\d|2[0-3]):[0-5]\d$/],
+            errorMessage: "patch.start_time must be HH:MM (24-hour)",
+        },
+    },
+    // upgrades/027 — optional time of day beside the matching date. `HH:MM`
+    // (24h) on the wire; the UI picks it with an AM/PM control. Absent or
+    // null does NOT mean midnight — end-of-day for due, start-of-day for
+    // start. That rule lives in the resolver, not in validation.
+    "patch.due_time": {
+        in: ["body"],
+        optional: optNullable,
+        matches: {
+            options: [/^([01]\d|2[0-3]):[0-5]\d$/],
+            errorMessage: "patch.due_time must be HH:MM (24-hour)",
+        },
+    },
     "patch.due_date": {
         in: ["body"],
         optional: optNullable,
@@ -689,6 +713,30 @@ exports.createTaskValidator = (0, express_validator_1.checkSchema)({
             errorMessage: "custom_id must be at most 40 characters",
         },
     },
+    // upgrades/027 — optional time of day beside the matching date. `HH:MM`
+    // (24h) on the wire; the UI picks it with an AM/PM control. Absent or
+    // null does NOT mean midnight — end-of-day for due, start-of-day for
+    // start. That rule lives in the resolver, not in validation.
+    start_time: {
+        in: ["body"],
+        optional: optNullable,
+        matches: {
+            options: [/^([01]\d|2[0-3]):[0-5]\d$/],
+            errorMessage: "start_time must be HH:MM (24-hour)",
+        },
+    },
+    // upgrades/027 — optional time of day beside the matching date. `HH:MM`
+    // (24h) on the wire; the UI picks it with an AM/PM control. Absent or
+    // null does NOT mean midnight — end-of-day for due, start-of-day for
+    // start. That rule lives in the resolver, not in validation.
+    due_time: {
+        in: ["body"],
+        optional: optNullable,
+        matches: {
+            options: [/^([01]\d|2[0-3]):[0-5]\d$/],
+            errorMessage: "due_time must be HH:MM (24-hour)",
+        },
+    },
     start_date: {
         in: ["body"],
         optional: optNullable,
@@ -963,6 +1011,30 @@ exports.updateTaskValidator = (0, express_validator_1.checkSchema)({
         isLength: {
             options: { max: 40 },
             errorMessage: "custom_id must be at most 40 characters",
+        },
+    },
+    // upgrades/027 — optional time of day beside the matching date. `HH:MM`
+    // (24h) on the wire; the UI picks it with an AM/PM control. Absent or
+    // null does NOT mean midnight — end-of-day for due, start-of-day for
+    // start. That rule lives in the resolver, not in validation.
+    start_time: {
+        in: ["body"],
+        optional: optNullable,
+        matches: {
+            options: [/^([01]\d|2[0-3]):[0-5]\d$/],
+            errorMessage: "start_time must be HH:MM (24-hour)",
+        },
+    },
+    // upgrades/027 — optional time of day beside the matching date. `HH:MM`
+    // (24h) on the wire; the UI picks it with an AM/PM control. Absent or
+    // null does NOT mean midnight — end-of-day for due, start-of-day for
+    // start. That rule lives in the resolver, not in validation.
+    due_time: {
+        in: ["body"],
+        optional: optNullable,
+        matches: {
+            options: [/^([01]\d|2[0-3]):[0-5]\d$/],
+            errorMessage: "due_time must be HH:MM (24-hour)",
         },
     },
     start_date: {

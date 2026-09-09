@@ -4,6 +4,7 @@ exports.HomeService = void 0;
 const constants_1 = require("../constants");
 const taskSerializer_1 = require("../serializers/taskSerializer");
 const dhakaTime_1 = require("../utils/dhakaTime");
+const deadline_1 = require("../utils/deadline");
 /**
  * §25 Home business logic. Computes the 6 KPI tiles (camelCase `HomeKpiSet`) and
  * the daily agenda. Read-only, no transactions.
@@ -66,11 +67,13 @@ class HomeService {
         for (let i = SPARKLINE_DAYS - 1; i >= 0; i--) {
             days.push((0, dhakaTime_1.zoneDateOf)(new Date(now.getTime() - i * DAY_MS), zone));
         }
-        const today = days[days.length - 1];
+        // The tiles judge a DEADLINE, which now carries an optional time, so
+        // they need the workspace clock as well as its date (upgrades/027).
+        const wsNow = (0, deadline_1.workspaceNow)(zone);
         const [myRows, dueRows, overdueRows, reviewRows, teamRows, slaRows,] = await Promise.all([
             this.homeRepo.myOpenSeries(workspaceId, userId),
-            this.homeRepo.dueTodaySeries(workspaceId, userId, today),
-            this.homeRepo.overdueSeries(workspaceId, userId, today),
+            this.homeRepo.dueTodaySeries(workspaceId, userId, wsNow),
+            this.homeRepo.overdueSeries(workspaceId, userId, wsNow),
             this.homeRepo.awaitingReviewSeries(workspaceId, userId),
             this.homeRepo.openTeamSeries(workspaceId),
             this.homeRepo.slaBreachesSeries(workspaceId, now),
@@ -115,10 +118,17 @@ class HomeService {
     async todayFor(workspaceId) {
         return (0, dhakaTime_1.todayInZone)(await this.zoneOf(workspaceId));
     }
+    /**
+     * The same clock as the pair the deadline rule needs. upgrades/027 gave a
+     * deadline an optional time, so "overdue" is no longer a date comparison.
+     */
+    async nowFor(workspaceId) {
+        return (0, deadline_1.workspaceNow)(await this.zoneOf(workspaceId));
+    }
     async myTasks(input) {
         return this.homeRepo.myTasksByBucket({
             ...input,
-            today: (0, dhakaTime_1.todayInZone)(await this.zoneOf(input.workspaceId)),
+            now: await this.nowFor(input.workspaceId),
         });
     }
     async agenda(workspaceId, userId, role, date) {

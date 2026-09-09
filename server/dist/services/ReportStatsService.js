@@ -27,8 +27,8 @@ class ReportStatsService {
     async computeWeek(input) {
         const { fromUtc, toUtcExclusive } = (0, dhakaTime_1.weekBoundsUtc)(input.weekStart);
         const [pointInTime, totalsNow, completionsBy, completionsTot, actions] = await Promise.all([
-            this.reviews.memberSummary(input.spaceId, input.today),
-            this.reviews.summaryTotals(input.spaceId, input.today),
+            this.reviews.memberSummary(input.spaceId, input.now),
+            this.reviews.summaryTotals(input.spaceId, input.now),
             this.reviews.completionsByAssignee(input.spaceId, fromUtc, toUtcExclusive),
             this.reviews.completionsTotals(input.spaceId, fromUtc, toUtcExclusive),
             this.reviews.reviewActionsInWindow(input.spaceId, fromUtc, toUtcExclusive),

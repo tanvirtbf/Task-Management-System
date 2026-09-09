@@ -5,6 +5,7 @@ const drizzle_orm_1 = require("drizzle-orm");
 const context_1 = require("../rbac/context");
 const ownEscape_1 = require("../rbac/ownEscape");
 const schema_1 = require("../db/schema");
+const deadline_1 = require("../utils/deadline");
 /**
  * §25 Home data access. Owns the workspace-scoped aggregate queries behind the
  * 6 KPI tiles and the agenda. Self-contained: it does NOT touch the other
@@ -35,24 +36,28 @@ class HomeRepo {
             .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId), (0, drizzle_orm_1.eq)(schema_1.taskAssignees.userId, userId), (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt), (0, drizzle_orm_1.notInArray)(schema_1.statuses.statusGroup, CLOSED_GROUPS)))
             .groupBy(DAY);
     }
-    /** dueToday: my open tasks due exactly on `today` (a `YYYY-MM-DD`). */
-    async dueTodaySeries(workspaceId, userId, today) {
+    /**
+     * dueToday: my open tasks due on the workspace's today whose time (if
+     * any) has not yet arrived. Kept DISJOINT from `overdueSeries` — a task
+     * due at 09:00 belongs to exactly one tile at 10:00, not both.
+     */
+    async dueTodaySeries(workspaceId, userId, now) {
         return this.db
             .select({ day: DAY, cnt: (0, drizzle_orm_1.count)() })
             .from(schema_1.tasks)
             .innerJoin(schema_1.taskAssignees, (0, drizzle_orm_1.eq)(schema_1.taskAssignees.taskId, schema_1.tasks.id))
             .innerJoin(schema_1.statuses, (0, drizzle_orm_1.eq)(schema_1.statuses.id, schema_1.tasks.statusId))
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId), (0, drizzle_orm_1.eq)(schema_1.taskAssignees.userId, userId), (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt), (0, drizzle_orm_1.notInArray)(schema_1.statuses.statusGroup, CLOSED_GROUPS), (0, drizzle_orm_1.sql) `${schema_1.tasks.dueDate} = ${today}`))
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId), (0, drizzle_orm_1.eq)(schema_1.taskAssignees.userId, userId), (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt), (0, drizzle_orm_1.notInArray)(schema_1.statuses.statusGroup, CLOSED_GROUPS), (0, deadline_1.sqlDueTodayNotYetLate)(now)))
             .groupBy(DAY);
     }
-    /** overdue: my open tasks whose due date is before `today`. */
-    async overdueSeries(workspaceId, userId, today) {
+    /** overdue: my open tasks whose deadline has passed (upgrades/027). */
+    async overdueSeries(workspaceId, userId, now) {
         return this.db
             .select({ day: DAY, cnt: (0, drizzle_orm_1.count)() })
             .from(schema_1.tasks)
             .innerJoin(schema_1.taskAssignees, (0, drizzle_orm_1.eq)(schema_1.taskAssignees.taskId, schema_1.tasks.id))
             .innerJoin(schema_1.statuses, (0, drizzle_orm_1.eq)(schema_1.statuses.id, schema_1.tasks.statusId))
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId), (0, drizzle_orm_1.eq)(schema_1.taskAssignees.userId, userId), (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt), (0, drizzle_orm_1.notInArray)(schema_1.statuses.statusGroup, CLOSED_GROUPS), (0, drizzle_orm_1.sql) `${schema_1.tasks.dueDate} < ${today}`))
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId), (0, drizzle_orm_1.eq)(schema_1.taskAssignees.userId, userId), (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt), (0, drizzle_orm_1.notInArray)(schema_1.statuses.statusGroup, CLOSED_GROUPS), (0, deadline_1.sqlDeadlinePassed)(now)))
             .groupBy(DAY);
     }
     /**
@@ -137,12 +142,13 @@ class HomeRepo {
      * relationship to the caller, not a browse.
      */
     async myTasksByBucket(input) {
-        const { workspaceId, userId, bucket, today, limit } = input;
+        const { workspaceId, userId, bucket, now, limit } = input;
         const projection = {
             id: schema_1.tasks.id,
             customId: schema_1.tasks.customId,
             name: schema_1.tasks.name,
             dueDate: schema_1.tasks.dueDate,
+            dueTime: schema_1.tasks.dueTime,
             priority: schema_1.tasks.priority,
             reviewStatus: schema_1.tasks.reviewStatus,
             checklistTotal: schema_1.tasks.checklistItemsTotal,
@@ -167,9 +173,12 @@ class HomeRepo {
         const mine = (0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId), (0, drizzle_orm_1.eq)(schema_1.taskAssignees.userId, userId), (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt));
         const open = (0, drizzle_orm_1.notInArray)(schema_1.statuses.statusGroup, CLOSED_GROUPS);
         const where = bucket === "overdue"
-            ? (0, drizzle_orm_1.and)(mine, open, (0, drizzle_orm_1.sql) `${schema_1.tasks.dueDate} < ${today}`)
+            ? (0, drizzle_orm_1.and)(mine, open, (0, deadline_1.sqlDeadlinePassed)(now))
             : bucket === "due_soon"
-                ? (0, drizzle_orm_1.and)(mine, open, (0, drizzle_orm_1.sql) `${schema_1.tasks.dueDate} >= ${today}`, (0, drizzle_orm_1.sql) `${schema_1.tasks.dueDate} <= DATE_ADD(${today}, INTERVAL 7 DAY)`)
+                ? (0, drizzle_orm_1.and)(mine, open, 
+                // Date window, plus NOT-already-late so the two
+                // buckets stay disjoint (upgrades/027).
+                (0, drizzle_orm_1.sql) `${schema_1.tasks.dueDate} >= ${now.today}`, (0, drizzle_orm_1.sql) `${schema_1.tasks.dueDate} <= DATE_ADD(${now.today}, INTERVAL 7 DAY)`, (0, drizzle_orm_1.sql) `NOT ${(0, deadline_1.sqlDeadlinePassed)(now)}`)
                 : bucket === "done_recent"
                     ? (0, drizzle_orm_1.and)(mine, (0, drizzle_orm_1.inArray)(schema_1.statuses.statusGroup, CLOSED_GROUPS))
                     : (0, drizzle_orm_1.and)(mine, open);

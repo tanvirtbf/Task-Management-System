@@ -5,6 +5,7 @@ const drizzle_orm_1 = require("drizzle-orm");
 const schema_1 = require("../db/schema");
 const context_1 = require("../rbac/context");
 const ownEscape_1 = require("../rbac/ownEscape");
+const deadline_1 = require("../utils/deadline");
 class TasksRepo {
     db;
     constructor(db) {
@@ -669,15 +670,19 @@ class TasksRepo {
      * the task is already overdue still gets alerted on the next tick.
      * Served by `idx_tasks_overdue_scan`; `limit` bounds one tick's burst.
      */
-    async findOverdueUnnotified(workspaceId, todayYmd, limit) {
+    async findOverdueUnnotified(workspaceId, now, limit) {
         return this.db
             .select({
             id: schema_1.tasks.id,
             name: schema_1.tasks.name,
             dueDate: schema_1.tasks.dueDate,
+            dueTime: schema_1.tasks.dueTime,
         })
             .from(schema_1.tasks)
-            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId), (0, drizzle_orm_1.isNotNull)(schema_1.tasks.dueDate), (0, drizzle_orm_1.sql) `${schema_1.tasks.dueDate} < ${todayYmd}`, (0, drizzle_orm_1.isNull)(schema_1.tasks.completedAt), (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt), (0, drizzle_orm_1.isNull)(schema_1.tasks.overdueNotifiedAt), (0, drizzle_orm_1.exists)(this.db
+            .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, workspaceId), (0, drizzle_orm_1.isNotNull)(schema_1.tasks.dueDate), 
+        // upgrades/027: the deadline is the date AND its optional
+        // time. One rule, in src/utils/deadline.ts.
+        (0, deadline_1.sqlDeadlinePassed)(now), (0, drizzle_orm_1.isNull)(schema_1.tasks.completedAt), (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt), (0, drizzle_orm_1.isNull)(schema_1.tasks.overdueNotifiedAt), (0, drizzle_orm_1.exists)(this.db
             .select({ one: (0, drizzle_orm_1.sql) `1` })
             .from(schema_1.taskAssignees)
             .where((0, drizzle_orm_1.eq)(schema_1.taskAssignees.taskId, schema_1.tasks.id)))))
@@ -830,9 +835,12 @@ class TasksRepo {
         const base = (0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.tasks.workspaceId, input.workspaceId), (0, drizzle_orm_1.eq)(schema_1.taskAssignees.userId, input.targetUserId), (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt), visible);
         const open = (0, drizzle_orm_1.notInArray)(schema_1.statuses.statusGroup, ["done", "closed"]);
         const where = input.bucket === "overdue"
-            ? (0, drizzle_orm_1.and)(base, open, (0, drizzle_orm_1.sql) `${schema_1.tasks.dueDate} < ${input.todayYmd}`)
+            ? (0, drizzle_orm_1.and)(base, open, (0, deadline_1.sqlDeadlinePassed)(input.now))
             : input.bucket === "due_soon"
-                ? (0, drizzle_orm_1.and)(base, open, (0, drizzle_orm_1.sql) `${schema_1.tasks.dueDate} >= ${input.todayYmd}`, (0, drizzle_orm_1.sql) `${schema_1.tasks.dueDate} <= DATE_ADD(${input.todayYmd}, INTERVAL 7 DAY)`)
+                ? (0, drizzle_orm_1.and)(base, open, 
+                // Same shape as HomeRepo.myTasksByBucket, which this
+                // must never disagree with (upgrades/027).
+                (0, drizzle_orm_1.sql) `${schema_1.tasks.dueDate} >= ${input.now.today}`, (0, drizzle_orm_1.sql) `${schema_1.tasks.dueDate} <= DATE_ADD(${input.now.today}, INTERVAL 7 DAY)`, (0, drizzle_orm_1.sql) `NOT ${(0, deadline_1.sqlDeadlinePassed)(input.now)}`)
                 : input.bucket === "completed"
                     ? (0, drizzle_orm_1.and)(base, (0, drizzle_orm_1.inArray)(schema_1.statuses.statusGroup, ["done", "closed"]), input.since
                         ? (0, drizzle_orm_1.sql) `${schema_1.tasks.completedAt} >= ${input.since}`
@@ -846,6 +854,7 @@ class TasksRepo {
             name: schema_1.tasks.name,
             priority: schema_1.tasks.priority,
             dueDate: schema_1.tasks.dueDate,
+            dueTime: schema_1.tasks.dueTime,
             completedAt: schema_1.tasks.completedAt,
             reviewStatus: schema_1.tasks.reviewStatus,
             checklistTotal: schema_1.tasks.checklistItemsTotal,
@@ -893,6 +902,7 @@ class TasksRepo {
             name: schema_1.tasks.name,
             createdBy: schema_1.tasks.createdBy,
             dueDate: schema_1.tasks.dueDate,
+            dueTime: schema_1.tasks.dueTime,
         })
             .from(schema_1.tasks)
             .innerJoin(schema_1.lists, (0, drizzle_orm_1.eq)(schema_1.lists.id, schema_1.tasks.primaryListId))
@@ -911,7 +921,7 @@ class TasksRepo {
             .groupBy(schema_1.taskAssignees.userId)
             .orderBy((0, drizzle_orm_1.desc)((0, drizzle_orm_1.count)()))
             .limit(8);
-        const overdueWhere = (0, drizzle_orm_1.and)(inSpace, (0, drizzle_orm_1.notInArray)(schema_1.statuses.statusGroup, ["done", "closed"]), (0, drizzle_orm_1.sql) `${schema_1.tasks.dueDate} < ${input.todayYmd}`);
+        const overdueWhere = (0, drizzle_orm_1.and)(inSpace, (0, drizzle_orm_1.notInArray)(schema_1.statuses.statusGroup, ["done", "closed"]), (0, deadline_1.sqlDeadlinePassed)(input.now));
         const [overdueCountRow] = await this.db
             .select({ cnt: (0, drizzle_orm_1.count)() })
             .from(schema_1.tasks)
@@ -919,7 +929,12 @@ class TasksRepo {
             .innerJoin(schema_1.statuses, (0, drizzle_orm_1.eq)(schema_1.statuses.id, schema_1.tasks.statusId))
             .where(overdueWhere);
         const overdueSample = await this.db
-            .select({ id: schema_1.tasks.id, name: schema_1.tasks.name, dueDate: schema_1.tasks.dueDate })
+            .select({
+            id: schema_1.tasks.id,
+            name: schema_1.tasks.name,
+            dueDate: schema_1.tasks.dueDate,
+            dueTime: schema_1.tasks.dueTime,
+        })
             .from(schema_1.tasks)
             .innerJoin(schema_1.lists, (0, drizzle_orm_1.eq)(schema_1.lists.id, schema_1.tasks.primaryListId))
             .innerJoin(schema_1.statuses, (0, drizzle_orm_1.eq)(schema_1.statuses.id, schema_1.tasks.statusId))

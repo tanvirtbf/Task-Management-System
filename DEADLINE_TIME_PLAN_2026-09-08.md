@@ -968,6 +968,81 @@ changed. The probes remain worth running once there is disk for them, and that i
 
 **Exit:** live, and the "nothing changed for old tasks" check passes on production data.
 
+**🚢 P8 — step 1 DONE 2026-09-09. Steps 2–3 are the production deploy and await the user.**
+
+### Both dists rebuilt
+
+Client entry bundle is now **`assets/index-DTDutthI.js`** (replacing `index-BufrRhaG.js`, which
+production is serving). Server `dist` recompiled, 324 files. Every asset `index.html` references
+exists; the old build's assets were cleaned out, not left beside the new ones.
+
+**First load 474.5 KB gz**, against P13's measured 471.5 KB — **+3.0 KB** for the whole feature:
+the picker, the countdown, the shared clock, the resolver and the activity formatter. Worth
+recording because P13 fought for that number.
+
+### ⭐ The bundle was LOADED, not just built (P14's rule)
+
+*"Always load the PROD bundle before shipping — two production-only crashes the dev server never
+showed."* Done, against the real dev API, in Chrome.
+
+Getting there needed a harness, and the first attempt produced a **404 that looked like a bundle
+defect and was not**: `client/.env.production` bakes a RELATIVE `/api/v1`, because in production
+nginx serves `client/dist` at `/` and reverse-proxies that path. `vite preview` has no such proxy.
+The bundle was right and the harness was wrong — a throwaway static-server-plus-proxy in the
+scratchpad reproduces what nginx does, and everything worked from there.
+
+What the production build actually rendered, signed in as a real user:
+
+| checked | result |
+|---|---|
+| loads, mounts, routes, authenticates | ✅ Home renders in full |
+| console errors | **none** |
+| **P6** activity timestamps | `5 Sep, 8.09 PM` — not "4d ago" |
+| **P3** due chip carries the time | `Tomorrow 9:00 AM` |
+| **P4** countdown | `16h 48m left`, state `soon` |
+| **P5** §B4 label in the drawer | `Deadline 16h 48m left` |
+
+The countdown case was made real rather than mocked: a live dev task was given
+`due_date 2026-09-10, due_time 09:00` through the API, read back in the browser, and **both dev
+tasks were restored to their original dates afterwards**.
+
+One thing worth knowing for next time: a stale `bb_refresh` cookie from an earlier attempt made
+the app fail to bootstrap with `auth.refresh.reuse_detected`. That is the reuse-detection working
+correctly, not a defect — but it looks like a broken login, and the fix is to clear site data and
+sign in once cleanly.
+
+### The deploy prompt is regenerated — and this deploy is NOT like the last one
+
+`DEPLOY_PROMPT_2026-09-09.md` replaces `DEPLOY_PROMPT_2026-09-07.md`, which is deleted. The old one
+was not wrong when written; two things went stale and **one instruction in it is actively unsafe
+here**:
+
+- Its canary (`index-BufrRhaG.js`) is what production serves now, so it could no longer detect a
+  failed deploy.
+- ⛔ It said *"either order is safe — run the SQL first anyway"*. True of `026`, which only dropped
+  indexes. **False for `027`, which ADDS two columns the new server code SELECTs.** Restart before
+  the SQL lands and every task read 500s.
+
+The order is **pull → SQL → restart**, and the pull has to come first because the SQL file does not
+exist on the box until it does. That leaves a short window where the new client talks to the old
+API; the prompt says so, and says why it is mild (the old API just does not return a time).
+
+The prompt's own exit check is the one that matters: **`SUM(due_time IS NOT NULL)` on live
+production rows must be 0.** Every task that exists keeps the whole-day deadline it has today,
+which is §B1's promise measured on real data rather than asserted.
+
+The upgrades tracker now records `026` as applied to production on 2026-09-07 and `027` as pending
+this build.
+
+### ⏳ What is NOT done, and needs the user
+
+- **The production deploy itself** (plan steps 2 and 3). It needs an SSH session and a decision
+  that now is the moment; it is not something to fire off unasked.
+- **Playwright**, owed since P3 and P5. Opt-in because it writes to the DEV database and sends real
+  mail through a live Mailtrap host.
+- **The scale probes** from P7, still blocked on disk (MySQL's data directory is on a drive with
+  under 1 GB free).
+
 ---
 
 ## §D — Risk register

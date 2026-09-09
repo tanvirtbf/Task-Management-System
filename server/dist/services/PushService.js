@@ -132,7 +132,7 @@ class PushService {
     async taskOverdue(input) {
         await this.fanout(input.recipientIds, {
             title: "Task overdue — please finish it",
-            body: `"${input.taskName}" (due ${input.dueYmd})`,
+            body: `"${input.taskName}" (due ${input.dueLabel})`,
             url: `/t/${input.taskId}`,
             tag: `bb-overdue-${input.taskId}`,
         });

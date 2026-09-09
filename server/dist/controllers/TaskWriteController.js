@@ -21,6 +21,8 @@ const NULLABLE_TASK_PATCH_FIELDS = [
     "description",
     "start_date",
     "due_date",
+    "start_time",
+    "due_time",
     "recurrence_days",
     "recurrence_time",
     "recurrence_ends_at",
@@ -73,6 +75,8 @@ class TaskWriteController {
                 customId: b.custom_id,
                 startDate: b.start_date,
                 dueDate: b.due_date,
+                startTime: b.start_time,
+                dueTime: b.due_time,
                 recurrencePattern: b.recurrence_pattern,
                 recurrenceDays: b.recurrence_days,
                 recurrenceTime: b.recurrence_time,
@@ -181,6 +185,8 @@ class TaskWriteController {
                     customId: b.custom_id,
                     startDate: b.start_date,
                     dueDate: b.due_date,
+                    startTime: b.start_time,
+                    dueTime: b.due_time,
                     recurrencePattern: b.recurrence_pattern,
                     recurrenceDays: b.recurrence_days,
                     recurrenceTime: b.recurrence_time,
@@ -302,6 +308,12 @@ class TaskWriteController {
                 "priority",
                 "due_date",
                 "start_date",
+                // upgrades/027. P1 added these to the bulk VALIDATOR schema but
+                // not to this gate, so the endpoint refused them as unknown keys
+                // and the service code behind them was unreachable. A validator
+                // for a field the controller drops is worse than neither.
+                "due_time",
+                "start_time",
                 "sprint_id",
                 "archived_at",
                 "assignee_add",
@@ -333,6 +345,11 @@ class TaskWriteController {
                     priority: rawPatch.priority,
                     dueDate: rawPatch.due_date,
                     startDate: rawPatch.start_date,
+                    // upgrades/027. This mapper is hand-written per field, so a
+                    // column the service already understood still arrived as
+                    // undefined until it was named here.
+                    dueTime: rawPatch.due_time,
+                    startTime: rawPatch.start_time,
                     sprintId: rawPatch.sprint_id,
                     archivedAtProvided: "archived_at" in rawPatch,
                     archivedAt: rawPatch.archived_at,

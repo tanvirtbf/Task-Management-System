@@ -8,6 +8,7 @@ const context_1 = require("../rbac/context");
 const dhakaTime_1 = require("../utils/dhakaTime");
 const reportSerializer_1 = require("../serializers/reportSerializer");
 const constants_1 = require("../constants");
+const deadline_1 = require("../utils/deadline");
 /**
  * Dept Review V1 — reports read-side (P19; P20 adds generation, P21 the
  * on-demand/note/ack writers).
@@ -93,7 +94,7 @@ class ReportsService {
             spaceId: input.space.id,
             workspaceId: input.space.workspaceId,
             weekStart: input.weekStart,
-            today: (0, dhakaTime_1.dhakaToday)(),
+            now: (0, deadline_1.companyNow)(),
             prevTotals,
         });
         const now = new Date();

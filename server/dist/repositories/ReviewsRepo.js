@@ -4,6 +4,7 @@ exports.ReviewsRepo = void 0;
 const drizzle_orm_1 = require("drizzle-orm");
 const schema_1 = require("../db/schema");
 const utils_1 = require("../utils");
+const deadline_1 = require("../utils/deadline");
 /** The done-side status groups as an array for `inArray` (D-4 authority). */
 const DONE_ARR = [...schema_1.DONE_STATUS_GROUPS];
 class ReviewsRepo {
@@ -92,7 +93,7 @@ class ReviewsRepo {
     // NOW()/CURDATE() (§5 rule 3). Tasks have no space column, so every
     // traversal joins `lists` (this is the codebase's first space-scoped task
     // query — by design, see plan §2.3 invariant).
-    bucketPredicate(bucket, today) {
+    bucketPredicate(bucket, now) {
         switch (bucket) {
             case "needs_review":
                 return (0, drizzle_orm_1.and)((0, drizzle_orm_1.inArray)(schema_1.statuses.statusGroup, DONE_ARR), (0, drizzle_orm_1.isNull)(schema_1.tasks.reviewStatus));
@@ -100,9 +101,9 @@ class ReviewsRepo {
                 return (0, drizzle_orm_1.eq)(schema_1.tasks.reviewStatus, "flagged");
             case "overdue":
                 // NULL due_date compares NULL → excluded by SQL semantics.
-                return (0, drizzle_orm_1.and)((0, drizzle_orm_1.notInArray)(schema_1.statuses.statusGroup, DONE_ARR), (0, drizzle_orm_1.sql) `${schema_1.tasks.dueDate} < ${today}`);
+                return (0, drizzle_orm_1.and)((0, drizzle_orm_1.notInArray)(schema_1.statuses.statusGroup, DONE_ARR), (0, deadline_1.sqlDeadlinePassed)(now));
             case "due_today":
-                return (0, drizzle_orm_1.and)((0, drizzle_orm_1.notInArray)(schema_1.statuses.statusGroup, DONE_ARR), (0, drizzle_orm_1.sql) `${schema_1.tasks.dueDate} = ${today}`);
+                return (0, drizzle_orm_1.and)((0, drizzle_orm_1.notInArray)(schema_1.statuses.statusGroup, DONE_ARR), (0, deadline_1.sqlDueTodayNotYetLate)(now));
         }
     }
     /** Member filter as EXISTS (a join would duplicate multi-assignee rows). */
@@ -117,7 +118,7 @@ class ReviewsRepo {
     async queuePage(params) {
         const conds = [
             (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt),
-            this.bucketPredicate(params.bucket, params.today),
+            this.bucketPredicate(params.bucket, params.now),
         ];
         if (params.memberId)
             conds.push(this.memberExists(params.memberId));
@@ -138,7 +139,7 @@ class ReviewsRepo {
     async queueCount(params) {
         const conds = [
             (0, drizzle_orm_1.isNull)(schema_1.tasks.archivedAt),
-            this.bucketPredicate(params.bucket, params.today),
+            this.bucketPredicate(params.bucket, params.now),
         ];
         if (params.memberId)
             conds.push(this.memberExists(params.memberId));
@@ -156,15 +157,15 @@ class ReviewsRepo {
      * the LEFT JOIN's NULL group is the synthetic "Unassigned" row (H-4).
      * Cross-check `summaryTotals` for the task-level deduped numbers.
      */
-    async memberSummary(spaceId, today) {
+    async memberSummary(spaceId, now) {
         const done = (0, drizzle_orm_1.inArray)(schema_1.statuses.statusGroup, DONE_ARR);
         const notDone = (0, drizzle_orm_1.notInArray)(schema_1.statuses.statusGroup, DONE_ARR);
         const rows = await this.db
             .select({
             userId: schema_1.taskAssignees.userId,
             open: (0, drizzle_orm_1.sql) `COALESCE(SUM(CASE WHEN ${notDone} THEN 1 ELSE 0 END), 0)`.mapWith(Number),
-            dueToday: (0, drizzle_orm_1.sql) `COALESCE(SUM(CASE WHEN ${notDone} AND ${schema_1.tasks.dueDate} = ${today} THEN 1 ELSE 0 END), 0)`.mapWith(Number),
-            overdue: (0, drizzle_orm_1.sql) `COALESCE(SUM(CASE WHEN ${notDone} AND ${schema_1.tasks.dueDate} < ${today} THEN 1 ELSE 0 END), 0)`.mapWith(Number),
+            dueToday: (0, drizzle_orm_1.sql) `COALESCE(SUM(CASE WHEN ${notDone} AND ${(0, deadline_1.sqlDueTodayNotYetLate)(now)} THEN 1 ELSE 0 END), 0)`.mapWith(Number),
+            overdue: (0, drizzle_orm_1.sql) `COALESCE(SUM(CASE WHEN ${notDone} AND ${(0, deadline_1.sqlDeadlinePassed)(now)} THEN 1 ELSE 0 END), 0)`.mapWith(Number),
             doneUnreviewed: (0, drizzle_orm_1.sql) `COALESCE(SUM(CASE WHEN ${done} AND ${schema_1.tasks.reviewStatus} IS NULL THEN 1 ELSE 0 END), 0)`.mapWith(Number),
             flagged: (0, drizzle_orm_1.sql) `COALESCE(SUM(CASE WHEN ${schema_1.tasks.reviewStatus} = 'flagged' THEN 1 ELSE 0 END), 0)`.mapWith(Number),
         })
@@ -177,14 +178,14 @@ class ReviewsRepo {
         return rows.map((r) => ({ ...r, userId: r.userId ?? null }));
     }
     /** Task-level (deduped) totals — independent of the per-assignee rows. */
-    async summaryTotals(spaceId, today) {
+    async summaryTotals(spaceId, now) {
         const done = (0, drizzle_orm_1.inArray)(schema_1.statuses.statusGroup, DONE_ARR);
         const notDone = (0, drizzle_orm_1.notInArray)(schema_1.statuses.statusGroup, DONE_ARR);
         const [row] = await this.db
             .select({
             open: (0, drizzle_orm_1.sql) `COALESCE(SUM(CASE WHEN ${notDone} THEN 1 ELSE 0 END), 0)`.mapWith(Number),
-            dueToday: (0, drizzle_orm_1.sql) `COALESCE(SUM(CASE WHEN ${notDone} AND ${schema_1.tasks.dueDate} = ${today} THEN 1 ELSE 0 END), 0)`.mapWith(Number),
-            overdue: (0, drizzle_orm_1.sql) `COALESCE(SUM(CASE WHEN ${notDone} AND ${schema_1.tasks.dueDate} < ${today} THEN 1 ELSE 0 END), 0)`.mapWith(Number),
+            dueToday: (0, drizzle_orm_1.sql) `COALESCE(SUM(CASE WHEN ${notDone} AND ${(0, deadline_1.sqlDueTodayNotYetLate)(now)} THEN 1 ELSE 0 END), 0)`.mapWith(Number),
+            overdue: (0, drizzle_orm_1.sql) `COALESCE(SUM(CASE WHEN ${notDone} AND ${(0, deadline_1.sqlDeadlinePassed)(now)} THEN 1 ELSE 0 END), 0)`.mapWith(Number),
             doneUnreviewed: (0, drizzle_orm_1.sql) `COALESCE(SUM(CASE WHEN ${done} AND ${schema_1.tasks.reviewStatus} IS NULL THEN 1 ELSE 0 END), 0)`.mapWith(Number),
             flagged: (0, drizzle_orm_1.sql) `COALESCE(SUM(CASE WHEN ${schema_1.tasks.reviewStatus} = 'flagged' THEN 1 ELSE 0 END), 0)`.mapWith(Number),
         })

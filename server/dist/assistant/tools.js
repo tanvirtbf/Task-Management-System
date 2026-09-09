@@ -332,6 +332,7 @@ async function executeAssistantTool(name, args, ctx, services) {
                     team: t.spaceName,
                     status: t.statusName,
                     dueDate: dateOnly(t.dueDate),
+                    dueTime: clockOnly(t.dueTime),
                     priority: PRIORITY_WORD[t.priority] ?? "none",
                     checklist: t.checklistTotal > 0
                         ? `${t.checklistDone}/${t.checklistTotal}`
@@ -418,6 +419,7 @@ async function executeAssistantTool(name, args, ctx, services) {
                         team: r.task?.spaceName ?? null,
                         list: r.task?.listName ?? null,
                         dueDate: dateOnly(r.task?.dueDate ?? null),
+                        dueTime: clockOnly(r.task?.dueTime ?? null),
                         requestedBy: who(r.request.requestedBy),
                         target: who(r.request.targetUserId),
                         status: r.request.status,
@@ -498,6 +500,14 @@ const isCalendarDay = (raw) => {
         d.getUTCMonth() === Number(m[2]) - 1 &&
         d.getUTCDate() === Number(m[3]));
 };
+/**
+ * A TIME column, as the wall clock it is (upgrades/027).
+ *
+ * `null` stays null and is NOT rendered as midnight — a task due Friday
+ * with no time is due through the END of Friday (plan §B1). The knowledge
+ * base tells the model to say the time only when there is one.
+ */
+const clockOnly = (t) => t ? t.slice(0, 5) : null;
 /** A DATE column, as the calendar day it is — never a timestamp. */
 const dateOnly = (d) => {
     if (!d)
@@ -577,7 +587,9 @@ async function taskDetailsTool(args, ctx, services) {
         list: row.listName,
         team: row.spaceName,
         dueDate: dateOnly(row.dueDate),
+        dueTime: clockOnly(row.dueTime),
         startDate: dateOnly(row.startDate),
+        startTime: clockOnly(row.startTime),
         priority: PRIORITY_WORD[row.priority] ?? "none",
         assignees: people.map((p) => `${p.firstName} ${p.lastName}`.trim()),
         unassigned: ids.length === 0,
@@ -889,7 +901,7 @@ async function personTasksTool(args, ctx, services) {
     if (resolved.failure)
         return resolved.failure;
     const person = resolved.person;
-    const todayYmd = await services.home.todayFor(ctx.workspaceId);
+    const now = await services.home.nowFor(ctx.workspaceId);
     // Rolling window ending now — "last 30 days" the way people mean it. The
     // small forward slack keeps a completion from this very second inside.
     const untilExclusive = new Date(Date.now() + 60 * 1000);
@@ -898,7 +910,7 @@ async function personTasksTool(args, ctx, services) {
         targetUserId: person.id,
         workspaceId: ctx.workspaceId,
         bucket,
-        todayYmd,
+        now,
         ...(bucket === "completed" ? { since, untilExclusive } : {}),
         limit: PERSON_TASKS_CAP + 1,
     });
@@ -916,6 +928,7 @@ async function personTasksTool(args, ctx, services) {
             team: t.spaceName,
             status: t.statusName,
             dueDate: dateOnly(t.dueDate),
+            dueTime: clockOnly(t.dueTime),
             ...(bucket === "completed"
                 ? {
                     completedOn: t.completedAt
@@ -995,13 +1008,13 @@ async function teamStatsTool(args, ctx, services) {
     }
     const untilExclusive = new Date(Date.now() + 60 * 1000);
     const since = new Date(untilExclusive.getTime() - windowDays * 24 * 60 * 60 * 1000);
-    const todayYmd = await services.home.todayFor(ctx.workspaceId);
+    const now = await services.home.nowFor(ctx.workspaceId);
     const stats = await services.tasks.teamWindowStats({
         spaceId: team.id,
         workspaceId: ctx.workspaceId,
         since,
         untilExclusive,
-        todayYmd,
+        now,
     });
     // People are shown as NAMES, resolved workspace-scoped — never emails.
     const personIds = [
@@ -1025,6 +1038,7 @@ async function teamStatsTool(args, ctx, services) {
                 url: `/t/${t.id}`,
                 createdBy: nameOf.get(t.createdBy) ?? "unknown",
                 dueDate: dateOnly(t.dueDate),
+                dueTime: clockOnly(t.dueTime),
             })),
             byAssignee: stats.assigneeCounts.map((a) => ({
                 name: nameOf.get(a.userId) ?? "unknown",
@@ -1037,6 +1051,7 @@ async function teamStatsTool(args, ctx, services) {
                 name: t.name,
                 url: `/t/${t.id}`,
                 dueDate: dateOnly(t.dueDate),
+                dueTime: clockOnly(t.dueTime),
             })),
         },
         completedInWindow: { count: stats.completedCount },

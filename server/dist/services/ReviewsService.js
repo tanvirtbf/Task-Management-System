@@ -8,6 +8,7 @@ const taskSerializer_1 = require("../serializers/taskSerializer");
 const userSerializer_1 = require("../serializers/userSerializer");
 const dhakaTime_1 = require("../utils/dhakaTime");
 const constants_1 = require("../constants");
+const deadline_1 = require("../utils/deadline");
 /**
  * True when `userId` is the department head of the (already-resolved) space.
  * Pure + narrow on purpose so later phases (queue scoping, report recipients)
@@ -77,6 +78,15 @@ class ReviewsService {
     async todayFor(workspaceId) {
         const ws = await this.workspaces.findById(workspaceId);
         return (0, dhakaTime_1.todayInZone)(ws?.timezone ?? "Asia/Dhaka");
+    }
+    /**
+     * The same clock, as the pair the deadline rule compares against — the
+     * queue buckets judge a DEADLINE, and upgrades/027 gave one an optional
+     * time, so the date alone no longer decides "overdue" or "due today".
+     */
+    async nowFor(workspaceId) {
+        const ws = await this.workspaces.findById(workspaceId);
+        return (0, deadline_1.workspaceNow)(ws?.timezone ?? "Asia/Dhaka");
     }
     /**
      * Resolve a space and authorize a review-domain action on it. Check order
@@ -275,10 +285,10 @@ class ReviewsService {
      */
     async reviewSummary(input) {
         const space = await this.requireHeadOrAdmin(input);
-        const today = await this.todayFor(input.workspaceId);
+        const now = await this.nowFor(input.workspaceId);
         const [memberRows, totals] = await Promise.all([
-            this.reviews.memberSummary(space.id, today),
-            this.reviews.summaryTotals(space.id, today),
+            this.reviews.memberSummary(space.id, now),
+            this.reviews.summaryTotals(space.id, now),
         ]);
         const memberIds = memberRows.flatMap((r) => r.userId ? [r.userId] : []);
         const [usersById, lastActivity] = await Promise.all([
@@ -333,7 +343,7 @@ class ReviewsService {
     async reviewQueue(input) {
         const space = await this.requireHeadOrAdmin(input);
         const limit = clampQueueLimit(input.limit);
-        const today = await this.todayFor(input.workspaceId);
+        const now = await this.nowFor(input.workspaceId);
         const afterInternalId = input.cursor
             ? decodeQueueCursor(input.cursor)
             : undefined;
@@ -341,7 +351,7 @@ class ReviewsService {
             this.reviews.queuePage({
                 spaceId: space.id,
                 bucket: input.bucket,
-                today,
+                now,
                 memberId: input.memberId,
                 afterInternalId,
                 limit: limit + 1,
@@ -349,7 +359,7 @@ class ReviewsService {
             this.reviews.queueCount({
                 spaceId: space.id,
                 bucket: input.bucket,
-                today,
+                now,
                 memberId: input.memberId,
             }),
         ]);
