@@ -148,7 +148,7 @@ const SOON_MS = 24 * 60 * 60 * 1000;
  * never "0d 0h". The user asked for exactly these shapes: *"17 hours baki"* and
  * *"2 din 13 hours baki"*.
  */
-const humanGap = (ms: number): string => {
+export const humanGap = (ms: number): string => {
     const total = Math.max(0, Math.floor(ms / 60000));
     const days = Math.floor(total / (60 * 24));
     const hours = Math.floor((total % (60 * 24)) / 60);
@@ -207,4 +207,4 @@ export const describeDeadline = (input: {
 };
 
 /** Exported for the tests that check this client agrees with the server. */
-export const DEADLINE_INTERNALS = { DAY_MS, SOON_MS, humanGap };
+export const DEADLINE_INTERNALS = { DAY_MS, SOON_MS };

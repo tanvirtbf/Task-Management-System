@@ -643,6 +643,87 @@ and neither says which is which. That is P5, and it is the next thing.
 **Exit:** a screen showing both is legible, and the mobile card does not overflow (P11's
 metric guard covers this).
 
+**✅ P5 DONE — 2026-09-09.**
+
+Decision §B4 is now enforced by tests rather than stated in a document.
+
+### The premise was narrower than the plan assumed — and hid two real defects
+
+The plan says "wherever both can appear". Measured: `SLABadge` renders in **exactly one place**, the
+task detail drawer, inside its `isDev` strip. No card shows it. So the "which wins the single slot"
+question had no live instance to resolve.
+
+What the pairing DID expose is that P4 had made the deadline badge better than the SLA one in two
+ways, and the gap between them was the confusion:
+
+1. **The SLA badge did not tick.** It read `new Date()` at render, so a page left open showed a
+   frozen SLA beside a live deadline. Two countdowns disagreeing about the present is worse than
+   either being wrong alone.
+2. **A breached task kept counting after it was finished.** Completed two hours late, it read "SLA
+   breached 5h ago" — and a month on, "SLA breached 30d ago", stating that the SLA is being missed
+   *right now* about work that is done. The deadline badge settles on "done 5h late" and stops.
+
+Both were **characterised before being changed**, in the P0 manner: the test file asserts what the
+badge did, and the two claims about ticking and settling went red on the existing component. The
+fixes are the same shared clock P4 built (still one interval for the page, whatever the badge
+count) and a settled `SLA missed by 2h`.
+
+### What tells them apart
+
+Three things, all asserted in `badge-distinction.test.tsx` with both badges rendered **17 hours from
+their targets** — identical numbers, so the words have to do the work:
+
+- **The SLA badge always says "SLA".** The deadline badge says "Deadline" only where the two can
+  meet. On a card under the task name nothing else counts down, and the user asked for *"17 hours
+  baki"*, not a label eating half a phone's width. The prop defaults to OFF, so the test asserts the
+  **drawer** passes it — asserting the component in isolation would pass forever while the real
+  screen showed a bare "17h left" beside "SLA in 17h".
+- **Different icon families.** Shield and warning-triangle against timer and circle.
+- **The same units, deliberately.** Both now format through `humanGap`, so "SLA breached 5h 0m ago"
+  became "SLA breached 5h ago". Counting in different units would not have distinguished the badges,
+  only made one harder to read.
+
+Mutation-tested: removing `labelled` from the drawer, and adding an `SLABadge` to `BoardCard`, each
+turn a guard red.
+
+### ⛔ THE DECISION (§P5.2): in a single slot, the DEADLINE wins
+
+The deadline is when the work is due and is what the person holding the task is measured on. The SLA
+is a response commitment — usually shorter, usually already settled by the time a card is scanned,
+and a dev-space concept, while a deadline is on every task in the company.
+
+Since there is no contention today, the decision is kept honest by a guard that asserts the three
+card components render the deadline and **not** the SLA. Adding one to a card therefore becomes a
+deliberate act that comes with re-reading the rule, instead of a second countdown quietly appearing
+beside the first.
+
+### ⛔ A test of mine was making real network requests
+
+`DeadlineBadge.test.tsx` (P4) seeds the workspace into a react-query cache. Default `staleTime` is
+0, so the seeded value was stale on arrival and react-query **refetched it for real** — 20
+`ECONNREFUSED` to `localhost:5501` per run. Harmless while nothing is listening; if a dev server
+happened to be up, the test would have been reading the DEV database. Fixed with `staleTime:
+Infinity` and `refetchOnMount: false` in both files, and the whole suite is now silent.
+
+Two smaller things the same file taught, both after a wrong first attempt:
+
+- The client tsconfig has no node types and should not gain any — it is browser code. A test that
+  reads its own source uses vite's `?raw` via `import.meta.glob`, the way `time-rendering.test.ts`
+  established at P0.
+- That glob keys a same-directory file as `./X.tsx` and a sibling as `../dir/X.tsx`, and it returns
+  the `.test.tsx` files too. A uniform suffix match silently missed one component and would happily
+  have asserted things about a test file. Exact keys, throwing on a miss.
+
+**Gate:** client **232 tests / 23 files**, up from 218 after P4. eslint 0/0 and `tsc -b` clean. **No
+server file changed**, verified against `git status`.
+
+⚠️ **The exit criterion's second half is not met by this gate.** "The mobile card does not overflow"
+needs a browser: jsdom has no layout, so a width assertion there would be theatre. The structural
+half is covered — the countdown sits on its own block line in `MobileTaskCard`, so it never competes
+with the status row for width — but P11's metric guard is Playwright, which is opt-in because it
+writes to the DEV database and sends real mail through a live Mailtrap host. That run is the user's
+call, and it is now owed by both P3 and P5.
+
 ### P6 — Absolute activity timestamps
 
 1. Delete the three copied `timeAgo` functions; one shared helper in `lib/date-utils.ts`.

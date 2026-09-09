@@ -618,6 +618,9 @@ export const TaskDetailDrawer = ({
                                     dueTime={task.dueTime}
                                     completedAt={task.completedAt}
                                     size="md"
+                                    // §B4: the SLA badge is on this same
+                                    // screen, so this one says its name.
+                                    labelled
                                 />
                             </div>
                         </div>

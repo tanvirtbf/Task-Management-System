@@ -31,6 +31,19 @@ interface Props {
     dueTime?: string | null;
     completedAt?: string | null;
     size?: "sm" | "md";
+    /**
+     * Prefix the countdown with the word "Deadline" (decision §B4).
+     *
+     * ON wherever an `SLABadge` can also appear -- today that is the task
+     * detail drawer and nowhere else. OFF on cards, where nothing else
+     * counts down and the user asked for *"17 hours baki"* rather than a
+     * label taking half the width of a phone.
+     *
+     * A default of `false` is the safe one: a badge that silently stops
+     * naming itself beside an SLA badge is the §B4 failure, and the test
+     * that catches it asserts the DRAWER, not the default.
+     */
+    labelled?: boolean;
 }
 
 /** Colour per state. Done-on-time is deliberately quiet — it is good news. */
@@ -58,6 +71,7 @@ export const DeadlineBadge = ({
     dueTime = null,
     completedAt = null,
     size = "sm",
+    labelled = false,
 }: Props) => {
     const now = useNow();
     const { data: workspace } = useWorkspace();
@@ -99,7 +113,7 @@ export const DeadlineBadge = ({
                 }}
             >
                 <Icon size={iconSize} strokeWidth={1.75} />
-                {text}
+                {labelled ? `Deadline ${text}` : text}
             </span>
         </Tooltip>
     );

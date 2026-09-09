@@ -18,7 +18,18 @@ import { tokens } from "../../theme";
 /** The workspace zone is read through react-query, so tests seed the cache. */
 const wrapperFor = (timezone: string) => {
     const qc = new QueryClient({
-        defaultOptions: { queries: { retry: false, gcTime: Infinity } },
+        defaultOptions: {
+            queries: {
+                retry: false,
+                gcTime: Infinity,
+                // ⚠️ Without this the seeded workspace is stale on arrival and
+                // react-query refetches it FOR REAL — 20 ECONNREFUSED to
+                // localhost:5501 per run, and worse if a dev server happens to
+                // be up, since the test would then be reading the DEV database.
+                staleTime: Infinity,
+                refetchOnMount: false,
+            },
+        },
     });
     qc.setQueryData(["workspace"], {
         id: "ws-1",
