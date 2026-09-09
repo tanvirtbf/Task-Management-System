@@ -1,9 +1,21 @@
 import { Calendar, AlertCircle } from "lucide-react";
 import { tokens } from "../../theme";
-import { parseWireDate } from "../../lib/date-utils";
+import { formatTimeOfDay, parseWireDate } from "../../lib/date-utils";
 
 interface DueDateBadgeProps {
     dueDate: string | null;
+    /**
+     * `"HH:MM"` or null (upgrades/027). Null is NOT midnight -- it means the
+     * task is due some time that day -- so a null time adds nothing to the
+     * label and the badge reads exactly as it did before P1.
+     *
+     * ⚠️ The COLOUR still comes from the date alone. A task due today at
+     * 09:00 is late at 10:00 and this badge will not say so until P4 routes
+     * it through the deadline resolver. That is a deliberate half-step, not
+     * an oversight: a second, weaker lateness rule living here would be
+     * harder to remove than to never write.
+     */
+    dueTime?: string | null;
     size?: "sm" | "md";
     showIcon?: boolean;
 }
@@ -38,6 +50,7 @@ const formatDueDate = (date: Date): string => {
 
 export const DueDateBadge = ({
     dueDate,
+    dueTime = null,
     size = "sm",
     showIcon = true,
 }: DueDateBadgeProps) => {
@@ -101,6 +114,11 @@ export const DueDateBadge = ({
                     <Calendar size={iconSize} strokeWidth={1.75} />
                 ))}
             {formatDueDate(date)}
+            {dueTime && (
+                <span style={{ fontWeight: 400, opacity: 0.85 }}>
+                    {formatTimeOfDay(dueTime)}
+                </span>
+            )}
         </span>
     );
 };

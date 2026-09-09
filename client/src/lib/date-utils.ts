@@ -155,3 +155,28 @@ export const parseDayKey = (key: string): Date => {
  */
 export const parseWireDate = (value: Date | string): Date =>
     parseDayKey(dayKey(value));
+
+/**
+ * `"17:00"` → `"5:00 PM"` (upgrades/027).
+ *
+ * A time of day, unlike everything else in this file, carries no date and
+ * therefore no timezone — it is a wall-clock reading and formats the same
+ * for every viewer. That is exactly why it must NOT go through `Date`: a
+ * `new Date("17:00")` is invalid, and the near-miss
+ * `new Date(\`1970-01-01T${t}\`)` would be parsed in local time and shift.
+ *
+ * Empty for an absent or unparseable value, so a caller can render it
+ * unconditionally — a null time means end of day and shows nothing extra.
+ */
+export const formatTimeOfDay = (
+    value: string | null | undefined,
+): string => {
+    if (!value) return "";
+    const [h, m] = value.slice(0, 5).split(":").map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return "";
+    const suffix = h < 12 ? "AM" : "PM";
+    // 00:00 and 12:00 both land on hour 0 under `% 12`, and one of them
+    // reads 12. This is the line a naive version gets wrong.
+    const hour = h % 12 === 0 ? 12 : h % 12;
+    return `${hour}:${String(m).padStart(2, "0")} ${suffix}`;
+};

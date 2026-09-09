@@ -277,6 +277,56 @@ const startsAfterDue = (
     );
 };
 
+/**
+ * A time of day is meaningless without the date it sits on.
+ *
+ * upgrades/027 added the two TIME columns and validated each one's FORMAT;
+ * nothing tied one to its date, so `{ due_date: null }` left `due_time`
+ * behind on every one of the three write paths. That is not a wrong-answer bug
+ * -- `deadlinePassed` already returns "not late" for a task with no due date,
+ * whatever its time -- but it is a user-facing one: set "5 Sep, 5:00 PM", clear
+ * the date, give it a new date next week, and the task silently carries 5:00 PM
+ * onto a deadline nobody put a time on. A badge with no date renders nothing,
+ * so the person who set the new date could neither see the old time nor guess
+ * it was there.
+ *
+ * Enforced HERE rather than in the pickers, because the pickers are not the
+ * only writer: the public form submit path skips the HTTP task validator
+ * entirely, the bulk patch is its own schema, and the assistant creates tasks
+ * through this same service.
+ */
+const timeWithoutDate = (
+    // A wire `YYYY-MM-DD` on the way in, a Drizzle `Date` on the way out of
+    // the database. The rule asks only WHETHER a date is there, never what
+    // it says, so the parameter admits both and reads neither.
+    date: Date | string | null | undefined,
+    time: string | null | undefined,
+): boolean => !date && !!time;
+
+/** The 422 the three write paths share, so they cannot word it differently. */
+const refuseTimeWithoutDate = (field: "due" | "start"): never => {
+    throw AppError.unprocessable(
+        "task.time_without_date",
+        `${field}_time needs a ${field}_date`,
+        [
+            {
+                field: `${field}_time`,
+                issue: `cannot be set without ${field}_date`,
+            },
+        ],
+    );
+};
+
+/**
+ * What a field will hold after this patch is applied.
+ *
+ * The rule has to read the RESULTING state, not the payload. A patch carrying
+ * only `due_time` is fine on a task that already has a due date and wrong on
+ * one that does not, and the request looks identical either way.
+ */
+const resulting = <P, C>(patched: P | undefined, current: C): P | C =>
+    patched === undefined ? current : patched;
+
 const toDateOnly = (value: string | null | undefined): Date | null => {
     if (value === null || value === undefined) return null;
     const [y, m, d] = value.split("-").map(Number);
@@ -804,6 +854,14 @@ export class TaskWriteService {
             }
         }
 
+        // 5b-bis. A time needs its date. Checked BEFORE the ordering
+        //     compare below, which reads a missing due time as 23:59 and
+        //     would therefore accept an orphan without noticing it.
+        if (timeWithoutDate(input.dueDate, input.dueTime))
+            refuseTimeWithoutDate("due");
+        if (timeWithoutDate(input.startDate, input.startTime))
+            refuseTimeWithoutDate("start");
+
         // 5c. Date ordering — start must not be after due. The HTTP task
         //     validator checks each date's FORMAT but not their order, and the
         //     public form submit path skips that validator entirely; the
@@ -1259,6 +1317,29 @@ export class TaskWriteService {
         if (p.taskTypeId !== undefined) dbPatch.taskTypeId = p.taskTypeId;
         if (p.isMilestone !== undefined) dbPatch.isMilestone = p.isMilestone;
         if (p.customId !== undefined) dbPatch.customId = p.customId;
+        // ─── dates and their times ───────────────────────────────────────
+        // Clearing a date clears its time: that is what "clear the due
+        // date" means, and refusing it instead would make the clear button
+        // a 422 on any task that happens to carry a time. Applied first, so
+        // the resulting-state check below sees the cleared value.
+        const clearsDueDate = p.dueDate !== undefined && p.dueDate === null;
+        const clearsStartDate =
+            p.startDate !== undefined && p.startDate === null;
+        const nextDueTime = clearsDueDate ? null : resulting(p.dueTime, current.dueTime);
+        const nextStartTime = clearsStartDate
+            ? null
+            : resulting(p.startTime, current.startTime);
+
+        // A patch that clears the date AND names a time contradicts itself.
+        // Dropping the time silently would be defensible; keeping it would
+        // not, and a 422 tells the caller which they got.
+        if (timeWithoutDate(resulting(p.dueDate, current.dueDate), p.dueTime))
+            refuseTimeWithoutDate("due");
+        if (
+            timeWithoutDate(resulting(p.startDate, current.startDate), p.startTime)
+        )
+            refuseTimeWithoutDate("start");
+
         if (p.startDate !== undefined)
             dbPatch.startDate = toDateOnly(p.startDate);
         if (p.dueDate !== undefined) {
@@ -1268,16 +1349,16 @@ export class TaskWriteService {
             // due_date; clearing it here makes the NEW date alert again.
             dbPatch.overdueNotifiedAt = null;
         }
-        if (p.dueTime !== undefined) {
-            dbPatch.dueTime = toClockOnly(p.dueTime);
+        if (p.dueTime !== undefined || clearsDueDate) {
+            dbPatch.dueTime = toClockOnly(nextDueTime);
             // Moving the TIME moves the deadline just as surely as moving the
             // date, so it re-arms the alert for the same reason (upgrades/027).
             // Without this, pulling a deadline from 5 PM to 10 AM would never
             // alert, because the claim for that date was already spent.
             dbPatch.overdueNotifiedAt = null;
         }
-        if (p.startTime !== undefined)
-            dbPatch.startTime = toClockOnly(p.startTime);
+        if (p.startTime !== undefined || clearsStartDate)
+            dbPatch.startTime = toClockOnly(nextStartTime);
         if (p.recurrencePattern !== undefined)
             dbPatch.recurrencePattern = p.recurrencePattern;
         if (p.recurrenceDays !== undefined)
@@ -2032,19 +2113,43 @@ export class TaskWriteService {
         const dbPatch: Partial<NewTask> = { updatedAt: now };
         if (p.statusId !== undefined) dbPatch.statusId = p.statusId;
         if (p.priority !== undefined) dbPatch.priority = p.priority;
+        // A time needs its date here too, but the resulting state differs
+        // PER TASK: one uniform patch lands on many rows with different
+        // dates. Fail-atomic, like every other bulk validation above --
+        // one bad target refuses the whole batch rather than half-applying.
+        const bulkClearsDueDate = p.dueDate !== undefined && p.dueDate === null;
+        const bulkClearsStartDate =
+            p.startDate !== undefined && p.startDate === null;
+        if (p.dueTime) {
+            const orphan = found.some((t) =>
+                timeWithoutDate(resulting(p.dueDate, t.dueDate), p.dueTime),
+            );
+            if (orphan) refuseTimeWithoutDate("due");
+        }
+        if (p.startTime) {
+            const orphan = found.some((t) =>
+                timeWithoutDate(resulting(p.startDate, t.startDate), p.startTime),
+            );
+            if (orphan) refuseTimeWithoutDate("start");
+        }
+
         if (p.dueDate !== undefined) {
             dbPatch.dueDate = toDateOnly(p.dueDate);
             // Same re-arm rule as the single-PATCH path (upgrades/014).
             dbPatch.overdueNotifiedAt = null;
         }
-        if (p.dueTime !== undefined) {
-            dbPatch.dueTime = toClockOnly(p.dueTime);
+        if (p.dueTime !== undefined || bulkClearsDueDate) {
+            dbPatch.dueTime = bulkClearsDueDate
+                ? null
+                : toClockOnly(p.dueTime);
             dbPatch.overdueNotifiedAt = null; // upgrades/027, as above
         }
         if (p.startDate !== undefined)
             dbPatch.startDate = toDateOnly(p.startDate);
-        if (p.startTime !== undefined)
-            dbPatch.startTime = toClockOnly(p.startTime);
+        if (p.startTime !== undefined || bulkClearsStartDate)
+            dbPatch.startTime = bulkClearsStartDate
+                ? null
+                : toClockOnly(p.startTime);
         if (p.sprintId !== undefined) dbPatch.sprintId = p.sprintId;
         if (p.archivedAtProvided) {
             dbPatch.archivedAt = p.archivedAt ? new Date(p.archivedAt) : null;

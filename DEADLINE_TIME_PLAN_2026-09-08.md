@@ -420,6 +420,122 @@ what makes this phase safe to ship alone.
 the picker must be usable on a phone (P11's lesson — the form builder was drag-only and unusable
 on touch).
 
+**✅ P3 DONE — 2026-09-09.**
+
+Every date field now carries an hour-and-minute box, picked in AM/PM, per decision §B5. One
+control — `client/src/components/ui/TimeOfDayPicker.tsx` — serves all of them, so the rules about
+what blank means and what goes on the wire are stated once.
+
+### ⛔ The plan assumed a validator that did not exist
+
+Step 3 above reads "setting a time without a date is refused in the UI, **not only by the
+validator**". There was no validator. P1 added the two columns and checked each one's *format*;
+nothing tied a time to its date on any of the three write paths, so `{ due_date: null }` left
+`due_time` behind.
+
+That is not a wrong-answer bug — `deadlinePassed` already returns "not late" for a task with no
+due date, whatever its time. It is a data bug with a user-facing shape: set "5 Sep, 5:00 PM",
+clear the date, give it a new date next week, and the task silently carries 5:00 PM onto a
+deadline nobody put a time on. A badge with no date renders nothing, so the person setting the
+new date could neither see the old time nor guess it was there.
+
+Held on the **server**, not in the pickers, because the pickers are not the only writer: the
+public form submit path skips the HTTP task validator entirely, the bulk patch is its own schema,
+and the assistant creates tasks through the same service. Two halves:
+
+- **Clearing a date clears its time.** Silently, because that is what "clear the due date" means;
+  refusing instead would turn the clear button into a 422 on any task that happens to carry a
+  time.
+- **A time with no resulting date is a 422** (`task.time_without_date`). The check reads the
+  RESULTING state, not the payload — a patch carrying only `due_time` is right on a task that has
+  a due date and wrong on one that does not, and the two requests are identical.
+
+`tests/tasks/deadline-time-orphan.test.ts` (**13**) was written first and run red: **8 of 11
+failed**, and the 3 that passed were exactly the "leave it alone" cases that should already have
+worked.
+
+### ⛔ Two more places the bulk path was dead
+
+Chasing one of those red tests found that `due_time` could never reach the bulk endpoint at all:
+
+1. `TaskWriteController.bulk` gates the patch against a hand-written `KNOWN` set, and P1 never
+   added the two columns to it — so the request was refused as an *unknown key*.
+2. Past that gate, the same method maps the patch field by field into the service call, and the
+   two columns were not in the mapper either — so they arrived as `undefined`.
+
+P1's record claims validation was added to "all three schemas that accept these fields". The
+schema entry was added; the endpoint behind it refused the field. **A validator for a field the
+controller drops is worse than neither**, because it reads as coverage. Both are fixed, with the
+bulk cases in the same test file.
+
+### ⛔ And a UI assumption that was wrong — measured, not reasoned
+
+§B5's cost, which the plan named, is horizontal space: the inline editor sits in a table row and
+on a mobile card, and a permanent second control would push the assignee off the end (P11's
+metric guard). So the time rides in the calendar dropdown's own footer — no wider row, and the
+control is there the instant the date is.
+
+That only works if the dropdown survives picking a date. **It does not.** antd closes the panel
+on select, taking the footer with it, so setting a time on the date you just picked would have
+needed a second trip through the editor — the exact opposite of what §B5 asked for. The docs read
+as though a controlled `open` prevents this. `InlineDateEdit.test.tsx` has the case that proves
+otherwise; it was written before the fix and failed. The fix holds the panel open for the one
+close that follows a selection, and lets Escape and click-outside through.
+
+### The two things the picker must get right
+
+- **What it SENDS is not what it SHOWS.** Display is `h:mm A`; the wire is 24-hour `HH:MM`.
+  `"5:00 PM"` is one of the malformed values P1 pinned as refused, written down precisely because
+  an AM/PM picker is the most likely thing to send it. Mutation-tested: making `onChange` emit the
+  display string turns that test red.
+- **Blank means end of day, not midnight.** An always-visible empty box invites exactly one wrong
+  reading. The placeholder says the rule — `End of day` for a due time, `Start of day` for a start
+  time — rather than showing `--:--`.
+
+`taskToWire` is the one choke point every write passes through (create, update *and* bulk), so it
+trims the `HH:MM:SS` a TIME column hands back down to `HH:MM` — the same trap `recurrence_time`
+hit in upgrades/024, now on its second and third column — and drops a time whose date is being
+cleared, so the client never sends a request it knows the server will refuse.
+
+### Surfaces
+
+`InlineDateEdit` covers three of the five named places (the list row, and both ends of the range
+in `TaskPropertiesPanel`, which is what `TaskDetailDrawer` renders). `CreateTaskModal` gets the
+pair side by side, where there is room. `BulkActionToolbar` stages the time and applies it
+*together* with the date — one uniform patch lands on many rows with different dates, and sending
+the time only alongside a date makes the server's fail-atomic refusal unreachable from the
+toolbar.
+
+`DueDateBadge` gained a `dueTime` so a picked time can be *seen* — without it P3 has no exit
+criterion. It is deliberately the smallest possible display change: **the colour still comes from
+the date alone.** A task due today at 09:00 is late at 10:00 and this badge does not say so yet;
+that is P4's job, and a second, weaker lateness rule living here would be harder to remove than to
+never write. A time-less badge renders exactly what P0 pinned.
+
+### Tests
+
+Server `tests/tasks/deadline-time-orphan.test.ts` (**13**). Client
+`TimeOfDayPicker.test.tsx` (**10**) and `InlineDateEdit.test.tsx` (**6**), plus **7** added to
+`mappers.test.ts`. Three were mutation-proven able to fail: the 24-hour emission, the
+clear-the-time-with-the-date rule, and the panel-stays-open fix.
+
+**Not done here, on purpose:** no countdown, no lateness wording, no ticking — P4. And the
+Playwright leg of this phase's exit criterion has not been run: it is opt-in, writes to the DEV
+database and sends real mail through a live Mailtrap host, so it is the user's call, not a thing
+to fire off at the end of a phase.
+
+**Gate: the FULL server suite, because this phase changed the shared write path** — create, the
+single PATCH and the bulk patch are used by nearly every module, so a partial run would have
+proved little. **37 modules · 6,041 passed · 0 failed**, run in foreground chunks (KI: never as a
+child of the agent session). Client **179 tests / 17 files**, up from 162 after P0. eslint 0/0 and
+`tsc` clean on both packages.
+
+⚠️ Client eslint caught `formatTimeOfDay` being exported from a component file
+(`react-refresh/only-export-components`). It moved to `lib/date-utils.ts`, which is where someone
+would look for it anyway — and where its one real trap is written down: a time of day carries no
+date and therefore no timezone, so it must not go through `Date`. The near-miss
+``new Date(`1970-01-01T${t}`) `` parses in local time and shifts.
+
 ### P4 — The countdown and lateness (display)
 
 1. `DeadlineBadge`, generalised from `SLABadge` — same maths, deadline wording:

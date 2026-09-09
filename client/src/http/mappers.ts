@@ -163,6 +163,17 @@ const toDateOnly = (v: unknown): unknown => {
     return `${y}-${m}-${day}`;
 };
 
+/**
+ * Normalise a time-of-day field to the `HH:MM` the backend accepts.
+ *
+ * A MySQL TIME column hands back `"17:00:00"`, and the server's validator
+ * is `/^([01]\d|2[0-3]):[0-5]\d$/` -- so echoing a value straight back from
+ * a task object 422s. Same trim `recurrenceTime` has needed since
+ * upgrades/024; this is the second and third column to want it.
+ */
+const toClockOnly = (v: unknown): unknown =>
+    typeof v === "string" && v !== "" ? v.slice(0, 5) : v;
+
 export const taskToWire = (
     patch: Partial<Task>,
 ): Record<string, unknown> => {
@@ -171,6 +182,16 @@ export const taskToWire = (
     // DATE columns: hand the backend bare YYYY-MM-DD, never a full ISO datetime.
     if ("dueDate" in out) out.dueDate = toDateOnly(out.dueDate);
     if ("startDate" in out) out.startDate = toDateOnly(out.startDate);
+    // TIME columns (upgrades/027): HH:MM, and never without their date.
+    if ("dueTime" in out) out.dueTime = toClockOnly(out.dueTime);
+    if ("startTime" in out) out.startTime = toClockOnly(out.startTime);
+    // A patch that clears the date clears its time in the same request.
+    // The server does this too (`task.time_without_date`), and would refuse
+    // the contradictory version outright -- but a UI that sends a request it
+    // knows to be wrong is a UI that will surface someone else's 422 as an
+    // unexplained failure.
+    if (out.dueDate === null) out.dueTime = null;
+    if (out.startDate === null) out.startTime = null;
     if (customFields !== undefined) out.customFieldValues = customFields;
     if (recurrence !== undefined) {
         out.recurrencePattern = recurrence?.pattern ?? "none";

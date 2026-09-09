@@ -329,8 +329,12 @@ export const ListViewRow = ({
             >
                 <InlineDateEdit
                     date={task.dueDate}
-                    onChange={(dueDate) =>
-                        update.mutate({ id: task.id, patch: { dueDate } })
+                    time={task.dueTime}
+                    onChange={({ date, time }) =>
+                        update.mutate({
+                            id: task.id,
+                            patch: { dueDate: date, dueTime: time },
+                        })
                     }
                 />
             </div>

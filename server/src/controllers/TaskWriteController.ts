@@ -338,6 +338,12 @@ export class TaskWriteController {
                 "priority",
                 "due_date",
                 "start_date",
+                // upgrades/027. P1 added these to the bulk VALIDATOR schema but
+                // not to this gate, so the endpoint refused them as unknown keys
+                // and the service code behind them was unreachable. A validator
+                // for a field the controller drops is worse than neither.
+                "due_time",
+                "start_time",
                 "sprint_id",
                 "archived_at",
                 "assignee_add",
@@ -370,6 +376,11 @@ export class TaskWriteController {
                     priority: rawPatch.priority as number | undefined,
                     dueDate: rawPatch.due_date as string | null | undefined,
                     startDate: rawPatch.start_date as string | null | undefined,
+                    // upgrades/027. This mapper is hand-written per field, so a
+                    // column the service already understood still arrived as
+                    // undefined until it was named here.
+                    dueTime: rawPatch.due_time as string | null | undefined,
+                    startTime: rawPatch.start_time as string | null | undefined,
                     sprintId: rawPatch.sprint_id as string | null | undefined,
                     archivedAtProvided: "archived_at" in rawPatch,
                     archivedAt: rawPatch.archived_at as string | null | undefined,

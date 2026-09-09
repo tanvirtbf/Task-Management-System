@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Modal, Input, Select, DatePicker, App as AntApp } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import dayjs from "dayjs";
+import { TimeOfDayPicker } from "../ui/TimeOfDayPicker";
 import { listsApi, tasksApi } from "../../http/api";
 import { useAssignablePeople } from "../../hooks/useAssignablePeople";
 import { useSpaceMap, useTaskTypes } from "../../hooks/useReferenceData";
@@ -29,6 +30,8 @@ export const CreateTaskModal = ({
     const [priority, setPriority] = useState<Priority>(3);
     const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
     const [dueDate, setDueDate] = useState<dayjs.Dayjs | null>(null);
+    /** `"HH:MM"` or null. Null is end of day, not midnight (plan §B1). */
+    const [dueTime, setDueTime] = useState<string | null>(null);
 
     const spaceMap = useSpaceMap();
     const { data: taskTypes = [] } = useTaskTypes();
@@ -68,6 +71,11 @@ export const CreateTaskModal = ({
                 priority,
                 assignees: assigneeIds,
                 dueDate: dueDate ? dueDate.toISOString() : null,
+                // Never a time without its date: the server refuses that
+                // (`task.time_without_date`) and the picker is disabled
+                // without one, but a create form can be filled in either
+                // order and the guard costs nothing.
+                dueTime: dueDate ? dueTime : null,
             });
         },
         onSuccess: (t) => {
@@ -174,13 +182,27 @@ export const CreateTaskModal = ({
                     </div>
                     <div>
                         <Label>Due date</Label>
-                        <DatePicker
-                            value={dueDate}
-                            onChange={setDueDate}
-                            style={{ width: "100%" }}
-                            format="MMM D, YYYY"
-                            placeholder="Pick a date"
-                        />
+                        <div style={{ display: "flex", gap: 6 }}>
+                            <DatePicker
+                                value={dueDate}
+                                onChange={(d) => {
+                                    setDueDate(d);
+                                    // Clearing the date clears the time with
+                                    // it -- the same rule the server holds.
+                                    if (!d) setDueTime(null);
+                                }}
+                                style={{ flex: 1, minWidth: 0 }}
+                                format="MMM D, YYYY"
+                                placeholder="Pick a date"
+                            />
+                            <TimeOfDayPicker
+                                kind="due"
+                                value={dueTime}
+                                onChange={setDueTime}
+                                hasDate={!!dueDate}
+                                size="middle"
+                            />
+                        </div>
                     </div>
                 </div>
                 <div>

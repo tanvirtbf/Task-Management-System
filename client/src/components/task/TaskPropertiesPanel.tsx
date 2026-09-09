@@ -192,9 +192,14 @@ export const TaskPropertiesPanel = ({ task }: { task: Task }) => {
             </PropLabel>
             <PropValue>
                 <InlineDateEdit
+                    kind="start"
                     date={task.startDate}
-                    onChange={(d) =>
-                        update.mutate({ id: task.id, patch: { startDate: d } })
+                    time={task.startTime}
+                    onChange={({ date, time }) =>
+                        update.mutate({
+                            id: task.id,
+                            patch: { startDate: date, startTime: time },
+                        })
                     }
                 />
             </PropValue>
@@ -204,9 +209,14 @@ export const TaskPropertiesPanel = ({ task }: { task: Task }) => {
             </PropLabel>
             <PropValue>
                 <InlineDateEdit
+                    kind="due"
                     date={task.dueDate}
-                    onChange={(d) =>
-                        update.mutate({ id: task.id, patch: { dueDate: d } })
+                    time={task.dueTime}
+                    onChange={({ date, time }) =>
+                        update.mutate({
+                            id: task.id,
+                            patch: { dueDate: date, dueTime: time },
+                        })
                     }
                 />
             </PropValue>

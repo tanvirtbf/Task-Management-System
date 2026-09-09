@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Dropdown, Popconfirm, DatePicker, Popover } from "antd";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import dayjs from "dayjs";
+import { TimeOfDayPicker } from "../ui/TimeOfDayPicker";
 import {
     ChevronDown,
     Flag,
@@ -34,6 +35,15 @@ export const BulkActionToolbar = ({
     const bulkUpdate = useBulkUpdateTasks(listId);
     const qc = useQueryClient();
     const [datePickerOpen, setDatePickerOpen] = useState(false);
+    /**
+     * A STAGED time, applied together with the date below.
+     *
+     * Bulk is not like the inline editors: one patch lands on many tasks
+     * with different dates, and the server refuses the batch whole if the
+     * time would orphan on any of them. Sending the time only alongside a
+     * date means that refusal is unreachable from this toolbar.
+     */
+    const [pendingTime, setPendingTime] = useState<string | null>(null);
 
     const { data: statuses = [] } = useQuery({
         queryKey: ["statuses", listId],
@@ -78,7 +88,13 @@ export const BulkActionToolbar = ({
         onClear();
     };
     const handleBulkDueDate = (iso: string | null) => {
-        bulkUpdate.mutate({ ids: selectedIds, patch: { dueDate: iso } });
+        bulkUpdate.mutate({
+            ids: selectedIds,
+            // Clearing the date clears the time -- server-side too, but the
+            // toolbar should not send a contradiction and hope.
+            patch: { dueDate: iso, dueTime: iso ? pendingTime : null },
+        });
+        setPendingTime(null);
         onClear();
     };
 
@@ -231,6 +247,32 @@ export const BulkActionToolbar = ({
                             width: 240,
                         }}
                     >
+                        <div
+                            style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 8,
+                            }}
+                        >
+                            <span
+                                style={{
+                                    fontSize: 11,
+                                    color: tokens.colors.textMuted,
+                                    whiteSpace: "nowrap",
+                                }}
+                            >
+                                Time
+                            </span>
+                            <TimeOfDayPicker
+                                kind="due"
+                                value={pendingTime}
+                                onChange={setPendingTime}
+                                // Staged, never sent on its own, so there is no
+                                // date for it to be missing -- see `pendingTime`.
+                                hasDate
+                                style={{ width: "100%" }}
+                            />
+                        </div>
                         <DatePicker
                             open
                             value={null}
