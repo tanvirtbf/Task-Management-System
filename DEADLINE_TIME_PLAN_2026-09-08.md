@@ -968,7 +968,7 @@ changed. The probes remain worth running once there is disk for them, and that i
 
 **Exit:** live, and the "nothing changed for old tasks" check passes on production data.
 
-**🚢 P8 — step 1 DONE 2026-09-09. Steps 2–3 are the production deploy and await the user.**
+**✅ P8 DONE — 2026-09-09. LIVE on production at `7fc8296`.**
 
 ### Both dists rebuilt
 
@@ -1033,6 +1033,62 @@ which is §B1's promise measured on real data rather than asserted.
 
 The upgrades tracker now records `026` as applied to production on 2026-09-07 and `027` as pending
 this build.
+
+### 🌐 LIVE — production deploy 2026-09-09, `7fc8296`
+
+Steps 2 and 3 done, guided over the user's SSH session. **The plan is complete.**
+
+| check | result |
+|---|---|
+| pull | `de941a8..7fc8296`, fast-forward |
+| canary bundle | `assets/index-DTDutthI.js`, and nginx serves it |
+| `027` before / after | **0 → 2** columns |
+| `/health/version` | `git_sha 7fc829621b3a…` — the deployed code, not a guess |
+| pm2 | online, restarts 16 → 17, cwd correct, no `ER_BAD_FIELD_ERROR` |
+| **⛔ existing data** | **1,465 tasks · 1,015 with a due date · `due_time` 0 · `start_time` 0** |
+
+That last row is the whole migration's promise, measured on production rather than asserted:
+**not one existing task changed meaning.**
+
+### ⛔ The deploy nearly pulled nothing
+
+`origin/main` was still `de941a8` — the SHA the box already had. **Ten commits, P0 through P8,
+were committed locally and never pushed.** The box would have reported a successful no-op pull and
+the canary check would have caught it one step later, but the preflight should catch it first. The
+prompt now says so.
+
+### Five corrections the live run paid for, all now in the prompt
+
+1. **`DB_USERNAME`, not `DB_USER`.** With the wrong key `-u` was empty, MySQL read the next
+   argument as the username, and **the error message printed the password back**. Credentials now
+   go through a `umask 077` defaults file, so no error can echo them. (The exposed password should
+   be rotated; it was not done during the deploy because rotating mid-deploy breaks the running
+   app.)
+2. **`mysqldump` needs `--no-tablespaces`.** Without it MySQL 8 fails with *"you need the PROCESS
+   privilege"* — and still writes a plausible 5 MB file. The dump is now verified by its
+   `Dump completed on` line and by matching table and trigger counts against live: **47 and 9**.
+3. **`git status` is never empty on this box, and that is fine.** ~45 untracked files: orphaned
+   `client/dist/assets/*.js` from older builds, `ecosystem.config.js` (pm2's own config, which
+   exists only here) and `server/.env.bak.*`. The old prompt said STOP on any output. The real
+   check is a collision test between the incoming paths and the untracked ones — it came back
+   empty, and the pull was clean.
+4. **Cron is in `/etc/cron.d/bbtasks-jobs`, not root's crontab.** `crontab -l` returns nothing and
+   that is correct; the first draft of the check read it as a missing scheduler. The proof that
+   counts is the log: **71 `job.overdue-alert.ok`, 47 `job.recurrence-spawn.ok`**, and all nine job
+   lines present including the `*/10` overdue alert this feature depends on.
+5. **`/health` is mounted at the app root, not under `/api/v1`.** `curl /api/v1/health` correctly
+   answers `route.not_found`; the root path answers 200 through nginx.
+
+Four of the five were **my command being wrong, not the product** — which is the same lesson every
+deploy in this repo has taught, and the reason each step is verified before the next one runs.
+
+### Still open
+
+- **The browser pass** — the user was asked to confirm four things on the live site: an old
+  time-less task unchanged, absolute activity timestamps, the Time control in the date picker, and
+  a countdown after setting 5:00 PM. Not yet reported back.
+- **Playwright**, owed from P3 and P5. **The scale probes**, owed from P7 and blocked on local disk.
+- **Rotate the DB password** exposed by the `mysqldump` error.
 
 ### ⏳ What is NOT done, and needs the user
 

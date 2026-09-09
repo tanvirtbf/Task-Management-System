@@ -80,32 +80,79 @@ df -h / | tail -1                         # expect: some headroom, not 100%
 free -m | head -2
 ```
 
-Report all five. If `git status` is not empty, STOP — someone edited files on the box and a
-pull will conflict or clobber their work.
+Report all five.
+
+⚠️ **`git status` will NOT be empty, and that is fine.** The box carries ~45 untracked
+files: orphaned `client/dist/assets/*.js` from older builds, `ecosystem.config.js` (pm2's
+config, which lives only here), and `server/.env.bak.*`. None is tracked, so none can
+conflict. **STOP only for `M` (modified) lines** — those are somebody's edits.
+
+What actually matters is whether the pull wants to CREATE a path that already exists
+untracked, which is the only thing that blocks `git pull`:
+
+```bash
+git fetch origin main
+git rev-parse --short origin/main            # the SHA you are deploying
+git diff --name-only HEAD origin/main | sort > /tmp/incoming.txt
+git ls-files --others --exclude-standard | sort > /tmp/untracked.txt
+comm -12 /tmp/incoming.txt /tmp/untracked.txt
+echo '^^ MUST be empty'
+```
+
+⛔ **And confirm the work is actually PUSHED.** The 2026-09-09 deploy nearly pulled
+nothing because ten commits were still local: `origin/main` was the SHA the box already
+had. Check `git rev-parse --short origin/main` before anything else.
 
 ## Step 1 — back up the database FIRST
 
 `027` is add-only and reversible by dropping two columns, so this is precautionary rather
 than load-bearing. Take it anyway; it costs a minute.
 
+⛔ **The key is `DB_USERNAME`, not `DB_USER`.** Getting that wrong leaves `-u` empty, so
+MySQL reads the NEXT argument as the username and the error message prints your password
+back at you. That happened on 2026-09-09. Credentials go in a defaults file, never in
+argv, so no error can ever echo them:
+
 ```bash
 Q='s/^"(.*)"$/\1/; s/^'"'"'(.*)'"'"'$/\1/'
 SOCK=$(grep -E '^DB_SOCKET_PATH=' server/.env | cut -d= -f2- | sed -E "$Q")
-DBU=$(grep -E '^DB_USER=' server/.env | cut -d= -f2- | sed -E "$Q")
+DBU=$(grep -E '^DB_USERNAME=' server/.env | cut -d= -f2- | sed -E "$Q")
 DBP=$(grep -E '^DB_PASSWORD=' server/.env | cut -d= -f2- | sed -E "$Q")
-DBN=$(grep -E '^DB_NAME=' server/.env | cut -d= -f2- | sed -E "$Q")
-M="mysql --socket=$SOCK -u$DBU -p$DBP $DBN"
+DBN=$(grep -E '^DB_NAME=' server/.env     | cut -d= -f2- | sed -E "$Q")
 
-echo "socket=$SOCK db=$DBN"   # sanity: both non-empty, NO password echoed
-mysqldump --socket="$SOCK" -u"$DBU" -p"$DBP" "$DBN" \
-  > ~/backup-taskmanagement-$(date +%F-%H%M).sql
-ls -lh ~/backup-taskmanagement-*.sql | tail -1
+umask 077
+cat > /tmp/bb.cnf <<CNF
+[client]
+socket=$SOCK
+user=$DBU
+password=$DBP
+CNF
+
+M="mysql --defaults-file=/tmp/bb.cnf $DBN"
+echo "socket=$SOCK db=$DBN user_len=${#DBU} pass_len=${#DBP}"   # lengths, never values
+$M -N -e "SELECT 'connected', DATABASE();"
 ```
 
-> The `sed` line strips surrounding quotes if `.env` has them. **Never paste the password
-> as a literal** and never `echo` `$DBP`. If `mysqldump` writes a 0-byte file, STOP.
+Then dump, and **verify the dump rather than trusting its size**:
 
-Expect a file of a few MB. If it is under ~100 KB, the dump failed — STOP.
+```bash
+B=~/backup-taskmanagement-$(date +%F-%H%M).sql
+mysqldump --defaults-file=/tmp/bb.cnf --no-tablespaces --single-transaction \
+          --routines --triggers --events "$DBN" > "$B"
+echo "exit=$?"; ls -lh "$B"
+tail -2 "$B"                                    # must end 'Dump completed on ...'
+echo -n 'dump tables: '; grep -c '^CREATE TABLE' "$B"
+$M -N -e "SELECT COUNT(*) FROM information_schema.tables
+           WHERE table_schema='$DBN' AND table_type='BASE TABLE';"
+echo -n 'dump triggers: '; grep -c 'CREATE.*TRIGGER' "$B"
+$M -N -e "SELECT COUNT(*) FROM information_schema.triggers WHERE trigger_schema='$DBN';"
+```
+
+`--no-tablespaces` is required: without it MySQL 8 fails with *'you need the PROCESS
+privilege'* and still writes a plausible-looking file. **A dump is trusted only when the
+table and trigger counts match live** — 2026-09-09 saw 47 and 9.
+
+Delete `/tmp/bb.cnf` at the end of the deploy.
 
 ## Step 2 — pull the code
 
@@ -185,8 +232,9 @@ Unauthenticated curls prove almost nothing. Log in and read a real task.
 curl -s localhost:5501/health                          # {"status":"ok",...}
 curl -s localhost:5501/health/version                  # note what it reports
 
-# Through nginx, not just the port:
-curl -s https://tasks.beautybooth.com.bd/api/v1/health
+# Through nginx. ⛔ /health is mounted at the APP ROOT, not under /api/v1 —
+# `/api/v1/health` correctly answers route.not_found and is not a fault.
+curl -s -o /dev/null -w 'root /health -> %{http_code}\n' https://tasks.beautybooth.com.bd/health
 
 # The bundle the world is actually being served:
 curl -s https://tasks.beautybooth.com.bd | grep -o 'assets/index-[^"]*\.js' | head -2
@@ -220,9 +268,17 @@ Finally, log in as a real user in a browser and confirm on one screen:
 The 2026-09-03 deploy installed the cron file including the `*/15` recurrence line, and
 `027` adds no jobs. Confirm nothing regressed:
 
+⛔ **Not `crontab -l`** — root's personal crontab is empty and that is correct. The jobs
+live in `/etc/cron.d/`, and the only proof that counts is that they have actually run:
+
 ```bash
-crontab -l | grep -E 'bbtasks|run-job'      # expect the same lines as before
+ls -l /etc/cron.d/ | grep -iE 'bb|task'      # bbtasks-jobs + bbtasks-backup
+grep -cE '^\*/|^[0-9]' /etc/cron.d/bbtasks-jobs   # expect 9 job lines
+grep -hoE 'job\.[a-z-]+\.ok' /var/log/bbtasks/out.log | sort | uniq -c | tail
 ```
+
+The last one is the real check — on 2026-09-09 it showed 71 `job.overdue-alert.ok` and
+47 `job.recurrence-spawn.ok`.
 
 ## Rollback
 
