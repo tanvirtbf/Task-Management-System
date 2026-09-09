@@ -527,7 +527,7 @@ to fire off at the end of a phase.
 **Gate: the FULL server suite, because this phase changed the shared write path** — create, the
 single PATCH and the bulk patch are used by nearly every module, so a partial run would have
 proved little. **37 modules · 6,041 passed · 0 failed**, run in foreground chunks (KI: never as a
-child of the agent session). Client **179 tests / 17 files**, up from 162 after P0. eslint 0/0 and
+child of the agent session). Client **185 tests / 18 files**, up from 162 after P0. (An earlier draft of this record said 179/17 — that was a run taken before `InlineDateEdit.test.tsx` was added.) eslint 0/0 and
 `tsc` clean on both packages.
 
 ⚠️ Client eslint caught `formatTimeOfDay` being exported from a component file
@@ -550,6 +550,89 @@ date and therefore no timezone, so it must not go through `Date`. The near-miss
 
 **Exit:** a rendering test at four timezones for each state (upcoming / due soon / overdue /
 done on time / done late), and a virtualised-list check that the timer count stays O(1).
+
+**✅ P4 DONE — 2026-09-09.**
+
+The line the feature was asked for now sits under the task name: **"17h left"**, **"2d 13h left"**,
+**"5h late"**, **"done 5h late"**. It is on `TaskRow`, `BoardCard`, `MobileTaskCard` and
+`TaskDetailDrawer`, and it ticks.
+
+### The hard part was NOT the wording
+
+P2 deliberately refused to build a deadline *instant* on the server: comparing calendar-day to
+calendar-day and clock to clock is what keeps `due_date` usable by its index in a `WHERE` over
+thousands of rows. But "17 hours left" is arithmetic on instants and cannot be done any other way,
+so the client has to build the very thing the server declined to.
+
+**Two shapes computing one rule is how a screen ends up saying "3h left" about a task the server
+has already filed under Overdue.** So `lib/deadline.test.ts` transcribes the server's rule — the
+literal string comparison from `server/src/utils/deadline.ts` — and checks the two give the same
+late/not-late answer across **4 zones × 9 times of day × 3 dates × 5 due times = 540 comparisons**,
+with a vacuity guard proving the matrix exercised both answers. If the server's rule ever moves,
+this goes red.
+
+### ⛔ A time-less deadline is midnight of the NEXT day
+
+Written down because it reads like a mistake. §B1 says a date with no time runs through the END of
+its day, and the server implements that as `due_date < today` — so a time-less task due today is
+not late at 23:59:59 and becomes late as the next day begins. Midnight-tomorrow is that same
+boundary expressed as an instant, and it is what makes the countdown agree with the bucket the task
+is actually in.
+
+Mutation-tested: changing it to midnight of its own day breaks **36 of the 540** comparisons plus
+three explicit cases. Reading a null time as midnight is the single change that would turn every
+task due today overdue at once, and it is now three separate tests away from happening.
+
+### ⚠️ One clock for the page, not one per row
+
+`SLABadge` computes `now` at render, so a page left open never updates — it said "2h left" at lunch
+and still says it at six. Survivable for a day-scale number; wrong for the hourly deadlines this
+whole feature exists to hand out.
+
+The obvious fix is a `setInterval` in the badge, and it is the wrong one: that is **one timer per
+row**, on a list P13 measured at 22,826 DOM nodes before virtualisation. `lib/now-tick.ts` is a
+single shared store read through `useSyncExternalStore` — the interval starts on the first
+subscriber and is cleared on the last, so a screen with no deadlines runs no timer at all.
+
+`now-tick.test.tsx` asserts the count directly: **500 consumers, 1 interval**. Mutation-tested by
+reverting the store to a timer-per-subscriber, which turns three tests red with
+`{ listeners: 500, timers: 500 }`. Virtualised scrolling is covered too — unmounting 45 of 50 rows
+keeps the clock for the 5 that remain.
+
+The snapshot is a stable number rather than a live `Date.now()` read, because
+`useSyncExternalStore` compares snapshots by identity and a fresh value on every check would loop.
+
+### ⛔ The test that "proved" a bug that did not exist
+
+The first draft of `DeadlineBadge.test.tsx` rendered the same case in four zones inside one loop
+and reported a **ten-hour error in New York**. There was no error. The loop never unmounted between
+iterations, so the second badge subscribed to a clock that was already running and correctly
+inherited the first zone's `now` — which is precisely the behaviour `now-tick.ts` exists to
+provide. `cleanup()` now runs at the top of the render helper, with the reason written above it.
+
+Worth keeping as a shape, not just a fact: **a shared-state module makes tests order-dependent in a
+way component tests usually are not**, and the failure looked exactly like a timezone bug in the
+code under test.
+
+### What it shows
+
+Five states, each asserted in four timezones with a clock set the same distance from the deadline
+in each, so a zone bug appears as a different answer rather than a different fixture: `upcoming`
+(quiet), `soon` (the last 24 hours, warned), `late` (danger), `done_on_time`, `done_late`. A
+finished task states a fact and stops counting — moving the clock 30 days does not change "done 5h
+late". Finishing *exactly* on the deadline instant counts as late, matching the server's `<=`.
+
+The zone comes from `useWorkspace()` rather than a prop. Threading it through five call sites would
+mean one of them eventually not doing so, and that failure is silent and off by hours. The badge
+also carries `dueTime` into `DueDateBadge` on all three cards, so the chip does not say "Sep 5"
+while the line beneath it counts down to 5 PM.
+
+**Gate:** client **218 tests / 21 files**, up from 185 after P3. eslint 0/0 and `tsc -b` clean.
+**No server file changed**, so the server suite is untouched by construction — verified against
+`git status`, not assumed.
+
+**Not done here, on purpose:** the deadline badge and the SLA badge can now both appear on one card
+and neither says which is which. That is P5, and it is the next thing.
 
 ### P5 — Telling the two deadlines apart (B4)
 

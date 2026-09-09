@@ -12,6 +12,7 @@ import type { Task } from "../../types";
 import { useTagMap, useTaskTypeMap, useUserMap } from "../../hooks/useReferenceData";
 import { AssigneeStack } from "../ui/AssigneeStack";
 import { DueDateBadge } from "../ui/DueDateBadge";
+import { DeadlineBadge } from "../ui/DeadlineBadge";
 import { PriorityFlag } from "../ui/PriorityFlag";
 import { TagChip } from "../ui/TagChip";
 import { DynamicIcon } from "../shared/DynamicIcon";
@@ -159,6 +160,11 @@ export const BoardCard = ({
                 >
                     {task.name}
                 </div>
+                <DeadlineBadge
+                    dueDate={task.dueDate}
+                    dueTime={task.dueTime}
+                    completedAt={task.completedAt}
+                />
             </div>
 
             {/* Tags (only in comfortable) */}
@@ -196,7 +202,11 @@ export const BoardCard = ({
                     marginTop: 2,
                 }}
             >
-                <DueDateBadge dueDate={task.dueDate} size="sm" />
+                <DueDateBadge
+                    dueDate={task.dueDate}
+                    dueTime={task.dueTime}
+                    size="sm"
+                />
 
                 {/* Activity counts */}
                 {(task.commentsCount > 0 ||

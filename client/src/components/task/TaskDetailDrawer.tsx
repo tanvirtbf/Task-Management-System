@@ -31,6 +31,7 @@ import { DynamicIcon } from "../shared/DynamicIcon";
 import { LoadingState } from "../shared/LoadingState";
 import { InlineNameEdit } from "./InlineNameEdit";
 import { TaskPropertiesPanel } from "./TaskPropertiesPanel";
+import { DeadlineBadge } from "../ui/DeadlineBadge";
 import { TaskDescription } from "./TaskDescription";
 import { ChecklistsSection } from "./ChecklistsSection";
 import { CommentsSection } from "./CommentsSection";
@@ -611,6 +612,14 @@ export const TaskDetailDrawer = ({
                                 }
                                 size="lg"
                             />
+                            <div style={{ marginTop: 4 }}>
+                                <DeadlineBadge
+                                    dueDate={task.dueDate}
+                                    dueTime={task.dueTime}
+                                    completedAt={task.completedAt}
+                                    size="md"
+                                />
+                            </div>
                         </div>
 
                         <TaskPropertiesPanel task={task} />

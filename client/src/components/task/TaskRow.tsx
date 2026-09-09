@@ -2,6 +2,7 @@ import { ListChecks, MessageSquare, Paperclip, Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { AssigneeStack } from "../ui/AssigneeStack";
 import { DueDateBadge } from "../ui/DueDateBadge";
+import { DeadlineBadge } from "../ui/DeadlineBadge";
 import { PriorityFlag } from "../ui/PriorityFlag";
 import { StatusPill } from "../ui/StatusPill";
 import type { Status, Task, User } from "../../types";
@@ -105,8 +106,11 @@ export const TaskRow = ({
                 >
                     {task.name}
                 </div>
+                {/* The countdown joins the meta line under the name, so a
+                    task with a deadline and nothing else still shows it. */}
                 {showMeta &&
-                    (task.commentsCount > 0 ||
+                    (task.dueDate ||
+                        task.commentsCount > 0 ||
                         task.attachmentsCount > 0 ||
                         task.checklistItemsTotal > 0) && (
                         <div
@@ -117,6 +121,11 @@ export const TaskRow = ({
                                 color: tokens.colors.textMuted,
                             }}
                         >
+                            <DeadlineBadge
+                                dueDate={task.dueDate}
+                                dueTime={task.dueTime}
+                                completedAt={task.completedAt}
+                            />
                             {/* upgrades/023 — waiting on an admin's decision. */}
                             {task.deleteRequestPending && (
                                 <span
@@ -186,7 +195,11 @@ export const TaskRow = ({
                 <StatusPill status={status} variant="subtle" size="sm" />
             )}
             {showDueDate && task.dueDate && (
-                <DueDateBadge dueDate={task.dueDate} size="sm" />
+                <DueDateBadge
+                    dueDate={task.dueDate}
+                    dueTime={task.dueTime}
+                    size="sm"
+                />
             )}
             {showAssignees && (
                 <AssigneeStack users={assignees} size={20} max={3} />

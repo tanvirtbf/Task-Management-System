@@ -3,6 +3,7 @@ import { Dropdown, type MenuProps } from "antd";
 import { MoreVertical } from "lucide-react";
 import { StatusPill } from "../ui/StatusPill";
 import { DueDateBadge } from "../ui/DueDateBadge";
+import { DeadlineBadge } from "../ui/DeadlineBadge";
 import { PriorityFlag } from "../ui/PriorityFlag";
 import { AssigneeStack } from "../ui/AssigneeStack";
 import { tokens } from "../../theme";
@@ -101,6 +102,18 @@ export const MobileTaskCard = memo(
                         </span>
                     </span>
 
+                    {/* Under the name, on its own line: a phone has no room
+                        to put it beside the status chip (P11). */}
+                    {task.dueDate && (
+                        <span style={{ display: "block" }}>
+                            <DeadlineBadge
+                                dueDate={task.dueDate}
+                                dueTime={task.dueTime}
+                                completedAt={task.completedAt}
+                            />
+                        </span>
+                    )}
+
                     <span
                         style={{
                             display: "flex",
@@ -116,7 +129,11 @@ export const MobileTaskCard = memo(
                         )}
                         {task.dueDate && (
                             <span style={{ flexShrink: 0 }}>
-                                <DueDateBadge dueDate={task.dueDate} size="sm" />
+                                <DueDateBadge
+                                    dueDate={task.dueDate}
+                                    dueTime={task.dueTime}
+                                    size="sm"
+                                />
                             </span>
                         )}
                         <span style={{ flex: 1 }} />
